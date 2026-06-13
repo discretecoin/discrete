@@ -1,6 +1,6 @@
 // Copyright (c) 2018, The TurtleCoin Developers
 // Copyright (c) 2018-2019, The Karbo Developers
-// 
+//
 // Please see the included LICENSE file for more information.
 
 /////////////////////////////////////
@@ -13,27 +13,11 @@
 #include <initializer_list>
 #include <iostream>
 
-#include <boost/filesystem.hpp>
-
 #include "version.h"
 
+#include <Common/UrlTools.h>
+#include <Common/PathTools.h>
 #include <GreenWallet/WalletConfig.h>
-
-bool validateCertPath(std::string &path) {
-  bool res = false;
-  boost::system::error_code ec;
-  boost::filesystem::path data_dir_path(boost::filesystem::current_path());
-  boost::filesystem::path cert_file_path(path);
-  if (!cert_file_path.has_parent_path()) cert_file_path = data_dir_path / cert_file_path;
-  if (boost::filesystem::exists(cert_file_path, ec)) {
-    path = boost::filesystem::canonical(cert_file_path).string();
-    res = true;
-  } else {
-    path.clear();
-    res = false;
-  }
-  return res;
-}
 
 /* Thanks to https://stackoverflow.com/users/85381/iain for this small command
    line parsing snippet! https://stackoverflow.com/a/868894/8737306 */
@@ -128,37 +112,13 @@ Config parseArguments(int argc, char **argv)
         {
             std::string urlString(url);
 
-            /* Get the index of the ":" */
-            size_t splitter = urlString.find_last_of(":");
+            if (!Common::parseUrlAddress(urlString, config.host, config.port,
+                                         config.path, config.ssl)) {
 
-            /* Host is everything before ":" */
-            config.host = urlString.substr(0, splitter);
-
-            /* No ":" present, or user specifies http:// without port at end */
-            if (splitter == std::string::npos || config.host == "http"
-             || config.host == "https")
-            {
-                config.host = urlString;
+                std::cout << "Failed to parse daemon address!" << std::endl;
+                config.exit = true;
             }
-            else
-            {
-                /* Host is everything before ":" */
-                config.host = urlString.substr(0, splitter);
 
-                /* Port is everything after ":" */
-                std::string port = urlString.substr(splitter + 1,   
-                                                    std::string::npos);
-
-                try
-                {
-                    config.port = std::stoi(port);
-                }
-                catch (const std::invalid_argument &)
-                {
-                    std::cout << "Failed to parse daemon port!" << std::endl;
-                    config.exit = true;
-                }
-            }
         }
     }
 
@@ -179,7 +139,7 @@ Config parseArguments(int argc, char **argv)
         {
             config.daemonCert = certPath;
 
-            if (!validateCertPath(config.daemonCert)) {
+            if (!Common::validateCertPath(config.daemonCert)) {
 
                 std::cout << "Custom cert file could not be found!" << std::endl;
             }

@@ -1,4 +1,4 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 //
 // This file is part of Karbo.
 //
@@ -23,12 +23,11 @@
 #include <Logging/ConsoleLogger.h>
 
 #include "CryptoNoteCore/Core.h"
-#include "CryptoNoteCore/MemoryBlockchainCacheFactory.h"
+#include "CryptoNoteCore/CoreConfig.h"
 #include "CryptoNoteCore/Miner.h"
 #include "CryptoNoteProtocol/CryptoNoteProtocolHandler.h"
 #include "P2p/NetNode.h"
 #include "InProcessNode/InProcessNode.h"
-#include <../tests/Common/VectorMainChainStorage.h>
 
 using namespace CryptoNote;
 
@@ -43,8 +42,8 @@ bool parse_peer_from_string(NetworkAddress &pe, const std::string &node_addr) {
 }
 
 
-InProcTestNode::InProcTestNode(const TestNodeConfiguration& cfg, const CryptoNote::Currency& currency, System::Dispatcher& d) : 
-  m_cfg(cfg), m_currency(currency), dispatcher(d) {
+InProcTestNode::InProcTestNode(const TestNodeConfiguration& cfg, const CryptoNote::Currency& currency) : 
+  m_cfg(cfg), m_currency(currency) {
 
   std::promise<std::string> initPromise;
   std::future<std::string> initFuture = initPromise.get_future();
@@ -65,22 +64,20 @@ InProcTestNode::~InProcTestNode() {
 }
 
 void InProcTestNode::workerThread(std::promise<std::string>& initPromise) {
+
   System::Dispatcher dispatcher;
+
   Logging::ConsoleLogger log;
+
   Logging::LoggerRef logger(log, "InProcTestNode");
 
   try {
-    core.reset(new CryptoNote::Core(
-      m_currency,
-      log,
-      CryptoNote::Checkpoints(log),
-      dispatcher,
-      std::unique_ptr<IBlockchainCacheFactory>(new MemoryBlockchainCacheFactory("", logger.getLogger())),
-      CryptoNote::createVectorMainChainStorage(m_currency)));
 
+    core.reset(new CryptoNote::Core(m_currency, NULL, log, dispatcher));
     protocol.reset(new CryptoNote::CryptoNoteProtocolHandler(m_currency, dispatcher, *core, NULL, log));
     p2pNode.reset(new CryptoNote::NodeServer(dispatcher, *protocol, log));
     protocol->set_p2p_endpoint(p2pNode.get());
+    core->set_cryptonote_protocol(protocol.get());
 
     CryptoNote::NetNodeConfig p2pConfig;
 
@@ -104,6 +101,15 @@ void InProcTestNode::workerThread(std::promise<std::string>& initPromise) {
       throw std::runtime_error("Failed to init p2pNode");
     }
 
+    CryptoNote::MinerConfig emptyMiner;
+    CryptoNote::CoreConfig coreConfig;
+
+    coreConfig.configFolder = m_cfg.dataDir;
+    
+    if (!core->init(coreConfig, emptyMiner, true)) {
+      throw std::runtime_error("Core failed to initialize");
+    }
+
     initPromise.set_value(std::string());
 
   } catch (std::exception& e) {
@@ -118,7 +124,9 @@ void InProcTestNode::workerThread(std::promise<std::string>& initPromise) {
     logger(Logging::ERROR) << "exception in p2p::run: " << e.what();
   }
 
+  core->deinit();
   p2pNode->deinit();
+  core->set_cryptonote_protocol(NULL);
   protocol->set_p2p_endpoint(NULL);
 
   p2pNode.reset();
@@ -126,19 +134,14 @@ void InProcTestNode::workerThread(std::promise<std::string>& initPromise) {
   core.reset();
 }
 
-bool InProcTestNode::startMining(size_t threadsCount, const std::string &address) {
+bool InProcTestNode::startMining(size_t threadsCount, const CryptoNote::AccountKeys& keys) {
   assert(core.get());
-  AccountPublicAddress addr;
-  m_currency.parseAccountAddressString(address, addr);
-  //return core->startMining(addr, threadsCount);
-  assert(false);
-  return false;
+  return core->get_miner().start(keys, threadsCount);
 }
 
 bool InProcTestNode::stopMining() {
   assert(core.get());
-  assert(false);
-  return false;
+  return core->get_miner().stop();
 }
 
 bool InProcTestNode::stopDaemon() {
@@ -151,28 +154,25 @@ bool InProcTestNode::stopDaemon() {
   return true;
 }
 
-bool InProcTestNode::getBlockTemplate(const std::string &minerAddress, CryptoNote::BlockTemplate &blockTemplate, uint64_t &difficulty) {
-  AccountPublicAddress addr;
-  BinaryArray extraNonce;
-  m_currency.parseAccountAddressString(minerAddress, addr);
+bool InProcTestNode::getBlockTemplate(const CryptoNote::AccountKeys& minerKeys, CryptoNote::Block& blockTemplate, uint64_t& difficulty) {
   uint32_t height = 0;
-  return core->getBlockTemplate(blockTemplate, addr, extraNonce, difficulty, height);
+  return core->get_block_template(blockTemplate, minerKeys, difficulty, height, BinaryArray());
 }
 
 bool InProcTestNode::submitBlock(const std::string& block) {
-  BinaryArray arr;
-  std::copy(block.begin(), block.end(), std::back_inserter(arr));
-  return core->submitBlock(std::move(arr)) == std::error_code{};
+  block_verification_context bvc = boost::value_initialized<block_verification_context>();
+  core->handle_incoming_block_blob(Common::fromHex(block), bvc, true, true);
+  return bvc.m_added_to_main_chain;
 }
 
 bool InProcTestNode::getTailBlockId(Crypto::Hash &tailBlockId) {
-  tailBlockId = core->getTopBlockHash();
+  tailBlockId = core->get_tail_id();
   return true;
 }
 
 bool InProcTestNode::makeINode(std::unique_ptr<CryptoNote::INode> &node) {
 
-  std::unique_ptr<InProcessNode> inprocNode(new CryptoNote::InProcessNode(*core, *protocol, dispatcher));
+  std::unique_ptr<InProcessNode> inprocNode(new CryptoNote::InProcessNode(*core, *protocol));
 
   std::promise<std::error_code> p;
   auto future = p.get_future();
@@ -193,7 +193,7 @@ bool InProcTestNode::makeINode(std::unique_ptr<CryptoNote::INode> &node) {
 }
 
 uint64_t InProcTestNode::getLocalHeight() {
-  return core->getTopBlockIndex() + 1;
+  return core->getCurrentBlockchainHeight();
 }
 
 }

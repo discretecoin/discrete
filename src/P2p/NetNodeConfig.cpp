@@ -1,6 +1,4 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
-// Copyright (c) 2018-2019, The TurtleCoin Developers
-// Copyright (c) 2016-2020, The Karbo developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 //
 // This file is part of Karbo.
 //
@@ -24,6 +22,7 @@
 
 #include <Common/Util.h>
 #include "Common/StringTools.h"
+#include "crypto/crypto.h"
 #include "crypto/random.h"
 
 namespace CryptoNote {
@@ -62,6 +61,7 @@ void NetNodeConfig::initOptions(boost::program_options::options_description& des
   command_line::add_arg(desc, arg_p2p_seed_node);
   command_line::add_arg(desc, arg_ban_list);
   command_line::add_arg(desc, arg_p2p_hide_my_port);
+  command_line::add_arg(desc, arg_connections_count);
 }
 
 NetNodeConfig::NetNodeConfig() {
@@ -72,9 +72,7 @@ NetNodeConfig::NetNodeConfig() {
   hideMyPort = false;
   configFolder = Tools::getDefaultDataDirectory();
   testnet = false;
-}
-
-NetNodeConfig::~NetNodeConfig() {
+  connectionsCount = CryptoNote::P2P_DEFAULT_CONNECTIONS_COUNT;
 }
 
 bool NetNodeConfig::init(const boost::program_options::variables_map& vm)
@@ -125,8 +123,8 @@ bool NetNodeConfig::init(const boost::program_options::variables_map& vm)
   }
 
   if (command_line::has_arg(vm, arg_p2p_seed_node)) {
-    if (!parsePeersAndAddToContainer(vm, arg_p2p_seed_node, seedNodes))
-      return false;
+    std::vector<std::string> seeds = command_line::get_arg(vm, arg_p2p_seed_node);
+    seedNodeStrings.insert(seedNodeStrings.end(), seeds.begin(), seeds.end());
   }
 
   if (command_line::has_arg(vm, arg_p2p_hide_my_port)) {
@@ -150,6 +148,10 @@ bool NetNodeConfig::init(const boost::program_options::variables_map& vm)
       }
       banList.push_back(parsed_addr);
     }
+  }
+
+  if (command_line::has_arg(vm, CryptoNote::arg_connections_count)) {
+    connectionsCount = command_line::get_arg(vm, arg_connections_count);
   }
 
   return true;
@@ -203,6 +205,10 @@ std::vector<NetworkAddress> NetNodeConfig::getSeedNodes() const {
   return seedNodes;
 }
 
+std::vector<std::string> NetNodeConfig::getSeedNodeStrings() const {
+  return seedNodeStrings;
+}
+
 std::vector<uint32_t> NetNodeConfig::getBanList() const {
   return banList;
 }
@@ -213,6 +219,10 @@ bool NetNodeConfig::getHideMyPort() const {
 
 std::string NetNodeConfig::getConfigFolder() const {
   return configFolder;
+}
+
+uint32_t NetNodeConfig::getConnectionsCount() const {
+  return connectionsCount;
 }
 
 void NetNodeConfig::setP2pStateFilename(const std::string& filename) {
@@ -251,6 +261,10 @@ void NetNodeConfig::setSeedNodes(const std::vector<NetworkAddress>& addresses) {
   seedNodes = addresses;
 }
 
+void NetNodeConfig::setSeedNodeStrings(const std::vector<std::string>& addresses) {
+  seedNodeStrings = addresses;
+}
+
 void NetNodeConfig::setHideMyPort(bool hide) {
   hideMyPort = hide;
 }
@@ -259,5 +273,8 @@ void NetNodeConfig::setConfigFolder(const std::string& folder) {
   configFolder = folder;
 }
 
+void NetNodeConfig::setConnectionsCount(uint32_t count) {
+  connectionsCount = count;
+}
 
 } //namespace nodetool

@@ -1,6 +1,6 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
-// Copyright (c) 2018-2019, The TurtleCoin Developers
-// Copyright (c) 2016-2019, The Karbo developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2016, The Forknote developers
+// Copyright (c) 2016-2026, The Karbo developers
 //
 // This file is part of Karbo.
 //
@@ -19,168 +19,786 @@
 
 #include "TransactionPool.h"
 
+#include <algorithm>
+#include <cstring>
+#include <ctime>
+#include <set>
+#include <vector>
+#include <unordered_set>
+#include <unordered_map>
+
+#include <boost/filesystem.hpp>
+
 #include "Common/int-util.h"
-#include "CryptoNoteBasicImpl.h"
-#include "CryptoNoteCore/TransactionExtra.h"
+#include "Common/Util.h"
+#include "crypto/hash.h"
+
+#include "Serialization/SerializationTools.h"
+#include "Serialization/BinarySerializationTools.h"
+
+#include "CryptoNoteFormatUtils.h"
+#include "CryptoNoteTools.h"
+#include "CryptoNoteConfig.h"
+#include "TransactionExtra.h"
+#include "PqTxType.h"
+#include "PqValidation.h"
+
+using namespace Logging;
+
+#undef ERROR
 
 namespace CryptoNote {
 
-// lhs > hrs
-bool TransactionPool::TransactionPriorityComparator::operator()(const PendingTransactionInfo& lhs, const PendingTransactionInfo& rhs) const {
-  const CachedTransaction& left = lhs.cachedTransaction;
-  const CachedTransaction& right = rhs.cachedTransaction;
+namespace {
+// Using CryptoNote::pqInputNullifierAsKeyImage from PqValidation.h.
 
-  // price(lhs) = lhs.fee / lhs.blobSize
-  // price(lhs) > price(rhs) -->
-  // lhs.fee / lhs.blobSize > rhs.fee / rhs.blobSize -->
-  // lhs.fee * rhs.blobSize > rhs.fee * lhs.blobSize
-  uint64_t lhs_hi, lhs_lo = mul128(left.getTransactionFee(), right.getTransactionBinaryArray().size(), &lhs_hi);
-  uint64_t rhs_hi, rhs_lo = mul128(right.getTransactionFee(), left.getTransactionBinaryArray().size(), &rhs_hi);
-
-  return
-    // prefer more profitable transactions
-    (lhs_hi >  rhs_hi) ||
-    (lhs_hi == rhs_hi && lhs_lo >  rhs_lo) ||
-    // prefer smaller
-    (lhs_hi == rhs_hi && lhs_lo == rhs_lo && left.getTransactionBinaryArray().size() <  right.getTransactionBinaryArray().size()) ||
-    // prefer older
-    (lhs_hi == rhs_hi && lhs_lo == rhs_lo && left.getTransactionBinaryArray().size() == right.getTransactionBinaryArray().size() && lhs.receiveTime < rhs.receiveTime);
-}
-
-const Crypto::Hash& TransactionPool::PendingTransactionInfo::getTransactionHash() const {
-  return cachedTransaction.getTransactionHash();
-}
-
-size_t TransactionPool::PaymentIdHasher::operator() (const boost::optional<Crypto::Hash>& paymentId) const {
-  if (!paymentId) {
-    return std::numeric_limits<size_t>::max();
-  }
-
-  return std::hash<Crypto::Hash>{}(*paymentId);
-}
-
-TransactionPool::TransactionPool(Logging::ILogger& logger) :
-  transactionHashIndex(transactions.get<TransactionHashTag>()),
-  transactionCostIndex(transactions.get<TransactionCostTag>()),
-  paymentIdIndex(transactions.get<PaymentIdTag>()),
-  logger(logger, "TransactionPool") {
-}
-
-bool TransactionPool::pushTransaction(CachedTransaction&& transaction, TransactionValidatorState&& transactionState) {
-  auto pendingTx = PendingTransactionInfo{static_cast<uint64_t>(time(nullptr)), std::move(transaction)};
-
-  Crypto::Hash paymentId;
-  if(getPaymentIdFromTxExtra(pendingTx.cachedTransaction.getTransaction().extra, paymentId)) {
-    pendingTx.paymentId = paymentId;
-  }
-
-  std::lock_guard<decltype(m_transactions_lock)> lock(m_transactions_lock);
-
-  if (transactionHashIndex.count(pendingTx.getTransactionHash()) > 0) {
-    logger(Logging::DEBUGGING) << "pushTransaction: transaction hash already present in index";
+bool getPqAccountRegistrationId(const Transaction& tx, Crypto::Hash& accountId) {
+  TransactionExtraPqAccountRegistration reg;
+  if (!getPqAccountRegistrationFromExtra(tx.extra, reg)) {
     return false;
   }
-
-  if (hasIntersections(poolState, transactionState)) {
-    logger(Logging::DEBUGGING) << "pushTransaction: failed to merge states, some keys already used";
-    return false;
-  }
-
-  mergeStates(poolState, transactionState);
-
-  logger(Logging::DEBUGGING) << "pushed transaction " << pendingTx.getTransactionHash() << " to pool";
-  return transactionHashIndex.emplace(std::move(pendingTx)).second;
-}
-
-const CachedTransaction& TransactionPool::getTransaction(const Crypto::Hash& hash) const {
-  std::lock_guard<decltype(m_transactions_lock)> lock(m_transactions_lock);
-  auto it = transactionHashIndex.find(hash);
-  assert(it != transactionHashIndex.end());
-
-  return it->cachedTransaction;
-}
-
-const boost::optional<CachedTransaction> TransactionPool::tryGetTransaction(const Crypto::Hash &hash) const {
-  std::lock_guard<decltype(m_transactions_lock)> lock(m_transactions_lock);
-  auto it = transactionHashIndex.find(hash);
-  if (it != transactionHashIndex.end()) {
-    return it->cachedTransaction;
-  }
-
-  return boost::none;
-}
-
-bool TransactionPool::removeTransaction(const Crypto::Hash& hash) {
-  std::lock_guard<decltype(m_transactions_lock)> lock(m_transactions_lock);
-  auto it = transactionHashIndex.find(hash);
-  if (it == transactionHashIndex.end()) {
-    logger(Logging::DEBUGGING) << "removeTransaction: transaction not found";
-    return false;
-  }
-
-  excludeFromState(poolState, it->cachedTransaction);
-  transactionHashIndex.erase(it);
-
-  logger(Logging::DEBUGGING) << "transaction " << hash << " removed from pool";
+  accountId = getPqAccountIdentityHash(reg);
   return true;
 }
+}  // namespace
 
-size_t TransactionPool::getTransactionCount() const {
-  std::lock_guard<decltype(m_transactions_lock)> lock(m_transactions_lock);
-  return transactionHashIndex.size();
-}
+  //---------------------------------------------------------------------------------
+  // BlockTemplate
+  //---------------------------------------------------------------------------------
+  class BlockTemplate {
+  public:
 
-std::vector<Crypto::Hash> TransactionPool::getTransactionHashes() const {
-  std::lock_guard<decltype(m_transactions_lock)> lock(m_transactions_lock);
-  std::vector<Crypto::Hash> hashes;
-  for (auto it = transactionCostIndex.begin(); it != transactionCostIndex.end(); ++it) {
-    hashes.push_back(it->getTransactionHash());
+    bool addTransaction(const Crypto::Hash& txid, const Transaction& tx) {
+      if (!canAdd(tx))
+        return false;
+
+      for (const auto& in : tx.inputs) {
+        if (in.type() == typeid(PqInput)) {
+          auto r = m_keyImages.insert(pqInputNullifierAsKeyImage(boost::get<PqInput>(in)));
+          (void)r;
+          assert(r.second);
+        }
+      }
+
+      Crypto::Hash accountId;
+      if (getPqAccountRegistrationId(tx, accountId)) {
+        auto r = m_pqAccountRegistrations.insert(accountId);
+        (void)r;
+        assert(r.second);
+      }
+      if (tx.version >= TRANSACTION_VERSION_PQ && tx.txType == TX_FREE_REG) {
+        ++m_freeRegCount;
+      }
+
+      m_txHashes.push_back(txid);
+      return true;
+    }
+
+    const std::vector<Crypto::Hash>& getTransactions() const {
+      return m_txHashes;
+    }
+
+  private:
+
+    bool canAdd(const Transaction& tx) {
+      for (const auto& in : tx.inputs) {
+        if (in.type() == typeid(PqInput)) {
+          if (m_keyImages.count(pqInputNullifierAsKeyImage(boost::get<PqInput>(in)))) {
+            return false;
+          }
+        }
+      }
+      Crypto::Hash accountId;
+      if (getPqAccountRegistrationId(tx, accountId) &&
+          m_pqAccountRegistrations.count(accountId)) {
+        return false;
+      }
+      if (tx.version >= TRANSACTION_VERSION_PQ && tx.txType == TX_FREE_REG &&
+          m_freeRegCount >= parameters::FREE_REG_PER_BLOCK) {
+        return false;
+      }
+      return true;
+    }
+    
+    std::unordered_set<Crypto::KeyImage> m_keyImages;
+    std::unordered_set<Crypto::Hash> m_pqAccountRegistrations;
+    size_t m_freeRegCount = 0;
+    std::set<std::pair<uint64_t, uint64_t>> m_usedOutputs;
+    std::vector<Crypto::Hash> m_txHashes;
+  };
+
+  using CryptoNote::BlockInfo;
+
+  std::unordered_set<Crypto::Hash> m_validated_transactions;
+
+  //---------------------------------------------------------------------------------
+  tx_memory_pool::tx_memory_pool(
+    const CryptoNote::Currency& currency,
+    CryptoNote::ITransactionValidator& validator,
+    CryptoNote::ICore& core,
+    CryptoNote::ITimeProvider& timeProvider,
+    Logging::ILogger& log) :
+    m_currency(currency),
+    m_validator(validator),
+    m_core(core),
+    m_timeProvider(timeProvider),
+    m_txCheckInterval(60, timeProvider),
+    m_fee_index(boost::get<1>(m_transactions)),
+    logger(log, "txpool"),
+    m_paymentIdIndex(true),
+    m_timestampIndex(true) {
+  }
+  //---------------------------------------------------------------------------------
+  bool tx_memory_pool::add_tx(const Transaction &tx, /*const Crypto::Hash& tx_prefix_hash,*/ const Crypto::Hash &id, size_t blobSize, tx_verification_context& tvc, bool keptByBlock) {
+    if (!check_inputs_types_supported(tx)) {
+      tvc.m_verification_failed = true;
+      return false;
+    }
+
+    // TX_PQ input value lives in the referenced outputs (chain state), not in
+    // the input — get_inputs_money_amount would read 0 and falsely reject. Its
+    // balance and PQ fee floor are enforced by checkTransactionInputs ->
+    // checkPqInputs below. (TX_BRIDGE has classical inputs, so it uses the
+    // normal accounting.)
+    const bool pqOnlyInputs = tx.version >= TRANSACTION_VERSION_PQ && tx.txType == TX_PQ;
+    const bool freeRegTransaction = tx.version >= TRANSACTION_VERSION_PQ && tx.txType == TX_FREE_REG;
+    uint64_t fee = 0;
+    bool isFusionTransaction = false;
+    if (!pqOnlyInputs) {
+      uint64_t inputs_amount = 0;
+      if (!get_inputs_money_amount(tx, inputs_amount)) {
+        tvc.m_verification_failed = true;
+        return false;
+      }
+
+      uint64_t outputs_amount = get_outs_money_amount(tx);
+
+      if (outputs_amount > inputs_amount) {
+        logger(INFO) << "transaction use more money then it has: use " << m_currency.formatAmount(outputs_amount) <<
+          ", have " << m_currency.formatAmount(inputs_amount);
+        tvc.m_verification_failed = true;
+        return false;
+      }
+
+      fee = inputs_amount - outputs_amount;
+      const uint32_t currentHeight = m_core.getCurrentBlockchainHeight();
+      isFusionTransaction =
+        fee == 0 &&
+        m_core.getBlockMajorVersionForHeight(currentHeight) < BLOCK_MAJOR_VERSION_6 &&
+        m_currency.isFusionTransaction(tx, blobSize, currentHeight);
+    }
+    //check key images for transaction if it is not kept by block
+    if (!keptByBlock) {
+      std::lock_guard<std::recursive_mutex> lock(m_transactions_lock);
+      if (haveSpentInputs(tx)) {
+        logger(INFO) << "Transaction with id= " << id << " used already spent inputs";
+        tvc.m_verification_failed = true;
+        return false;
+      }
+      if (havePqAccountRegistration(tx)) {
+        logger(INFO) << "Transaction with id= " << id << " registers a PQ account already pending in the pool";
+        tvc.m_verification_failed = true;
+        return false;
+      }
+    }
+
+    BlockInfo maxUsedBlock;
+
+    // check inputs
+    bool inputsValid = m_validator.checkTransactionInputs(tx, maxUsedBlock);
+
+    if (!inputsValid) {
+      if (!keptByBlock) {
+        logger(INFO) << "tx used wrong inputs, rejected";
+        tvc.m_verification_failed = true;
+        return false;
+      }
+
+      maxUsedBlock.clear();
+      tvc.m_verifivation_impossible = true;
+    }
+
+    if (inputsValid && pqOnlyInputs) {
+      if (!m_core.getPqTransactionFee(tx, fee)) {
+        logger(INFO) << "TX_PQ fee accounting failed, rejected";
+        tvc.m_verification_failed = true;
+        return false;
+      }
+    }
+
+    if (!keptByBlock) {
+      bool sizeValid = m_validator.checkTransactionSize(blobSize);
+      if (!sizeValid) {
+        logger(INFO) << "tx too big, rejected";
+        tvc.m_verification_failed = true;
+        return false;
+      }
+    }
+
+    std::lock_guard<std::recursive_mutex> lock(m_transactions_lock);
+
+    if (!keptByBlock && m_recentlyDeletedTransactions.find(id) != m_recentlyDeletedTransactions.end()) {
+      logger(INFO) << "Trying to add recently deleted transaction. Ignore: " << id;
+      tvc.m_verification_failed = false;
+      tvc.m_should_be_relayed = false;
+      tvc.m_added_to_pool = false;
+      return true;
+    }
+
+    // add to pool
+    {
+      TransactionDetails txd;
+
+      txd.id = id;
+      txd.blobSize = blobSize;
+      txd.tx = tx;
+      txd.fee = fee;
+      txd.keptByBlock = keptByBlock;
+      txd.receiveTime = m_timeProvider.now();
+
+      txd.maxUsedBlock = maxUsedBlock;
+      txd.lastFailedBlock.clear();
+
+      auto txd_p = m_transactions.insert(txd);
+      if (!(txd_p.second)) {
+        logger(ERROR, BRIGHT_RED) << "transaction already exists at inserting in memory pool";
+        return false;
+      }
+      m_paymentIdIndex.add(tx);
+      m_timestampIndex.add(txd.receiveTime, txd.id);
+    }
+
+    tvc.m_added_to_pool = true;
+    tvc.m_should_be_relayed = inputsValid && (fee > 0 || isFusionTransaction || (freeRegTransaction && fee == 0));
+    tvc.m_verification_failed = true;
+
+    if (!addTransactionInputs(id, tx, keptByBlock))
+      return false;
+
+    tvc.m_verification_failed = false;
+    //succeed
+    return true;
   }
 
-  return hashes;
-}
+  //---------------------------------------------------------------------------------
+  bool tx_memory_pool::add_tx(const Transaction &tx, tx_verification_context& tvc, bool keeped_by_block) {
+    Crypto::Hash h = NULL_HASH;
+    size_t blobSize = 0;
+    getObjectHash(tx, h, blobSize);
+    return add_tx(tx, h, blobSize, tvc, keeped_by_block);
+  }
+  //---------------------------------------------------------------------------------
+  bool tx_memory_pool::take_tx(const Crypto::Hash &id, Transaction &tx, size_t& blobSize, uint64_t& fee) {
+    std::lock_guard<std::recursive_mutex> lock(m_transactions_lock);
+    auto it = m_transactions.find(id);
+    if (it == m_transactions.end()) {
+      return false;
+    }
 
-bool TransactionPool::checkIfTransactionPresent(const Crypto::Hash& hash) const {
-  std::lock_guard<decltype(m_transactions_lock)> lock(m_transactions_lock);
-  return transactionHashIndex.find(hash) != transactionHashIndex.end();
-}
+    auto& txd = *it;
 
-const TransactionValidatorState& TransactionPool::getPoolTransactionValidationState() const {
-  return poolState;
-}
+    tx = txd.tx;
+    blobSize = txd.blobSize;
+    fee = txd.fee;
 
-std::vector<CachedTransaction> TransactionPool::getPoolTransactions() const {
-  std::lock_guard<decltype(m_transactions_lock)> lock(m_transactions_lock);
-  std::vector<CachedTransaction> result;
-  result.reserve(transactionCostIndex.size());
-
-  for (const auto& transactionItem: transactionCostIndex) {
-    result.emplace_back(transactionItem.cachedTransaction);
+    removeTransaction(it);
+    return true;
   }
 
-  return result;
-}
+  //---------------------------------------------------------------------------------
+  bool tx_memory_pool::getTransaction(const Crypto::Hash& id, Transaction& tx) {
+    std::lock_guard<std::recursive_mutex> lock(m_transactions_lock);
+    auto it = m_transactions.find(id);
+    if (it == m_transactions.end()) {
+      return false;
+    }
 
-uint64_t TransactionPool::getTransactionReceiveTime(const Crypto::Hash& hash) const {
-  std::lock_guard<decltype(m_transactions_lock)> lock(m_transactions_lock);
-  auto it = transactionHashIndex.find(hash);
-  assert(it != transactionHashIndex.end());
+    auto& txd = *it;
+    tx = txd.tx;
 
-  return it->receiveTime;
-}
-
-std::vector<Crypto::Hash> TransactionPool::getTransactionHashesByPaymentId(const Crypto::Hash& paymentId) const {
-  std::lock_guard<decltype(m_transactions_lock)> lock(m_transactions_lock);
-  boost::optional<Crypto::Hash> p(paymentId);
-
-  auto range = paymentIdIndex.equal_range(p);
-  std::vector<Crypto::Hash> transactionHashes;
-  transactionHashes.reserve(std::distance(range.first, range.second));
-  for (auto it = range.first; it != range.second; ++it) {
-    transactionHashes.push_back(it->getTransactionHash());
+    return true;
   }
 
-  return transactionHashes;
-}
+  //---------------------------------------------------------------------------------
+  size_t tx_memory_pool::get_transactions_count() const {
+    std::lock_guard<std::recursive_mutex> lock(m_transactions_lock);
+    return m_transactions.size();
+  }
+  //---------------------------------------------------------------------------------
+  void tx_memory_pool::get_transactions(std::list<Transaction>& txs) const {
+    std::lock_guard<std::recursive_mutex> lock(m_transactions_lock);
+    for (const auto& tx_vt : m_transactions) {
+      txs.push_back(tx_vt.tx);
+    }
+  }
 
+  //---------------------------------------------------------------------------------
+  void tx_memory_pool::getMemoryPool(std::list<tx_memory_pool::TransactionDetails> txs) const {
+    std::lock_guard<std::recursive_mutex> lock(m_transactions_lock);
+    for (const auto& txd : m_fee_index) {
+      txs.push_back(txd);
+    }
+  }
+
+  std::list<CryptoNote::tx_memory_pool::TransactionDetails> tx_memory_pool::getMemoryPool() const {
+    std::lock_guard<std::recursive_mutex> lock(m_transactions_lock);
+    std::list<tx_memory_pool::TransactionDetails> txs;
+    for (const auto& txd : m_fee_index) {
+      txs.push_back(txd);
+    }
+    return txs;
+  }
+
+  //---------------------------------------------------------------------------------
+  void tx_memory_pool::get_difference(const std::vector<Crypto::Hash>& known_tx_ids, std::vector<Crypto::Hash>& new_tx_ids, std::vector<Crypto::Hash>& deleted_tx_ids) const {
+    std::lock_guard<std::recursive_mutex> lock(m_transactions_lock);
+    std::unordered_set<Crypto::Hash> ready_tx_ids;
+    for (const auto& tx : m_transactions) {
+      TransactionCheckInfo checkInfo(tx);
+      if (m_validated_transactions.find(tx.id) != m_validated_transactions.end()) {
+        ready_tx_ids.insert(tx.id);
+        logger(TRACE) << "MemPool - tx " << tx.id << " loaded from cache";
+      }
+      else if (is_transaction_ready_to_go(tx.tx, checkInfo)) {
+        ready_tx_ids.insert(tx.id);
+        m_validated_transactions.insert(tx.id);
+        logger(TRACE) << "MemPool - tx " << tx.id << " added to cache";
+      }
+    }
+
+    std::unordered_set<Crypto::Hash> known_set(known_tx_ids.begin(), known_tx_ids.end());
+    for (auto it = ready_tx_ids.begin(), e = ready_tx_ids.end(); it != e;) {
+      auto known_it = known_set.find(*it);
+      if (known_it != known_set.end()) {
+        known_set.erase(known_it);
+        it = ready_tx_ids.erase(it);
+      }
+      else {
+        ++it;
+      }
+    }
+
+    new_tx_ids.assign(ready_tx_ids.begin(), ready_tx_ids.end());
+    deleted_tx_ids.assign(known_set.begin(), known_set.end());
+  }
+  //---------------------------------------------------------------------------------
+  bool tx_memory_pool::on_blockchain_inc(uint64_t new_block_height, const Crypto::Hash& top_block_id) {
+    std::lock_guard<std::recursive_mutex> lock(m_transactions_lock);
+    if (!m_validated_transactions.empty()) {
+      logger(DEBUGGING) << "MemPool - Block height incremented, cleared " << m_validated_transactions.size() << " cached transaction hashes. New height: " << new_block_height << " Top block: " << top_block_id;
+      m_validated_transactions.clear();
+    }
+    return true;
+  }
+  //---------------------------------------------------------------------------------
+  bool tx_memory_pool::on_blockchain_dec(uint64_t new_block_height, const Crypto::Hash& top_block_id) {
+    std::lock_guard<std::recursive_mutex> lock(m_transactions_lock);
+    if (!m_validated_transactions.empty()) {
+      logger(DEBUGGING, YELLOW) << "MemPool - Block height decremented " << m_validated_transactions.size() << " cached transaction hashes. New height: " << new_block_height << " Top block: " << top_block_id;
+      m_validated_transactions.clear();
+    }
+    return true;
+  }
+  //---------------------------------------------------------------------------------
+  bool tx_memory_pool::have_tx(const Crypto::Hash &id) const {
+    std::lock_guard<std::recursive_mutex> lock(m_transactions_lock);
+    if (m_transactions.count(id)) {
+      return true;
+    }
+    return false;
+  }
+  //---------------------------------------------------------------------------------
+  void tx_memory_pool::lock() const {
+    m_transactions_lock.lock();
+  }
+  //---------------------------------------------------------------------------------
+  void tx_memory_pool::unlock() const {
+    m_transactions_lock.unlock();
+  }
+
+  std::unique_lock<std::recursive_mutex> tx_memory_pool::obtainGuard() const {
+    return std::unique_lock<std::recursive_mutex>(m_transactions_lock);
+  }
+
+  //---------------------------------------------------------------------------------
+  bool tx_memory_pool::is_transaction_ready_to_go(const Transaction& tx, TransactionCheckInfo& txd) const {
+
+    if (!m_validator.checkTransactionInputs(tx, txd.maxUsedBlock, txd.lastFailedBlock))
+      return false;
+
+    //if we here, transaction seems valid, but, anyway, check for key_images collisions with blockchain, just to be sure
+    if (m_validator.haveSpentKeyImages(tx))
+      return false;
+
+    //transaction is ok.
+    return true;
+  }
+  //---------------------------------------------------------------------------------
+  std::string tx_memory_pool::print_pool(bool short_format) const {
+    std::stringstream ss;
+    std::lock_guard<std::recursive_mutex> lock(m_transactions_lock);
+    for (const auto& txd : m_fee_index) {
+      ss << "id: " << txd.id << std::endl;
+      
+      if (!short_format) {
+        ss << storeToJson(txd.tx) << std::endl;
+      }
+
+      ss << "blobSize: " << txd.blobSize << std::endl
+        << "fee: " << m_currency.formatAmount(txd.fee) << std::endl
+        << "keptByBlock: " << (txd.keptByBlock ? 'T' : 'F') << std::endl
+        << "max_used_block_height: " << txd.maxUsedBlock.height << std::endl
+        << "max_used_block_id: " << txd.maxUsedBlock.id << std::endl
+        << "last_failed_height: " << txd.lastFailedBlock.height << std::endl
+        << "last_failed_id: " << txd.lastFailedBlock.id << std::endl
+        << "amount_out: " << get_outs_money_amount(txd.tx) << std::endl
+        << "fee_atomic_units: " << txd.fee << std::endl
+        << "received_timestamp: " << txd.receiveTime << std::endl
+        << "received: " << std::ctime(&txd.receiveTime) << std::endl;
+    }
+
+    return ss.str();
+  }
+  //---------------------------------------------------------------------------------
+  bool tx_memory_pool::fill_block_template(Block& bl, size_t median_size, size_t maxCumulativeSize,
+                                           uint64_t already_generated_coins, size_t& total_size, uint64_t& fee) {
+    std::lock_guard<std::recursive_mutex> lock(m_transactions_lock);
+
+    total_size = 0;
+    fee = 0;
+
+    size_t max_total_size = (125 * median_size) / 100;
+    max_total_size = std::min(max_total_size, maxCumulativeSize) - m_currency.minerTxBlobReservedSize();
+
+    BlockTemplate blockTemplate;
+
+    for (auto i = m_fee_index.begin(); i != m_fee_index.end(); ++i) {
+      const auto& txd = *i;
+
+      size_t blockSizeLimit = (txd.fee == 0) ? median_size : max_total_size;
+      if (blockSizeLimit < total_size + txd.blobSize) {
+        continue;
+      }
+
+      tx_verification_context tvc = boost::value_initialized<tx_verification_context>();
+      if (!m_core.check_tx_fee(txd.tx, getObjectHash(txd.tx), txd.blobSize, tvc, m_core.getCurrentBlockchainHeight())) {
+        logger(DEBUGGING) << "Transaction " << txd.id << " not included to block template because fee is insufficient";
+        continue;
+      }
+
+      TransactionCheckInfo checkInfo(txd);
+      bool ready = false;
+      if (m_validated_transactions.find(txd.id) != m_validated_transactions.end()) {
+        ready = true;
+        logger(DEBUGGING) << "Fill block template - tx added from cache: " << txd.id;
+      }
+      else if (is_transaction_ready_to_go(txd.tx, checkInfo)) {
+        ready = true;
+        m_validated_transactions.insert(txd.id);
+        logger(DEBUGGING) << "Fill block template - tx added to cache: " << txd.id;
+      }
+
+      // update item state
+      m_fee_index.modify(i, [&checkInfo](TransactionCheckInfo& item) {
+        item = checkInfo;
+      });
+
+      if (ready && blockTemplate.addTransaction(txd.id, txd.tx)) {
+        total_size += txd.blobSize;
+        fee += txd.fee;
+        logger(DEBUGGING) << "Transaction " << txd.id << " included to block template";
+      } else {
+        logger(DEBUGGING) << "Transaction " << txd.id << " is failed to include to block template";
+      }
+    }
+
+    bl.transactionHashes = blockTemplate.getTransactions();
+    return true;
+  }
+  //---------------------------------------------------------------------------------
+  bool tx_memory_pool::init(const std::string& config_folder) {
+    std::lock_guard<std::recursive_mutex> lock(m_transactions_lock);
+
+    m_config_folder = config_folder;
+    std::string state_file_path = config_folder + "/" + m_currency.txPoolFileName();
+    boost::system::error_code ec;
+    if (!boost::filesystem::exists(state_file_path, ec)) {
+      return true;
+    }
+
+    if (!loadFromBinaryFile(*this, state_file_path)) {
+      logger(ERROR) << "Failed to load memory pool from file " << state_file_path;
+
+      m_transactions.clear();
+      m_spent_key_images.clear();
+      m_pq_account_registrations.clear();
+      m_paymentIdIndex.clear();
+      m_timestampIndex.clear();
+    } else {
+      buildIndices();
+    }
+
+    removeExpiredTransactions();
+
+    // Ignore deserialization error
+    return true;
+  }
+  //---------------------------------------------------------------------------------
+  bool tx_memory_pool::deinit() {
+    if (!Tools::create_directories_if_necessary(m_config_folder)) {
+      logger(INFO) << "Failed to create data directory: " << m_config_folder;
+      return false;
+    }
+
+    std::string state_file_path = m_config_folder + "/" + m_currency.txPoolFileName();
+
+    if (!storeToBinaryFile(*this, state_file_path)) {
+      logger(INFO) << "Failed to serialize memory pool to file " << state_file_path;
+    }
+
+    m_paymentIdIndex.clear();
+    m_timestampIndex.clear();
+    
+    return true;
+  }
+
+#define CURRENT_MEMPOOL_ARCHIVE_VER 2
+
+  void serialize(CryptoNote::tx_memory_pool::TransactionDetails& td, ISerializer& s) {
+    s(td.id, "id");
+    s(td.blobSize, "blobSize");
+    s(td.fee, "fee");
+    s(td.tx, "tx");
+    s(td.maxUsedBlock.height, "maxUsedBlock.height");
+    s(td.maxUsedBlock.id, "maxUsedBlock.id");
+    s(td.lastFailedBlock.height, "lastFailedBlock.height");
+    s(td.lastFailedBlock.id, "lastFailedBlock.id");
+    s(td.keptByBlock, "keptByBlock");
+    s(reinterpret_cast<uint64_t&>(td.receiveTime), "receiveTime");
+  }
+
+  //---------------------------------------------------------------------------------
+  void tx_memory_pool::serialize(ISerializer& s) {
+
+    uint8_t version = CURRENT_MEMPOOL_ARCHIVE_VER;
+
+    s(version, "version");
+
+    if (version != CURRENT_MEMPOOL_ARCHIVE_VER) {
+      return;
+    }
+
+    std::lock_guard<std::recursive_mutex> lock(m_transactions_lock);
+
+    if (s.type() == ISerializer::INPUT) {
+      m_transactions.clear();
+      readSequence<TransactionDetails>(std::inserter(m_transactions, m_transactions.end()), "transactions", s);
+    } else {
+      writeSequence<TransactionDetails>(m_transactions.begin(), m_transactions.end(), "transactions", s);
+    }
+
+    KV_MEMBER(m_spent_key_images);
+    KV_MEMBER(m_recentlyDeletedTransactions);
+  }
+
+  //---------------------------------------------------------------------------------
+  void tx_memory_pool::on_idle() {
+    m_txCheckInterval.call([this](){ return removeExpiredTransactions(); });
+  }
+
+  //---------------------------------------------------------------------------------
+  bool tx_memory_pool::removeExpiredTransactions() {
+    bool somethingRemoved = false;
+    {
+      std::lock_guard<std::recursive_mutex> lock(m_transactions_lock);
+
+      uint64_t now = m_timeProvider.now();
+
+      for (auto it = m_recentlyDeletedTransactions.begin(); it != m_recentlyDeletedTransactions.end();) {
+        uint64_t elapsedTimeSinceDeletion = now - it->second;
+        if (elapsedTimeSinceDeletion > m_currency.numberOfPeriodsToForgetTxDeletedFromPool() * m_currency.mempoolTxLiveTime()) {
+          it = m_recentlyDeletedTransactions.erase(it);
+        } else {
+          ++it;
+        }
+      }
+
+      for (auto it = m_transactions.begin(); it != m_transactions.end();) {
+        uint64_t txAge = now - it->receiveTime;
+        bool remove = txAge > (it->keptByBlock ? m_currency.mempoolTxFromAltBlockLiveTime() : m_currency.mempoolTxLiveTime());
+
+        if (remove) {
+          logger(TRACE) << "Tx " << it->id << " removed from tx pool due to outdated, age: " << txAge;
+          m_recentlyDeletedTransactions.emplace(it->id, now);
+          it = removeTransaction(it);
+          somethingRemoved = true;
+        } else {
+          ++it;
+        }
+      }
+    }
+
+    if (somethingRemoved) {
+      m_observerManager.notify(&ITxPoolObserver::txDeletedFromPool);
+    }
+
+    return true;
+  }
+
+  tx_memory_pool::tx_container_t::iterator tx_memory_pool::removeTransaction(tx_memory_pool::tx_container_t::iterator i) {
+    removeTransactionInputs(i->id, i->tx, i->keptByBlock);
+    m_paymentIdIndex.remove(i->tx);
+    m_timestampIndex.remove(i->receiveTime, i->id);
+    if (m_validated_transactions.find(i->id) != m_validated_transactions.end()) {
+      m_validated_transactions.erase(i->id);
+      logger(DEBUGGING) << "Removing transaction from MemPool cache " << i->id << ". Cache size: " << m_validated_transactions.size();
+    }
+    return m_transactions.erase(i);
+  }
+
+  bool tx_memory_pool::removeTransactionInputs(const Crypto::Hash& tx_id, const Transaction& tx, bool keptByBlock) {
+    for (const auto& in : tx.inputs) {
+      Crypto::KeyImage image;
+      if (in.type() == typeid(PqInput)) {
+        image = pqInputNullifierAsKeyImage(boost::get<PqInput>(in));
+      } else {
+        continue;
+      }
+      {
+        const Crypto::KeyImage& txinImage = image;
+        auto it = m_spent_key_images.find(txinImage);
+        if (!(it != m_spent_key_images.end())) { logger(ERROR, BRIGHT_RED) << "failed to find transaction input in key images. img=" << txinImage << std::endl
+          << "transaction id = " << tx_id; return false; }
+        std::unordered_set<Crypto::Hash>& key_image_set = it->second;
+        if (!(!key_image_set.empty())) { logger(ERROR, BRIGHT_RED) << "empty key_image set, img=" << txinImage << std::endl
+          << "transaction id = " << tx_id; return false; }
+
+        auto it_in_set = key_image_set.find(tx_id);
+        if (!(it_in_set != key_image_set.end())) { logger(ERROR, BRIGHT_RED) << "transaction id not found in key_image set, img=" << txinImage << std::endl
+          << "transaction id = " << tx_id; return false; }
+        key_image_set.erase(it_in_set);
+        if (key_image_set.empty()) {
+          //it is now empty hash container for this key_image
+          m_spent_key_images.erase(it);
+        }
+      }
+    }
+
+    Crypto::Hash accountId;
+    if (getPqAccountRegistrationId(tx, accountId)) {
+      auto it = m_pq_account_registrations.find(accountId);
+      if (it == m_pq_account_registrations.end()) {
+        logger(ERROR, BRIGHT_RED) << "failed to find PQ account registration in pool index. tx_id=" << tx_id;
+        return false;
+      }
+      std::unordered_set<Crypto::Hash>& txSet = it->second;
+      auto txIt = txSet.find(tx_id);
+      if (txIt == txSet.end()) {
+        logger(ERROR, BRIGHT_RED) << "transaction id not found in PQ account registration pool index. tx_id=" << tx_id;
+        return false;
+      }
+      txSet.erase(txIt);
+      if (txSet.empty()) {
+        m_pq_account_registrations.erase(it);
+      }
+    }
+
+    return true;
+  }
+
+  //---------------------------------------------------------------------------------
+  bool tx_memory_pool::addTransactionInputs(const Crypto::Hash& id, const Transaction& tx, bool keptByBlock) {
+    // should not fail
+    for (const auto& in : tx.inputs) {
+      Crypto::KeyImage image;
+      if (in.type() == typeid(PqInput)) {
+        image = pqInputNullifierAsKeyImage(boost::get<PqInput>(in));
+      } else {
+        continue;
+      }
+      std::unordered_set<Crypto::Hash>& kei_image_set = m_spent_key_images[image];
+      if (!(keptByBlock || kei_image_set.size() == 0)) {
+        logger(ERROR, BRIGHT_RED)
+            << "internal error: keptByBlock=" << keptByBlock
+            << ",  kei_image_set.size()=" << kei_image_set.size() << ENDL
+            << "image=" << image << ENDL << "tx_id=" << id;
+        return false;
+      }
+      auto ins_res = kei_image_set.insert(id);
+      if (!(ins_res.second)) {
+        logger(ERROR, BRIGHT_RED) << "internal error: try to insert duplicate iterator in key_image set";
+        return false;
+      }
+    }
+
+    Crypto::Hash accountId;
+    if (getPqAccountRegistrationId(tx, accountId)) {
+      std::unordered_set<Crypto::Hash>& txSet = m_pq_account_registrations[accountId];
+      if (!(keptByBlock || txSet.empty())) {
+        logger(ERROR, BRIGHT_RED)
+            << "internal error: keptByBlock=" << keptByBlock
+            << ", pq_account_registration_set.size()=" << txSet.size()
+            << ENDL << "tx_id=" << id;
+        return false;
+      }
+      auto ins = txSet.insert(id);
+      if (!ins.second) {
+        logger(ERROR, BRIGHT_RED) << "internal error: duplicate PQ account registration tx id";
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  //---------------------------------------------------------------------------------
+  bool tx_memory_pool::haveSpentInputs(const Transaction& tx) const {
+    for (const auto& in : tx.inputs) {
+      if (in.type() == typeid(PqInput)) {
+        if (m_spent_key_images.count(pqInputNullifierAsKeyImage(boost::get<PqInput>(in)))) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  bool tx_memory_pool::havePqAccountRegistration(const Transaction& tx) const {
+    Crypto::Hash accountId;
+    return getPqAccountRegistrationId(tx, accountId) &&
+           m_pq_account_registrations.count(accountId) != 0;
+  }
+
+  bool tx_memory_pool::addObserver(ITxPoolObserver* observer) {
+    return m_observerManager.add(observer);
+  }
+
+  bool tx_memory_pool::removeObserver(ITxPoolObserver* observer) {
+    return m_observerManager.remove(observer);
+  }
+
+  void tx_memory_pool::buildIndices() {
+    std::lock_guard<std::recursive_mutex> lock(m_transactions_lock);
+    m_pq_account_registrations.clear();
+    for (auto it = m_transactions.begin(); it != m_transactions.end(); it++) {
+      m_paymentIdIndex.add(it->tx);
+      m_timestampIndex.add(it->receiveTime, it->id);
+      Crypto::Hash accountId;
+      if (getPqAccountRegistrationId(it->tx, accountId)) {
+        m_pq_account_registrations[accountId].insert(it->id);
+      }
+    }
+  }
+
+  bool tx_memory_pool::getTransactionIdsByPaymentId(const Crypto::Hash& paymentId, std::vector<Crypto::Hash>& transactionIds) {
+    std::lock_guard<std::recursive_mutex> lock(m_transactions_lock);
+    //return m_paymentIdIndex.find(paymentId, transactionIds);
+    transactionIds = m_paymentIdIndex.find(paymentId);
+    return true;
+  }
+
+  bool tx_memory_pool::getTransactionIdsByTimestamp(uint64_t timestampBegin, uint64_t timestampEnd, uint32_t transactionsNumberLimit, std::vector<Crypto::Hash>& hashes, uint64_t& transactionsNumberWithinTimestamps) {
+    std::lock_guard<std::recursive_mutex> lock(m_transactions_lock);
+    return m_timestampIndex.find(timestampBegin, timestampEnd, transactionsNumberLimit, hashes, transactionsNumberWithinTimestamps);
+  }
 }

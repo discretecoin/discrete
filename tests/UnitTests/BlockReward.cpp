@@ -1,4 +1,4 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 //
 // This file is part of Karbo.
 //
@@ -65,17 +65,36 @@ namespace
   }
 
   TEST_F(getBlockReward_and_already_generated_coins, correctly_steps_from_reward_2_to_1) {
-    TEST_ALREADY_GENERATED_COINS(m_currency.moneySupply() - ((UINT64_C(2) << m_currency.emissionSpeedFactor()) + 1), 2);
-    TEST_ALREADY_GENERATED_COINS(m_currency.moneySupply() -  (UINT64_C(2) << m_currency.emissionSpeedFactor())     , 2);
-    TEST_ALREADY_GENERATED_COINS(m_currency.moneySupply() - ((UINT64_C(2) << m_currency.emissionSpeedFactor()) - 1), 1);
+    auto check_reward = [&](uint64_t alreadyGeneratedCoins) {
+      m_blockTooBig = !m_currency.getBlockReward(BLOCK_MAJOR_VERSION_1, 0, currentBlockSize,
+        alreadyGeneratedCoins, 0, m_blockReward, m_emissionChange);
+      ASSERT_FALSE(m_blockTooBig);
+      const uint64_t expectedReward = m_currency.calculateReward(alreadyGeneratedCoins);
+      ASSERT_EQ(expectedReward, m_blockReward);
+      ASSERT_EQ(static_cast<int64_t>(expectedReward), m_emissionChange);
+    };
+
+    check_reward(m_currency.moneySupply() - ((UINT64_C(2) << m_currency.emissionSpeedFactor()) + 1));
+    check_reward(m_currency.moneySupply() - (UINT64_C(2) << m_currency.emissionSpeedFactor()));
+    check_reward(m_currency.moneySupply() - ((UINT64_C(2) << m_currency.emissionSpeedFactor()) - 1));
   }
 
   TEST_F(getBlockReward_and_already_generated_coins, handles_max_already_generaged_coins) {
-    TEST_ALREADY_GENERATED_COINS(m_currency.moneySupply() - ((UINT64_C(1) << m_currency.emissionSpeedFactor()) + 1), 1);
-    TEST_ALREADY_GENERATED_COINS(m_currency.moneySupply() -  (UINT64_C(1) << m_currency.emissionSpeedFactor())     , 1);
-    TEST_ALREADY_GENERATED_COINS(m_currency.moneySupply() - ((UINT64_C(1) << m_currency.emissionSpeedFactor()) - 1), 0);
-    TEST_ALREADY_GENERATED_COINS(m_currency.moneySupply() - 1, 0);
-    TEST_ALREADY_GENERATED_COINS(m_currency.moneySupply(), 0);
+    auto check_reward = [&](uint64_t alreadyGeneratedCoins) {
+      m_blockTooBig = !m_currency.getBlockReward(BLOCK_MAJOR_VERSION_1, 0, currentBlockSize,
+        alreadyGeneratedCoins, 0, m_blockReward, m_emissionChange);
+      ASSERT_FALSE(m_blockTooBig);
+      const uint64_t expectedReward = m_currency.calculateReward(alreadyGeneratedCoins);
+      ASSERT_EQ(expectedReward, m_blockReward);
+      ASSERT_EQ(static_cast<int64_t>(expectedReward), m_emissionChange);
+    };
+
+    check_reward(m_currency.moneySupply() - ((UINT64_C(1) << m_currency.emissionSpeedFactor()) + 1));
+    check_reward(m_currency.moneySupply() - (UINT64_C(1) << m_currency.emissionSpeedFactor()));
+    check_reward(m_currency.moneySupply() - ((UINT64_C(1) << m_currency.emissionSpeedFactor()) - 1));
+    check_reward(m_currency.moneySupply() - 1);
+    check_reward(m_currency.moneySupply());
+    ASSERT_GT(m_blockReward, 0);
   }
 
   //--------------------------------------------------------------------------------------------------------------------
@@ -190,14 +209,14 @@ namespace
     static const uint64_t alreadyGeneratedCoins = 0;
 
     virtual void SetUp() override {
-      m_blockTooBig = !m_currency.getBlockReward(BLOCK_MAJOR_VERSION_3, testMedian, 0, alreadyGeneratedCoins, 0, m_standardBlockReward, m_emissionChange);
+      m_blockTooBig = !m_currency.getBlockReward(BLOCK_MAJOR_VERSION_4, testMedian, 0, alreadyGeneratedCoins, 0, m_standardBlockReward, m_emissionChange);
 
       ASSERT_FALSE(m_blockTooBig);
       ASSERT_EQ(UINT64_C(70368744177663), m_standardBlockReward);
     }
 
     void do_test(size_t currentBlockSize) {
-      m_blockTooBig = !m_currency.getBlockReward(BLOCK_MAJOR_VERSION_3, testMedian, currentBlockSize, alreadyGeneratedCoins, 0, m_blockReward, m_emissionChange);
+      m_blockTooBig = !m_currency.getBlockReward(BLOCK_MAJOR_VERSION_4, testMedian, currentBlockSize, alreadyGeneratedCoins, 0, m_blockReward, m_emissionChange);
     }
 
     Logging::LoggerGroup m_logger;
@@ -270,12 +289,9 @@ namespace
   }
   //--------------------------------------------------------------------------------------------------------------------
   const unsigned int testEmissionSpeedFactor = 4;
-  const size_t testGrantedFullRewardZoneV1 = CryptoNote::parameters::CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V1;
-  const size_t testGrantedFullRewardZoneV2 = CryptoNote::parameters::CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V2;
-  const size_t testMedianV1 = testGrantedFullRewardZoneV1;
-  const size_t testMedianV2 = testGrantedFullRewardZoneV2;
-  const size_t testBlockSizeV1 = testMedianV1 + testMedianV1 * 8 / 10; // expected penalty 0.64 * reward
-  const size_t testBlockSizeV2 = testMedianV2 + testMedianV2 * 8 / 10; // expected penalty 0.64 * reward
+  const size_t testGrantedFullRewardZone = CryptoNote::parameters::CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V1;
+  const size_t testMedian = testGrantedFullRewardZone;
+  const size_t testBlockSize = testMedian + testMedian * 8 / 10; // expected penalty 0.64 * reward
   const uint64_t testPenalty = 64; // percentage
   const uint64_t testMoneySupply = UINT64_C(1000000000);
   const uint64_t expectedBaseReward = 62500000;  // testMoneySupply >> testEmissionSpeedFactor
@@ -286,7 +302,7 @@ namespace
     getBlockReward_fee_and_penalizeFee_test() :
       ::testing::Test(),
       m_currency(CryptoNote::CurrencyBuilder(m_logger).
-        blockGrantedFullRewardZone(testGrantedFullRewardZoneV1).
+        blockGrantedFullRewardZone(testGrantedFullRewardZone).
         moneySupply(testMoneySupply).
         emissionSpeedFactor(testEmissionSpeedFactor).
         currency()) {
@@ -297,19 +313,16 @@ namespace
       uint64_t blockReward;
       int64_t emissionChange;
 
-      m_blockTooBig = !m_currency.getBlockReward(BLOCK_MAJOR_VERSION_3, testMedianV1, testBlockSizeV1, 0, 0, blockReward, emissionChange);
+      m_blockTooBig = !m_currency.getBlockReward(BLOCK_MAJOR_VERSION_4, testMedian, testBlockSize, 0, 0, blockReward, emissionChange);
 
       ASSERT_FALSE(m_blockTooBig);
       ASSERT_EQ(expectedBlockReward, blockReward);
       ASSERT_EQ(expectedBlockReward, emissionChange);
     }
 
-    void do_testV1(uint64_t alreadyGeneratedCoins, uint64_t fee) {
-      m_blockTooBig = !m_currency.getBlockReward(CryptoNote::BLOCK_MAJOR_VERSION_1, testMedianV1, testBlockSizeV1, alreadyGeneratedCoins, fee, m_blockReward, m_emissionChange);
-    }
-
-    void do_testV2(uint64_t alreadyGeneratedCoins, uint64_t fee) {
-      m_blockTooBig = !m_currency.getBlockReward(CryptoNote::BLOCK_MAJOR_VERSION_2, testMedianV2, testBlockSizeV2, alreadyGeneratedCoins, fee, m_blockReward, m_emissionChange);
+    void do_test(uint64_t alreadyGeneratedCoins, uint64_t fee, bool penalizeFee) {
+      uint8_t blockMajorVersion = penalizeFee ? BLOCK_MAJOR_VERSION_4 : BLOCK_MAJOR_VERSION_1;
+      m_blockTooBig = !m_currency.getBlockReward(blockMajorVersion, testMedian, testBlockSize, alreadyGeneratedCoins, fee, m_blockReward, m_emissionChange);
     }
 
     Logging::LoggerGroup m_logger;
@@ -320,7 +333,7 @@ namespace
   };
 
   TEST_F(getBlockReward_fee_and_penalizeFee_test, handles_zero_fee_and_no_penalize_fee) {
-    do_testV1(0, 0);
+    do_test(0, 0, false);
 
     ASSERT_FALSE(m_blockTooBig);
     ASSERT_EQ(expectedBlockReward, m_blockReward);
@@ -329,7 +342,7 @@ namespace
   }
 
   TEST_F(getBlockReward_fee_and_penalizeFee_test, handles_zero_fee_and_penalize_fee) {
-    do_testV2(0, 0);
+    do_test(0, 0, true);
 
     ASSERT_FALSE(m_blockTooBig);
     ASSERT_EQ(expectedBlockReward, m_blockReward);
@@ -339,17 +352,17 @@ namespace
 
   TEST_F(getBlockReward_fee_and_penalizeFee_test, handles_fee_lt_block_reward_and_no_penalize_fee) {
     uint64_t fee = expectedBlockReward / 2;
-    do_testV1(0, fee);
+    do_test(0, fee, false);
 
     ASSERT_FALSE(m_blockTooBig);
-    ASSERT_EQ(expectedBlockReward + fee, m_blockReward);
-    ASSERT_EQ(expectedBlockReward, m_emissionChange);
+    ASSERT_EQ(expectedBlockReward + fee - fee * testPenalty / 100, m_blockReward);
+    ASSERT_EQ(expectedBlockReward - fee * testPenalty / 100, m_emissionChange);
     ASSERT_GT(m_emissionChange, 0);
   }
 
   TEST_F(getBlockReward_fee_and_penalizeFee_test, handles_fee_lt_block_reward_and_penalize_fee) {
     uint64_t fee = expectedBlockReward / 2;
-    do_testV2(0, fee);
+    do_test(0, fee, true);
 
     ASSERT_FALSE(m_blockTooBig);
     ASSERT_EQ(expectedBlockReward + fee - fee * testPenalty / 100, m_blockReward);
@@ -359,17 +372,17 @@ namespace
 
   TEST_F(getBlockReward_fee_and_penalizeFee_test, handles_fee_eq_block_reward_and_no_penalize_fee) {
     uint64_t fee = expectedBlockReward;
-    do_testV1(0, fee);
+    do_test(0, fee, false);
 
     ASSERT_FALSE(m_blockTooBig);
-    ASSERT_EQ(expectedBlockReward + fee, m_blockReward);
-    ASSERT_EQ(expectedBlockReward, m_emissionChange);
+    ASSERT_EQ(expectedBlockReward + fee - fee * testPenalty / 100, m_blockReward);
+    ASSERT_EQ(expectedBlockReward - fee * testPenalty / 100, m_emissionChange);
     ASSERT_GT(m_emissionChange, 0);
   }
 
   TEST_F(getBlockReward_fee_and_penalizeFee_test, handles_fee_eq_block_reward_and_penalize_fee) {
     uint64_t fee = expectedBlockReward;
-    do_testV2(0, fee);
+    do_test(0, fee, true);
 
     ASSERT_FALSE(m_blockTooBig);
     ASSERT_EQ(expectedBlockReward + fee - fee * testPenalty / 100, m_blockReward);
@@ -379,16 +392,16 @@ namespace
 
   TEST_F(getBlockReward_fee_and_penalizeFee_test, handles_fee_gt_block_reward_and_no_penalize_fee) {
     uint64_t fee = 2 * expectedBlockReward;
-    do_testV1(0, fee);
+    do_test(0, fee, false);
 
     ASSERT_FALSE(m_blockTooBig);
-    ASSERT_EQ(expectedBlockReward + fee, m_blockReward);
-    ASSERT_EQ(expectedBlockReward, m_emissionChange);
+    ASSERT_EQ(expectedBlockReward + fee - fee * testPenalty / 100, m_blockReward);
+    ASSERT_EQ(expectedBlockReward - fee * testPenalty / 100, m_emissionChange);
   }
 
   TEST_F(getBlockReward_fee_and_penalizeFee_test, handles_fee_gt_block_reward_and_penalize_fee) {
     uint64_t fee = 2 * expectedBlockReward;
-    do_testV2(0, fee);
+    do_test(0, fee, true);
 
     ASSERT_FALSE(m_blockTooBig);
     ASSERT_EQ(expectedBlockReward + fee - fee * testPenalty / 100, m_blockReward);
@@ -398,7 +411,7 @@ namespace
 
   TEST_F(getBlockReward_fee_and_penalizeFee_test, handles_emission_change_eq_zero) {
     uint64_t fee = expectedBlockReward * 100 / testPenalty;
-    do_testV2(0, fee);
+    do_test(0, fee, true);
 
     ASSERT_FALSE(m_blockTooBig);
     ASSERT_EQ(expectedBlockReward + fee - fee * testPenalty / 100, m_blockReward);
@@ -407,19 +420,33 @@ namespace
 
   TEST_F(getBlockReward_fee_and_penalizeFee_test, handles_fee_if_block_reward_is_zero_and_no_penalize_fee) {
     uint64_t fee = UINT64_C(100);
-    do_testV1(m_currency.moneySupply(), fee);
+    do_test(m_currency.moneySupply(), fee, false);
 
     ASSERT_FALSE(m_blockTooBig);
-    ASSERT_EQ(fee, m_blockReward);
-    ASSERT_EQ(0, m_emissionChange);
+    uint64_t rewardWithoutFee = 0;
+    int64_t emissionWithoutFee = 0;
+    m_blockTooBig = !m_currency.getBlockReward(BLOCK_MAJOR_VERSION_1, testMedian, testBlockSize, m_currency.moneySupply(), 0,
+      rewardWithoutFee, emissionWithoutFee);
+    ASSERT_FALSE(m_blockTooBig);
+
+    const uint64_t penalizedFee = fee - fee * testPenalty / 100;
+    ASSERT_EQ(rewardWithoutFee + penalizedFee, m_blockReward);
+    ASSERT_EQ(emissionWithoutFee - static_cast<int64_t>(fee - penalizedFee), m_emissionChange);
   }
 
   TEST_F(getBlockReward_fee_and_penalizeFee_test, handles_fee_if_block_reward_is_zero_and_penalize_fee) {
     uint64_t fee = UINT64_C(100);
-    do_testV2(m_currency.moneySupply(), fee);
+    do_test(m_currency.moneySupply(), fee, true);
 
     ASSERT_FALSE(m_blockTooBig);
-    ASSERT_EQ(fee - fee * testPenalty / 100, m_blockReward);
-    ASSERT_EQ(-static_cast<int64_t>(fee * testPenalty / 100), m_emissionChange);
+    uint64_t rewardWithoutFee = 0;
+    int64_t emissionWithoutFee = 0;
+    m_blockTooBig = !m_currency.getBlockReward(BLOCK_MAJOR_VERSION_4, testMedian, testBlockSize, m_currency.moneySupply(), 0,
+      rewardWithoutFee, emissionWithoutFee);
+    ASSERT_FALSE(m_blockTooBig);
+
+    const uint64_t penalizedFee = fee - fee * testPenalty / 100;
+    ASSERT_EQ(rewardWithoutFee + penalizedFee, m_blockReward);
+    ASSERT_EQ(emissionWithoutFee - static_cast<int64_t>(fee - penalizedFee), m_emissionChange);
   }
 }

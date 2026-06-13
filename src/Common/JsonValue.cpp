@@ -2,8 +2,6 @@
 // Copyright (c) 2014-2017 XDN developers
 // Copyright (c) 2016-2017 BXC developers
 // Copyright (c) 2017 UltraNote developers
-// Copyright (c) 2016-2019, The Karbo developers
-// 
 // Distributed under the MIT/X11 software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -111,7 +109,7 @@ JsonValue::JsonValue(Bool value) : type(BOOL), valueBool(value) {
 JsonValue::JsonValue(Integer value) : type(INTEGER), valueInteger(value) {
 }
 
-JsonValue::JsonValue(Nil) : type(NIL) {
+JsonValue::JsonValue(Nile) : type(NIL) {
 }
 
 JsonValue::JsonValue(const Object& value) {
@@ -310,7 +308,7 @@ JsonValue& JsonValue::operator=(Integer value) {
   return *this;
 }
 
-JsonValue& JsonValue::operator=(Nil) {
+JsonValue& JsonValue::operator=(Nile) {
   if (type != NIL) {
     destructValue();
     type = NIL;

@@ -1,4 +1,4 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 //
 // This file is part of Karbo.
 //
@@ -17,7 +17,6 @@
 
 #pragma once
 
-#include "CryptoNoteConfig.h"
 #include "CryptoNoteCore/Account.h"
 #include "CryptoNoteCore/CryptoNoteBasic.h"
 #include "CryptoNoteCore/CryptoNoteFormatUtils.h"
@@ -34,7 +33,8 @@ public:
     Currency currency = CurrencyBuilder(m_nullLog).currency();
     m_bob.generate();
 
-    if (!currency.constructMinerTx(CryptoNote::BLOCK_MAJOR_VERSION_1, 0, 0, 0, 2, 0, m_bob.getAccountKeys().address, m_tx))
+    Crypto::SecretKey minerTxKey;
+    if (!currency.constructMinerTx(BLOCK_MAJOR_VERSION_1, 0, 0, 0, 2, 0, m_bob.getAccountKeys().address, m_tx, minerTxKey))
       return false;
 
     m_tx_pub_key = getTransactionPublicKeyFromExtra(m_tx.extra);

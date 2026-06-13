@@ -1,7 +1,7 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 // Copyright (c) 2018, The BBSCoin Developers
 // Copyright (c) 2018-2019, The TurtleCoin Developers
-// Copyright (c) 2016-2020, The Karbo Developers
+// Copyright (c) 2016-2026, The Karbo developers
 //
 // This file is part of Karbo.
 //
@@ -29,6 +29,7 @@
 #include <set>
 #include <tuple>
 #include <utility>
+#include <vector>
 
 #include <System/EventLock.h>
 #include <System/RemoteContext.h>
@@ -51,6 +52,8 @@
 #include "CryptoNoteCore/CryptoNoteBasicImpl.h"
 #include "CryptoNoteCore/CryptoNoteFormatUtils.h"
 #include "CryptoNoteCore/CryptoNoteSerialization.h"
+#include "Wallet/TransactionBuilder.h"
+#include "Wallet/PqWallet.h"
 #include "CryptoNoteCore/CryptoNoteTools.h"
 #include "CryptoNoteCore/TransactionApi.h"
 #include "CryptoNoteCore/TransactionExtra.h"
@@ -64,9 +67,10 @@
 
 extern "C"
 {
-#include "crypto/keccak.h"
 #include "crypto/crypto-ops.h"
 }
+
+#undef ERROR
 
 using namespace Common;
 using namespace Crypto;
@@ -157,6 +161,9 @@ WalletGreen::WalletGreen(System::Dispatcher& dispatcher, const Currency& currenc
   m_eventOccurred(m_dispatcher),
   m_readyEvent(m_dispatcher),
   m_state(WalletState::NOT_INITIALIZED),
+  m_addressGenerationMode(AddressGenerationMode::INDEPENDENT_SPEND_KEYS),
+  m_deterministicSeed(NULL_SECRET_KEY),
+  m_nextDeterministicIndex(0),
   m_actualBalance(0),
   m_pendingBalance(0),
   m_transactionSoftLockTime(transactionSoftLockTime)
@@ -236,6 +243,9 @@ void WalletGreen::doShutdown() {
 
   m_containerStorage.close();
   m_walletsContainer.clear();
+  m_addressGenerationMode = AddressGenerationMode::INDEPENDENT_SPEND_KEYS;
+  m_deterministicSeed = NULL_SECRET_KEY;
+  m_nextDeterministicIndex = 0;
   clearCaches(true, true);
 
   std::queue<WalletEvent> noEvents;
@@ -273,11 +283,15 @@ void WalletGreen::clearCaches(bool clearTransactions, bool clearCachedData) {
     m_synchronizer.getSubscriptions(subscriptions);
     std::for_each(subscriptions.begin(), subscriptions.end(), [this](const AccountPublicAddress& address) { m_synchronizer.removeSubscription(address); });
 
+    if (m_pqConsumer) {
+      m_blockchainSynchronizer.removeConsumer(m_pqConsumer.get());
+      m_pqConsumer.reset();
+    }
+
     m_uncommitedTransactions.clear();
     m_unlockTransactionsJob.clear();
     m_actualBalance = 0;
     m_pendingBalance = 0;
-    m_fusionTxsCache.clear();
     m_blockchain.clear();
   }
 }
@@ -361,7 +375,8 @@ void WalletGreen::initWithKeys(const std::string& path, const std::string& passw
   prefix->version = static_cast<uint8_t>(WalletSerializerV2::SERIALIZATION_VERSION);
   prefix->nextIv = Crypto::randomChachaIV();
 
-  Crypto::generate_chacha8_key(password, m_key);
+  Crypto::cn_context cnContext;
+  Crypto::generate_chacha8_key(cnContext, password, m_key);
 
   prefix->encryptedViewKeys = encryptKeyPair(viewPublicKey, viewSecretKey, _creationTimestamp, m_key, prefix->nextIv);
 
@@ -428,7 +443,8 @@ void WalletGreen::exportWallet(const std::string& path, bool encrypt, WalletSave
     if (encrypt) {
       newStorageKey = m_key;
     } else {
-      generate_chacha8_key("", newStorageKey);
+      cn_context cnContext;
+      generate_chacha8_key(cnContext, "", newStorageKey);
     }
 
     copyContainerStoragePrefix(m_containerStorage, m_key, newStorage, newStorageKey);
@@ -460,7 +476,8 @@ void WalletGreen::load(const std::string& path, const std::string& password, std
 
   stopBlockchainSynchronizer();
 
-  generate_chacha8_key(password, m_key);
+  Crypto::cn_context cnContext;
+  generate_chacha8_key(cnContext, password, m_key);
 
   std::ifstream walletFileStream(path, std::ios_base::binary);
   int version = walletFileStream.peek();
@@ -499,7 +516,13 @@ void WalletGreen::load(const std::string& path, const std::string& password, std
           deleteOrphanTransactions(deletedSpendKeys);
         }
 
-        if (!addedSpendKeys.empty() || !deletedSpendKeys.empty()) {
+        // Upgrade wallet file to current version if needed, or if key sets changed.
+        const uint8_t loadedVersion =
+          reinterpret_cast<const ContainerStoragePrefix*>(m_containerStorage.prefix())->version;
+        bool needUpgradeSave = !addedSpendKeys.empty() || !deletedSpendKeys.empty()
+          || loadedVersion < WalletSerializerV2::SERIALIZATION_VERSION;
+
+        if (needUpgradeSave) {
           saveWalletCache(m_containerStorage, m_key, WalletSaveLevel::SAVE_ALL, extra);
         }
       } catch (const std::exception& e) {
@@ -512,24 +535,24 @@ void WalletGreen::load(const std::string& path, const std::string& password, std
 
   // Read all output keys cache
   try {
-      std::vector<AccountPublicAddress> subscriptionList;
-      m_synchronizer.getSubscriptions(subscriptionList);
-      for (auto& addr : subscriptionList) {
-          auto sub = m_synchronizer.getSubscription(addr);
-          if (sub != nullptr) {
-              std::vector<TransactionOutputInformation> allTransfers;
-              ITransfersContainer* container = &sub->getContainer();
-              container->getOutputs(allTransfers, ITransfersContainer::IncludeAll);
-              m_logger(INFO, BRIGHT_WHITE) << "Known Transfers " << allTransfers.size();
-              for (auto& o : allTransfers) {
-                  if (o.type == TransactionTypes::OutputType::Key) {
-                      m_synchronizer.addPublicKeysSeen(addr, o.transactionHash, o.outputKey);
-                  }
-              }
-          }
+    std::vector<AccountPublicAddress> subscriptionList;
+    m_synchronizer.getSubscriptions(subscriptionList);
+    for (auto& addr : subscriptionList) {
+      auto sub = m_synchronizer.getSubscription(addr);
+      if (sub != nullptr) {
+         std::vector<TransactionOutputInformation> allTransfers;
+         ITransfersContainer* container = &sub->getContainer();
+         container->getOutputs(allTransfers, ITransfersContainer::IncludeAll);
+         m_logger(DEBUGGING, BRIGHT_WHITE) << "Known Transfers " << allTransfers.size();
+         for (auto& o : allTransfers) {
+             if (o.type != TransactionTypes::OutputType::Invalid) {
+                m_synchronizer.addPublicKeysSeen(addr, o.transactionHash, o.outputKey);
+             }
+         }
       }
+    }
   } catch (const std::exception& e) {
-      m_logger(ERROR, BRIGHT_RED) << "Failed to read output keys!! Continue without output keys: " << e.what();
+    m_logger(ERROR, BRIGHT_RED) << "Failed to read output keys!! Continue without output keys: " << e.what();
   }
 
   m_blockchainSynchronizer.addObserver(this);
@@ -572,7 +595,7 @@ void WalletGreen::loadContainerStorage(const std::string& path) {
 
     uint64_t creationTimestamp;
     decryptKeyPair(prefix->encryptedViewKeys, m_viewPublicKey, m_viewSecretKey, creationTimestamp);
-    throwIfKeysMismatch(m_viewSecretKey, m_viewPublicKey, "Restored view public key doesn't correspond to secret key");
+    throwIfKeysMissmatch(m_viewSecretKey, m_viewPublicKey, "Restored view public key doesn't correspond to secret key");
     m_logger = Logging::LoggerRef(m_logger.getLogger(), "WalletGreen/" + podToHex(m_viewPublicKey).substr(0, 5));
 
     loadSpendKeys();
@@ -598,6 +621,9 @@ void WalletGreen::loadWalletCache(std::unordered_set<Crypto::PublicKey>& addedKe
     *this,
     m_viewPublicKey,
     m_viewSecretKey,
+    m_addressGenerationMode,
+    m_deterministicSeed,
+    m_nextDeterministicIndex,
     m_actualBalance,
     m_pendingBalance,
     m_walletsContainer,
@@ -607,13 +633,19 @@ void WalletGreen::loadWalletCache(std::unordered_set<Crypto::PublicKey>& addedKe
     m_transfers,
     m_uncommitedTransactions,
     extra,
-    m_transactionSoftLockTime
+    m_transactionSoftLockTime,
+    m_pqState
   );
 
   Common::MemoryInputStream containerStream(contanerData.data(), contanerData.size());
   s.load(containerStream, reinterpret_cast<const ContainerStoragePrefix*>(m_containerStorage.prefix())->version);
   addedKeys = std::move(s.addedKeys());
   deletedKeys = std::move(s.deletedKeys());
+
+  // The PQ consumer was (re)created during key/balance load; restore its sync
+  // cursor + owned outputs from the persisted blob so it resumes instead of
+  // rescanning from genesis. No-op when there is no PQ state or no consumer.
+  restorePqStateBlob();
 
   m_logger(DEBUGGING) << "Container cache loaded";
 }
@@ -641,6 +673,9 @@ void WalletGreen::saveWalletCache(ContainerStorage& storage, const Crypto::chach
     });
   }
 
+  // Capture the current PQ consumer cursor + owned outputs so they persist.
+  buildPqStateBlob();
+
   std::string containerData;
   Common::StringOutputStream containerStream(containerData);
 
@@ -648,6 +683,9 @@ void WalletGreen::saveWalletCache(ContainerStorage& storage, const Crypto::chach
     *this,
     m_viewPublicKey,
     m_viewSecretKey,
+    m_addressGenerationMode,
+    m_deterministicSeed,
+    m_nextDeterministicIndex,
     m_actualBalance,
     m_pendingBalance,
     m_walletsContainer,
@@ -657,10 +695,19 @@ void WalletGreen::saveWalletCache(ContainerStorage& storage, const Crypto::chach
     transfers,
     m_uncommitedTransactions,
     const_cast<std::string&>(extra),
-    m_transactionSoftLockTime
+    m_transactionSoftLockTime,
+    m_pqState
   );
 
   s.save(containerStream, saveLevel);
+
+  // Upgrade the prefix version if the storage was created/loaded with an older format.
+  ContainerStoragePrefix* pfx = reinterpret_cast<ContainerStoragePrefix*>(storage.prefix());
+  if (pfx->version < WalletSerializerV2::SERIALIZATION_VERSION) {
+    m_logger(INFO) << "Upgrading wallet file format from v" << static_cast<int>(pfx->version)
+                   << " to v" << static_cast<int>(WalletSerializerV2::SERIALIZATION_VERSION);
+    pfx->version = WalletSerializerV2::SERIALIZATION_VERSION;
+  }
 
   encryptAndSaveContainerData(storage, key, containerData.data(), containerData.size());
   storage.flush();
@@ -671,7 +718,6 @@ void WalletGreen::saveWalletCache(ContainerStorage& storage, const Crypto::chach
 }
 
 void WalletGreen::copyContainerStorageKeys(ContainerStorage& src, const chacha8_key& srcKey, ContainerStorage& dst, const chacha8_key& dstKey) {
-  m_logger(DEBUGGING) << "Copying wallet keys...";
   dst.reserve(src.size());
 
   dst.setAutoFlush(false);
@@ -681,6 +727,7 @@ void WalletGreen::copyContainerStorageKeys(ContainerStorage& src, const chacha8_
   });
 
   size_t counter = 0;
+
   for (auto& encryptedSpendKeys : src) {
     Crypto::PublicKey publicKey;
     Crypto::SecretKey secretKey;
@@ -693,14 +740,7 @@ void WalletGreen::copyContainerStorageKeys(ContainerStorage& src, const chacha8_
     incIv(dstPrefix->nextIv);
 
     dst.push_back(encryptKeyPair(publicKey, secretKey, creationTimestamp, dstKey, keyPairIv));
-
-    ++counter;
-    if (counter % 100 == 0) {
-      m_logger(DEBUGGING) << "Copied keys: " << counter << " / " << src.size();
-    }
   }
-
-  m_logger(DEBUGGING) << "Keys copied";
 }
 
 void WalletGreen::copyContainerStoragePrefix(ContainerStorage& src, const chacha8_key& srcKey, ContainerStorage& dst, const chacha8_key& dstKey) {
@@ -786,7 +826,7 @@ void WalletGreen::loadSpendKeys() {
     }
 
     if (wallet.spendSecretKey != NULL_SECRET_KEY) {
-      throwIfKeysMismatch(wallet.spendSecretKey, wallet.spendPublicKey, "Restored spend public key doesn't correspond to secret key");
+      throwIfKeysMissmatch(wallet.spendSecretKey, wallet.spendPublicKey, "Restored spend public key doesn't correspond to secret key");
     } else {
       if (!Crypto::check_key(wallet.spendPublicKey)) {
         throw std::system_error(make_error_code(error::WRONG_PASSWORD), "Public spend key is incorrect");
@@ -802,12 +842,9 @@ void WalletGreen::loadSpendKeys() {
 }
 
 void WalletGreen::subscribeWallets() {
-  m_logger(DEBUGGING) << "Subscribing wallets...";
-
   try {
     auto& index = m_walletsContainer.get<RandomAccessIndex>();
 
-    size_t counter = 0;
     for (auto it = index.begin(); it != index.end(); ++it) {
       const auto& wallet = *it;
 
@@ -822,15 +859,9 @@ void WalletGreen::subscribeWallets() {
 
       auto& subscription = m_synchronizer.addSubscription(sub);
       bool r = index.modify(it, [&subscription](WalletRecord& rec) { rec.container = &subscription.getContainer(); });
-      if (r) {}
       assert(r);
 
       subscription.addObserver(this);
-
-      ++counter;
-      if (counter % 100 == 0) {
-        m_logger(DEBUGGING) << "Subscribed " << counter << " wallets of " << m_walletsContainer.size();
-      }
     }
   } catch (const std::exception& e) {
     m_logger(ERROR, BRIGHT_RED) << "Failed to subscribe wallets: " << e.what();
@@ -869,7 +900,8 @@ void WalletGreen::convertAndLoadWalletFile(const std::string& path, std::ifstrea
   boost::filesystem::path tmpPath = boost::filesystem::unique_path(path + ".tmp.%%%%-%%%%");
 
   if (boost::filesystem::exists(bakPath)) {
-    throw std::system_error(make_error_code(std::errc::file_exists), ".backup file already exists");
+    m_logger(INFO) << "Wallet backup already exists! Creating random file name backup.";
+    bakPath = boost::filesystem::unique_path(path + ".%%%%-%%%%" + ".backup");
   }
 
   Tools::ScopeExit tmpFileDeleter([&tmpPath] {
@@ -932,8 +964,9 @@ void WalletGreen::changePassword(const std::string& oldPassword, const std::stri
     return;
   }
 
+  Crypto::cn_context cnContext;
   Crypto::chacha8_key newKey;
-  Crypto::generate_chacha8_key(newPassword, newKey);
+  Crypto::generate_chacha8_key(cnContext, newPassword, newKey);
 
   m_containerStorage.atomicUpdate([this, newKey](ContainerStorage& newStorage) {
     copyContainerStoragePrefix(m_containerStorage, m_key, newStorage, newKey);
@@ -959,7 +992,7 @@ size_t WalletGreen::getAddressCount() const {
   return m_walletsContainer.get<RandomAccessIndex>().size();
 }
 
-std::string WalletGreen::getAddress(size_t index) const {
+AccountPublicAddress WalletGreen::getAccountPublicAddress(size_t index) const {
   throwIfNotInitialized();
   throwIfStopped();
 
@@ -969,7 +1002,11 @@ std::string WalletGreen::getAddress(size_t index) const {
   }
 
   const WalletRecord& wallet = m_walletsContainer.get<RandomAccessIndex>()[index];
-  return m_currency.accountAddressAsString({ wallet.spendPublicKey, m_viewPublicKey });
+  return { wallet.spendPublicKey, m_viewPublicKey };
+}
+
+std::string WalletGreen::getAddress(size_t index) const {
+  return m_currency.accountAddressAsString(getAccountPublicAddress(index));
 }
 
 KeyPair WalletGreen::getAddressSpendKey(size_t index) const {
@@ -1007,11 +1044,138 @@ KeyPair WalletGreen::getViewKey() const {
   return {m_viewPublicKey, m_viewSecretKey};
 }
 
+AddressGenerationMode WalletGreen::getAddressGenerationMode() const {
+  throwIfNotInitialized();
+  throwIfStopped();
+
+  return m_addressGenerationMode;
+}
+
+Crypto::SecretKey WalletGreen::getDeterministicSeed() const {
+  throwIfNotInitialized();
+  throwIfStopped();
+
+  if (m_addressGenerationMode != AddressGenerationMode::HD_DETERMINISTIC || m_deterministicSeed == NULL_SECRET_KEY) {
+    m_logger(ERROR, BRIGHT_RED) << "Container does not have an HD deterministic seed";
+    throw std::system_error(make_error_code(error::WRONG_PARAMETERS));
+  }
+
+  return m_deterministicSeed;
+}
+
+void WalletGreen::setAddressGenerationMode(AddressGenerationMode mode, const Crypto::SecretKey& deterministicSeed) {
+  throwIfNotInitialized();
+  throwIfStopped();
+
+  if (!m_walletsContainer.get<RandomAccessIndex>().empty()) {
+    m_logger(ERROR, BRIGHT_RED) << "Address generation mode can only be set before addresses are added";
+    throw std::system_error(make_error_code(error::WRONG_PARAMETERS));
+  }
+
+  if (mode == AddressGenerationMode::HD_DETERMINISTIC) {
+    if (deterministicSeed == NULL_SECRET_KEY) {
+      m_logger(ERROR, BRIGHT_RED) << "HD deterministic mode requires a non-null seed";
+      throw std::system_error(make_error_code(error::WRONG_PARAMETERS));
+    }
+
+    Crypto::PublicKey spendPublicKey;
+    if (!Crypto::secret_key_to_public_key(deterministicSeed, spendPublicKey)) {
+      m_logger(ERROR, BRIGHT_RED) << "HD deterministic seed cannot be converted to a public spend key";
+      throw std::system_error(make_error_code(CryptoNote::error::KEY_GENERATION_ERROR));
+    }
+
+    Crypto::SecretKey deterministicViewSecretKey;
+    CryptoNote::AccountBase::generateViewFromSpend(deterministicSeed, deterministicViewSecretKey);
+    if (deterministicViewSecretKey != m_viewSecretKey) {
+      m_logger(ERROR, BRIGHT_RED) << "HD deterministic seed does not match the container view key";
+      throw std::system_error(make_error_code(error::WRONG_PARAMETERS));
+    }
+
+    m_addressGenerationMode = AddressGenerationMode::HD_DETERMINISTIC;
+    m_deterministicSeed = deterministicSeed;
+    m_nextDeterministicIndex = 0;
+    return;
+  }
+
+  if (mode == AddressGenerationMode::INDEPENDENT_SPEND_KEYS) {
+    m_addressGenerationMode = AddressGenerationMode::INDEPENDENT_SPEND_KEYS;
+    m_deterministicSeed = NULL_SECRET_KEY;
+    m_nextDeterministicIndex = 0;
+    return;
+  }
+
+  m_logger(ERROR, BRIGHT_RED) << "Unknown address generation mode";
+  throw std::system_error(make_error_code(error::WRONG_PARAMETERS));
+}
+
+CryptoNote::KeyPair WalletGreen::deriveHdSpendKey(uint32_t hdIndex) const {
+  if (m_addressGenerationMode != AddressGenerationMode::HD_DETERMINISTIC || m_deterministicSeed == NULL_SECRET_KEY ||
+      hdIndex == WALLET_INVALID_HD_INDEX) {
+    m_logger(ERROR, BRIGHT_RED) << "HD spend key derivation requested for an invalid wallet state or index";
+    throw std::system_error(make_error_code(error::WRONG_PARAMETERS));
+  }
+
+  KeyPair spendKey;
+  if (hdIndex == 0) {
+    spendKey.secretKey = m_deterministicSeed;
+  } else {
+    static const char domain[] = "Karbo walletd HD spend v1";
+    std::vector<uint8_t> derivationData;
+    derivationData.reserve(sizeof(domain) - 1 + sizeof(m_deterministicSeed.data) + sizeof(m_viewSecretKey.data) + sizeof(hdIndex));
+    const uint8_t* domainData = reinterpret_cast<const uint8_t*>(domain);
+    derivationData.insert(derivationData.end(), domainData, domainData + sizeof(domain) - 1);
+    derivationData.insert(derivationData.end(), m_deterministicSeed.data, m_deterministicSeed.data + sizeof(m_deterministicSeed.data));
+    derivationData.insert(derivationData.end(), m_viewSecretKey.data, m_viewSecretKey.data + sizeof(m_viewSecretKey.data));
+    derivationData.push_back(static_cast<uint8_t>(hdIndex));
+    derivationData.push_back(static_cast<uint8_t>(hdIndex >> 8));
+    derivationData.push_back(static_cast<uint8_t>(hdIndex >> 16));
+    derivationData.push_back(static_cast<uint8_t>(hdIndex >> 24));
+    Crypto::hash_to_scalar(derivationData.data(), derivationData.size(), spendKey.secretKey);
+  }
+
+  if (!Crypto::secret_key_to_public_key(spendKey.secretKey, spendKey.publicKey)) {
+    m_logger(ERROR, BRIGHT_RED) << "Failed to derive HD spend public key at index " << hdIndex;
+    throw std::system_error(make_error_code(CryptoNote::error::KEY_GENERATION_ERROR));
+  }
+
+  return spendKey;
+}
+
+WalletGreen::NewAddressData WalletGreen::createHdAddressData(uint64_t creationTimestamp) {
+  for (;;) {
+    if (m_nextDeterministicIndex == WALLET_INVALID_HD_INDEX) {
+      m_logger(ERROR, BRIGHT_RED) << "HD address index space is exhausted";
+      throw std::system_error(make_error_code(error::WRONG_PARAMETERS));
+    }
+
+    const uint32_t hdIndex = m_nextDeterministicIndex++;
+    KeyPair spendKey = deriveHdSpendKey(hdIndex);
+    if (m_walletsContainer.get<KeysIndex>().find(spendKey.publicKey) == m_walletsContainer.get<KeysIndex>().end()) {
+      return NewAddressData{ spendKey.publicKey, spendKey.secretKey, creationTimestamp, hdIndex };
+    }
+  }
+}
+
 std::string WalletGreen::createAddress() {
+  if (m_addressGenerationMode == AddressGenerationMode::HD_DETERMINISTIC) {
+    return doCreateAddressList({ createHdAddressData(static_cast<uint64_t>(time(nullptr))) }).front();
+  }
+
   KeyPair spendKey;
   Crypto::generate_keys(spendKey.publicKey, spendKey.secretKey);
   uint64_t creationTimestamp = static_cast<uint64_t>(time(nullptr));
 
+  return doCreateAddress(spendKey.publicKey, spendKey.secretKey, creationTimestamp);
+}
+
+std::string WalletGreen::createAddress(uint32_t scanHeight) {
+  const uint64_t creationTimestamp = scanHeightToTimestamp(scanHeight);
+  if (m_addressGenerationMode == AddressGenerationMode::HD_DETERMINISTIC) {
+    return doCreateAddressList({ createHdAddressData(creationTimestamp) }).front();
+  }
+
+  KeyPair spendKey;
+  Crypto::generate_keys(spendKey.publicKey, spendKey.secretKey);
   return doCreateAddress(spendKey.publicKey, spendKey.secretKey, creationTimestamp);
 }
 
@@ -1021,8 +1185,8 @@ std::string WalletGreen::createAddress(const Crypto::SecretKey& spendSecretKey, 
     m_logger(ERROR, BRIGHT_RED) << "createAddress(" << spendSecretKey << ") Failed to convert secret key to public key";
     throw std::system_error(make_error_code(CryptoNote::error::KEY_GENERATION_ERROR));
   }
-
   uint64_t creationTimestamp = reset ? 0 : static_cast<uint64_t>(time(nullptr));
+
   return doCreateAddress(spendPublicKey, spendSecretKey, creationTimestamp);
 }
 
@@ -1135,11 +1299,11 @@ std::vector<std::string> WalletGreen::createAddressList(const std::vector<Crypto
   return doCreateAddressList(addressDataList);
 }
 
-std::string WalletGreen::doCreateAddress(const Crypto::PublicKey& spendPublicKey, const Crypto::SecretKey& spendSecretKey, uint64_t creationTimestamp) {
+std::string WalletGreen::doCreateAddress(const Crypto::PublicKey& spendPublicKey, const Crypto::SecretKey& spendSecretKey, uint64_t creationTimestamp, uint32_t hdIndex) {
   assert(creationTimestamp <= std::numeric_limits<uint64_t>::max() - m_currency.blockFutureTimeLimit());
 
   std::vector<NewAddressData> addressDataList;
-  addressDataList.push_back(NewAddressData{ spendPublicKey, spendSecretKey, creationTimestamp });
+  addressDataList.push_back(NewAddressData{ spendPublicKey, spendSecretKey, creationTimestamp, hdIndex });
   std::vector<std::string> addresses = doCreateAddressList(addressDataList);
   assert(addresses.size() == 1);
 
@@ -1170,7 +1334,7 @@ std::vector<std::string> WalletGreen::doCreateAddressList(const std::vector<NewA
 
       for (auto& addressData : addressDataList) {
         assert(addressData.creationTimestamp <= std::numeric_limits<uint64_t>::max() - m_currency.blockFutureTimeLimit());
-        std::string address = addWallet(addressData.spendPublicKey, addressData.spendSecretKey, addressData.creationTimestamp);
+        std::string address = addWallet(addressData.spendPublicKey, addressData.spendSecretKey, addressData.creationTimestamp, addressData.hdIndex);
         m_logger(INFO, BRIGHT_WHITE) << "New wallet added " << address << ", creation timestamp " << addressData.creationTimestamp;
         addresses.push_back(std::move(address));
 
@@ -1197,7 +1361,7 @@ std::vector<std::string> WalletGreen::doCreateAddressList(const std::vector<NewA
   return addresses;
 }
 
-std::string WalletGreen::addWallet(const Crypto::PublicKey& spendPublicKey, const Crypto::SecretKey& spendSecretKey, uint64_t creationTimestamp) {
+std::string WalletGreen::addWallet(const Crypto::PublicKey& spendPublicKey, const Crypto::SecretKey& spendSecretKey, uint64_t creationTimestamp, uint32_t hdIndex) {
   auto& index = m_walletsContainer.get<KeysIndex>();
 
   auto trackingMode = getTrackingMode();
@@ -1237,6 +1401,7 @@ std::string WalletGreen::addWallet(const Crypto::PublicKey& spendPublicKey, cons
     wallet.spendSecretKey = spendSecretKey;
     wallet.container = container;
     wallet.creationTimestamp = static_cast<time_t>(creationTimestamp);
+    wallet.hdIndex = hdIndex;
     trSubscription.addObserver(this);
 
     index.insert(insertIt, std::move(wallet));
@@ -1245,6 +1410,8 @@ std::string WalletGreen::addWallet(const Crypto::PublicKey& spendPublicKey, cons
     if (index.size() == 1) {
       m_synchronizer.subscribeConsumerNotifications(m_viewPublicKey, this);
       initBlockchain(m_viewPublicKey);
+      // The PQ identity derives from the primary address's spend secret.
+      initPqConsumer(spendSecretKey, sub.syncStart);
     }
 
     auto address = m_currency.accountAddressAsString({ spendPublicKey, m_viewPublicKey });
@@ -1269,7 +1436,7 @@ uint64_t WalletGreen::getBlockTimestamp(const uint32_t blockHeight) {
   auto getBlockTimestampCompleted = std::promise<std::error_code>();
   auto getBlockTimestampWaitFuture = getBlockTimestampCompleted.get_future();
 
-  m_node.getBlockTimestamp(std::move(blockHeight), std::ref(timestamp),
+  m_node.getBlockTimestamp(blockHeight, std::ref(timestamp),
     [&getBlockTimestampCompleted](std::error_code ec) {
     auto detachedPromise = std::move(getBlockTimestampCompleted);
     detachedPromise.set_value(ec);
@@ -1277,65 +1444,57 @@ uint64_t WalletGreen::getBlockTimestamp(const uint32_t blockHeight) {
 
   std::error_code ec = getBlockTimestampWaitFuture.get();
 
-  if (ec) {
-    m_logger(ERROR) << "Failed to get block timestamp: " << ec << ", " << ec.message();
+  return timestamp;
+}
+
+uint64_t WalletGreen::scanHeightToTimestamp(const uint32_t scanHeight) {
+  if (scanHeight == 0) {
+    return 0;
+  }
+
+  /* Get the block timestamp from the node if the node has it */
+  uint64_t timestamp = getBlockTimestamp(scanHeight);
+
+  if (timestamp != 0) {
+    return timestamp;
+  }
+
+  /* Get the amount of seconds since the blockchain launched */
+  uint64_t secondsSinceLaunch = scanHeight * CryptoNote::parameters::DIFFICULTY_TARGET;
+
+  /* Add a bit of a buffer in case of difficulty weirdness, blocks coming
+     out too fast */
+  secondsSinceLaunch = static_cast<uint64_t>(secondsSinceLaunch * 0.95);
+
+  /* Get the genesis block timestamp and add the time since launch */
+  timestamp = UINT64_C(1464595534) + secondsSinceLaunch;
+
+  /* Timestamp in the future */
+  if (timestamp >= static_cast<uint64_t>(std::time(nullptr))) {
+    return getCurrentTimestampAdjusted();
   }
 
   return timestamp;
 }
 
-uint64_t WalletGreen::scanHeightToTimestamp(const uint32_t scanHeight) {
-	if (scanHeight == 0) {
-		return 0;
-	}
+uint64_t WalletGreen::getCurrentTimestampAdjusted() {
+  /* Get the current time as a unix timestamp */
+  std::time_t time = std::time(nullptr);
 
-	/* Get the block timestamp from the node if the node has it */
-	uint64_t timestamp = getBlockTimestamp(scanHeight);
+  /* Take the amount of time a block can potentially be in the past/future */
+  std::initializer_list<uint64_t> limits = {
+    CryptoNote::parameters::CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT,
+    CryptoNote::parameters::CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT_V1
+  };
 
-	if (timestamp != 0) {
-		return timestamp;
-	}
+  /* Get the largest adjustment possible */
+  uint64_t adjust = std::max(limits);
 
-	/* Get the amount of seconds since the blockchain launched */
-  uint64_t secondsSinceLaunch = scanHeight *
-		CryptoNote::parameters::DIFFICULTY_TARGET;
-
-	/* Add a bit of a buffer in case of difficulty weirdness, blocks coming
-	   out too fast */
-	secondsSinceLaunch *= 0.95;
-
-	/* Get the genesis block timestamp and add the time since launch */
-	timestamp = UINT64_C(1464595534) + secondsSinceLaunch;
-
-	/* Timestamp in the future */
-	if (timestamp >= static_cast<uint64_t>(std::time(nullptr)))
-	{
-		return getCurrentTimestampAdjusted();
-	}
-
-	return timestamp;
+  /* Take the earliest timestamp that will include all possible blocks */
+  return time - adjust;
 }
 
-uint64_t WalletGreen::getCurrentTimestampAdjusted()
-{
-	/* Get the current time as a unix timestamp */
-	std::time_t time = std::time(nullptr);
-
-	/* Take the amount of time a block can potentially be in the past/future */
-	std::initializer_list<uint64_t> limits =
-	{
-		CryptoNote::parameters::CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT,
-		CryptoNote::parameters::CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT_V1
-	};
-
-	/* Get the largest adjustment possible */
-	uint64_t adjust = std::max(limits);
-
-	/* Take the earliest timestamp that will include all possible blocks */
-	return time - adjust;
-}
-
-void WalletGreen::reset(const uint32_t scanHeight)
+void WalletGreen::reset(const uint64_t scanHeight)
 {
     throwIfNotInitialized();
     throwIfStopped();
@@ -1346,7 +1505,7 @@ void WalletGreen::reset(const uint32_t scanHeight)
     /* Grab the wallet encrypted prefix */
     auto* prefix = reinterpret_cast<ContainerStoragePrefix*>(m_containerStorage.prefix());
 
-    uint64_t newTimestamp = scanHeightToTimestamp(scanHeight);
+    uint64_t newTimestamp = scanHeightToTimestamp((uint32_t) scanHeight);
 
     /* Reencrypt with the new creation timestamp so we rescan from here when we relaunch */
     prefix->encryptedViewKeys = encryptKeyPair(m_viewPublicKey, m_viewSecretKey, newTimestamp);
@@ -1528,11 +1687,11 @@ WalletGreen::TransfersRange WalletGreen::getTransactionTransfersRange(size_t tra
 size_t WalletGreen::transfer(const TransactionParameters& transactionParameters, Crypto::SecretKey& txSecretKey) {
   size_t id = WALLET_INVALID_TRANSACTION_ID;
   Tools::ScopeExit releaseContext([this, &id] {
-    m_dispatcher.yield();
+    //m_dispatcher.yield();
 
     if (id != WALLET_INVALID_TRANSACTION_ID) {
       auto& tx = m_transactions[id];
-      m_logger(INFO, BRIGHT_WHITE) << "Transaction created and send, ID " << id <<
+      m_logger(INFO, BRIGHT_WHITE) << "Transaction created and sent, ID " << id <<
         ", hash " << m_transactions[id].hash <<
         ", state " << tx.state <<
         ", totalAmount " << m_currency.formatAmount(tx.totalAmount) <<
@@ -1561,27 +1720,27 @@ size_t WalletGreen::transfer(const TransactionParameters& transactionParameters,
 
 uint64_t WalletGreen::getBalanceMinusDust(const std::vector<std::string>& addresses)
 {
-    std::vector<WalletOuts> wallets = addresses.empty() ? pickWalletsWithMoney() : pickWallets(addresses);
-    std::vector<OutputToTransfer> unused;
+  std::vector<WalletOuts> wallets = addresses.empty() ? pickWalletsWithMoney() : pickWallets(addresses);
+  std::vector<OutputToTransfer> unused;
 
-	/* We want to get the full balance, so don't stop getting outputs early */
-	uint64_t needed = std::numeric_limits<uint64_t>::max();
+  /* We want to get the full balance, so don't stop getting outputs early */
+  uint64_t needed = std::numeric_limits<uint64_t>::max();
 
-	return selectTransfers
-	(
-		needed,
-		/* Don't include dust outputs */
-		false,
-		m_currency.defaultDustThreshold(),
-		std::move(wallets),
-		unused
-	);
+  return selectTransfers
+  (
+    needed,
+    /* Don't include dust outputs */
+    false,
+    m_currency.defaultDustThreshold(),
+    std::move(wallets),
+    unused
+  );
 }
 
 void WalletGreen::prepareTransaction(std::vector<WalletOuts>&& wallets,
   const std::vector<WalletOrder>& orders,
   uint64_t fee,
-  uint16_t mixIn,
+  uint64_t mixIn,
   const std::string& extra,
   uint64_t unlockTimestamp,
   const DonationSettings& donation,
@@ -1593,7 +1752,7 @@ void WalletGreen::prepareTransaction(std::vector<WalletOuts>&& wallets,
   preparedTransaction.neededMoney = countNeededMoney(preparedTransaction.destinations, fee);
 
   std::vector<OutputToTransfer> selectedTransfers;
-  uint64_t foundMoney = selectTransfers(preparedTransaction.neededMoney, mixIn == 0, m_currency.defaultDustThreshold(), std::move(wallets), selectedTransfers);
+  uint64_t foundMoney = selectTransfers(preparedTransaction.neededMoney, mixIn == 0, 0, std::move(wallets), selectedTransfers);
 
   if (foundMoney < preparedTransaction.neededMoney) {
     m_logger(ERROR, BRIGHT_RED) << "Failed to create transaction: not enough money. Needed " << m_currency.formatAmount(preparedTransaction.neededMoney) <<
@@ -1637,12 +1796,12 @@ void WalletGreen::validateSourceAddresses(const std::vector<std::string>& source
   });
 
   if (badAddr != sourceAddresses.end()) {
-    m_logger(ERROR, BRIGHT_RED) << "Source address isn't belong to the container: " << *badAddr;
+    m_logger(ERROR, BRIGHT_RED) << "Source address doesn't belong to the container: " << *badAddr;
     throw std::system_error(make_error_code(error::BAD_ADDRESS), "Source address must belong to current container: " + *badAddr);
   }
 }
 
-void WalletGreen::checkIfEnoughMixins(std::vector<CryptoNote::COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::outs_for_amount>& mixinResult, uint16_t mixIn) const {
+void WalletGreen::checkIfEnoughMixins(std::vector<CryptoNote::COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::outs_for_amount>& mixinResult, uint64_t mixIn) const {
   assert(mixIn != 0);
 
   auto notEnoughIt = std::find_if(mixinResult.begin(), mixinResult.end(),
@@ -1764,25 +1923,25 @@ void WalletGreen::validateOrders(const std::vector<WalletOrder>& orders) const {
   }
 }
 
-void WalletGreen::validateChangeDestination(const std::vector<std::string>& sourceAddresses, const std::string& changeDestination, bool isFusion) const {
+void WalletGreen::validateChangeDestination(const std::vector<std::string>& sourceAddresses, const std::string& changeDestination) const {
   std::string message;
   if (changeDestination.empty()) {
     if (sourceAddresses.size() > 1 || (sourceAddresses.empty() && m_walletsContainer.size() > 1)) {
-      message = std::string(isFusion ? "Destination" : "Change destination") + " address is necessary";
+      message = std::string("Change destination") + " address is necessary";
       m_logger(ERROR, BRIGHT_RED) << message << ". Source addresses size=" << sourceAddresses.size() << ", wallets count=" << m_walletsContainer.size();
-      throw std::system_error(make_error_code(isFusion ? error::DESTINATION_ADDRESS_REQUIRED : error::CHANGE_ADDRESS_REQUIRED), message);
+      throw std::system_error(make_error_code(error::CHANGE_ADDRESS_REQUIRED), message);
     }
   } else {
     if (!CryptoNote::validateAddress(changeDestination, m_currency)) {
-      message = std::string("Bad ") + (isFusion ? "destination" : "change destination") + " address: " + changeDestination;
+      message = std::string("Bad change destination address: ") + changeDestination;
       m_logger(ERROR, BRIGHT_RED) << message;
       throw std::system_error(make_error_code(CryptoNote::error::BAD_ADDRESS), message);
     }
 
     if (!isMyAddress(changeDestination)) {
-      message = std::string(isFusion ? "Destination" : "Change destination") + " address is not found in current container: " + changeDestination;
+      message = std::string("Change destination") + " address is not found in current container: " + changeDestination;
       m_logger(ERROR, BRIGHT_RED) << message;
-      throw std::system_error(make_error_code(isFusion ? error::DESTINATION_ADDRESS_NOT_FOUND : error::CHANGE_ADDRESS_NOT_FOUND), message);
+      throw std::system_error(make_error_code(error::CHANGE_ADDRESS_NOT_FOUND), message);
     }
   }
 }
@@ -1793,9 +1952,9 @@ void WalletGreen::validateTransactionParameters(const TransactionParameters& tra
     throw std::system_error(make_error_code(error::ZERO_DESTINATION));
   }
 
-  if (transactionParameters.fee < m_currency.minimumFee()) {
+  if (transactionParameters.fee < m_node.getMinimalFee()) {
     std::string message = "Fee is too small. Fee " + m_currency.formatAmount(transactionParameters.fee) +
-      ", minimum fee " + m_currency.formatAmount(m_currency.minimumFee());
+      ", minimum fee " + m_currency.formatAmount(m_node.getMinimalFee());
     m_logger(ERROR, BRIGHT_RED) << message;
     throw std::system_error(make_error_code(error::FEE_TOO_SMALL), message);
   }
@@ -1808,7 +1967,7 @@ void WalletGreen::validateTransactionParameters(const TransactionParameters& tra
   }
 
   validateSourceAddresses(transactionParameters.sourceAddresses);
-  validateChangeDestination(transactionParameters.sourceAddresses, transactionParameters.changeDestination, false);
+  validateChangeDestination(transactionParameters.sourceAddresses, transactionParameters.changeDestination);
   validateOrders(transactionParameters.destinations);
 }
 
@@ -1836,13 +1995,13 @@ size_t WalletGreen::doTransfer(const TransactionParameters& transactionParameter
     preparedTransaction,
     txSecretKey);
 
-  return validateSaveAndSendTransaction(*preparedTransaction.transaction, preparedTransaction.destinations, false, true);
+  return validateSaveAndSendTransaction(*preparedTransaction.transaction, preparedTransaction.destinations, true);
 }
 
 size_t WalletGreen::makeTransaction(const TransactionParameters& sendingTransaction) {
   size_t id = WALLET_INVALID_TRANSACTION_ID;
   Tools::ScopeExit releaseContext([this, &id] {
-    m_dispatcher.yield();
+    //m_dispatcher.yield();
 
     if (id != WALLET_INVALID_TRANSACTION_ID) {
       auto& tx = m_transactions[id];
@@ -1894,7 +2053,7 @@ size_t WalletGreen::makeTransaction(const TransactionParameters& sendingTransact
     preparedTransaction,
     txSecretKey);
 
-  id = validateSaveAndSendTransaction(*preparedTransaction.transaction, preparedTransaction.destinations, false, false);
+  id = validateSaveAndSendTransaction(*preparedTransaction.transaction, preparedTransaction.destinations, false);
   return id;
 }
 
@@ -1916,17 +2075,21 @@ void WalletGreen::commitTransaction(size_t transactionId) {
     throw std::system_error(make_error_code(error::TX_TRANSFER_IMPOSSIBLE));
   }
 
-  System::Event completion(m_dispatcher);
   std::error_code ec;
 
-  System::RemoteContext<void> relayTransactionContext(m_dispatcher, [this, transactionId, &ec, &completion] () {
-    m_node.relayTransaction(m_uncommitedTransactions[transactionId], [&ec, &completion, this](std::error_code error) {
-      ec = error;
-      this->m_dispatcher.remoteSpawn(std::bind(asyncRequestCompletion, std::ref(completion)));
-    });
-  });
-  relayTransactionContext.get();
-  completion.wait();
+  try {
+    auto relayTransactionCompleted = std::promise<std::error_code>();
+    auto relayTransactionWaitFuture = relayTransactionCompleted.get_future();
+
+    m_node.relayTransaction(m_uncommitedTransactions[transactionId], [&ec, &relayTransactionCompleted, this](std::error_code error) {
+      auto detachedPromise = std::move(relayTransactionCompleted);
+      detachedPromise.set_value(ec);
+      });
+    ec = relayTransactionWaitFuture.get();
+  }
+  catch (const std::exception& e) {
+    m_logger(ERROR, BRIGHT_RED) << "Failed to relay uncommited transaction: " << e.what();
+  }
 
   if (!ec) {
     updateTransactionStateAndPushEvent(transactionId, WalletTransactionState::SUCCEEDED);
@@ -2060,7 +2223,6 @@ bool WalletGreen::updateWalletTransactionInfo(size_t transactionId, const Crypto
     }
   });
 
-  if (r) {}
   assert(r);
 
   if (updated) {
@@ -2303,63 +2465,54 @@ bool WalletGreen::eraseForeignTransfers(size_t transactionId, size_t firstTransf
 std::unique_ptr<CryptoNote::ITransaction> WalletGreen::makeTransaction(const std::vector<ReceiverAmounts>& decomposedOutputs,
   std::vector<InputInfo>& keysInfo, const std::string& extra, uint64_t unlockTimestamp, Crypto::SecretKey& txSecretKey) {
 
-  std::unique_ptr<ITransaction> tx = createTransaction();
+  std::vector<TxBuildInput> inputs;
+  for (auto& input: keysInfo) {
+    TxBuildInput bi;
+    bi.keyInfo = input.keyInfo;
+    bi.senderKeys = makeAccountKeys(*input.walletRecord);
+    inputs.push_back(std::move(bi));
+  }
 
-  typedef std::pair<const AccountPublicAddress*, uint64_t> AmountToAddress;
-  std::vector<AmountToAddress> amountsToAddresses;
+  std::vector<TxBuildOutput> outputs;
   for (const auto& output: decomposedOutputs) {
     for (auto amount: output.amounts) {
-      amountsToAddresses.emplace_back(AmountToAddress{&output.receiver, amount});
+      outputs.push_back(TxBuildOutput{output.receiver, amount});
     }
   }
 
-  std::shuffle(amountsToAddresses.begin(), amountsToAddresses.end(), Random::generator());
-  std::sort(amountsToAddresses.begin(), amountsToAddresses.end(), [] (const AmountToAddress& left, const AmountToAddress& right) {
-    return left.second < right.second;
-  });
+  // Use viewSecretKey for deterministic tx key: r = Hs(viewSecretKey || inputsHash).
+  auto tx = buildTransaction(inputs, outputs, m_viewSecretKey, extra, unlockTimestamp, 0, txSecretKey);
 
-  for (const auto& amountToAddress: amountsToAddresses) {
-    tx->addOutput(amountToAddress.second, *amountToAddress.first);
+  // copy ephKeys back so callers still have them if needed
+  for (size_t i = 0; i < keysInfo.size(); ++i) {
+    keysInfo[i].ephKeys = inputs[i].ephKeys;
   }
 
-  tx->setUnlockTime(unlockTimestamp);
-  tx->appendExtra(Common::asBinaryArray(extra));
-
-  for (auto& input: keysInfo) {
-    tx->addInput(makeAccountKeys(*input.walletRecord), input.keyInfo, input.ephKeys);
-  }
-
-  size_t i = 0;
-  for(auto& input: keysInfo) {
-    tx->signInputKey(i++, input.keyInfo, input.ephKeys);
-  }
-
-  SecretKey txkey;
-  tx->getTransactionSecretKey(txkey);
-  txSecretKey = txkey;
-  
   m_logger(DEBUGGING) << "Transaction created, hash " << tx->getTransactionHash() <<
     ", inputs " << m_currency.formatAmount(tx->getInputTotalAmount()) <<
     ", outputs " << m_currency.formatAmount(tx->getOutputTotalAmount()) <<
     ", fee " << m_currency.formatAmount(tx->getInputTotalAmount() - tx->getOutputTotalAmount()) <<
-    ", key " << Common::podToHex(txkey);
-    return tx;
+    ", key " << Common::podToHex(txSecretKey);
+  return tx;
 }
 
 void WalletGreen::sendTransaction(const CryptoNote::Transaction& cryptoNoteTransaction) {
-  System::Event completion(m_dispatcher);
   std::error_code ec;
 
   throwIfStopped();
+  try {
+    auto relayTransactionCompleted = std::promise<std::error_code>();
+    auto relayTransactionWaitFuture = relayTransactionCompleted.get_future();
 
-  System::RemoteContext<void> relayTransactionContext(m_dispatcher, [this, &cryptoNoteTransaction, &ec, &completion] () {
-    m_node.relayTransaction(cryptoNoteTransaction, [&ec, &completion, this](std::error_code error) {
-      ec = error;
-      this->m_dispatcher.remoteSpawn(std::bind(asyncRequestCompletion, std::ref(completion)));
+    m_node.relayTransaction(cryptoNoteTransaction, [&ec, &relayTransactionCompleted, this](std::error_code error) {
+      auto detachedPromise = std::move(relayTransactionCompleted);
+    detachedPromise.set_value(ec);
     });
-  });
-  relayTransactionContext.get();
-  completion.wait();
+    ec = relayTransactionWaitFuture.get();
+  }
+  catch (const std::exception& e) {
+    m_logger(ERROR, BRIGHT_RED) << "Failed to relay transaction: " << e.what();
+  }
 
   if (ec) {
     m_logger(ERROR, BRIGHT_RED) << "Failed to relay transaction: " << ec << ", " << ec.message() <<
@@ -2368,7 +2521,7 @@ void WalletGreen::sendTransaction(const CryptoNote::Transaction& cryptoNoteTrans
   }
 }
 
-size_t WalletGreen::validateSaveAndSendTransaction(const ITransactionReader& transaction, const std::vector<WalletTransfer>& destinations, bool isFusion, bool send) {
+size_t WalletGreen::validateSaveAndSendTransaction(const ITransactionReader& transaction, const std::vector<WalletTransfer>& destinations, bool send) {
   BinaryArray transactionData = transaction.getTransactionData();
 
   if (transactionData.size() > getMaxTxSize()) {
@@ -2395,7 +2548,6 @@ size_t WalletGreen::validateSaveAndSendTransaction(const ITransactionReader& tra
     updateTransactionStateAndPushEvent(transactionId, WalletTransactionState::FAILED);
   });
 
-  m_fusionTxsCache.emplace(transactionId, isFusion);
   pushBackOutgoingTransfers(transactionId, destinations);
 
   addUnconfirmedTransaction(transaction);
@@ -2437,7 +2589,7 @@ AccountKeys WalletGreen::makeAccountKeys(const WalletRecord& wallet) const {
 
 void WalletGreen::requestMixinOuts(
   const std::vector<OutputToTransfer>& selectedTransfers,
-  uint16_t mixIn,
+  uint64_t mixIn,
   std::vector<CryptoNote::COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::outs_for_amount>& mixinResult) {
 
   std::vector<uint64_t> amounts;
@@ -2445,22 +2597,27 @@ void WalletGreen::requestMixinOuts(
     amounts.push_back(out.out.amount);
   }
 
-  System::Event requestFinished(m_dispatcher);
   std::error_code mixinError;
 
   throwIfStopped();
 
-  uint16_t requestMixinCount = mixIn + 1; //+1 to allow to skip real output
+  auto requestMixinCount = mixIn + 1; //+1 to allow to skip real output
 
   m_logger(DEBUGGING) << "Requesting random outputs";
-  System::RemoteContext<void> getOutputsContext(m_dispatcher, [this, amounts, requestMixinCount, &mixinResult, &requestFinished, &mixinError] () mutable {
-    m_node.getRandomOutsByAmounts(std::move(amounts), requestMixinCount, mixinResult, [&requestFinished, &mixinError, this] (std::error_code ec) mutable {
-      mixinError = ec;
-      m_dispatcher.remoteSpawn(std::bind(asyncRequestCompletion, std::ref(requestFinished)));
+  try {
+    auto getRandomOutsByAmountsCompleted = std::promise<std::error_code>();
+    auto getRandomOutsByAmountsWaitFuture = getRandomOutsByAmountsCompleted.get_future();
+
+    m_node.getRandomOutsByAmounts(std::move(amounts), requestMixinCount, mixinResult, [&getRandomOutsByAmountsCompleted, &mixinError, this](std::error_code ec) {
+     auto detachedPromise = std::move(getRandomOutsByAmountsCompleted);
+      detachedPromise.set_value(ec);
     });
-  });
-  getOutputsContext.get();
-  requestFinished.wait();
+
+    mixinError = getRandomOutsByAmountsWaitFuture.get();
+  }
+  catch (const std::exception& e) {
+    m_logger(ERROR, BRIGHT_RED) << "Failed to request random outputs: " << e.what();
+  }
 
   checkIfEnoughMixins(mixinResult, requestMixinCount);
 
@@ -2587,7 +2744,7 @@ CryptoNote::WalletGreen::ReceiverAmounts WalletGreen::splitAmount(
 void WalletGreen::prepareInputs(
   const std::vector<OutputToTransfer>& selectedTransfers,
   std::vector<CryptoNote::COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::outs_for_amount>& mixinResult,
-  uint16_t mixIn,
+  uint64_t mixIn,
   std::vector<InputInfo>& keysInfo) {
 
   typedef CryptoNote::COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::out_entry out_entry;
@@ -2741,11 +2898,28 @@ std::vector<size_t> WalletGreen::getDelayedTransactionIds() const {
   return result;
 }
 
+std::vector<TransactionOutputInformation> WalletGreen::getTransfers(size_t index, uint32_t flags) const {
+  throwIfNotInitialized();
+  throwIfStopped();
+  throwIfTrackingMode();
+
+  std::vector<TransactionOutputInformation> allTransfers;
+  auto& walletsIndex = m_walletsContainer.get<RandomAccessIndex>();
+  for (const auto& wallet: walletsIndex) {
+    if (wallet.actualBalance == 0) {
+      continue;
+    }
+
+    ITransfersContainer* container = wallet.container;
+    container->getOutputs(allTransfers, flags /*ITransfersContainer::IncludeKeyUnlocked*/);
+  };
+
+  return allTransfers;
+}
+
 Crypto::SecretKey WalletGreen::getTransactionDeterministicSecretKey(Crypto::Hash& transactionHash) const {
   throwIfNotInitialized();
   throwIfStopped();
-
-  Crypto::SecretKey txKey = CryptoNote::NULL_SECRET_KEY;
 
   auto getTransactionCompleted = std::promise<std::error_code>();
   auto getTransactionWaitFuture = getTransactionCompleted.get_future();
@@ -2767,8 +2941,6 @@ Crypto::SecretKey WalletGreen::getTransactionDeterministicSecretKey(Crypto::Hash
     && deterministicTxKeys.publicKey == txPubKey;
 
   return ok ? deterministicTxKeys.secretKey : CryptoNote::NULL_SECRET_KEY;
-
-  return txKey;
 }
 
 Crypto::SecretKey WalletGreen::getTransactionSecretKey(size_t transactionIndex) const {
@@ -2795,30 +2967,12 @@ Crypto::SecretKey WalletGreen::getTransactionSecretKey(Crypto::Hash& transaction
 
   auto txInfo = getTransaction(transactionHash);
   Crypto::SecretKey txKey = txInfo.transaction.secretKey.get_value_or(CryptoNote::NULL_SECRET_KEY);
+
   if (txKey == CryptoNote::NULL_SECRET_KEY) {
     txKey = getTransactionDeterministicSecretKey(transactionHash);
   }
 
   return txKey;
-}
-
-std::vector<TransactionOutputInformation> WalletGreen::getTransfers(size_t index, uint32_t flags) const {
-  throwIfNotInitialized();
-  throwIfStopped();
-  throwIfTrackingMode();
-
-  std::vector<TransactionOutputInformation> allTransfers;
-  auto& walletsIndex = m_walletsContainer.get<RandomAccessIndex>();
-  for (const auto& wallet: walletsIndex) {
-    if (wallet.actualBalance == 0) {
-      continue;
-    }
-
-    ITransfersContainer* container = wallet.container;
-    container->getOutputs(allTransfers, flags /*ITransfersContainer::IncludeKeyUnlocked*/);
-  };
-
-  return allTransfers;
 }
 
 bool WalletGreen::getTransactionProof(const Crypto::Hash& transactionHash, const CryptoNote::AccountPublicAddress& destinationAddress, const Crypto::SecretKey& txKey, std::string& transactionProof) {
@@ -2841,7 +2995,7 @@ std::string WalletGreen::getReserveProof(const uint64_t &reserve, const std::str
   // if account is provided use it, otherwise try to find account with sufficient balance
   if (!address.empty()) {
     WalletOuts wallet = pickWallet(address);
-    wallets.push_back(wallet);
+    wallets.push_back(wallet);	
   }
   else {
     std::vector<WalletOuts> walletsWithMoney = pickWalletsWithMoney();
@@ -3075,7 +3229,6 @@ void WalletGreen::onTransactionUpdated(const Crypto::PublicKey&, const Crypto::H
     // Don't move this code to the following remote spawn, because it guarantees that the container has the transaction
     uint64_t outputsAmount;
     bool found = container->getTransactionInformation(transactionHash, info, &inputsAmount, &outputsAmount);
-    if (found) {}
     assert(found);
 
     ContainerAmounts containerAmounts;
@@ -3118,7 +3271,6 @@ void WalletGreen::transactionUpdated(const TransactionInformation& transactionIn
   } else {
     isNew = true;
     transactionId = insertBlockchainTransaction(transactionInfo, totalAmount);
-    m_fusionTxsCache.emplace(transactionId, isFusionTransaction(*it));
   }
 
   if (transactionInfo.blockHeight != CryptoNote::WALLET_UNCONFIRMED_TRANSACTION_HEIGHT) {
@@ -3238,6 +3390,220 @@ void WalletGreen::deleteUnlockTransactionJob(const Hash& transactionHash) {
   index.erase(transactionHash);
 }
 
+void WalletGreen::initPqConsumer(const Crypto::SecretKey& spendSecretKey,
+                                 const SynchronizationStart& syncStart) {
+  if (m_pqConsumer) {
+    return;  // already created
+  }
+  if (spendSecretKey == NULL_SECRET_KEY) {
+    return;  // tracking wallet: no PQ identity
+  }
+  // Gate on PQ activation being scheduled (v6 height != never-activate
+  // placeholder), so the extra consumer adds zero sync overhead pre-activation.
+  if (m_currency.upgradeHeight(BLOCK_MAJOR_VERSION_6) == CryptoNote::parameters::UPGRADE_HEIGHT_V6) {
+    return;
+  }
+  PqWalletKeys pqKeys = derivePqWalletKeys(spendSecretKey);
+  m_pqConsumer.reset(new PqConsumer(pqKeys, syncStart, m_logger.getLogger()));
+  m_blockchainSynchronizer.addConsumer(m_pqConsumer.get());
+}
+
+void WalletGreen::buildPqStateBlob() {
+  m_pqState.clear();
+  if (!m_pqConsumer) {
+    return;
+  }
+  std::stringstream consumerStream;
+  m_blockchainSynchronizer.getConsumerState(m_pqConsumer.get())->save(consumerStream);
+  std::string consumerBlob = consumerStream.str();
+
+  std::stringstream stateStream;
+  m_pqConsumer->state().save(stateStream);
+  std::string stateBlob = stateStream.str();
+
+  // Frame: [u64 len || bytes] x2 (consumer sync cursor, then PqWalletState).
+  std::stringstream out;
+  auto writeSection = [&out](const std::string& s) {
+    uint64_t len = s.size();
+    out.write(reinterpret_cast<const char*>(&len), sizeof(len));
+    if (len) out.write(s.data(), static_cast<std::streamsize>(s.size()));
+  };
+  writeSection(consumerBlob);
+  writeSection(stateBlob);
+  m_pqState = out.str();
+}
+
+void WalletGreen::restorePqStateBlob() {
+  if (!m_pqConsumer || m_pqState.empty()) {
+    return;
+  }
+  std::stringstream in(m_pqState);
+  auto readSection = [&in](std::string& s) -> bool {
+    uint64_t len = 0;
+    in.read(reinterpret_cast<char*>(&len), sizeof(len));
+    if (!in) return false;
+    s.resize(len);
+    if (len) in.read(&s[0], static_cast<std::streamsize>(len));
+    return static_cast<bool>(in);
+  };
+  std::string consumerBlob, stateBlob;
+  try {
+    if (readSection(consumerBlob) && !consumerBlob.empty()) {
+      std::stringstream cs(consumerBlob);
+      m_blockchainSynchronizer.getConsumerState(m_pqConsumer.get())->load(cs);
+    }
+    if (readSection(stateBlob) && !stateBlob.empty()) {
+      std::stringstream ss(stateBlob);
+      m_pqConsumer->state().load(ss);
+    }
+  } catch (const std::exception& e) {
+    m_logger(WARNING) << "Failed to restore PQ state (" << e.what() << "); will rescan.";
+  }
+}
+
+uint64_t WalletGreen::pqActualBalance() const {
+  return m_pqConsumer ? m_pqConsumer->state().balance() : 0;
+}
+
+std::vector<PqSpendInput> WalletGreen::pqSpendableInputs() const {
+  return m_pqConsumer ? m_pqConsumer->state().spendableInputs() : std::vector<PqSpendInput>{};
+}
+
+uint32_t WalletGreen::pqSyncedHeight() const {
+  return m_pqConsumer ? m_pqConsumer->state().lastScannedHeight() : 0;
+}
+
+Transaction WalletGreen::createBridgeTransaction(const CryptoPQ::KemPublicKey& destViewPub,
+                                                 const CryptoPQ::DsaPublicKey& destSpendPub,
+                                                 uint64_t amount, uint64_t minimumFee,
+                                                 uint64_t mixin, uint64_t& feeOut) {
+  throwIfNotInitialized();
+  throwIfStopped();
+  throwIfTrackingMode();
+
+  uint64_t bridgeFee = minimumFee != 0 ? minimumFee : m_node.getMinimalFee();
+  if (bridgeFee == 0) {
+    bridgeFee = m_currency.minimumFee();
+  }
+  if (amount > std::numeric_limits<uint64_t>::max() - bridgeFee) {
+    throw std::runtime_error("bridge amount plus fee overflows");
+  }
+  const uint64_t targetWithFee = amount + bridgeFee;
+
+  // Collect unlocked legacy key outputs across all addresses, each paired with
+  // the owning address's keys; select largest-first to cover amount + fee.
+  struct Candidate { TransactionOutputInformation out; AccountKeys keys; };
+  std::vector<Candidate> candidates;
+  const auto& index = m_walletsContainer.get<RandomAccessIndex>();
+  if (index.empty()) {
+    throw std::runtime_error("wallet has no addresses");
+  }
+  for (const auto& rec : index) {
+    if (rec.container == nullptr || rec.spendSecretKey == NULL_SECRET_KEY) {
+      continue;
+    }
+    AccountKeys ak;
+    ak.address.spendPublicKey = rec.spendPublicKey;
+    ak.address.viewPublicKey = m_viewPublicKey;
+    ak.spendSecretKey = rec.spendSecretKey;
+    ak.viewSecretKey = m_viewSecretKey;
+
+    std::vector<TransactionOutputInformation> outs;
+    rec.container->getOutputs(outs, ITransfersContainer::IncludeKeyUnlocked);
+    for (const auto& o : outs) {
+      if (o.type == TransactionTypes::OutputType::Key) {
+        candidates.push_back(Candidate{o, ak});
+      }
+    }
+  }
+  std::sort(candidates.begin(), candidates.end(),
+            [](const Candidate& a, const Candidate& b) { return a.out.amount > b.out.amount; });
+
+  // Select candidates (largest first), capping count to bound tx size.
+  const size_t kMaxBridgeInputs = 50;
+  std::vector<Candidate> chosen;
+  uint64_t sumIn = 0;
+  for (const auto& c : candidates) {
+    if (chosen.size() >= kMaxBridgeInputs) break;
+    chosen.push_back(c);
+    sumIn += c.out.amount;
+    if (sumIn >= targetWithFee) break;
+  }
+  if (sumIn < targetWithFee) {
+    throw std::runtime_error("insufficient unlocked legacy balance to bridge");
+  }
+
+  // Resolve ring decoys (mixin>0). Same scheme as the classical send path; on a
+  // sparse chain we use whatever decoys the node returns rather than failing.
+  std::vector<COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::outs_for_amount> mixOuts;
+  if (mixin > 0) {
+    std::vector<uint64_t> amounts;
+    amounts.reserve(chosen.size());
+    for (const auto& c : chosen) amounts.push_back(c.out.amount);
+    std::promise<std::error_code> promise;
+    auto future = promise.get_future();
+    m_node.getRandomOutsByAmounts(std::move(amounts), mixin + 1, mixOuts,
+                                  [&promise](std::error_code ec) { promise.set_value(ec); });
+    if (future.get()) {
+      mixOuts.clear();
+    }
+  }
+
+  std::vector<BridgeLegacyInput> selected;
+  for (size_t i = 0; i < chosen.size(); ++i) {
+    const TransactionOutputInformation& td = chosen[i].out;
+    BridgeLegacyInput bi;
+    bi.senderKeys = chosen[i].keys;
+    bi.keyInfo.amount = td.amount;
+    if (i < mixOuts.size()) {
+      std::sort(mixOuts[i].outs.begin(), mixOuts[i].outs.end(),
+                [](const COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::out_entry& a,
+                   const COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::out_entry& b) {
+                  return a.global_amount_index < b.global_amount_index;
+                });
+      for (auto& oe : mixOuts[i].outs) {
+        if (oe.global_amount_index == td.globalOutputIndex) continue;
+        bi.keyInfo.outputs.push_back(
+            TransactionTypes::GlobalOutput{oe.out_key, static_cast<uint32_t>(oe.global_amount_index)});
+        if (bi.keyInfo.outputs.size() >= mixin) break;
+      }
+    }
+    auto it = std::find_if(bi.keyInfo.outputs.begin(), bi.keyInfo.outputs.end(),
+                           [&](const TransactionTypes::GlobalOutput& g) {
+                             return g.outputIndex >= td.globalOutputIndex;
+                           });
+    auto realIt = bi.keyInfo.outputs.insert(
+        it, TransactionTypes::GlobalOutput{td.outputKey, td.globalOutputIndex});
+    bi.keyInfo.realOutput.transactionPublicKey = td.transactionPublicKey;
+    bi.keyInfo.realOutput.transactionIndex =
+        static_cast<size_t>(realIt - bi.keyInfo.outputs.begin());
+    bi.keyInfo.realOutput.outputInTransaction = td.outputInTransaction;
+    selected.push_back(std::move(bi));
+  }
+
+  AccountPublicAddress changeAddress{index[0].spendPublicKey, m_viewPublicKey};
+  auto buildWith = [&](uint64_t change) {
+    std::vector<PqSendOutput> outsPq;
+    outsPq.push_back(PqSendOutput{destViewPub, destSpendPub, amount});
+    std::vector<BridgeKeyOutput> outsKey;
+    if (change > 0) {
+      outsKey.push_back(BridgeKeyOutput{changeAddress, change});
+    }
+    return buildBridgeTransaction(selected, outsPq, outsKey);
+  };
+
+  Transaction draft = buildWith(sumIn - amount);
+  uint64_t fee = bridgeFee + m_currency.getFeePerByte(draft.extra.size(), bridgeFee);
+  if (fee < bridgeFee || amount > std::numeric_limits<uint64_t>::max() - fee) {
+    throw std::runtime_error("bridge amount plus fee overflows");
+  }
+  if (sumIn < amount + fee) {
+    throw std::runtime_error("insufficient unlocked legacy balance to cover the bridge fee");
+  }
+  feeOut = fee;
+  return buildWith(sumIn - amount - fee);
+}
+
 void WalletGreen::startBlockchainSynchronizer() {
   if (!m_walletsContainer.empty() && !m_blockchainSynchronizerStarted) {
     m_logger(DEBUGGING) << "Starting BlockchainSynchronizer";
@@ -3249,24 +3615,26 @@ void WalletGreen::startBlockchainSynchronizer() {
 void WalletGreen::stopBlockchainSynchronizer() {
   if (m_blockchainSynchronizerStarted) {
     m_logger(DEBUGGING) << "Stopping BlockchainSynchronizer";
-    System::RemoteContext<void> stopContext(m_dispatcher, [this] () {
-      m_blockchainSynchronizer.stop();
-    });
-    stopContext.get();
-
+    m_blockchainSynchronizer.stop();
     m_blockchainSynchronizerStarted = false;
   }
 }
 
 void WalletGreen::addUnconfirmedTransaction(const ITransactionReader& transaction) {
-  System::RemoteContext<std::error_code> context(m_dispatcher, [this, &transaction] {
-    return m_blockchainSynchronizer.addUnconfirmedTransaction(transaction).get();
-  });
+  try {
+    auto addUnconfirmedTransactionCompleted = std::promise<std::error_code>();
+    auto addUnconfirmedTransactionWaitFuture = addUnconfirmedTransactionCompleted.get_future();
 
-  auto ec = context.get();
-  if (ec) {
-    m_logger(ERROR, BRIGHT_RED) << "Failed to add unconfirmed transaction: " << ec << ", " << ec.message();
-    throw std::system_error(ec, "Failed to add unconfirmed transaction");
+    addUnconfirmedTransactionWaitFuture = m_blockchainSynchronizer.addUnconfirmedTransaction(transaction);
+
+    std::error_code ec = addUnconfirmedTransactionWaitFuture.get();
+
+    if (ec) {
+      m_logger(ERROR, BRIGHT_RED) << "Failed to add unconfirmed transaction: " << ec << ", " << ec.message();
+      throw std::system_error(ec, "Failed to add unconfirmed transaction");
+    }
+  } catch (const std::exception& e) {
+    m_logger(ERROR, BRIGHT_RED) << "Failed to add unconfirmed transaction: " << e.what();
   }
 
   m_logger(DEBUGGING) << "Unconfirmed transaction added to BlockchainSynchronizer, hash " << transaction.getTransactionHash();
@@ -3297,7 +3665,8 @@ void WalletGreen::updateBalance(CryptoNote::ITransfersContainer* container) {
     m_actualBalance += actual - it->actualBalance;
     updated = true;
   } else if (it->actualBalance > actual) {
-    m_actualBalance -= it->actualBalance - actual;
+    uint64_t delta = it->actualBalance - actual;
+    m_actualBalance = (m_actualBalance >= delta) ? m_actualBalance - delta : 0;
     updated = true;
   }
 
@@ -3305,7 +3674,8 @@ void WalletGreen::updateBalance(CryptoNote::ITransfersContainer* container) {
     m_pendingBalance += pending - it->pendingBalance;
     updated = true;
   } else if (it->pendingBalance > pending) {
-    m_pendingBalance -= it->pendingBalance - pending;
+    uint64_t delta = it->pendingBalance - pending;
+    m_pendingBalance = (m_pendingBalance >= delta) ? m_pendingBalance - delta : 0;
     updated = true;
   }
 
@@ -3361,7 +3731,7 @@ CryptoNote::AccountPublicAddress WalletGreen::parseAddress(const std::string& ad
 
 void WalletGreen::throwIfStopped() const {
   if (m_stopped) {
-    m_logger(ERROR, BRIGHT_RED) << "WalletGreen is already stopped";
+    m_logger(DEBUGGING, BRIGHT_RED) << "WalletGreen is already stopped";
     throw std::system_error(make_error_code(error::OPERATION_CANCELLED));
   }
 }
@@ -3380,284 +3750,6 @@ WalletGreen::WalletTrackingMode WalletGreen::getTrackingMode() const {
 
   return m_walletsContainer.get<RandomAccessIndex>().begin()->spendSecretKey == NULL_SECRET_KEY ?
         WalletTrackingMode::TRACKING : WalletTrackingMode::NOT_TRACKING;
-}
-
-size_t WalletGreen::createFusionTransaction(uint64_t threshold, uint16_t mixin,
-  const std::vector<std::string>& sourceAddresses, const std::string& destinationAddress) {
-
-  size_t id = WALLET_INVALID_TRANSACTION_ID;
-  Tools::ScopeExit releaseContext([this, &id] {
-    m_dispatcher.yield();
-
-    if (id != WALLET_INVALID_TRANSACTION_ID) {
-      auto& tx = m_transactions[id];
-      m_logger(INFO, BRIGHT_WHITE) << "Fusion transaction created and sent, ID " << id <<
-        ", hash " << m_transactions[id].hash <<
-        ", state " << tx.state <<
-        ", transfers: " << TransferListFormatter(m_currency, getTransactionTransfersRange(id));
-    }
-  });
-
-  System::EventLock lk(m_readyEvent);
-
-  m_logger(INFO, BRIGHT_WHITE) << "createFusionTransaction" <<
-    ", from " << Common::makeContainerFormatter(sourceAddresses) <<
-    ", to '" << destinationAddress << '\'' <<
-    ", threshold " << m_currency.formatAmount(threshold) <<
-    ", mixin " << mixin;
-
-  throwIfNotInitialized();
-  throwIfTrackingMode();
-  throwIfStopped();
-
-  validateSourceAddresses(sourceAddresses);
-  validateChangeDestination(sourceAddresses, destinationAddress, true);
-
-  const size_t MAX_FUSION_OUTPUT_COUNT = 4;
-
-  if (threshold <= m_currency.defaultDustThreshold()) {
-    m_logger(ERROR, BRIGHT_RED) << "Fusion transaction threshold is too small. Threshold " << m_currency.formatAmount(threshold) <<
-      ", minimum threshold " << m_currency.formatAmount(m_currency.defaultDustThreshold() + 1);
-    throw std::runtime_error("Threshold must be greater than " + m_currency.formatAmount(m_currency.defaultDustThreshold()));
-  }
-
-  if (m_walletsContainer.get<RandomAccessIndex>().size() == 0) {
-    m_logger(ERROR, BRIGHT_RED) << "The container doesn't have any wallets";
-    throw std::runtime_error("You must have at least one address");
-  }
-
-  size_t estimatedFusionInputsCount = m_currency.getApproximateMaximumInputCount(m_currency.fusionTxMaxSize(), MAX_FUSION_OUTPUT_COUNT, mixin);
-  if (estimatedFusionInputsCount < m_currency.fusionTxMinInputCount()) {
-    m_logger(ERROR, BRIGHT_RED) << "Fusion transaction mixin is too big " << mixin;
-    throw std::system_error(make_error_code(error::MIXIN_COUNT_TOO_BIG));
-  }
-
-  auto fusionInputs = pickRandomFusionInputs(sourceAddresses, threshold, m_currency.fusionTxMinInputCount(), estimatedFusionInputsCount);
-  if (fusionInputs.size() < m_currency.fusionTxMinInputCount()) {
-    //nothing to optimize
-    m_logger(WARNING, BRIGHT_YELLOW) << "Fusion transaction not created: nothing to optimize, threshold " << m_currency.formatAmount(threshold);
-    return WALLET_INVALID_TRANSACTION_ID;
-  }
-
-  typedef CryptoNote::COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::outs_for_amount outs_for_amount;
-  std::vector<outs_for_amount> mixinResult;
-  if (mixin != 0) {
-    requestMixinOuts(fusionInputs, mixin, mixinResult);
-  }
-
-  std::vector<InputInfo> keysInfo;
-  prepareInputs(fusionInputs, mixinResult, mixin, keysInfo);
-
-  AccountPublicAddress destination = getChangeDestination(destinationAddress, sourceAddresses);
-  m_logger(DEBUGGING) << "Destination address " << m_currency.accountAddressAsString(destination);
-
-  std::unique_ptr<ITransaction> fusionTransaction;
-  size_t transactionSize;
-  int round = 0;
-  do {
-    if (round != 0) {
-      fusionInputs.pop_back();
-      keysInfo.pop_back();
-    }
-
-    uint64_t inputsAmount = std::accumulate(fusionInputs.begin(), fusionInputs.end(), static_cast<uint64_t>(0), [] (uint64_t amount, const OutputToTransfer& input) {
-      return amount + input.out.amount;
-    });
-
-    ReceiverAmounts decomposedOutputs = decomposeFusionOutputs(destination, inputsAmount);
-    assert(decomposedOutputs.amounts.size() <= MAX_FUSION_OUTPUT_COUNT);
-
-	Crypto::SecretKey txkey;
-    fusionTransaction = makeTransaction(std::vector<ReceiverAmounts>{decomposedOutputs}, keysInfo, "", 0, txkey);
-
-    transactionSize = getTransactionSize(*fusionTransaction);
-
-    ++round;
-  } while (transactionSize > m_currency.fusionTxMaxSize() && fusionInputs.size() >= m_currency.fusionTxMinInputCount());
-
-  if (fusionInputs.size() < m_currency.fusionTxMinInputCount()) {
-    m_logger(ERROR, BRIGHT_RED) << "Unable to create fusion transaction";
-    throw std::runtime_error("Unable to create fusion transaction");
-  }
-
-  id = validateSaveAndSendTransaction(*fusionTransaction, {}, true, true);
-  return id;
-}
-
-WalletGreen::ReceiverAmounts WalletGreen::decomposeFusionOutputs(const AccountPublicAddress& address, uint64_t inputsAmount) {
-  WalletGreen::ReceiverAmounts outputs;
-  outputs.receiver = address;
-
-  decomposeAmount(inputsAmount, 0, outputs.amounts);
-  std::sort(outputs.amounts.begin(), outputs.amounts.end());
-
-  return outputs;
-}
-
-bool WalletGreen::isFusionTransaction(size_t transactionId) const {
-  throwIfNotInitialized();
-  throwIfStopped();
-
-  if (m_transactions.size() <= transactionId) {
-    m_logger(ERROR, BRIGHT_RED) << "Failed to check transaction: invalid index " << transactionId << ". Number of transactions: " << m_transactions.size();
-    throw std::system_error(make_error_code(CryptoNote::error::INDEX_OUT_OF_RANGE));
-  }
-
-  auto isFusionIter = m_fusionTxsCache.find(transactionId);
-  if (isFusionIter != m_fusionTxsCache.end()) {
-    return isFusionIter->second;
-  }
-
-  bool result = isFusionTransaction(m_transactions.get<RandomAccessIndex>()[transactionId]);
-  m_fusionTxsCache.emplace(transactionId, result);
-  return result;
-}
-
-bool WalletGreen::isFusionTransaction(const WalletTransaction& walletTx) const {
-  if (walletTx.fee != 0) {
-    return false;
-  }
-
-  uint64_t inputsSum = 0;
-  uint64_t outputsSum = 0;
-  std::vector<uint64_t> outputsAmounts;
-  std::vector<uint64_t> inputsAmounts;
-  TransactionInformation txInfo;
-  bool gotTx = false;
-  const auto& walletsIndex = m_walletsContainer.get<RandomAccessIndex>();
-  for (const WalletRecord& wallet : walletsIndex) {
-    for (const TransactionOutputInformation& output : wallet.container->getTransactionOutputs(walletTx.hash, ITransfersContainer::IncludeTypeKey | ITransfersContainer::IncludeStateAll)) {
-      if (outputsAmounts.size() <= output.outputInTransaction) {
-        outputsAmounts.resize(output.outputInTransaction + 1, 0);
-      }
-
-      assert(output.amount != 0);
-      assert(outputsAmounts[output.outputInTransaction] == 0);
-      outputsAmounts[output.outputInTransaction] = output.amount;
-      outputsSum += output.amount;
-    }
-
-    for (const TransactionOutputInformation& input : wallet.container->getTransactionInputs(walletTx.hash, ITransfersContainer::IncludeTypeKey)) {
-      inputsSum += input.amount;
-      inputsAmounts.push_back(input.amount);
-    }
-
-    if (!gotTx) {
-      gotTx = wallet.container->getTransactionInformation(walletTx.hash, txInfo);
-    }
-  }
-
-  if (!gotTx) {
-    return false;
-  }
-
-  if (outputsSum != inputsSum || outputsSum != txInfo.totalAmountOut || inputsSum != txInfo.totalAmountIn) {
-    return false;
-  } else {
-    return m_currency.isFusionTransaction(inputsAmounts, outputsAmounts, 0, txInfo.blockHeight); //size = 0 here because can't get real size of tx in wallet.
-  }
-}
-
-IFusionManager::EstimateResult WalletGreen::estimate(uint64_t threshold, const std::vector<std::string>& sourceAddresses) const {
-  System::EventLock lk(m_readyEvent);
-
-  throwIfNotInitialized();
-  throwIfStopped();
-
-  validateSourceAddresses(sourceAddresses);
-
-  IFusionManager::EstimateResult result{0, 0};
-  auto walletOuts = sourceAddresses.empty() ? pickWalletsWithMoney() : pickWallets(sourceAddresses);
-  std::array<size_t, std::numeric_limits<uint64_t>::digits10 + 1> bucketSizes;
-  bucketSizes.fill(0);
-  for (size_t walletIndex = 0; walletIndex < walletOuts.size(); ++walletIndex) {
-    for (auto& out : walletOuts[walletIndex].outs) {
-      uint8_t powerOfTen = 0;
-      if (m_currency.isAmountApplicableInFusionTransactionInput(out.amount, threshold, powerOfTen)) {
-        assert(powerOfTen < std::numeric_limits<uint64_t>::digits10 + 1);
-        bucketSizes[powerOfTen]++;
-      }
-    }
-
-    result.totalOutputCount += walletOuts[walletIndex].outs.size();
-  }
-
-  for (auto bucketSize : bucketSizes) {
-    if (bucketSize >= m_currency.fusionTxMinInputCount()) {
-      result.fusionReadyCount += bucketSize;
-    }
-  }
-
-  return result;
-}
-
-std::vector<WalletGreen::OutputToTransfer> WalletGreen::pickRandomFusionInputs(const std::vector<std::string>& addresses,
-  uint64_t threshold, size_t minInputCount, size_t maxInputCount) {
-
-  std::vector<WalletGreen::OutputToTransfer> allFusionReadyOuts;
-  auto walletOuts = addresses.empty() ? pickWalletsWithMoney() : pickWallets(addresses);
-  std::array<size_t, std::numeric_limits<uint64_t>::digits10 + 1> bucketSizes;
-  bucketSizes.fill(0);
-  for (size_t walletIndex = 0; walletIndex < walletOuts.size(); ++walletIndex) {
-    for (auto& out : walletOuts[walletIndex].outs) {
-      uint8_t powerOfTen = 0;
-      if (m_currency.isAmountApplicableInFusionTransactionInput(out.amount, threshold, powerOfTen)) {
-        allFusionReadyOuts.push_back({std::move(out), walletOuts[walletIndex].wallet});
-        assert(powerOfTen < std::numeric_limits<uint64_t>::digits10 + 1);
-        bucketSizes[powerOfTen]++;
-      }
-    }
-  }
-
-  //now, pick the bucket
-  std::vector<uint8_t> bucketNumbers(bucketSizes.size());
-  std::iota(bucketNumbers.begin(), bucketNumbers.end(), 0);
-  std::shuffle(bucketNumbers.begin(), bucketNumbers.end(), Random::generator());
-  size_t bucketNumberIndex = 0;
-  for (; bucketNumberIndex < bucketNumbers.size(); ++bucketNumberIndex) {
-    if (bucketSizes[bucketNumbers[bucketNumberIndex]] >= minInputCount) {
-      break;
-    }
-  }
-  
-  if (bucketNumberIndex == bucketNumbers.size()) {
-    return {};
-  }
-
-  size_t selectedBucket = bucketNumbers[bucketNumberIndex];
-  assert(selectedBucket < std::numeric_limits<uint64_t>::digits10 + 1);
-  assert(bucketSizes[selectedBucket] >= minInputCount);
-  uint64_t lowerBound = 1;
-  for (size_t i = 0; i < selectedBucket; ++i) {
-    lowerBound *= 10;
-  }
-   
-  uint64_t upperBound = selectedBucket == std::numeric_limits<uint64_t>::digits10 ? UINT64_MAX : lowerBound * 10;
-  std::vector<WalletGreen::OutputToTransfer> selectedOuts;
-  selectedOuts.reserve(bucketSizes[selectedBucket]);
-  for (size_t outIndex = 0; outIndex < allFusionReadyOuts.size(); ++outIndex) {
-    if (allFusionReadyOuts[outIndex].out.amount >= lowerBound && allFusionReadyOuts[outIndex].out.amount < upperBound) {
-      selectedOuts.push_back(std::move(allFusionReadyOuts[outIndex]));
-    }
-  }
-
-  assert(selectedOuts.size() >= minInputCount);
-
-  auto outputsSortingFunction = [](const OutputToTransfer& l, const OutputToTransfer& r) { return l.out.amount < r.out.amount; };
-  if (selectedOuts.size() <= maxInputCount) {
-    std::sort(selectedOuts.begin(), selectedOuts.end(), outputsSortingFunction);
-    return selectedOuts;
-  }
-
-  ShuffleGenerator<size_t> generator(selectedOuts.size());
-  std::vector<WalletGreen::OutputToTransfer> trimmedSelectedOuts;
-  trimmedSelectedOuts.reserve(maxInputCount);
-  for (size_t i = 0; i < maxInputCount; ++i) {
-    trimmedSelectedOuts.push_back(std::move(selectedOuts[generator()]));
-  }
-
-  std::sort(trimmedSelectedOuts.begin(), trimmedSelectedOuts.end(), outputsSortingFunction);
-  return trimmedSelectedOuts;  
 }
 
 std::vector<TransactionsInBlockInfo> WalletGreen::getTransactionsInBlocks(uint32_t blockIndex, size_t count) const {
@@ -3901,7 +3993,6 @@ size_t WalletGreen::getTxSize(const TransactionParameters &sendingTransaction)
 
   std::vector<WalletOuts> wallets;
   if (!sendingTransaction.sourceAddresses.empty()) {
-
     wallets = pickWallets(sendingTransaction.sourceAddresses);
   } else {
     wallets = pickWalletsWithMoney();

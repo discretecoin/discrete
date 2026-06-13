@@ -1,7 +1,8 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 // Copyright (c) 2018, The TurtleCoin Developers
-// Copyright (c) 2018-2019 The Cash2 developers
-// Copyright (c) 2016-2020 The Karbo developers
+// Copyright (c) 2018-2019, The Cash2 developers
+// Copyright (c) 2021-2023, The Talleo developers
+// Copyright (c) 2016-2026, The Karbo developers
 //
 // This file is part of Karbo.
 //
@@ -32,17 +33,18 @@
 
 namespace PaymentService {
 
-PaymentServiceJsonRpcServer::PaymentServiceJsonRpcServer(System::Dispatcher& sys, System::Event& stopEvent, WalletService& service, Logging::ILogger& loggerGroup) 
+PaymentServiceJsonRpcServer::PaymentServiceJsonRpcServer(System::Dispatcher* sys, System::Event* stopEvent, WalletService& service, Logging::ILogger& loggerGroup) 
   : JsonRpcServer(sys, stopEvent, loggerGroup)
   , service(service)
   , logger(loggerGroup, "PaymentServiceJsonRpcServer")
 {
   handlers.emplace("save", jsonHandler<Save::Request, Save::Response>(std::bind(&PaymentServiceJsonRpcServer::handleSave, this, std::placeholders::_1, std::placeholders::_2)));
-  handlers.emplace("export", jsonHandler<Export::Request, Export::Response>(std::bind(&PaymentServiceJsonRpcServer::handleExport, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("reset", jsonHandler<Reset::Request, Reset::Response>(std::bind(&PaymentServiceJsonRpcServer::handleReset, this, std::placeholders::_1, std::placeholders::_2)));
+  handlers.emplace("export", jsonHandler<Export::Request, Export::Response>(std::bind(&PaymentServiceJsonRpcServer::handleExport, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("createAddress", jsonHandler<CreateAddress::Request, CreateAddress::Response>(std::bind(&PaymentServiceJsonRpcServer::handleCreateAddress, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("createAddressList", jsonHandler<CreateAddressList::Request, CreateAddressList::Response>(std::bind(&PaymentServiceJsonRpcServer::handleCreateAddressList, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("deleteAddress", jsonHandler<DeleteAddress::Request, DeleteAddress::Response>(std::bind(&PaymentServiceJsonRpcServer::handleDeleteAddress, this, std::placeholders::_1, std::placeholders::_2)));
+  handlers.emplace("hasAddress", jsonHandler<HasAddress::Request, HasAddress::Response>(std::bind(&PaymentServiceJsonRpcServer::handleHasAddress, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("getSpendKeys", jsonHandler<GetSpendKeys::Request, GetSpendKeys::Response>(std::bind(&PaymentServiceJsonRpcServer::handleGetSpendKeys, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("getBalance", jsonHandler<GetBalance::Request, GetBalance::Response>(std::bind(&PaymentServiceJsonRpcServer::handleGetBalance, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("getBlockHashes", jsonHandler<GetBlockHashes::Request, GetBlockHashes::Response>(std::bind(&PaymentServiceJsonRpcServer::handleGetBlockHashes, this, std::placeholders::_1, std::placeholders::_2)));
@@ -62,12 +64,11 @@ PaymentServiceJsonRpcServer::PaymentServiceJsonRpcServer(System::Dispatcher& sys
   handlers.emplace("getStatus", jsonHandler<GetStatus::Request, GetStatus::Response>(std::bind(&PaymentServiceJsonRpcServer::handleGetStatus, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("getAddresses", jsonHandler<GetAddresses::Request, GetAddresses::Response>(std::bind(&PaymentServiceJsonRpcServer::handleGetAddresses, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("getAddressesCount", jsonHandler<GetAddressesCount::Request, GetAddressesCount::Response>(std::bind(&PaymentServiceJsonRpcServer::handleGetAddressesCount, this, std::placeholders::_1, std::placeholders::_2)));
-  handlers.emplace("sendFusionTransaction", jsonHandler<SendFusionTransaction::Request, SendFusionTransaction::Response>(std::bind(&PaymentServiceJsonRpcServer::handleSendFusionTransaction, this, std::placeholders::_1, std::placeholders::_2)));
-  handlers.emplace("estimateFusion", jsonHandler<EstimateFusion::Request, EstimateFusion::Response>(std::bind(&PaymentServiceJsonRpcServer::handleEstimateFusion, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("validateAddress", jsonHandler<ValidateAddress::Request, ValidateAddress::Response>(std::bind(&PaymentServiceJsonRpcServer::handleValidateAddress, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("getReserveProof", jsonHandler<GetReserveProof::Request, GetReserveProof::Response>(std::bind(&PaymentServiceJsonRpcServer::handleGetReserveProof, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("signMessage", jsonHandler<SignMessage::Request, SignMessage::Response>(std::bind(&PaymentServiceJsonRpcServer::handleSignMessage, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("verifyMessage", jsonHandler<VerifyMessage::Request, VerifyMessage::Response>(std::bind(&PaymentServiceJsonRpcServer::handleVerifyMessage, this, std::placeholders::_1, std::placeholders::_2)));
+
 }
 
 void PaymentServiceJsonRpcServer::processJsonRpcRequest(const Common::JsonValue& req, Common::JsonValue& resp) {
@@ -113,26 +114,24 @@ std::error_code PaymentServiceJsonRpcServer::handleSave(const Save::Request& /*r
   return service.saveWalletNoThrow();
 }
 
-std::error_code PaymentServiceJsonRpcServer::handleExport(const Export::Request& request, Export::Response& /*response*/) {
-  return service.exportWallet(request.fileName);
-}
-
 std::error_code PaymentServiceJsonRpcServer::handleReset(const Reset::Request& request, Reset::Response& response) {
   if (request.viewSecretKey.empty()) {
     if (request.scanHeight != std::numeric_limits<uint32_t>::max()) {
       return service.resetWallet(request.scanHeight);
-    }
-    else {
+    } else {
       return service.resetWallet();
     }
   } else {
     if (request.scanHeight != std::numeric_limits<uint32_t>::max()) {
       return service.replaceWithNewWallet(request.viewSecretKey, request.scanHeight);
-    }
-    else {
+    } else {
       return service.replaceWithNewWallet(request.viewSecretKey);
     }
   }
+}
+
+std::error_code PaymentServiceJsonRpcServer::handleExport(const Export::Request& request, Export::Response& /*response*/) {
+  return service.exportWallet(request.fileName);
 }
 
 std::error_code PaymentServiceJsonRpcServer::handleCreateAddress(const CreateAddress::Request& request, CreateAddress::Response& response) {
@@ -141,15 +140,13 @@ std::error_code PaymentServiceJsonRpcServer::handleCreateAddress(const CreateAdd
   } else if (!request.spendSecretKey.empty()) {
     if (request.scanHeight != std::numeric_limits<uint32_t>::max()) {
       return service.createAddress(request.spendSecretKey, request.scanHeight, response.address);
-    }
-    else {
+    } else {
       return service.createAddress(request.spendSecretKey, request.reset, response.address);
     }
   } else {
     if (request.scanHeight != std::numeric_limits<uint32_t>::max()) {
       return service.createTrackingAddress(request.spendPublicKey, request.scanHeight, response.address);
-    }
-    else {
+    } else {
       return service.createTrackingAddress(request.spendPublicKey, response.address);
     }
   }
@@ -158,14 +155,17 @@ std::error_code PaymentServiceJsonRpcServer::handleCreateAddress(const CreateAdd
 std::error_code PaymentServiceJsonRpcServer::handleCreateAddressList(const CreateAddressList::Request& request, CreateAddressList::Response& response) {
   if (request.scanHeights.size() != 0) {
     return service.createAddressList(request.spendSecretKeys, request.scanHeights, response.addresses);
-  }
-  else {
+  } else {
     return service.createAddressList(request.spendSecretKeys, request.reset, response.addresses);
   }
 }
 
 std::error_code PaymentServiceJsonRpcServer::handleDeleteAddress(const DeleteAddress::Request& request, DeleteAddress::Response& response) {
   return service.deleteAddress(request.address);
+}
+
+std::error_code PaymentServiceJsonRpcServer::handleHasAddress(const HasAddress::Request& request, HasAddress::Response& response) {
+  return service.hasAddress(request.address, response.isOurs);
 }
 
 std::error_code PaymentServiceJsonRpcServer::handleGetSpendKeys(const GetSpendKeys::Request& request, GetSpendKeys::Response& response) {
@@ -225,11 +225,10 @@ std::error_code PaymentServiceJsonRpcServer::handleSignMessage(const SignMessage
     std::vector<std::string> addresses;
     service.getAddresses(addresses);
     response.address = addresses[0];
-  }
-  else {
+  } else {
     response.address = request.address;
   }
-
+  
   return service.signMessage(request.message, request.address, response.signature);
 }
 
@@ -282,12 +281,5 @@ std::error_code PaymentServiceJsonRpcServer::handleGetAddressesCount(const GetAd
   return service.getAddressesCount(response.addresses_count);
 }
 
-std::error_code PaymentServiceJsonRpcServer::handleSendFusionTransaction(const SendFusionTransaction::Request& request, SendFusionTransaction::Response& response) {
-  return service.sendFusionTransaction(request.threshold, request.anonymity, request.addresses, request.destinationAddress, response.transactionHash);
 }
-
-std::error_code PaymentServiceJsonRpcServer::handleEstimateFusion(const EstimateFusion::Request& request, EstimateFusion::Response& response) {
-  return service.estimateFusion(request.threshold, request.addresses, response.fusionReadyCount, response.totalOutputCount);
-}
-
-}
+  

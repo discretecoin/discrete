@@ -1,5 +1,4 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
-// Copyright (c) 2016-2019, The Karbo developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers, The Karbowanec developers
 //
 // This file is part of Karbo.
 //
@@ -25,12 +24,12 @@
 
 namespace CryptoNote
 {
-	namespace
-	{
-		boost::uuids::uuid name;
-		boost::uuids::name_generator gen(name);
-		boost::uuids::uuid u = gen(GENESIS_COINBASE_TX_HEX);
-	}
-	const static boost::uuids::uuid BYTECOIN_NETWORK = u;
+  namespace
+  {
+    boost::uuids::uuid name;
+    boost::uuids::name_generator gen(name);
+    boost::uuids::uuid u = gen(GENESIS_COINBASE_TX_HEX);
+  }
+  const static boost::uuids::uuid CRYPTONOTE_NETWORK = u;
 }
 

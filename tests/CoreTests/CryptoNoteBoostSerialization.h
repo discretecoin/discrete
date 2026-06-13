@@ -1,4 +1,4 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 //
 // This file is part of Karbo.
 //
@@ -67,17 +67,6 @@ namespace boost
     a & reinterpret_cast<char (&)[sizeof(Crypto::Hash)]>(x);
   }
   
-  template <class Archive> void serialize(Archive& archive, CryptoNote::MultisignatureInput &output, unsigned int version) {
-    archive & output.amount;
-    archive & output.signatureCount;
-    archive & output.outputIndex;
-  }
-
-  template <class Archive> void serialize(Archive& archive, CryptoNote::MultisignatureOutput &output, unsigned int version) {
-    archive & output.keys;
-    archive & output.requiredSignatureCount;
-  }
-
   template <class Archive>
   inline void serialize(Archive &a, CryptoNote::KeyOutput &x, const boost::serialization::version_type ver)
   {
@@ -119,9 +108,8 @@ namespace boost
 
 
   template <class Archive>
-  inline void serialize(Archive &a, CryptoNote::BlockTemplate &b, const boost::serialization::version_type ver)
+  inline void serialize(Archive &a, CryptoNote::Block &b, const boost::serialization::version_type ver)
   {
-    std::cout << "boooooooooooost serialize" << std::endl;
     a & b.majorVersion;
     a & b.minorVersion;
     a & b.timestamp;

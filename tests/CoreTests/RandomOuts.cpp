@@ -1,4 +1,4 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 //
 // This file is part of Karbo.
 //
@@ -19,75 +19,68 @@
 #include "TestGenerator.h"
 #include "Rpc/CoreRpcServerCommandsDefinitions.h"
 
+#include <algorithm>
+
 GetRandomOutputs::GetRandomOutputs() {
   REGISTER_CALLBACK_METHOD(GetRandomOutputs, checkHalfUnlocked);
   REGISTER_CALLBACK_METHOD(GetRandomOutputs, checkFullyUnlocked);
 }
 
 bool GetRandomOutputs::generate(std::vector<test_event_entry>& events) const {
-  TestGenerator generator(*m_currency, events);
+  TestGenerator generator(m_currency, events);
+  CryptoNote::AccountBase recipient;
+  recipient.generate();
 
-  generator.generateBlocks();
+  generator.generateBlocks(2 * m_currency.minedMoneyUnlockWindow());
 
   uint64_t sendAmount = MK_COINS(1);
+  const size_t outputCount = 10;
+  std::vector<CryptoNote::Transaction> txs;
+  txs.reserve(outputCount);
 
-  for (int i = 0; i < 10; ++i) {
-    auto builder =
-        generator.createTxBuilder(generator.minerAccount, generator.minerAccount, sendAmount, m_currency->minimumFee());
+  for (size_t i = 0; i < outputCount; ++i) {
+    auto builder = generator.createTxBuilder(
+      generator.minerAccount, recipient, sendAmount, m_currency.minimumFee());
 
     auto tx = builder.build();
+    txs.push_back(tx);
     generator.addEvent(tx);
+  }
+
+  for (const auto& tx : txs) {
     generator.makeNextBlock(tx);
   }
 
   // unlock half of the money
-  generator.generateBlocks(m_currency->minedMoneyUnlockWindow() / 2 + 1);
+  generator.generateBlocks(m_currency.minedMoneyUnlockWindow() / 2);
   generator.addCallback("checkHalfUnlocked");
 
   // unlock the remaining part
-  generator.generateBlocks(m_currency->minedMoneyUnlockWindow() / 2);
+  generator.generateBlocks(m_currency.minedMoneyUnlockWindow() / 2);
   generator.addCallback("checkFullyUnlocked");
-
+  
   return true;
 }
 
-bool GetRandomOutputs::request(CryptoNote::Core& c, uint64_t ramount, size_t mixin,
-                               CryptoNote::COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_response& resp) {
-  resp.outs.clear();
+bool GetRandomOutputs::request(CryptoNote::core& c, uint64_t amount, size_t mixin, CryptoNote::COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_response& resp) {
   CryptoNote::COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_request req;
 
-  req.amounts.push_back(ramount);
-  req.outs_count = static_cast<uint16_t>(mixin);
+  req.amounts.push_back(amount);
+  req.outs_count = mixin;
 
-  for (auto amount : req.amounts) {
-    std::vector<uint32_t> globalIndexes;
-    std::vector<Crypto::PublicKey> publicKeys;
-    if (!c.getRandomOutputs(amount, static_cast<uint16_t>(req.outs_count), globalIndexes, publicKeys)) {
-      return false;
-    }
+  resp = boost::value_initialized<CryptoNote::COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_response>();
 
-    assert(globalIndexes.size() == publicKeys.size());
-    resp.outs.emplace_back(CryptoNote::COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_outs_for_amount{amount, {}});
-    for (size_t i = 0; i < globalIndexes.size(); ++i) {
-      resp.outs.back().outs.push_back({globalIndexes[i], publicKeys[i]});
-    }
-  }
-
-  return true;
+  return c.get_random_outs_for_amounts(req, resp);
 }
 
-#define CHECK(cond)                                                                                                    \
-  if ((cond) == false) {                                                                                               \
-    LOG_ERROR("Condition " #cond " failed");                                                                           \
-    return false;                                                                                                      \
-  }
+#define CHECK(cond) if((cond) == false) { LOG_ERROR("Condition "#cond" failed"); return false; }
 
-bool GetRandomOutputs::checkHalfUnlocked(CryptoNote::Core& c, size_t ev_index,
-                                         const std::vector<test_event_entry>& events) {
+bool GetRandomOutputs::checkHalfUnlocked(CryptoNote::core& c, size_t ev_index, const std::vector<test_event_entry>& events) {
   CryptoNote::COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_response resp;
 
   auto amount = MK_COINS(1);
-  auto unlocked = m_currency->minedMoneyUnlockWindow() / 2 + 1;
+  auto unlocked = m_currency.minedMoneyUnlockWindow() / 2 + 1;
+  const size_t expectedOutputs = std::min<size_t>(10, unlocked);
 
   CHECK(request(c, amount, 0, resp));
   CHECK(resp.outs.size() == 1);
@@ -97,32 +90,32 @@ bool GetRandomOutputs::checkHalfUnlocked(CryptoNote::Core& c, size_t ev_index,
   CHECK(request(c, amount, unlocked, resp));
   CHECK(resp.outs.size() == 1);
   CHECK(resp.outs[0].amount == amount);
-  CHECK(resp.outs[0].outs.size() == unlocked);
+  CHECK(resp.outs[0].outs.size() == expectedOutputs);
 
   CHECK(request(c, amount, unlocked * 2, resp));
   CHECK(resp.outs.size() == 1);
   CHECK(resp.outs[0].amount == amount);
-  CHECK(resp.outs[0].outs.size() == unlocked);
+  CHECK(resp.outs[0].outs.size() == expectedOutputs);
 
   return true;
 }
 
-bool GetRandomOutputs::checkFullyUnlocked(CryptoNote::Core& c, size_t ev_index,
-                                          const std::vector<test_event_entry>& events) {
+bool GetRandomOutputs::checkFullyUnlocked(CryptoNote::core& c, size_t ev_index, const std::vector<test_event_entry>& events) {
   CryptoNote::COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_response resp;
 
   auto amount = MK_COINS(1);
-  auto unlocked = m_currency->minedMoneyUnlockWindow() + 1;
+  auto unlocked = m_currency.minedMoneyUnlockWindow() + 1;
+  const size_t expectedOutputs = 10;
 
   CHECK(request(c, amount, unlocked, resp));
   CHECK(resp.outs.size() == 1);
   CHECK(resp.outs[0].amount == amount);
-  CHECK(resp.outs[0].outs.size() == unlocked);
+  CHECK(resp.outs[0].outs.size() == expectedOutputs);
 
   CHECK(request(c, amount, unlocked * 2, resp));
   CHECK(resp.outs.size() == 1);
   CHECK(resp.outs[0].amount == amount);
-  CHECK(resp.outs[0].outs.size() == unlocked);
+  CHECK(resp.outs[0].outs.size() == expectedOutputs);
 
   return true;
 }

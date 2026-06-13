@@ -1,5 +1,5 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
-// Copyright (c) 2016-2019, The Karbo developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2026, Karbo developers
 //
 // This file is part of Karbo.
 //
@@ -215,6 +215,7 @@ std::shared_ptr<WalletLegacyEvent> WalletUserTransactionsCache::onTransactionDel
     if (getPaymentIdFromTxExtra(extra, paymentId)) {
       popFromPaymentsIndex(paymentId, id);
     }
+
     tr.blockHeight = WALLET_LEGACY_UNCONFIRMED_TRANSACTION_HEIGHT;
     tr.timestamp = 0;
     tr.state = WalletLegacyTransactionState::Deleted;
@@ -327,21 +328,19 @@ void WalletUserTransactionsCache::getGoodItems(UserTransactions& transactions, U
 }
 
 void WalletUserTransactionsCache::getGoodTransaction(TransactionId txId, size_t offset, UserTransactions& transactions, UserTransfers& transfers) {
-	transactions.push_back(m_transactions[txId]);
-	WalletLegacyTransaction& tx = transactions.back();
+  transactions.push_back(m_transactions[txId]);
+  WalletLegacyTransaction& tx = transactions.back();
 
-	if (tx.firstTransferId == WALLET_LEGACY_INVALID_TRANSFER_ID) {
-		return;
-	}
+  if (tx.firstTransferId == WALLET_LEGACY_INVALID_TRANSFER_ID) {
+    return;
+  }
 
-	if (m_transfers.size() > 0) {
-		UserTransfers::const_iterator first = m_transfers.begin() + tx.firstTransferId;
-		UserTransfers::const_iterator last = first + tx.transferCount;
+  UserTransfers::const_iterator first = m_transfers.begin() + tx.firstTransferId;
+  UserTransfers::const_iterator last = first + tx.transferCount;
 
-		tx.firstTransferId -= offset;
+  tx.firstTransferId -= offset;
 
-		std::copy(first, last, std::back_inserter(transfers));
-	}
+  std::copy(first, last, std::back_inserter(transfers));
 }
 
 void WalletUserTransactionsCache::getTransfersByTx(TransactionId id, UserTransfers& transfers) {

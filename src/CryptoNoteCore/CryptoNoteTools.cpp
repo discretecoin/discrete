@@ -1,5 +1,4 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
-// Copyright (c) 2016-2019, The Karbo developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 //
 // This file is part of Karbo.
 //
@@ -19,10 +18,9 @@
 #include "CryptoNoteTools.h"
 #include "CryptoNoteFormatUtils.h"
 
-using namespace CryptoNote;
-
+namespace CryptoNote {
 template<>
-bool CryptoNote::toBinaryArray(const BinaryArray& object, BinaryArray& binaryArray) {
+bool toBinaryArray(const BinaryArray& object, BinaryArray& binaryArray) {
   try {
     Common::VectorOutputStream stream(binaryArray);
     BinaryOutputStreamSerializer serializer(stream);
@@ -35,45 +33,27 @@ bool CryptoNote::toBinaryArray(const BinaryArray& object, BinaryArray& binaryArr
   return true;
 }
 
-void CryptoNote::getBinaryArrayHash(const BinaryArray& binaryArray, Crypto::Hash& hash) {
+void getBinaryArrayHash(const BinaryArray& binaryArray, Crypto::Hash& hash) {
   cn_fast_hash(binaryArray.data(), binaryArray.size(), hash);
 }
 
-Crypto::Hash CryptoNote::getBinaryArrayHash(const BinaryArray& binaryArray) {
+Crypto::Hash getBinaryArrayHash(const BinaryArray& binaryArray) {
   Crypto::Hash hash;
   getBinaryArrayHash(binaryArray, hash);
   return hash;
 }
 
-uint64_t CryptoNote::getInputAmount(const Transaction& transaction) {
-  uint64_t amount = 0;
-  for (auto& input : transaction.inputs) {
-    if (input.type() == typeid(KeyInput)) {
-      amount += boost::get<KeyInput>(input).amount;
-    } else if (input.type() == typeid(MultisignatureInput)) {
-      amount += boost::get<MultisignatureInput>(input).amount;
-    }
-  }
-
-  return amount;
+uint64_t getInputAmount(const Transaction& /*transaction*/) {
+  // PQ inputs have no amount field; input amounts are resolved from prev outputs.
+  return 0;
 }
 
-std::vector<uint64_t> CryptoNote::getInputsAmounts(const Transaction& transaction) {
-  std::vector<uint64_t> inputsAmounts;
-  inputsAmounts.reserve(transaction.inputs.size());
-
-  for (auto& input: transaction.inputs) {
-    if (input.type() == typeid(KeyInput)) {
-      inputsAmounts.push_back(boost::get<KeyInput>(input).amount);
-    } else if (input.type() == typeid(MultisignatureInput)) {
-      inputsAmounts.push_back(boost::get<MultisignatureInput>(input).amount);
-    }
-  }
-
-  return inputsAmounts;
+std::vector<uint64_t> getInputsAmounts(const Transaction& /*transaction*/) {
+  // PQ inputs have no amount field; amounts are resolved from prev outputs.
+  return {};
 }
 
-uint64_t CryptoNote::getOutputAmount(const Transaction& transaction) {
+uint64_t getOutputAmount(const Transaction& transaction) {
   uint64_t amount = 0;
   for (auto& output : transaction.outputs) {
     amount += output.amount;
@@ -82,7 +62,7 @@ uint64_t CryptoNote::getOutputAmount(const Transaction& transaction) {
   return amount;
 }
 
-void CryptoNote::decomposeAmount(uint64_t amount, uint64_t dustThreshold, std::vector<uint64_t>& decomposedAmounts) {
+void decomposeAmount(uint64_t amount, uint64_t dustThreshold, std::vector<uint64_t>& decomposedAmounts) {
   decompose_amount_into_digits(amount, dustThreshold,
     [&](uint64_t amount) {
     decomposedAmounts.push_back(amount);
@@ -91,4 +71,6 @@ void CryptoNote::decomposeAmount(uint64_t amount, uint64_t dustThreshold, std::v
     decomposedAmounts.push_back(dust);
   }
   );
+}
+
 }

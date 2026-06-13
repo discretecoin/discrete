@@ -2,8 +2,6 @@
 // Copyright (c) 2014-2017 XDN developers
 // Copyright (c) 2016-2017 BXC developers
 // Copyright (c) 2017 UltraNote developers
-// Copyright (c) 2016-2019, The Karbo developers
-//
 // Distributed under the MIT/X11 software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -41,6 +39,7 @@ void BinaryInputStreamSerializer::endObject() {
 
 bool BinaryInputStreamSerializer::beginArray(size_t& size, Common::StringView name) {
   readVarintAs<uint64_t>(stream, size);
+
   return true;
 }
 
@@ -91,7 +90,9 @@ bool BinaryInputStreamSerializer::operator()(std::string& value, Common::StringV
   uint64_t size;
   readVarint(stream, size);
 
-  if (size > 0) {
+  if (size > 100 * 1024 * 1024) {
+    throw std::runtime_error("string size is too big");
+  } else if (size > 0) {
     std::vector<char> temp;
     temp.resize(size);
     checkedRead(&temp[0], size);

@@ -1,5 +1,4 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
-// Copyright (c) 2016-2019, The Karbo developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 //
 // This file is part of Karbo.
 //
@@ -20,14 +19,11 @@
 #include <cstdio>
 
 #include <boost/filesystem.hpp>
-#include <boost/algorithm/string/replace.hpp>
+#include <boost/algorithm/string.hpp>
 
 #include "CryptoNoteConfig.h"
 
 #ifdef _WIN32
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
 #include <windows.h>
 #include <shlobj.h>
 #include <strsafe.h>
@@ -38,7 +34,7 @@
 
 namespace Tools
 {
-#ifdef _WIN32
+#ifdef WIN32
   std::string get_windows_version_display_string()
   {
     typedef void (WINAPI *PGNSI)(LPSYSTEM_INFO);
@@ -278,7 +274,7 @@ std::string get_nix_version_display_string()
 
   std::string get_os_version_string()
   {
-#ifdef _WIN32
+#ifdef WIN32
     return get_windows_version_display_string();
 #else
     return get_nix_version_display_string();
@@ -287,7 +283,7 @@ std::string get_nix_version_display_string()
 
 
 
-#ifdef _WIN32
+#ifdef WIN32
   std::string get_special_folder_path(int nfolder, bool iscreate)
   {
     namespace fs = boost::filesystem;
@@ -309,6 +305,7 @@ std::string get_nix_version_display_string()
     // Mac: ~/Library/Application Support/CRYPTONOTE_NAME
     // Unix: ~/.CRYPTONOTE_NAME
     std::string config_folder;
+
 #ifdef _WIN32
     // Windows
     config_folder = get_special_folder_path(CSIDL_APPDATA, true) + "/" + CryptoNote::CRYPTONOTE_NAME;
@@ -326,12 +323,12 @@ std::string get_nix_version_display_string()
     // Mac
     std::string old_config_folder = (pathRet + "/." + CryptoNote::CRYPTONOTE_NAME);
     std::string pathRet2 = (pathRet + "/" + "Library/Application Support");
-    config_folder = (pathRet2 + "/" + CryptoNote::CRYPTONOTE_NAME);
+    config_folder =  (pathRet2 + "/" + CryptoNote::CRYPTONOTE_NAME);
     // move to correct location
     boost::filesystem::path old_path(old_config_folder);
     if (!boost::filesystem::exists(config_folder) && boost::filesystem::is_directory(old_path)) {
       if (boost::filesystem::create_directory(config_folder)) {
-        for (const auto& entry : boost::filesystem::recursive_directory_iterator{ old_path }) {
+        for (const auto& entry : boost::filesystem::recursive_directory_iterator{old_path}) {
           const auto& path = entry.path();
           auto rel_path_str = path.string();
           boost::replace_first(rel_path_str, old_path.string(), "");
@@ -345,25 +342,7 @@ std::string get_nix_version_display_string()
     config_folder = (pathRet + "/." + CryptoNote::CRYPTONOTE_NAME);
 #endif
 #endif
-
     return config_folder;
-  }
-
-  std::string getDefaultCacheFile(const std::string& dataDir) {
-    static const std::string name = "cache_file";
-
-    namespace bf = boost::filesystem;
-    bf::path dir = dataDir;
-
-    if (!bf::exists(dir) ) {
-      throw std::runtime_error("Directory \"" + dir.string() + "\" doesn't exist");
-    }
-
-    if (!bf::exists(dir/name)) {
-      throw std::runtime_error("File \"" + boost::filesystem::path(dir/name).string() + "\" doesn't exist");
-    }
-
-    return boost::filesystem::path(dir/name).string();
   }
 
   bool create_directories_if_necessary(const std::string& path)

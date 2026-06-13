@@ -1,7 +1,8 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
-// Copyright (c) 2016-2020, The Karbo developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2016-2026, The Karbo developers
+// Copyright (c) 2026, The Discrete developers
 //
-// This file is part of Karbo.
+// This file is part of Discrete — a post-quantum-only cryptocurrency.
 //
 // Karbo is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Lesser General Public License as published by
@@ -20,7 +21,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <limits>
 
 namespace CryptoNote {
 namespace parameters {
@@ -28,12 +28,23 @@ namespace parameters {
 const uint64_t DIFFICULTY_TARGET                             = 240; // seconds
 const uint64_t EXPECTED_NUMBER_OF_BLOCKS_PER_DAY             = 24 * 60 * 60 / DIFFICULTY_TARGET;
 const uint64_t CRYPTONOTE_MAX_BLOCK_NUMBER                   = 500000000;
+// Maximum unlock_time accepted at block major v6+. Plain txs at v6+ must use
+// height interpretation only and stay at or below this cap; the timestamp
+// branch is removed. Pre-v6 outputs whose tx carries an unlock_time exceeding
+// this cap (e.g. accidental Unix timestamps in seconds) are treated as
+// unlocked when referenced from a v6+ tip, recovering funds that were
+// effectively frozen by user error under the dual height/timestamp scheme.
+// 10,000,000 blocks is about 76 years from genesis at 240s/block - well beyond any
+// legitimate lock; clearly bogus for everything above it.
+const uint64_t CRYPTONOTE_MAX_UNLOCK_HEIGHT_V6               = UINT64_C(10000000);
 const size_t   CRYPTONOTE_MAX_BLOCK_BLOB_SIZE                = 500000000;
 const size_t   CRYPTONOTE_MAX_TX_SIZE                        = 1000000000;
-const uint64_t CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX       = 111;         // addresses start with "K"
-const uint64_t CRYPTONOTE_TX_PROOF_BASE58_PREFIX             = 3576968;     // (0x369488), starts with "Proof..."
-const uint64_t CRYPTONOTE_RESERVE_PROOF_BASE58_PREFIX        = 44907175188; // (0xa74ad1d14), starts with "RsrvPrf..."
-const uint64_t CRYPTONOTE_KEYS_SIGNATURE_BASE58_PREFIX       = 176103705;   // (0xa7f2119), starts with "SigV1..."
+// No legacy (ECC) address prefix — Discrete has no KeyOutput addresses.
+const uint64_t CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX       = 0x8f; // legacy alias for PQ prefix
+const uint64_t CRYPTONOTE_PUBLIC_PQ_ADDRESS_BASE58_PREFIX    = 0x8f; // PQ addresses start with "Q"
+const uint64_t CRYPTONOTE_TX_PROOF_BASE58_PREFIX             = 3576968;
+const uint64_t CRYPTONOTE_RESERVE_PROOF_BASE58_PREFIX        = 44907175188;
+const uint64_t CRYPTONOTE_KEYS_SIGNATURE_BASE58_PREFIX       = 176103705;
 const size_t   CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW          = 10;
 const size_t   CRYPTONOTE_TX_SPENDABLE_AGE                   = 6;
 const uint64_t CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT            = DIFFICULTY_TARGET * 7;
@@ -46,12 +57,10 @@ const uint64_t MONEY_SUPPLY                                  = UINT64_C(10000000
 const uint64_t COIN                                          = UINT64_C(1000000000000);
 const uint64_t TAIL_EMISSION_REWARD                          = UINT64_C(1000000000000);
 const size_t CRYPTONOTE_COIN_VERSION                         = 1;
-
 const unsigned EMISSION_SPEED_FACTOR                         = 18;
 static_assert(EMISSION_SPEED_FACTOR <= 8 * sizeof(uint64_t), "Bad EMISSION_SPEED_FACTOR");
 
 const size_t   CRYPTONOTE_REWARD_BLOCKS_WINDOW               = 100;
-
 const size_t   CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE     = 1000000; //size of block (bytes) after which reward for block calculated using block size
 const size_t   CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V2  = 1000000;
 const size_t   CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V1  = 100000;
@@ -59,15 +68,36 @@ const size_t   CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_CURRENT = CRYPTONOTE_BL
 const size_t   CRYPTONOTE_COINBASE_BLOB_RESERVED_SIZE        = 600;
 const size_t   CRYPTONOTE_DISPLAY_DECIMAL_POINT              = 12;
 
-const uint64_t MINIMUM_FEE_V1                                = UINT64_C(100000000);
-const uint64_t MINIMUM_FEE_V2                                = UINT64_C(100000000000);
-const uint64_t MINIMUM_FEE                                   = MINIMUM_FEE_V2;
+// Single fee tier — no ECC-era ladder.
+const uint64_t MINIMUM_FEE                                   = UINT64_C(10000000000);
 const uint64_t MAXIMUM_FEE                                   = UINT64_C(100000000000);
+// Legacy fee tier aliases — all map to the single Discrete fee.
+const uint64_t MINIMUM_FEE_V1                                = MINIMUM_FEE;
+const uint64_t MINIMUM_FEE_V2                                = MINIMUM_FEE;
+const uint64_t MINIMUM_FEE_V3                                = MINIMUM_FEE;
 
 const uint64_t DEFAULT_DUST_THRESHOLD                        = UINT64_C(100000000);
-const uint64_t MIN_TX_MIXIN_SIZE                             = 2;
-const uint64_t MAX_TX_MIXIN_SIZE                             = 20;
-const uint64_t MAX_EXTRA_SIZE                                = 1024;
+// No ring mixins in PQ; constants kept for compilation of legacy stubs.
+const uint64_t MIN_TX_MIXIN_SIZE                             = 0;
+const uint64_t MAX_TX_MIXIN_SIZE                             = 0;
+// All blocks are PQ blocks (v6+); only one extra-size cap applies.
+const uint64_t MAX_EXTRA_SIZE                                = 4096;
+const uint64_t MAX_EXTRA_SIZE_PQ                             = 4096;
+
+// PQ Phase 1 transaction limits (spec §1.2). These are consensus caps.
+const uint64_t MAX_PQ_INPUTS_PER_TX                          = 8;
+const uint64_t MAX_PQ_OUTPUTS_PER_TX                         = 16;
+const uint64_t MAX_PQ_TX_SIZE                                = 48 * 1024;
+// Minimum PQ fee per serialized byte (consensus floor). Placeholder — calibrate
+// with the fork parameters before mainnet activation.
+const uint64_t MIN_PQ_FEE_PER_BYTE                           = 1;
+
+// Free-fee account registration (spec §11). FREE_REG_POW_TARGET is a
+// initial low difficulty (~1/256 trials); calibrate on target mobile hardware
+// before any production fork-height commitment.
+const uint64_t FREE_REG_REF_WINDOW                          = 60;
+const uint64_t FREE_REG_PER_BLOCK                           = 100;
+const uint64_t FREE_REG_POW_TARGET                          = UINT64_C(0x00FFFFFFFFFFFFFF);
 
 const uint64_t MAX_TRANSACTION_SIZE_LIMIT                    = CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_CURRENT / 4 - CRYPTONOTE_COINBASE_BLOB_RESERVED_SIZE;
 
@@ -76,20 +106,15 @@ const size_t   DANDELION_STEMS                               = 2;
 const size_t   DANDELION_STEM_EMBARGO                        = 173;
 const uint8_t  DANDELION_STEM_TX_PROPAGATION_PROBABILITY     = 90;
 
-const size_t   DIFFICULTY_WINDOW                             = EXPECTED_NUMBER_OF_BLOCKS_PER_DAY; // blocks
-const size_t   DIFFICULTY_WINDOW_V2                          = 17;  // blocks
-const size_t   DIFFICULTY_WINDOW_V3                          = 60;  // blocks
-const size_t   DIFFICULTY_WINDOW_V4                          = 120; // blocks
-const size_t   DIFFICULTY_CUT                                = 60;  // timestamps to cut after sorting
-const size_t   DIFFICULTY_LAG                                = 15;  // !!!
-static_assert(2 * DIFFICULTY_CUT <= DIFFICULTY_WINDOW - 2, "Bad DIFFICULTY_WINDOW or DIFFICULTY_CUT");
-
-const uint64_t POISSON_CHECK_TRIGGER = 10; // Reorg size that triggers poisson timestamp check
-const uint64_t POISSON_CHECK_DEPTH = 60;   // Main-chain depth of the poisson check. The attacker will have to tamper 50% of those blocks
-const double POISSON_LOG_P_REJECT = -75.0; // Reject reorg if the probablity that the timestamps are genuine is below e^x, -75 = 10^-33
+// LWMA-1 (V5) is the only difficulty algorithm; legacy windows aliased.
+const size_t   DIFFICULTY_WINDOW                             = 60;  // LWMA-1 window (blocks)
+const size_t   DIFFICULTY_WINDOW_V2                          = 60;  // legacy alias
+const size_t   DIFFICULTY_WINDOW_V3                          = 60;  // legacy alias
+const size_t   DIFFICULTY_WINDOW_V4                          = 60;  // legacy alias (LWMA-1)
+const size_t   DIFFICULTY_CUT                                = 0;   // unused in LWMA-1
+const size_t   DIFFICULTY_LAG                                = 0;   // unused in LWMA-1
 
 const size_t   MAX_BLOCK_SIZE_INITIAL                        = 1000000;
-
 const uint64_t MAX_BLOCK_SIZE_GROWTH_SPEED_NUMERATOR         = 100 * 1024;
 const uint64_t MAX_BLOCK_SIZE_GROWTH_SPEED_DENOMINATOR       = 365 * 24 * 60 * 60 / DIFFICULTY_TARGET;
 
@@ -100,43 +125,120 @@ const uint64_t CRYPTONOTE_MEMPOOL_TX_LIVETIME                = 60 * 60 * 24;    
 const uint64_t CRYPTONOTE_MEMPOOL_TX_FROM_ALT_BLOCK_LIVETIME = 60 * 60 * 24 * 7; //seconds, one week
 const uint64_t CRYPTONOTE_NUMBER_OF_PERIODS_TO_FORGET_TX_DELETED_FROM_POOL = 7;  // CRYPTONOTE_NUMBER_OF_PERIODS_TO_FORGET_TX_DELETED_FROM_POOL * CRYPTONOTE_MEMPOOL_TX_LIVETIME = time to forget tx
 
-const size_t   FUSION_TX_MAX_SIZE                            = CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V1 * 30 / 100;
-const size_t   FUSION_TX_MIN_INPUT_COUNT                     = 12;
-const size_t   FUSION_TX_MIN_IN_OUT_COUNT_RATIO              = 4;
+// No fusion (mixin-coalesce) transactions in PQ; constants kept for stubs.
+const size_t   FUSION_TX_MAX_SIZE                            = 0;
+const size_t   FUSION_TX_MIN_INPUT_COUNT                     = 0;
+const size_t   FUSION_TX_MIN_IN_OUT_COUNT_RATIO              = 0;
 
-const uint32_t KEY_IMAGE_CHECKING_BLOCK_INDEX                = 0;
+// Discrete starts at block major v6 (PQ-only) from genesis.
+// All legacy upgrade heights are 0 — the chain has never been at an older
+// block version. Code that checks height >= UPGRADE_HEIGHT_Vx will correctly
+// evaluate to true for every block, including the genesis block.
+const uint32_t UPGRADE_HEIGHT_V2                             = 0;
+const uint32_t UPGRADE_HEIGHT_V3                             = 0;
+const uint32_t UPGRADE_HEIGHT_V3_1                           = 0;
+const uint32_t UPGRADE_HEIGHT_V4                             = 0;
+const uint32_t UPGRADE_HEIGHT_V4_1                           = 0;
+const uint32_t UPGRADE_HEIGHT_V4_2                           = 0;
+const uint32_t UPGRADE_HEIGHT_V4_3                           = 0;
+const uint32_t UPGRADE_HEIGHT_V5                             = 0;
+const uint32_t UPGRADE_HEIGHT_V6                             = 0; // PQ active from genesis
+const uint32_t UPGRADE_HEIGHT_V7                             = 4294967294; // reserved
+const uint32_t UPGRADE_HEIGHT_V8                             = 4294967294; // reserved
 
-const uint32_t UPGRADE_HEIGHT_V2                             = 60000;
-const uint32_t UPGRADE_HEIGHT_V3                             = 216000;
-const uint32_t UPGRADE_HEIGHT_V3_1                           = 216394;
-const uint32_t UPGRADE_HEIGHT_V4                             = 266000;
-const uint32_t UPGRADE_HEIGHT_V4_1                           = 300000;
-const uint32_t UPGRADE_HEIGHT_V4_2                           = 500000;
-const uint32_t UPGRADE_HEIGHT_V5                             = 4294967294;
-
-const unsigned UPGRADE_VOTING_THRESHOLD                      = 90;               // percent
+const unsigned UPGRADE_VOTING_THRESHOLD                      = 90; // percent
 const uint32_t UPGRADE_VOTING_WINDOW                         = EXPECTED_NUMBER_OF_BLOCKS_PER_DAY;  // blocks
 const uint32_t UPGRADE_WINDOW                                = EXPECTED_NUMBER_OF_BLOCKS_PER_DAY;  // blocks
 static_assert(0 < UPGRADE_VOTING_THRESHOLD && UPGRADE_VOTING_THRESHOLD <= 100, "Bad UPGRADE_VOTING_THRESHOLD");
 static_assert(UPGRADE_VOTING_WINDOW > 1, "Bad UPGRADE_VOTING_WINDOW");
 
+const char     CRYPTONOTE_BLOCKS_FILENAME[]                  = "blocks.dat";
+const char     CRYPTONOTE_BLOCKINDEXES_FILENAME[]            = "blockindexes.dat";
+const char     CRYPTONOTE_BLOCKSCACHE_FILENAME[]             = "blockscache.dat";
+const char     CRYPTONOTE_BLOCKCHAIN_INDICES_FILENAME[]      = "blockchainindices.dat";
+const char     CRYPTONOTE_POOLDATA_FILENAME[]                = "poolstate.bin";
 const char     P2P_NET_DATA_FILENAME[]                       = "p2pstate.bin";
 const char     MINER_CONFIG_FILE_NAME[]                      = "miner_conf.json";
 } // parameters
 
-const char     CRYPTONOTE_NAME[]                             = "karbowanec";
-const char     CRYPTONOTE_TICKER[]                           = "KRB";
-const char     GENESIS_COINBASE_TX_HEX[]                     = "010a01ff0001fac484c69cd608029b2e4c0281c0b02e7c53291a94d1d0cbff8883f8024f5142ee494ffbbd0880712101f904925cc23f86f9f3565188862275dc556a9bdfb6aec22c5aca7f0177c45ba8";
-const char     DNS_CHECKPOINTS_HOST[]                        = "checkpoints.karbo.org";
+const char     CRYPTONOTE_NAME[]                             = "discrete";
+const char     CRYPTONOTE_TICKER[]                           = "DISC";
+// TODO: regenerate genesis coinbase using PQ coinbase constructor once
+// PQ address generation tooling is ready. This hex is a placeholder that
+// will be replaced before mainnet launch.
+const char     GENESIS_COINBASE_TX_HEX[]                     = "PLACEHOLDER";
+const char     DNS_CHECKPOINTS_HOST[]                        = "checkpoints.discrete.network";
 
-const uint8_t  TRANSACTION_VERSION_1                         =  1;
-const uint8_t  TRANSACTION_VERSION_2                         =  2;
-const uint8_t  CURRENT_TRANSACTION_VERSION                   =  TRANSACTION_VERSION_1;
-const uint8_t  BLOCK_MAJOR_VERSION_1                         =  1;
-const uint8_t  BLOCK_MAJOR_VERSION_2                         =  2;
-const uint8_t  BLOCK_MAJOR_VERSION_3                         =  3;
-const uint8_t  BLOCK_MAJOR_VERSION_4                         =  4;
-const uint8_t  BLOCK_MAJOR_VERSION_5                         =  5;
+// Approved signer addresses for DNS checkpoint records.
+//
+// DNS TXT records served from DNS_CHECKPOINTS_HOST must be in the form
+//   "<height>:<block_hash_hex>:<signature>"
+// where <signature> is produced by signing the string "<height>:<block_hash_hex>"
+// with one of the wallets whose address appears in DNS_CHECKPOINT_SIGNERS. The
+// signature scheme is the one wired into simplewallet's `sign_message` command
+// (CryptoNoteFormatUtils::signMessage / verifyMessage) — Schnorr over the
+// account's spend keypair, Base58-encoded with the
+// CRYPTONOTE_KEYS_SIGNATURE_BASE58_PREFIX tag.
+//
+// Operational workflow for a maintainer:
+//   1. simplewallet --generate-new-wallet checkpoint-signer.wallet
+//   2. note the printed address, e.g. "Kxxx..."; add it to this array in the
+//      next release build.
+//   3. encrypt the wallet file and keep it offline; it should never receive
+//      funds — the only operation it performs is `sign_message`.
+//      Any funds sent to it are simply donations to the project.
+//   4. to publish a new checkpoint, load the wallet on an offline machine,
+//      run `sign_message`, enter "<height>:<block_hash_hex>", and copy the
+//      signature into the corresponding DNS TXT record.
+//
+// Multi-signer / any-of-N semantics: a DNS record is accepted if its signature
+// verifies against ANY address in this list. This lets the project rotate a
+// signing wallet (add the new address in release N, drop the old one in
+// release N+1) without an emergency rollout, and lets multiple maintainers
+// hold independent signers without coordinating on a single hot key.
+//
+// Empty signer set: leave just the nullptr sentinel below — DNS checkpoint
+// loading then fail-closes (the loader logs once and skips every record).
+// This is the safe default before keys are provisioned.
+//
+// Implementation note: nullptr-terminated C array, not std::array. The
+// previous std::array<const char*, N> form required maintainers to update
+// N manually each time they added or removed a signer; under MSVC the
+// extra initializers were silently dropped (no diagnostic, COUNT stayed
+// at N), which fail-closed the loader even with real signers configured —
+// the security-degrading kind of "silent". The sentinel scheme makes
+// COUNT auto-track the entry count via sizeof, requires no manual sizing,
+// and works for any count including zero (MSVC rejects zero-element C
+// arrays, but a one-element `{ nullptr }` is well-formed).
+// TODO: replace with PQ (ML-DSA) checkpoint signer addresses once tooling is ready.
+constexpr const char* const DNS_CHECKPOINT_SIGNERS[]         = {
+  nullptr   // sentinel — no signers provisioned yet
+};
+constexpr size_t DNS_CHECKPOINT_SIGNERS_COUNT                =
+  (sizeof(DNS_CHECKPOINT_SIGNERS) / sizeof(DNS_CHECKPOINT_SIGNERS[0])) - 1;
+
+// Discrete has only one transaction version: PQ (plain amounts, ML-DSA + ML-KEM).
+// Legacy v1 (ECC ring-sig) transactions are not accepted on this chain.
+const uint8_t  TRANSACTION_VERSION_PQ                        =  1;
+const uint8_t  CURRENT_TRANSACTION_VERSION                   =  TRANSACTION_VERSION_PQ;
+
+// Discrete starts at block major version 6 from genesis.
+// Legacy block versions 1-5 never exist on this chain.
+// Aliases pointing to 6 so that code referencing old version constants compiles;
+// any runtime branch that checks v<6 will never fire (all blocks are v6+).
+const uint8_t  BLOCK_MAJOR_VERSION_1                         =  6;  // alias: genesis version
+const uint8_t  BLOCK_MAJOR_VERSION_2                         =  6;  // legacy alias
+const uint8_t  BLOCK_MAJOR_VERSION_3                         =  6;  // legacy alias
+const uint8_t  BLOCK_MAJOR_VERSION_4                         =  6;  // legacy alias
+const uint8_t  BLOCK_MAJOR_VERSION_5                         =  6;  // legacy alias
+const uint8_t  BLOCK_MAJOR_VERSION_6                         =  6;  // PQ-only (from genesis)
+const uint8_t  BLOCK_MAJOR_VERSION_7                         =  7;  // reserved: PQ confidential amounts
+const uint8_t  BLOCK_MAJOR_VERSION_8                         =  8;  // reserved: PQ unlinkable
+
+// All blocks are v6+; extra size cap is always the PQ limit.
+inline uint64_t maxExtraSize(uint8_t /*blockMajorVersion*/) {
+  return parameters::MAX_EXTRA_SIZE_PQ;
+}
 const uint8_t  BLOCK_MINOR_VERSION_0                         =  0;
 const uint8_t  BLOCK_MINOR_VERSION_1                         =  1;
 
@@ -144,19 +246,19 @@ const size_t   BLOCKS_IDS_SYNCHRONIZING_DEFAULT_COUNT        =  10000;  //by def
 const size_t   BLOCKS_SYNCHRONIZING_DEFAULT_COUNT            =  128;    //by default, blocks count in blocks downloading
 const size_t   COMMAND_RPC_GET_BLOCKS_FAST_MAX_COUNT         =  1000;
 
-const int      P2P_DEFAULT_PORT                              =  32347;
-const int      RPC_DEFAULT_PORT                              =  32348;
-const int      RPC_DEFAULT_SSL_PORT                          =  32448;
-const int      WALLET_RPC_DEFAULT_PORT                       =  15000;
-const int      WALLET_RPC_DEFAULT_SSL_PORT                   =  15100;
-const int      GATE_RPC_DEFAULT_PORT                         =  16000;
-const int      GATE_RPC_DEFAULT_SSL_PORT                     =  16100;
+const int      P2P_DEFAULT_PORT                              =  41747;
+const int      RPC_DEFAULT_PORT                              =  41748;
+const int      RPC_DEFAULT_SSL_PORT                          =  41848;
+const int      WALLET_RPC_DEFAULT_PORT                       =  41749;
+const int      WALLET_RPC_DEFAULT_SSL_PORT                   =  41849;
+const int      GATE_RPC_DEFAULT_PORT                         =  41750;
+const int      GATE_RPC_DEFAULT_SSL_PORT                     =  41850;
 const char     RPC_DEFAULT_CHAIN_FILE[]                      = "rpc_server.crt";
 const char     RPC_DEFAULT_KEY_FILE[]                        = "rpc_server.key";
-const char     RPC_DEFAULT_DH_FILE[]                         = "rpc_server.pem";
 
 const size_t   P2P_LOCAL_WHITE_PEERLIST_LIMIT                =  1000;
 const size_t   P2P_LOCAL_GRAY_PEERLIST_LIMIT                 =  5000;
+const size_t   P2P_LOCAL_ANCHOR_PEERLIST_LIMIT               =  100;
 
 // This defines our current P2P network version
 // and the minimum version for communication between nodes
@@ -179,7 +281,7 @@ const uint32_t P2P_DEFAULT_CONNECTIONS_COUNT                 = 12;
 const size_t   P2P_DEFAULT_ANCHOR_CONNECTIONS_COUNT          = 2;
 const size_t   P2P_DEFAULT_WHITELIST_CONNECTIONS_PERCENT     = 70;
 const uint32_t P2P_DEFAULT_HANDSHAKE_INTERVAL                = 60;            // seconds
-const uint32_t P2P_DEFAULT_PACKET_MAX_SIZE                   = 100000000;     // 100000000 bytes maximum packet size
+const uint32_t P2P_DEFAULT_PACKET_MAX_SIZE                   = 50000000;      // 50000000 bytes maximum packet size
 const uint32_t P2P_DEFAULT_PEERS_IN_HANDSHAKE                = 250;
 const uint32_t P2P_MAX_PEERS_IN_HANDSHAKE                    = 256;
 const uint32_t P2P_DEFAULT_CONNECTION_TIMEOUT                = 5000;          // 5 seconds
@@ -191,21 +293,16 @@ const uint32_t P2P_IP_BLOCKTIME                              = (60 * 60 * 24);//
 const uint32_t P2P_IP_FAILS_BEFORE_BLOCK                     = 10;
 const uint32_t P2P_IDLE_CONNECTION_KILL_INTERVAL             = (5 * 60);      //5 minutes
 
-const char     P2P_STAT_TRUSTED_PUB_KEY[]                    = "";
+const char     P2P_STAT_TRUSTED_PUB_KEY[]                    = "8f80f9a5a434a9f1510d13336228debfee9c918ce505efe225d8c94d045fa115";
 
+// TODO: replace with Discrete seed nodes.
 const char* const SEED_NODES[] = {
-  "seed1.karbowanec.com:32347",
-  "seed2.karbowanec.com:32347",
-  "seed.karbo.cloud:32347",
-  "seed.karbo.org:32347",
-  "seed.karbo.io:32347",
-  "185.86.78.40:32347",
-  "108.61.198.115:32347",
-  "45.32.232.11:32347",
-  "46.149.182.151:32347",
-  "144.91.94.65:32347"
+  "seed1.discrete.network:41747",
+  "seed2.discrete.network:41747",
 };
 
 } // CryptoNote
 
-#define ALLOW_DEBUG_COMMANDS
+
+
+

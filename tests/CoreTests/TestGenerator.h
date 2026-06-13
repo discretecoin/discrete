@@ -1,4 +1,4 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 //
 // This file is part of Karbo.
 //
@@ -31,17 +31,17 @@ public:
       generator(currency),
       events(eventsRef) {
     minerAccount.generate();
-    //generator.constructBlock(genesisBlock, minerAccount, 1338224400);
-    lastBlock = currency.genesisBlock();
-    events.push_back(lastBlock);
+    generator.constructBlock(genesisBlock, minerAccount, 1338224400);
+    events.push_back(genesisBlock);
+    lastBlock = genesisBlock;
   }
 
   const CryptoNote::Currency& currency() const { return generator.currency(); }
 
   void makeNextBlock(const std::list<CryptoNote::Transaction>& txs = std::list<CryptoNote::Transaction>()) {
-   CryptoNote::BlockTemplate block;
+    CryptoNote::Block block;
     generator.constructBlock(block, lastBlock, minerAccount, txs);
-    events.push_back(populateBlock(block, txs));
+    events.push_back(block);
     lastBlock = block;
   }
 
@@ -57,7 +57,7 @@ public:
 
   void generateBlocks(size_t count, uint8_t majorVersion = CryptoNote::BLOCK_MAJOR_VERSION_1) {
     while (count--) {
-     CryptoNote::BlockTemplate next;
+      CryptoNote::Block next;
       generator.constructBlockManually(next, lastBlock, minerAccount, test_generator::bf_major_ver, majorVersion);
       lastBlock = next;
       events.push_back(next);
@@ -66,8 +66,8 @@ public:
 
   TransactionBuilder createTxBuilder(const CryptoNote::AccountBase& from, const CryptoNote::AccountBase& to, uint64_t amount, uint64_t fee) {
 
-    std::vector<CryptoNote::TransactionSourceEntry> sources;
-    std::vector<CryptoNote::TransactionDestinationEntry> destinations;
+    std::vector<CryptoNote::TxBuildInput> sources;
+    std::vector<CryptoNote::TxBuildOutput> destinations;
 
     fillTxSourcesAndDestinations(sources, destinations, from, to, amount, fee);
 
@@ -80,8 +80,8 @@ public:
   }
 
   void fillTxSourcesAndDestinations(
-    std::vector<CryptoNote::TransactionSourceEntry>& sources, 
-    std::vector<CryptoNote::TransactionDestinationEntry>& destinations,
+    std::vector<CryptoNote::TxBuildInput>& sources,
+    std::vector<CryptoNote::TxBuildOutput>& destinations,
     const CryptoNote::AccountBase& from, const CryptoNote::AccountBase& to, uint64_t amount, uint64_t fee, size_t nmix = 0) {
     fill_tx_sources_and_destinations(events, lastBlock, from, to, amount, fee, nmix, sources, destinations);
   }
@@ -116,8 +116,8 @@ public:
 
   Logging::LoggerGroup logger;
   test_generator generator;
- CryptoNote::BlockTemplate genesisBlock;
- CryptoNote::BlockTemplate lastBlock;
+  CryptoNote::Block genesisBlock;
+  CryptoNote::Block lastBlock;
   CryptoNote::AccountBase minerAccount;
   std::vector<test_event_entry>& events;
 };

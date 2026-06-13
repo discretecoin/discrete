@@ -1,7 +1,7 @@
 // Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 // Copyright (c) 2014 - 2017 XDN - project developers
 // Copyright (c) 2018, The TurtleCoin Developers
-// Copyright (c) 2018-2019 The Karbo developers
+// Copyright (c) 2018-2026 The Karbo developers
 //
 // This file is part of Karbo.
 //
@@ -35,10 +35,13 @@ namespace PaymentService {
 Configuration::Configuration() {
   generateNewContainer = false;
   generateDeterministic = false;
+  independentAddresses = false;
   daemonize = false;
   registerService = false;
   unregisterService = false;
   containerPassword = "";
+  newContainerPassword = "";
+  changePassword = false;
   logFile = "walletd.log";
   testnet = false;
   printAddresses = false;
@@ -54,8 +57,8 @@ Configuration::Configuration() {
   m_enable_ssl = false;
   m_chain_file = "";
   m_key_file = "";
-  m_dh_file = "";
   scanHeight = 0;
+  restoreAddressCount = 1;
 }
 
 void Configuration::initOptions(po::options_description& desc) {
@@ -68,14 +71,16 @@ void Configuration::initOptions(po::options_description& desc) {
       ("rpc-ssl-enable", po::bool_switch(), "Enable SSL for RPC service")
       ("rpc-chain-file", po::value<std::string>()->default_value(std::string(CryptoNote::RPC_DEFAULT_CHAIN_FILE)), "SSL chain file")
       ("rpc-key-file", po::value<std::string>()->default_value(std::string(CryptoNote::RPC_DEFAULT_KEY_FILE)), "SSL key file")
-      ("rpc-dh-file", po::value<std::string>()->default_value(std::string(CryptoNote::RPC_DEFAULT_DH_FILE)), "SSL DH file")
       ("container-file,w", po::value<std::string>(), "container file")
       ("container-password,p", po::value<std::string>(), "container password")
+      ("change-password", po::value<std::string>(), "change container password and exit")
       ("generate-container,g", "generate new container file with one wallet and exit")
       ("view-key", po::value<std::string>(), "generate a container with this secret key view")
       ("spend-key", po::value<std::string>(), "generate a container with this secret spend key")
       ("mnemonic-seed", po::value<std::string>(), "generate a container with this mnemonic seed")
       ("deterministic", "generate a container with deterministic keys. View key is generated from spend key of the first address")
+      ("independent-addresses", "generate a container whose new addresses use independent random spend keys instead of HD-derived spend keys")
+      ("restore-address-count", po::value<uint32_t>(), "number of HD-derived addresses to create when generating or restoring an HD container")
       ("daemon,d", "run as daemon in Unix or as service in Windows")
 #ifdef _WIN32
       ("register-service", "register service and exit (Windows only)")
@@ -84,7 +89,7 @@ void Configuration::initOptions(po::options_description& desc) {
       ("log-file,l", po::value<std::string>(), "log file")
       ("server-root", po::value<std::string>(), "server root. The service will use it as working directory. Don't set it if don't want to change it")
       ("log-level", po::value<size_t>(), "log level")
-      ("scan-height", po::value<uint32_t>(), "The height to begin scanning a wallet from");
+      ("scan-height", po::value<uint32_t>(), "The height to begin scanning a wallet from")
       ("address", "print wallet addresses and exit");
 }
 
@@ -161,16 +166,17 @@ void Configuration::init(const po::variables_map& options) {
     m_key_file = options["rpc-key-file"].as<std::string>();
   }
 
-  if (options.count("rpc-dh-file") != 0 && (!options["rpc-dh-file"].defaulted() || m_dh_file.empty())) {
-    m_dh_file = options["rpc-dh-file"].as<std::string>();
-  }
-
   if (options.count("container-file") != 0) {
     containerFile = options["container-file"].as<std::string>();
   }
 
   if (options.count("container-password") != 0) {
     containerPassword = options["container-password"].as<std::string>();
+  }
+
+  if (options.count("change-password") != 0) {
+    changePassword = true;
+    newContainerPassword = options["change-password"].as<std::string>();
   }
 
   if (options.count("generate-container") != 0) {
@@ -181,18 +187,37 @@ void Configuration::init(const po::variables_map& options) {
     generateDeterministic = true;
   }
 
+  if (options.count("independent-addresses") != 0) {
+    if (!generateNewContainer) {
+      throw ConfigurationError("generate-container parameter is required");
+    }
+
+    independentAddresses = true;
+  }
+
+  if (options.count("restore-address-count") != 0) {
+    if (!generateNewContainer) {
+      throw ConfigurationError("generate-container parameter is required");
+    }
+
+    restoreAddressCount = options["restore-address-count"].as<uint32_t>();
+    if (restoreAddressCount == 0) {
+      throw ConfigurationError("restore-address-count must be greater than zero");
+    }
+  }
+
   if (options.count("view-key") != 0) {
-	if (!generateNewContainer) {
-	  throw ConfigurationError("generate-container parameter is required");
-	}
-	secretViewKey = options["view-key"].as<std::string>();
+    if (!generateNewContainer) {
+      throw ConfigurationError("generate-container parameter is required");
+    }
+    secretViewKey = options["view-key"].as<std::string>();
   }
 
   if (options.count("spend-key") != 0) {
-	if (!generateNewContainer) {
-	  throw ConfigurationError("generate-container parameter is required");
-	}
-	secretSpendKey = options["spend-key"].as<std::string>();
+    if (!generateNewContainer) {
+      throw ConfigurationError("generate-container parameter is required");
+    }
+    secretSpendKey = options["spend-key"].as<std::string>();
   }
 
   if (options.count("mnemonic-seed") != 0) {
@@ -203,6 +228,22 @@ void Configuration::init(const po::variables_map& options) {
       throw ConfigurationError("Cannot specify import via both mnemonic seed and private keys");
     }
     mnemonicSeed = options["mnemonic-seed"].as<std::string>();
+  }
+
+  if (independentAddresses && !mnemonicSeed.empty()) {
+    throw ConfigurationError("Cannot specify both --independent-addresses and --mnemonic-seed");
+  }
+
+  if (independentAddresses && generateDeterministic) {
+    throw ConfigurationError("Cannot specify both --independent-addresses and --deterministic");
+  }
+
+  if (independentAddresses && options.count("restore-address-count") != 0) {
+    throw ConfigurationError("Cannot specify both --independent-addresses and --restore-address-count");
+  }
+
+  if (options.count("restore-address-count") != 0 && (!secretSpendKey.empty() || !secretViewKey.empty())) {
+    throw ConfigurationError("restore-address-count can only be used with HD generated containers or mnemonic restores");
   }
 
   if (options.count("address") != 0) {

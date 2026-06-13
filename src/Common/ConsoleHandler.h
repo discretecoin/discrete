@@ -1,5 +1,4 @@
 // Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
-// Copyright (c) 2016-2019, The Karbo developers
 //
 // This file is part of Karbo.
 //
@@ -81,7 +80,7 @@ private:
 
   typedef std::map<std::string, std::pair<ConsoleCommandHandler, std::string>> CommandHandlersMap;
 
-  void handleCommand(const std::string& cmd);
+  virtual void handleCommand(const std::string& cmd);
 
   void handlerThread();
 

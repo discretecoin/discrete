@@ -1,5 +1,4 @@
 // Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
-// Copyright (c) 2016-2019, The Karbo developers
 //
 // This file is part of Karbo.
 //
@@ -35,18 +34,24 @@ void AccountBase::setNull() {
 }
 //-----------------------------------------------------------------
 void AccountBase::generate() {
+
   Crypto::generate_keys(m_keys.address.spendPublicKey, m_keys.spendSecretKey);
   Crypto::generate_keys(m_keys.address.viewPublicKey, m_keys.viewSecretKey);
 
   m_creation_timestamp = time(NULL);
+
 }
 
 //-----------------------------------------------------------------
-void AccountBase::generateDeterministic() { 
-  Crypto::SecretKey second;
+void AccountBase::generateDeterministic() {
   Crypto::generate_keys(m_keys.address.spendPublicKey, m_keys.spendSecretKey);
-  keccak((uint8_t *)&m_keys.spendSecretKey, sizeof(Crypto::SecretKey), (uint8_t *)&second, sizeof(Crypto::SecretKey));
-  Crypto::generate_deterministic_keys(m_keys.address.viewPublicKey, m_keys.viewSecretKey, second);
+
+  // Derive viewSecretKey: sc_reduce32(keccak(spendSecretKey)). Controls viewPublicKey / address.
+  Crypto::SecretKey viewKeySeed;
+  keccak((uint8_t *)&m_keys.spendSecretKey, sizeof(Crypto::SecretKey),
+         (uint8_t *)&viewKeySeed, sizeof(viewKeySeed));
+  Crypto::generate_deterministic_keys(m_keys.address.viewPublicKey, m_keys.viewSecretKey, viewKeySeed);
+
   m_creation_timestamp = time(NULL);
 }
 

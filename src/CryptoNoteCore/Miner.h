@@ -1,5 +1,5 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
-// Copyright (c) 2016-2019, The Karbo developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2016-2022, The Karbo developers
 //
 // This file is part of Karbo.
 //
@@ -29,6 +29,8 @@
 #include "CryptoNoteCore/IMinerHandler.h"
 #include "CryptoNoteCore/MinerConfig.h"
 #include "CryptoNoteCore/OnceInInterval.h"
+#include "crypto_pq/PqDsa.h"
+#include "crypto_pq/PqKem.h"
 
 #include <Logging/LoggerRef.h>
 
@@ -41,15 +43,23 @@ namespace CryptoNote {
     ~miner();
 
     bool init(const MinerConfig& config);
-    bool set_block_template(const BlockTemplate& bl, const Difficulty& diffic);
+    bool set_block_template(const Block& bl, const Difficulty& diffic);
     bool on_block_chain_update();
-    bool start(const AccountPublicAddress& adr, const Crypto::SecretKey& key, size_t threads_count);
+    // PQ native start: miner provides ML-KEM view pub + ML-DSA spend keypair.
+    bool startPq(const CryptoPQ::KemPublicKey& viewPub,
+                 const CryptoPQ::DsaPublicKey& spendPub,
+                 const CryptoPQ::DsaSecretKey& spendSk,
+                 size_t threads_count);
+    // Legacy ECC start stub (not functional in Discrete — logs error).
+    bool start(const AccountKeys& acc, size_t threads_count);
     uint64_t get_speed();
     void send_stop_signal();
-    bool stop();
+    bool stop(bool keepMiningRequested = false);
     bool is_mining();
     bool on_idle();
     void on_synchronized();
+    //synchronous analog (for fast calls)
+    bool find_nonce_for_given_block(Crypto::cn_context &context, Block& bl, const Difficulty& diffic);
     void pause();
     void resume();
     void do_print_hashrate(bool do_hr);
@@ -57,7 +67,7 @@ namespace CryptoNote {
   private:
     bool worker_thread(uint32_t th_local_index);
     bool request_block_template();
-    void  merge_hr();
+    void merge_hr(bool do_log = false);
 
     struct miner_config
     {
@@ -72,7 +82,7 @@ namespace CryptoNote {
 
     std::atomic<bool> m_stop;
     std::mutex m_template_lock;
-    BlockTemplate m_template;
+    Block m_template;
     std::atomic<uint32_t> m_template_no;
     std::atomic<uint32_t> m_starter_nonce;
     Difficulty m_diffic;
@@ -84,10 +94,15 @@ namespace CryptoNote {
     std::list<std::thread> m_threads;
     std::mutex m_threads_lock;
     IMinerHandler& m_handler;
-    AccountPublicAddress m_mine_address;
-    Crypto::SecretKey m_mine_key;
+    AccountKeys m_mine_account;  // Kept for ABI; unused in Discrete (ECC path is dead).
+    // PQ miner credentials set by startPq().
+    CryptoPQ::KemPublicKey  m_pq_view_pub{};
+    CryptoPQ::DsaPublicKey  m_pq_spend_pub{};
+    CryptoPQ::DsaSecretKey  m_pq_spend_sk{};
+    bool m_pq_keys_set = false;
     OnceInInterval m_update_block_template_interval;
     OnceInInterval m_update_merge_hr_interval;
+    OnceInInterval m_update_log_hr_interval;
 
     std::vector<BinaryArray> m_extra_messages;
     miner_config m_config;
@@ -98,6 +113,7 @@ namespace CryptoNote {
     std::mutex m_last_hash_rates_lock;
     std::list<uint64_t> m_last_hash_rates;
     bool m_do_print_hashrate;
+    bool m_do_log_hashrate;
     bool m_do_mining;
   };
 }

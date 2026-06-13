@@ -1,5 +1,4 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
-// Copyright (c) 2016-2019, The Karbo developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 //
 // This file is part of Karbo.
 //
@@ -32,6 +31,9 @@ public:
     ITransfersObserver& transfersObserver,
     Crypto::PublicKey& viewPublicKey,
     Crypto::SecretKey& viewSecretKey,
+    AddressGenerationMode& addressGenerationMode,
+    Crypto::SecretKey& deterministicSeed,
+    uint32_t& nextDeterministicIndex,
     uint64_t& actualBalance,
     uint64_t& pendingBalance,
     WalletsContainer& walletsContainer,
@@ -41,7 +43,8 @@ public:
     WalletTransfers& transfers,
     UncommitedTransactions& uncommitedTransactions,
     std::string& extra,
-    uint32_t transactionSoftLockTime
+    uint32_t transactionSoftLockTime,
+    std::string& pqState
   );
 
   void load(Common::IInputStream& source, uint8_t version);
@@ -51,11 +54,15 @@ public:
   std::unordered_set<Crypto::PublicKey>& deletedKeys();
 
   static const uint8_t MIN_VERSION = 6;
-  static const uint8_t SERIALIZATION_VERSION = 6;
+  static const uint8_t SERIALIZATION_VERSION = 7;
 
 private:
-  void loadKeyListAndBalances(CryptoNote::ISerializer& serializer, bool saveCache);
-  void saveKeyListAndBanalces(CryptoNote::ISerializer& serializer, bool saveCache);
+  void loadAddressGenerationState(CryptoNote::ISerializer& serializer, uint8_t version);
+  void saveAddressGenerationState(CryptoNote::ISerializer& serializer);
+  void normalizeAddressGenerationState();
+
+  void loadKeyListAndBalances(CryptoNote::ISerializer& serializer, bool saveCache, uint8_t version);
+  void saveKeyListAndBalances(CryptoNote::ISerializer& serializer, bool saveCache);
     
   void loadTransactions(CryptoNote::ISerializer& serializer);
   void saveTransactions(CryptoNote::ISerializer& serializer);
@@ -69,7 +76,16 @@ private:
   void loadUnlockTransactionsJobs(CryptoNote::ISerializer& serializer);
   void saveUnlockTransactionsJobs(CryptoNote::ISerializer& serializer);
 
+  // Opaque PQ-wallet state blob (PqConsumer sync cursor + PqWalletState),
+  // produced/consumed by WalletGreen. Optional field: absent in pre-PQ wallet
+  // files, which load as an empty blob (no version bump needed).
+  void loadPqState(CryptoNote::ISerializer& serializer);
+  void savePqState(CryptoNote::ISerializer& serializer);
+
   ITransfersObserver& m_transfersObserver;
+  AddressGenerationMode& m_addressGenerationMode;
+  Crypto::SecretKey& m_deterministicSeed;
+  uint32_t& m_nextDeterministicIndex;
   uint64_t& m_actualBalance;
   uint64_t& m_pendingBalance;
   WalletsContainer& m_walletsContainer;
@@ -80,6 +96,7 @@ private:
   UncommitedTransactions& m_uncommitedTransactions;
   std::string& m_extra;
   uint32_t m_transactionSoftLockTime;
+  std::string& m_pqState;
 
   std::unordered_set<Crypto::PublicKey> m_addedKeys;
   std::unordered_set<Crypto::PublicKey> m_deletedKeys;

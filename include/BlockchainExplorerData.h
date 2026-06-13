@@ -1,5 +1,5 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
-// Copyright (c) 2016-2019, The Karbo developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2016-2020, The Karbo developers
 //
 // This file is part of Karbo.
 //
@@ -24,7 +24,7 @@
 
 #include "CryptoTypes.h"
 #include "CryptoNote.h"
-
+#include "BlockchainExplorerData.h"
 #include <boost/variant.hpp>
 
 namespace CryptoNote {
@@ -35,14 +35,56 @@ enum class TransactionRemoveReason : uint8_t
   TIMEOUT = 1
 };
 
+struct TransactionOutputToKeyDetails {
+  Crypto::PublicKey txOutKey;
+};
+
 struct TransactionOutputDetails {
-  TransactionOutput output;
-  uint64_t globalIndex;
+  uint64_t amount;
+  uint32_t globalIndex;
+
+  boost::variant<TransactionOutputToKeyDetails> output;
 };
 
 struct TransactionOutputReferenceDetails {
   Crypto::Hash transactionHash;
   size_t number;
+};
+
+struct TransactionInputGenerateDetails {
+  uint32_t height;
+};
+
+struct TransactionInputToKeyDetails {
+  std::vector<uint32_t> outputIndexes;
+  Crypto::KeyImage keyImage;
+  uint64_t mixin;
+  std::vector<TransactionOutputReferenceDetails> outputs;
+};
+
+struct TransactionInputMultisignatureDetails {
+  uint32_t signatures;
+  TransactionOutputReferenceDetails output;
+};
+
+struct TransactionInputDetails {
+  uint64_t amount;
+
+  boost::variant<
+    TransactionInputGenerateDetails,
+    TransactionInputToKeyDetails> input;
+};
+
+struct TransactionExtraDetails {
+  std::vector<size_t> padding;
+  std::vector<Crypto::PublicKey> publicKey; 
+  std::vector<std::string> nonce;
+  std::vector<uint8_t> raw;
+};
+
+struct transactionOutputDetails2 {
+  TransactionOutput output;
+  uint64_t globalIndex;
 };
 
 struct BaseInputDetails {
@@ -56,15 +98,18 @@ struct KeyInputDetails {
   std::vector<TransactionOutputReferenceDetails> outputs;
 };
 
-struct MultisignatureInputDetails {
-  MultisignatureInput input;
+struct PqInputDetails {
+  PqInput input;
+  uint64_t amount = 0;
+  Crypto::Hash nullifier;
   TransactionOutputReferenceDetails output;
 };
 
-typedef boost::variant<BaseInputDetails, KeyInputDetails, MultisignatureInputDetails> TransactionInputDetails;
+typedef boost::variant<BaseInputDetails, KeyInputDetails, PqInputDetails> transactionInputDetails2;
 
-struct TransactionExtraDetails {
-  Crypto::PublicKey publicKey; 
+struct TransactionExtraDetails2 {
+  std::vector<size_t> padding;
+  Crypto::PublicKey publicKey;
   BinaryArray nonce;
   BinaryArray raw;
   size_t size = 0;
@@ -80,15 +125,16 @@ struct TransactionDetails {
   uint64_t unlockTime = 0;
   uint64_t timestamp = 0;
   uint8_t version = 0;
+  uint8_t txType = 0;
   Crypto::Hash paymentId;
   bool hasPaymentId = false;
   bool inBlockchain = false;
   Crypto::Hash blockHash;
-  uint32_t blockIndex = 0;
-  TransactionExtraDetails extra;
+  uint32_t blockHeight = 0;
+  TransactionExtraDetails2 extra;
   std::vector<std::vector<Crypto::Signature>> signatures;
-  std::vector<TransactionInputDetails> inputs;
-  std::vector<TransactionOutputDetails> outputs;
+  std::vector<transactionInputDetails2> inputs;
+  std::vector<transactionOutputDetails2> outputs;
 };
 
 struct BlockDetails {
@@ -98,8 +144,8 @@ struct BlockDetails {
   Crypto::Hash prevBlockHash;
   Crypto::Hash proofOfWork;
   uint32_t nonce = 0;
-  bool isAlternative = false;
-  uint32_t index = 0;
+  bool isOrphaned = false;
+  uint32_t height = 0;
   uint32_t depth = 0;
   Crypto::Hash hash;
   uint64_t difficulty = 0;
@@ -114,16 +160,8 @@ struct BlockDetails {
   uint64_t effectiveSizeMedian = 0;
   double penalty = 0.0;
   uint64_t totalFeeAmount = 0;
+  std::vector<uint8_t> minerSignature;  // ML-DSA-65 block signature (3309 B)
   std::vector<TransactionDetails> transactions;
-};
-
-struct BlockDetailsShort {
-  uint64_t timestamp = 0;
-  uint32_t index = 0;
-  Crypto::Hash hash;
-  uint64_t difficulty = 0;
-  uint64_t blockSize = 0;
-  uint64_t transactionsCount = 0;
 };
 
 }

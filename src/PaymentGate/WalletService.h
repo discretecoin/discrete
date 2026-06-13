@@ -1,7 +1,8 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 // Copyright (c) 2018, The TurtleCoin Developers
-// Copyright (c) 2018-2019 The Cash2 developers
-// Copyright (c) 2016-2020 The Karbo developers
+// Copyright (c) 2018-2019, The Cash2 developers
+// Copyright (c) 2021-2023, The Talleo developers
+// Copyright (c) 2016-2024, The Karbo developers
 //
 // This file is part of Karbo.
 //
@@ -38,10 +39,6 @@
 #include <boost/multi_index/member.hpp>
 #include <boost/multi_index/hashed_index.hpp>
 
-namespace CryptoNote {
-class IFusionManager;
-}
-
 namespace PaymentService {
 
 struct WalletConfiguration {
@@ -50,38 +47,41 @@ struct WalletConfiguration {
   std::string secretViewKey;
   std::string secretSpendKey;
   std::string mnemonicSeed;
-  bool generateDeterministic;
-  uint32_t scanHeight;
+  bool generateDeterministic = false;
+  uint32_t scanHeight = 0;
+  bool independentAddresses = false;
+  uint32_t restoreAddressCount = 1;
 };
 
 void generateNewWallet(const CryptoNote::Currency& currency, const WalletConfiguration& conf, Logging::ILogger& logger, System::Dispatcher& dispatcher, CryptoNote::INode& node);
+void changePassword(const CryptoNote::Currency& currency, const WalletConfiguration& conf, Logging::ILogger& logger, System::Dispatcher& dispatcher, CryptoNote::INode& node, const std::string newPassword);
 
 struct TransactionsInBlockInfoFilter;
 
 class WalletService {
 public:
   WalletService(const CryptoNote::Currency& currency, System::Dispatcher& sys, CryptoNote::INode& node, CryptoNote::IWallet& wallet,
-    CryptoNote::IFusionManager& fusionManager, const WalletConfiguration& conf, Logging::ILogger& logger);
+    const WalletConfiguration& conf, Logging::ILogger& logger);
   virtual ~WalletService();
 
   void init();
   void saveWallet();
 
   std::error_code saveWalletNoThrow();
-  std::error_code exportWallet(const std::string& fileName);
   std::error_code resetWallet();
   std::error_code resetWallet(const uint32_t scanHeight);
+  std::error_code exportWallet(const std::string& fileName);
   std::error_code replaceWithNewWallet(const std::string& viewSecretKey);
   std::error_code replaceWithNewWallet(const std::string& viewSecretKey, const uint32_t scanHeight);
   std::error_code createAddress(const std::string& spendSecretKeyText, bool reset, std::string& address);
   std::error_code createAddress(const std::string& spendSecretKeyText, const uint32_t scanHeight, std::string& address);
   std::error_code createAddress(std::string& address);
-  std::error_code createAddress(std::string& address, const uint32_t scanHeight);
   std::error_code createAddressList(const std::vector<std::string>& spendSecretKeysText, bool reset, std::vector<std::string>& addresses);
   std::error_code createAddressList(const std::vector<std::string>& spendSecretKeysText, const std::vector<uint32_t>& scanHeights, std::vector<std::string>& addresses);
   std::error_code createTrackingAddress(const std::string& spendPublicKeyText, std::string& address);
   std::error_code createTrackingAddress(const std::string& spendPublicKeyText, const uint32_t scanHeight, std::string& address);
   std::error_code deleteAddress(const std::string& address);
+  std::error_code hasAddress(const std::string& address, bool& isOurs);
   std::error_code getSpendkeys(const std::string& address, std::string& publicSpendKeyText, std::string& secretSpendKeyText);
   std::error_code getBalance(const std::string& address, uint64_t& availableBalance, uint64_t& lockedAmount);
   std::error_code getBalance(uint64_t& availableBalance, uint64_t& lockedAmount);
@@ -108,10 +108,7 @@ public:
   std::error_code sendDelayedTransaction(const std::string& transactionHash);
   std::error_code getUnconfirmedTransactionHashes(const std::vector<std::string>& addresses, std::vector<std::string>& transactionHashes);
   std::error_code getStatus(uint32_t& blockCount, uint32_t& knownBlockCount, uint32_t& localDaemonBlockCount, std::string& lastBlockHash, uint32_t& peerCount, uint64_t& minimalFee);
-  std::error_code sendFusionTransaction(uint64_t threshold, uint32_t anonymity, const std::vector<std::string>& addresses,
-    const std::string& destinationAddress, std::string& transactionHash);
-  std::error_code estimateFusion(uint64_t threshold, const std::vector<std::string>& addresses, uint32_t& fusionReadyCount, uint32_t& totalOutputCount);
-  std::error_code validateAddress(const std::string& address, bool& isvalid, std::string& _address, std::string& spendPublicKey, std::string& viewPublicKey);
+  std::error_code validateAddress(const std::string& address, bool& isValid, std::string& _address, std::string& spendPublicKey, std::string& viewPublicKey);
   std::error_code getReserveProof(std::string& reserveProof, const std::string& address, const std::string& message, const uint64_t& amount = 0);
   std::error_code signMessage(const std::string& message, const std::string& address, std::string& signature);
   std::error_code verifyMessage(const std::string& message, const std::string& signature, const std::string& address, bool& isValid);
@@ -137,7 +134,6 @@ private:
 
   const CryptoNote::Currency& currency;
   CryptoNote::IWallet& wallet;
-  CryptoNote::IFusionManager& fusionManager;
   CryptoNote::INode& node;
   const WalletConfiguration& config;
   bool inited;

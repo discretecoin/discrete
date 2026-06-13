@@ -1,5 +1,4 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
-// Copyright (c) 2016-2019, The Karbo developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 //
 // This file is part of Karbo.
 //
@@ -22,8 +21,6 @@
 
 #include <string>
 
-#include "Logging/LoggerRef.h"
-
 namespace PaymentService {
 
 class NodeFactory {
@@ -31,8 +28,7 @@ public:
   static CryptoNote::INode* createNode(const std::string& daemonAddress,
                                        uint16_t daemonPort,
                                        const std::string &daemonPath,
-                                       const bool &daemonSSL,
-                                       Logging::ILogger& logger);
+                                       const bool &daemonSSL);
   static CryptoNote::INode* createNodeStub();
 private:
   NodeFactory();

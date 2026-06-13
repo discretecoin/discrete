@@ -1,4 +1,4 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 //
 // This file is part of Karbo.
 //
@@ -31,7 +31,7 @@ namespace {
   using CryptoNote::BLOCK_MINOR_VERSION_1;
 
   struct BlockEx {
-    CryptoNote::BlockTemplate bl;
+    CryptoNote::Block bl;
   };
 
   typedef std::vector<BlockEx> BlockVector;
@@ -141,7 +141,7 @@ namespace {
     CryptoNote::Currency currency = createCurrency();
     BlockVector blocks;
     createBlocks(blocks, currency.upgradeVotingWindow(), BLOCK_MAJOR_VERSION_1, BLOCK_MINOR_VERSION_1);
-    uint32_t upgradeHeight = currency.calculateUpgradeHeight(static_cast<uint32_t>(blocks.size() - 1));
+    uint64_t upgradeHeight = currency.calculateUpgradeHeight(blocks.size() - 1);
     createBlocks(blocks, upgradeHeight - blocks.size(), BLOCK_MAJOR_VERSION_1, BLOCK_MINOR_VERSION_0);
     // Upgrade is here
     createBlocks(blocks, 1, BLOCK_MAJOR_VERSION_2, BLOCK_MINOR_VERSION_0);
@@ -160,21 +160,21 @@ namespace {
     BlockVector blocks;
 
     createBlocks(blocks, currency.upgradeVotingWindow(), BLOCK_MAJOR_VERSION_1, BLOCK_MINOR_VERSION_1);
-    uint32_t votingCompleteHeigntV2 = static_cast<uint32_t>(blocks.size() - 1);
+    uint32_t votingCompleteHeigntV2 = blocks.size() - 1;
     uint32_t upgradeHeightV2 = currency.calculateUpgradeHeight(votingCompleteHeigntV2);
     createBlocks(blocks, upgradeHeightV2 - blocks.size(), BLOCK_MAJOR_VERSION_1, BLOCK_MINOR_VERSION_0);
     // Upgrade to v2 is here
     createBlocks(blocks, 1, BLOCK_MAJOR_VERSION_2, BLOCK_MINOR_VERSION_0);
 
     createBlocks(blocks, currency.upgradeVotingWindow() * currency.upgradeVotingThreshold() / 100, BLOCK_MAJOR_VERSION_2, BLOCK_MINOR_VERSION_1);
-    uint32_t votingCompleteHeigntV3 = static_cast<uint32_t>(blocks.size() - 1);
+    uint32_t votingCompleteHeigntV3 = blocks.size() - 1;
     uint32_t upgradeHeightV3 = currency.calculateUpgradeHeight(votingCompleteHeigntV3);
     createBlocks(blocks, upgradeHeightV3 - blocks.size(), BLOCK_MAJOR_VERSION_2, BLOCK_MINOR_VERSION_0);
     // Upgrade to v3 is here
     createBlocks(blocks, 1, BLOCK_V3, BLOCK_MINOR_VERSION_0);
 
     createBlocks(blocks, currency.upgradeVotingWindow() * currency.upgradeVotingThreshold() / 100, BLOCK_V3, BLOCK_MINOR_VERSION_1);
-    uint32_t votingCompleteHeigntV4 = static_cast<uint32_t>(blocks.size() - 1);
+    uint32_t votingCompleteHeigntV4 = blocks.size() - 1;
     uint32_t upgradeHeightV4 = currency.calculateUpgradeHeight(votingCompleteHeigntV4);
     createBlocks(blocks, upgradeHeightV4 - blocks.size(), BLOCK_V3, BLOCK_MINOR_VERSION_0);
     // Upgrade to v4 is here
@@ -191,13 +191,11 @@ namespace {
     ASSERT_EQ(upgradeDetectorV3.upgradeHeight(), upgradeHeightV3);
 
     UpgradeDetector upgradeDetectorV4(currency, blocks, BLOCK_V4, logger);
-    ASSERT_TRUE(upgradeDetectorV4.init());
-    ASSERT_EQ(upgradeDetectorV4.votingCompleteHeight(), votingCompleteHeigntV4);
-    ASSERT_EQ(upgradeDetectorV4.upgradeHeight(), upgradeHeightV4);
+    ASSERT_FALSE(upgradeDetectorV4.init());
   }
 
   TEST_F(UpgradeDetector_upgradeHeight_init, handlesEmptyBlockchain) {
-    const uint32_t upgradeHeight = 17;
+    const uint64_t upgradeHeight = 17;
     CryptoNote::Currency currency = createCurrency(upgradeHeight);
     BlockVector blocks;
     UpgradeDetector upgradeDetector(currency, blocks, BLOCK_MAJOR_VERSION_2, logger);
@@ -207,7 +205,7 @@ namespace {
   }
 
   TEST_F(UpgradeDetector_upgradeHeight_init, handlesBlockchainBeforeUpgrade) {
-    const uint32_t upgradeHeight = 17;
+    const uint64_t upgradeHeight = 17;
     CryptoNote::Currency currency = createCurrency(upgradeHeight);
     BlockVector blocks;
     createBlocks(blocks, upgradeHeight, BLOCK_MAJOR_VERSION_1, BLOCK_MINOR_VERSION_1);
@@ -219,7 +217,7 @@ namespace {
   }
 
   TEST_F(UpgradeDetector_upgradeHeight_init, handlesBlockchainAtUpgrade) {
-    const uint32_t upgradeHeight = 17;
+    const uint64_t upgradeHeight = 17;
     CryptoNote::Currency currency = createCurrency(upgradeHeight);
     BlockVector blocks;
     createBlocks(blocks, upgradeHeight + 1, BLOCK_MAJOR_VERSION_1, BLOCK_MINOR_VERSION_1);
@@ -231,7 +229,7 @@ namespace {
   }
 
   TEST_F(UpgradeDetector_upgradeHeight_init, handlesBlockchainAfterUpgrade) {
-    const uint32_t upgradeHeight = 17;
+    const uint64_t upgradeHeight = 17;
     CryptoNote::Currency currency = createCurrency(upgradeHeight);
     BlockVector blocks;
     createBlocks(blocks, upgradeHeight + 1, BLOCK_MAJOR_VERSION_1, BLOCK_MINOR_VERSION_1);
@@ -257,7 +255,7 @@ namespace {
   TEST_F(UpgradeDetector_voting, handlesVotingCompleteStartingNonEmptyBlockchain) {
     CryptoNote::Currency currency = createCurrency();
     assert(currency.minNumberVotingBlocks() >= 2);
-    const uint32_t portion = currency.minNumberVotingBlocks() - currency.minNumberVotingBlocks() / 2;
+    const uint64_t portion = currency.minNumberVotingBlocks() - currency.minNumberVotingBlocks() / 2;
 
     BlockVector blocks;
     UpgradeDetector upgradeDetector(currency, blocks, BLOCK_MAJOR_VERSION_2, logger);
@@ -278,8 +276,8 @@ namespace {
 
     createBlocks(blocks, upgradeDetector, currency.upgradeVotingWindow(), BLOCK_MAJOR_VERSION_1, BLOCK_MINOR_VERSION_0);
     createBlocks(blocks, upgradeDetector, currency.minNumberVotingBlocks(), BLOCK_MAJOR_VERSION_1, BLOCK_MINOR_VERSION_1);
-    uint32_t votingCompleteHeight = static_cast<uint32_t>(blocks.size() - 1);
-    uint32_t hadrforkHeight = currency.calculateUpgradeHeight(votingCompleteHeight);
+    uint64_t votingCompleteHeight = blocks.size() - 1;
+    uint64_t hadrforkHeight = currency.calculateUpgradeHeight(votingCompleteHeight);
     ASSERT_EQ(upgradeDetector.votingCompleteHeight(), votingCompleteHeight);
 
     createBlocks(blocks, upgradeDetector, hadrforkHeight - votingCompleteHeight - 1, BLOCK_MAJOR_VERSION_1, BLOCK_MINOR_VERSION_0);
@@ -300,8 +298,8 @@ namespace {
 
     createBlocks(blocks, upgradeDetector, currency.upgradeVotingWindow(), BLOCK_MAJOR_VERSION_1, BLOCK_MINOR_VERSION_0);
     createBlocks(blocks, upgradeDetector, currency.minNumberVotingBlocks(), BLOCK_MAJOR_VERSION_1, BLOCK_MINOR_VERSION_1);
-    uint32_t votingCompleteHeight = static_cast<uint32_t>(blocks.size() - 1);
-    uint32_t hadrforkHeight = currency.calculateUpgradeHeight(votingCompleteHeight);
+    uint64_t votingCompleteHeight = blocks.size() - 1;
+    uint64_t hadrforkHeight = currency.calculateUpgradeHeight(votingCompleteHeight);
     ASSERT_EQ(votingCompleteHeight, upgradeDetector.votingCompleteHeight());
 
     createBlocks(blocks, upgradeDetector, hadrforkHeight - votingCompleteHeight, BLOCK_MAJOR_VERSION_1, BLOCK_MINOR_VERSION_0);

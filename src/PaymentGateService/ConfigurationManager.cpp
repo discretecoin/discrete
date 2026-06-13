@@ -1,5 +1,4 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
-// Copyright (c) 2016-2020, The Karbo developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 //
 // This file is part of Karbo.
 //
@@ -43,12 +42,10 @@ bool ConfigurationManager::init(int argc, char** argv) {
   confGeneralOptions.add(cmdGeneralOptions).add_options()
       ("testnet", po::bool_switch(), "")
       ("local", po::bool_switch(), "");
-      ("level-db", po::bool_switch(), "use LevelDB instead of RocksDB");
 
   cmdGeneralOptions.add_options()
       ("help,h", "produce this help message and exit")
       ("local", po::bool_switch(), "start with local node (remote is default)")
-      ("level-db", po::bool_switch(), "use LevelDB instead of RocksDB")
       ("testnet", po::bool_switch(), "testnet mode")
       ("version", "Output version information");
 
@@ -60,7 +57,8 @@ bool ConfigurationManager::init(int argc, char** argv) {
 
   po::options_description netNodeOptions("Local Node Options");
   CryptoNote::NetNodeConfig::initOptions(netNodeOptions);
-  
+  CryptoNote::CoreConfig::initOptions(netNodeOptions);
+
   po::options_description remoteNodeOptions("Remote Node Options");
   RpcNodeConfiguration::initOptions(remoteNodeOptions);
 
@@ -96,18 +94,18 @@ bool ConfigurationManager::init(int argc, char** argv) {
 
     gateConfiguration.init(confOptions);
     netNodeConfig.init(confOptions);
+    coreConfig.init(confOptions);
     remoteNodeConfig.init(confOptions);
 
     netNodeConfig.setTestnet(confOptions["testnet"].as<bool>());
     startInprocess = confOptions["local"].as<bool>();
-    levelDB = confOptions["level-db"].as<bool>();
   }
 
   //command line options should override options from config file
   gateConfiguration.init(cmdOptions);
   netNodeConfig.init(cmdOptions);
+  coreConfig.init(cmdOptions);
   remoteNodeConfig.init(cmdOptions);
-  dataDir = command_line::get_arg(cmdOptions, command_line::arg_data_dir);
 
   if (cmdOptions["testnet"].as<bool>()) {
     netNodeConfig.setTestnet(true);

@@ -1,18 +1,21 @@
 // Copyright (c) 2018, The TurtleCoin Developers
-// Copyright (c) 2018-2020, The Karbo Developers
+// Copyright (c) 2018-2019, The Karbo Developers
 // 
 // Please see the included LICENSE file for more information.
 
 #pragma once
 
 #include <memory>
+#include <string>
 
 #include <GreenWallet/Types.h>
 #include <GreenWallet/WalletConfig.h>
+#include "AccountNumber.h"
+#include <INode.h>
 
 enum BalanceInfo { NotEnoughBalance, EnoughBalance, SetMixinToZero };
 void transfer(std::shared_ptr<WalletInfo> walletInfo, uint32_t height,
-  bool sendAll = false, std::string nodeAddress = std::string(), uint64_t nodeFee = 0);
+    bool sendAll = false, std::string nodeAddress = std::string(), uint64_t nodeFee = 0);
 
 void doTransfer(std::string address, uint64_t amount, uint64_t fee,
                 std::string extra, std::shared_ptr<WalletInfo> walletInfo,
@@ -43,11 +46,13 @@ bool getOpenAlias(const std::string& alias, std::string& address);
 bool processServerAliasResponse(const std::string& s, std::string& address);
 
 bool askAliasesTransfersConfirmation(const std::string address);
-
-std::string resolveAlias(const std::string& aliasUrl);
 #endif
 
 std::string getExtraFromPaymentID(std::string paymentID);
+
+#ifndef __ANDROID__
+std::string resolveAlias(const std::string& aliasUrl);
+#endif
 
 Maybe<std::string> getPaymentID(std::string msg);
 
@@ -55,10 +60,18 @@ Maybe<std::string> getExtra();
 
 Maybe<std::string> getDestinationAddress();
 
+bool isAccountNumber(const std::string& input);
+
+bool resolveAccountNumberViaNode(CryptoNote::INode& node, const std::string& accountNumber, std::string& address);
+
+bool getAccountNumberViaNode(CryptoNote::INode& node, const std::string& address, std::string& accountNumber);
+
 Maybe<uint64_t> getFee();
 
 Maybe<uint64_t> getTransferAmount();
 
 BalanceInfo doWeHaveEnoughBalance(uint64_t amount, uint64_t fee,
-	std::shared_ptr<WalletInfo> walletInfo,
-	uint32_t height, uint64_t nodeFee);
+    std::shared_ptr<WalletInfo> walletInfo,
+    uint32_t height, uint64_t nodeFee);
+
+uint64_t calculateNodeFee(uint64_t amount);

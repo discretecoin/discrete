@@ -1,5 +1,4 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
-// Copyright (c) 2016-2019, The Karbo developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 //
 // This file is part of Karbo.
 //
@@ -47,15 +46,16 @@ private:
 
   void runInProcess(Logging::LoggerRef& log);
   void runRpcProxy(Logging::LoggerRef& log);
-
+  
   void runWalletService(const CryptoNote::Currency& currency, CryptoNote::INode& node);
+  void runWalletServiceOr(const CryptoNote::Currency& currency, CryptoNote::INode& node);
 
   System::Dispatcher* dispatcher;
   System::Event* stopEvent;
   PaymentService::ConfigurationManager config;
   PaymentService::WalletService* service;
   CryptoNote::CurrencyBuilder currencyBuilder;
-
+  
   Logging::LoggerGroup logger;
   std::ofstream fileStream;
   Logging::StreamLogger fileLogger;

@@ -1,6 +1,6 @@
 // Copyright (c) 2018, The TurtleCoin Developers
-// Copyright (c) 2018-2020, The Karbo Developers
-// 
+// Copyright (c) 2016-2026, The Karbo developers
+//
 // Please see the included LICENSE file for more information.
 
 ////////////////////////////////////////
@@ -10,7 +10,6 @@
 #include <GreenWallet/AddressBook.h>
 #include <Common/ColouredMsg.h>
 #include <GreenWallet/CommandImplementations.h>
-#include <GreenWallet/Fusion.h>
 #include <GreenWallet/Open.h>
 #include <GreenWallet/Transfer.h>
 
@@ -26,6 +25,22 @@ bool handleCommand(const std::string command,
     else if (command == "address")
     {
         std::cout << SuccessMsg(walletInfo->walletAddress) << std::endl;
+
+        /* Check if this address has a registered account number */
+        std::string accountNumber;
+        if (getAccountNumberViaNode(node, walletInfo->walletAddress, accountNumber))
+        {
+            std::cout << InformationMsg("Account number: ")
+                      << SuccessMsg(accountNumber) << std::endl;
+        }
+        else
+        {
+            std::cout << InformationMsg("No account number registered for this address.") << std::endl;
+            if (!walletInfo->viewWallet)
+            {
+                std::cout << InformationMsg("You can register one with the 'register_account' command.") << std::endl;
+            }
+        }
     }
     else if (command == "balance")
     {
@@ -45,7 +60,7 @@ bool handleCommand(const std::string command,
     }
     else if (command == "transfer")
     {
-      transfer(walletInfo, node.getLastKnownBlockHeight(), false, node.feeAddress(), node.feeAmount());
+        transfer(walletInfo, node.getLastKnownBlockHeight(), false, node.feeAddress(), node.feeAmount());
     }
     /* Advanced commands */
     else if (command == "ab_add")
@@ -77,10 +92,6 @@ bool handleCommand(const std::string command,
     {
         listTransfers(true, true, walletInfo->wallet, node);
     }
-    else if (command == "optimize")
-    {
-        fullOptimize(walletInfo->wallet);
-    }
     else if (command == "outgoing_transfers")
     {
         listTransfers(false, true, walletInfo->wallet, node);
@@ -95,7 +106,7 @@ bool handleCommand(const std::string command,
     }
     else if (command == "save")
     {
-		save(walletInfo->wallet);
+        save(walletInfo->wallet);
     }
     else if (command == "save_csv")
     {
@@ -125,6 +136,38 @@ bool handleCommand(const std::string command,
     {
       verifyMessage(walletInfo->wallet);
     }
+    else if (command == "register_account")
+    {
+        registerAccountNumber(walletInfo, node);
+    }
+    else if (command == "pq_address")
+    {
+        pqAddress(walletInfo);
+    }
+    else if (command == "pq_balance")
+    {
+        pqBalance(walletInfo);
+    }
+    else if (command == "pq_transfer")
+    {
+        pqTransfer(walletInfo, node);
+    }
+    else if (command == "bridge_legacy")
+    {
+        bridgeLegacy(walletInfo, node);
+    }
+    else if (command == "pq_register")
+    {
+        pqRegister(walletInfo, node);
+    }
+    else if (command == "pq_register_paid")
+    {
+        pqRegisterPaid(walletInfo, node);
+    }
+    else if (command == "pq_account")
+    {
+        pqAccount(walletInfo, node);
+    }
     /* This should never happen */
     else
     {
@@ -153,6 +196,10 @@ std::shared_ptr<WalletInfo> handleLaunchCommand(CryptoNote::WalletGreen &wallet,
     else if (launchCommand == "key_restore")
     {
         return importWallet(wallet);
+    }
+    else if (launchCommand == "gui_restore")
+    {
+      return importGUIWallet(wallet);
     }
     else if (launchCommand == "view_wallet")
     {

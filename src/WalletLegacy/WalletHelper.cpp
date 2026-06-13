@@ -1,5 +1,4 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
-// Copyright (c) 2016-2019, The Karbo developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 //
 // This file is part of Karbo.
 //
@@ -116,12 +115,12 @@ bool WalletHelper::storeWallet(CryptoNote::IWalletLegacy& wallet, const std::str
   std::ofstream file;
   try {
     openOutputFileStream(walletFilename, file);
-  } catch (std::exception&) {
+  }
+  catch (std::exception&) {
     if (boost::filesystem::exists(tempFile)) {
       boost::filesystem::rename(tempFile, walletFilename);
     }
     throw;
-	return false;
   }
 
   std::error_code saveError = walletSaveWrapper(wallet, file, true, true);
@@ -130,7 +129,7 @@ bool WalletHelper::storeWallet(CryptoNote::IWalletLegacy& wallet, const std::str
     boost::filesystem::remove(walletFilename);
     boost::filesystem::rename(tempFile, walletFilename);
     throw std::system_error(saveError);
-	return false;
+    return false;
   }
 
   file.close();

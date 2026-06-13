@@ -1,7 +1,8 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 // Copyright (c) 2018, The TurtleCoin Developers
-// Copyright (c) 2018-2019 The Cash2 developers
-// Copyright (c) 2016-2020 The Karbo developers
+// Copyright (c) 2018-2019, The Cash2 developers
+// Copyright (c) 2021-2023, The Talleo developers
+// Copyright (c) 2016-2024, The Karbo developers
 //
 // This file is part of Karbo.
 //
@@ -29,6 +30,14 @@ void Save::Request::serialize(CryptoNote::ISerializer& /*serializer*/) {
 void Save::Response::serialize(CryptoNote::ISerializer& /*serializer*/) {
 }
 
+void Reset::Request::serialize(CryptoNote::ISerializer& serializer) {
+  serializer(viewSecretKey, "viewSecretKey");
+  serializer(scanHeight, "scanHeight");
+}
+
+void Reset::Response::serialize(CryptoNote::ISerializer& serializer) {
+}
+
 void Export::Request::serialize(CryptoNote::ISerializer& serializer) {
   if (!serializer(fileName, "fileName")) {
     throw RequestSerializationError();
@@ -36,14 +45,6 @@ void Export::Request::serialize(CryptoNote::ISerializer& serializer) {
 }
 
 void Export::Response::serialize(CryptoNote::ISerializer& serializer) {
-}
-
-void Reset::Request::serialize(CryptoNote::ISerializer& serializer) {
-  serializer(viewSecretKey, "viewSecretKey");
-  serializer(scanHeight, "scanHeight");
-}
-
-void Reset::Response::serialize(CryptoNote::ISerializer& serializer) {
 }
 
 void GetViewKey::Request::serialize(CryptoNote::ISerializer& serializer) {
@@ -107,8 +108,8 @@ void CreateAddress::Request::serialize(CryptoNote::ISerializer& serializer) {
   bool hasScanHeight = serializer(scanHeight, "scanHeight");
   bool hasReset = serializer(reset, "reset");
   if (!hasReset && !hasScanHeight)
-    reset = true;
-  
+     reset = true;
+
   if (hasSecretKey && hasPublicKey) {
     //TODO: replace it with error codes
     throw RequestSerializationError();
@@ -132,7 +133,6 @@ void CreateAddressList::Request::serialize(CryptoNote::ISerializer& serializer) 
   bool hasReset = serializer(reset, "reset");
   if (!hasReset)
     reset = true;
-
   bool hasScanHeights = serializer(scanHeights, "scanHeights");
   if (hasScanHeights && hasReset) {
     //TODO: replace it with error codes
@@ -155,6 +155,16 @@ void DeleteAddress::Request::serialize(CryptoNote::ISerializer& serializer) {
 }
 
 void DeleteAddress::Response::serialize(CryptoNote::ISerializer& serializer) {
+}
+
+void HasAddress::Request::serialize(CryptoNote::ISerializer& serializer) {
+  if (!serializer(address, "address")) {
+    throw RequestSerializationError();
+  }
+}
+
+void HasAddress::Response::serialize(CryptoNote::ISerializer& serializer) {
+  serializer(isOurs, "isOurs");
 }
 
 void GetSpendKeys::Request::serialize(CryptoNote::ISerializer& serializer) {
@@ -275,15 +285,6 @@ void GetUnconfirmedTransactionHashes::Response::serialize(CryptoNote::ISerialize
   serializer(transactionHashes, "transactionHashes");
 }
 
-void WalletRpcOrder::serialize(CryptoNote::ISerializer& serializer) {
-  bool r = serializer(address, "address");
-  r &= serializer(amount, "amount");
-
-  if (!r) {
-    throw RequestSerializationError();
-  }
-}
-
 void GetTransactionSecretKey::Request::serialize(CryptoNote::ISerializer& serializer) {
   if (!serializer(transactionHash, "transactionHash")) {
     throw RequestSerializationError();
@@ -318,6 +319,15 @@ void GetReserveProof::Request::serialize(CryptoNote::ISerializer& serializer) {
 
 void GetReserveProof::Response::serialize(CryptoNote::ISerializer& serializer) {
   serializer(reserveProof, "reserveProof");
+}
+
+void WalletRpcOrder::serialize(CryptoNote::ISerializer& serializer) {
+  bool r = serializer(address, "address");
+  r &= serializer(amount, "amount");
+
+  if (!r) {
+    throw RequestSerializationError();
+  }
 }
 
 void SignMessage::Request::serialize(CryptoNote::ISerializer& serializer) {
@@ -429,36 +439,6 @@ void SendDelayedTransaction::Request::serialize(CryptoNote::ISerializer& seriali
 }
 
 void SendDelayedTransaction::Response::serialize(CryptoNote::ISerializer& serializer) {
-}
-
-void SendFusionTransaction::Request::serialize(CryptoNote::ISerializer& serializer) {
-  if (!serializer(threshold, "threshold")) {
-    throw RequestSerializationError();
-  }
-
-  if (!serializer(anonymity, "anonymity")) {
-    throw RequestSerializationError();
-  }
-
-  serializer(addresses, "addresses");
-  serializer(destinationAddress, "destinationAddress");
-}
-
-void SendFusionTransaction::Response::serialize(CryptoNote::ISerializer& serializer) {
-  serializer(transactionHash, "transactionHash");
-}
-
-void EstimateFusion::Request::serialize(CryptoNote::ISerializer& serializer) {
-  if (!serializer(threshold, "threshold")) {
-    throw RequestSerializationError();
-  }
-
-  serializer(addresses, "addresses");
-}
-
-void EstimateFusion::Response::serialize(CryptoNote::ISerializer& serializer) {
-  serializer(fusionReadyCount, "fusionReadyCount");
-  serializer(totalOutputCount, "totalOutputCount");
 }
 
 }

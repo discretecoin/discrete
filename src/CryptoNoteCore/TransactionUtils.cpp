@@ -1,5 +1,4 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
-// Copyright (c) 2016-2019, The Karbo developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 //
 // This file is part of Karbo.
 //
@@ -24,6 +23,7 @@
 #include "CryptoNoteCore/Account.h"
 #include "CryptoNoteFormatUtils.h"
 #include "TransactionExtra.h"
+#include "PqValidation.h"
 
 using namespace Crypto;
 
@@ -32,8 +32,8 @@ namespace CryptoNote {
 bool checkInputsKeyimagesDiff(const CryptoNote::TransactionPrefix& tx) {
   std::unordered_set<Crypto::KeyImage> ki;
   for (const auto& in : tx.inputs) {
-    if (in.type() == typeid(KeyInput)) {
-      if (!ki.insert(boost::get<KeyInput>(in).keyImage).second)
+    if (in.type() == typeid(PqInput)) {
+      if (!ki.insert(pqInputNullifierAsKeyImage(boost::get<PqInput>(in))).second)
         return false;
     }
   }
@@ -42,33 +42,17 @@ bool checkInputsKeyimagesDiff(const CryptoNote::TransactionPrefix& tx) {
 
 // TransactionInput helper functions
 
-size_t getRequiredSignaturesCount(const TransactionInput& in) {
-  if (in.type() == typeid(KeyInput)) {
-    return boost::get<KeyInput>(in).outputIndexes.size();
-  }
-  if (in.type() == typeid(MultisignatureInput)) {
-    return boost::get<MultisignatureInput>(in).signatureCount;
-  }
+size_t getRequiredSignaturesCount(const TransactionInput& /*in*/) {
+  // PQ inputs carry their own signature; no separate signatures[] entry needed.
   return 0;
 }
 
-uint64_t getTransactionInputAmount(const TransactionInput& in) {
-  if (in.type() == typeid(KeyInput)) {
-    return boost::get<KeyInput>(in).amount;
-  }
-  if (in.type() == typeid(MultisignatureInput)) {
-    return boost::get<MultisignatureInput>(in).amount;
-  }
+uint64_t getTransactionInputAmount(const TransactionInput& /*in*/) {
+  // PQ inputs reference a previous output by index; no inline amount.
   return 0;
 }
 
 TransactionTypes::InputType getTransactionInputType(const TransactionInput& in) {
-  if (in.type() == typeid(KeyInput)) {
-    return TransactionTypes::InputType::Key;
-  }
-  if (in.type() == typeid(MultisignatureInput)) {
-    return TransactionTypes::InputType::Multisignature;
-  }
   if (in.type() == typeid(BaseInput)) {
     return TransactionTypes::InputType::Generating;
   }
@@ -95,9 +79,6 @@ const TransactionInput& getInputChecked(const CryptoNote::TransactionPrefix& tra
 TransactionTypes::OutputType getTransactionOutputType(const TransactionOutputTarget& out) {
   if (out.type() == typeid(KeyOutput)) {
     return TransactionTypes::OutputType::Key;
-  }
-  if (out.type() == typeid(MultisignatureOutput)) {
-    return TransactionTypes::OutputType::Multisignature;
   }
   return TransactionTypes::OutputType::Invalid;
 }
@@ -133,27 +114,18 @@ bool findOutputsToAccount(const CryptoNote::TransactionPrefix& transaction, cons
   Crypto::PublicKey txPubKey = getTransactionPublicKeyFromExtra(transaction.extra);
 
   amount = 0;
-  size_t keyIndex = 0;
   uint32_t outputIndex = 0;
 
   Crypto::KeyDerivation derivation;
-  generate_key_derivation(txPubKey, keys.viewSecretKey, derivation);
+  if (!generate_key_derivation(txPubKey, keys.viewSecretKey, derivation)) {
+    return true;
+  }
 
   for (const TransactionOutput& o : transaction.outputs) {
-    assert(o.target.type() == typeid(KeyOutput) || o.target.type() == typeid(MultisignatureOutput));
     if (o.target.type() == typeid(KeyOutput)) {
-      if (is_out_to_acc(keys, boost::get<KeyOutput>(o.target), derivation, keyIndex)) {
+      if (is_out_to_acc(keys, boost::get<KeyOutput>(o.target), derivation, outputIndex)) {
         out.push_back(outputIndex);
         amount += o.amount;
-      }
-      ++keyIndex;
-    } else if (o.target.type() == typeid(MultisignatureOutput)) {
-      const auto& target = boost::get<MultisignatureOutput>(o.target);
-      for (const auto& key : target.keys) {
-        if (isOutToKey(keys.address.spendPublicKey, key, derivation, static_cast<size_t>(outputIndex))) {
-          out.push_back(outputIndex);
-        }
-        ++keyIndex;
       }
     }
     ++outputIndex;

@@ -1,5 +1,6 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
-// Copyright (c) 2016-2019, The Karbo developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2018-2019, The TurtleCoin Developers
+// Copyright (c) 2016-2021, The Karbo Developers
 //
 // This file is part of Karbo.
 //
@@ -19,6 +20,9 @@
 #include "BlockchainSynchronizer.h"
 
 #include <functional>
+#include <iostream>
+#include <sstream>
+#include <thread>
 #include <unordered_set>
 
 #include "Common/StreamTools.h"
@@ -34,10 +38,6 @@ using namespace Logging;
 namespace {
 
 const int RETRY_TIMEOUT = 5;
-
-std::ostream& operator<<(std::ostream& os, const CryptoNote::IBlockchainConsumer* consumer) {
-  return os << "0x" << std::setw(8) << std::setfill('0') << std::hex << reinterpret_cast<uintptr_t>(consumer) << std::dec << std::setfill(' ');
-}
 
 class TransactionReaderListFormatter {
 public:
@@ -71,6 +71,10 @@ private:
 
 namespace CryptoNote {
 
+std::ostream& operator<<(std::ostream& os, const CryptoNote::IBlockchainConsumer* consumer) {
+  return os << "0x" << std::setw(8) << std::setfill('0') << std::hex << reinterpret_cast<uintptr_t>(consumer) << std::dec << std::setfill(' ');
+}
+
 BlockchainSynchronizer::BlockchainSynchronizer(INode& node, Logging::ILogger& logger, const Hash& genesisBlockHash) :
   m_logger(logger, "BlockchainSynchronizer"),
   m_node(node),
@@ -94,7 +98,7 @@ void BlockchainSynchronizer::addConsumer(IBlockchainConsumer* consumer) {
   }
 
   m_consumers.insert(std::make_pair(consumer, std::make_shared<SynchronizationState>(m_genesisBlockHash)));
-  m_logger(INFO, BRIGHT_WHITE) << "Consumer added, consumer " << consumer << ", count " << m_consumers.size();
+  m_logger(DEBUGGING, BRIGHT_WHITE) << "Consumer added, consumer " << consumer << ", count " << m_consumers.size();
 }
 
 bool BlockchainSynchronizer::removeConsumer(IBlockchainConsumer* consumer) {
@@ -108,7 +112,7 @@ bool BlockchainSynchronizer::removeConsumer(IBlockchainConsumer* consumer) {
 
   bool result = m_consumers.erase(consumer) > 0;
   if (result) {
-    m_logger(INFO, BRIGHT_WHITE) << "Consumer removed, consumer " << consumer << ", count " << m_consumers.size();
+    m_logger(DEBUGGING, BRIGHT_WHITE) << "Consumer removed, consumer " << consumer << ", count " << m_consumers.size();
   } else {
     m_logger(ERROR, BRIGHT_RED) << "Failed to remove consumer: not found, consumer " << consumer;
   }
@@ -135,7 +139,7 @@ std::vector<Crypto::Hash> BlockchainSynchronizer::getConsumerKnownBlocks(IBlockc
 }
 
 std::future<std::error_code> BlockchainSynchronizer::addUnconfirmedTransaction(const ITransactionReader& transaction) {
-  m_logger(INFO, BRIGHT_WHITE) << "Adding unconfirmed transaction, hash " << transaction.getTransactionHash();
+  m_logger(DEBUGGING, BRIGHT_WHITE) << "Adding unconfirmed transaction, hash " << transaction.getTransactionHash();
 
   std::unique_lock<std::mutex> lock(m_stateMutex);
 
@@ -154,7 +158,7 @@ std::future<std::error_code> BlockchainSynchronizer::addUnconfirmedTransaction(c
 }
 
 std::future<void> BlockchainSynchronizer::removeUnconfirmedTransaction(const Crypto::Hash& transactionHash) {
-  m_logger(INFO, BRIGHT_WHITE) << "Removing unconfirmed transaction, hash " << transactionHash;
+  m_logger(DEBUGGING, BRIGHT_WHITE) << "Removing unconfirmed transaction, hash " << transactionHash;
 
   std::unique_lock<std::mutex> lock(m_stateMutex);
 
@@ -192,7 +196,7 @@ std::error_code BlockchainSynchronizer::doAddUnconfirmedTransaction(const ITrans
       rollbackIt->first->removeUnconfirmedTransaction(transactionHash);
     }
   } else {
-    m_logger(INFO, BRIGHT_WHITE) << "Unconfirmed transaction added, hash " << transaction.getTransactionHash();
+    m_logger(DEBUGGING, BRIGHT_WHITE) << "Unconfirmed transaction added, hash " << transaction.getTransactionHash();
   }
 
   return ec;
@@ -205,17 +209,17 @@ void BlockchainSynchronizer::doRemoveUnconfirmedTransaction(const Crypto::Hash& 
     consumer.first->removeUnconfirmedTransaction(transactionHash);
   }
 
-  m_logger(INFO, BRIGHT_WHITE) << "Unconfirmed transaction removed, hash " << transactionHash;
+  m_logger(DEBUGGING, BRIGHT_WHITE) << "Unconfirmed transaction removed, hash " << transactionHash;
 }
 
 void BlockchainSynchronizer::save(std::ostream& os) {
-  m_logger(INFO, BRIGHT_WHITE) << "Saving...";
+  m_logger(DEBUGGING, BRIGHT_WHITE) << "Saving...";
   os.write(reinterpret_cast<const char*>(&m_genesisBlockHash), sizeof(m_genesisBlockHash));
-  m_logger(INFO, BRIGHT_WHITE) << "Saved";
+  m_logger(DEBUGGING, BRIGHT_WHITE) << "Saved";
 }
 
 void BlockchainSynchronizer::load(std::istream& in) {
-  m_logger(INFO, BRIGHT_WHITE) << "Loading...";
+  m_logger(DEBUGGING, BRIGHT_WHITE) << "Loading...";
   Hash genesisBlockHash;
   in.read(reinterpret_cast<char*>(&genesisBlockHash), sizeof(genesisBlockHash));
   if (genesisBlockHash != m_genesisBlockHash) {
@@ -224,7 +228,7 @@ void BlockchainSynchronizer::load(std::istream& in) {
     throw std::runtime_error(message);
   }
 
-  m_logger(INFO, BRIGHT_WHITE) << "Loaded";
+  m_logger(DEBUGGING, BRIGHT_WHITE) << "Loaded";
 }
 
 //--------------------------- FSM ------------------------------------
@@ -340,7 +344,7 @@ void BlockchainSynchronizer::workingProcedure() {
 }
 
 void BlockchainSynchronizer::start() {
-  m_logger(INFO, BRIGHT_WHITE) << "Starting...";
+  m_logger(DEBUGGING, BRIGHT_WHITE) << "Starting...";
 
   if (m_consumers.empty()) {
     auto message = "Failed to start: no consumers";
@@ -366,7 +370,7 @@ void BlockchainSynchronizer::start() {
 }
 
 void BlockchainSynchronizer::stop() {
-  m_logger(INFO, BRIGHT_WHITE) << "Stopping...";
+  m_logger(DEBUGGING, BRIGHT_WHITE) << "Stopping...";
   setFutureState(State::stopped);
 
   // wait for previous processing to end
@@ -375,7 +379,7 @@ void BlockchainSynchronizer::stop() {
   }
 
   workingThread.reset();
-  m_logger(INFO, BRIGHT_WHITE) << "Stopped";
+  m_logger(DEBUGGING, BRIGHT_WHITE) << "Stopped";
 }
 
 void BlockchainSynchronizer::localBlockchainUpdated(uint32_t height) {
@@ -628,7 +632,7 @@ BlockchainSynchronizer::UpdateConsumersResult BlockchainSynchronizer::updateCons
 }
 
 void BlockchainSynchronizer::removeOutdatedTransactions() {
-  m_logger(INFO, BRIGHT_WHITE) << "Removing outdated pool transactions...";
+  m_logger(DEBUGGING, BRIGHT_WHITE) << "Removing outdated pool transactions...";
 
   std::unordered_set<Crypto::Hash> unionPoolHistory;
   std::unordered_set<Crypto::Hash> ignored;
@@ -659,11 +663,11 @@ void BlockchainSynchronizer::removeOutdatedTransactions() {
   }
 
   if (!ec) {
-    m_logger(INFO, BRIGHT_WHITE) << "Outdated pool transactions processed";
+    m_logger(DEBUGGING, BRIGHT_WHITE) << "Outdated pool transactions processed";
   } else {
     m_observerManager.notify(&IBlockchainSynchronizerObserver::synchronizationCompleted, ec);
 
-    m_logger(INFO, BRIGHT_WHITE) << "Retry in " << RETRY_TIMEOUT << " seconds...";
+    m_logger(DEBUGGING, BRIGHT_WHITE) << "Retry in " << RETRY_TIMEOUT << " seconds...";
     std::unique_lock<std::mutex> lock(m_stateMutex);
     bool stopped = m_hasWork.wait_for(lock, std::chrono::seconds(RETRY_TIMEOUT), [this] {
       return m_futureState == State::stopped;

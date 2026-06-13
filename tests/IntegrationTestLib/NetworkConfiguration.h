@@ -1,4 +1,4 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 //
 // This file is part of Karbo.
 //
@@ -46,5 +46,8 @@ struct TestNodeConfiguration {
     return "127.0.0.1:" + std::to_string(p2pPort);
   }
 };
+
+std::string getTestDaemonFilename();
+std::string resolveTestDaemonPath(const std::string& configuredPath);
 
 }

@@ -1,4 +1,4 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 //
 // This file is part of Karbo.
 //
@@ -31,7 +31,7 @@ TestWalletLegacy::TestWalletLegacy(System::Dispatcher& dispatcher, const Currenc
     m_someTransactionUpdated(dispatcher),
     m_currency(currency),
     m_node(node),
-    m_wallet(new CryptoNote::WalletLegacy(currency, node)),
+    m_wallet(new CryptoNote::WalletLegacy(currency, node, m_logger)),
     m_currentHeight(0) {
   m_wallet->addObserver(this);
 }
@@ -119,6 +119,12 @@ AccountPublicAddress TestWalletLegacy::address() const {
   bool ok = m_currency.parseAccountAddressString(addressString, address);
   assert(ok);
   return address;
+}
+
+AccountKeys TestWalletLegacy::accountKeys() const {
+  AccountKeys keys;
+  m_wallet->getAccountKeys(keys);
+  return keys;
 }
 
 void TestWalletLegacy::synchronizationCompleted(std::error_code result) {

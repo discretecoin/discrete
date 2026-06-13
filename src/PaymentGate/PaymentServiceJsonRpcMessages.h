@@ -1,7 +1,7 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 // Copyright (c) 2018, The TurtleCoin Developers
 // Copyright (c) 2018-2019 The Cash2 developers
-// Copyright (c) 2016-2020 The Karbo developers
+// Copyright (c) 2018-2026 The Karbo developers
 //
 // This file is part of Karbo.
 //
@@ -45,9 +45,10 @@ struct Save {
   };
 };
 
-struct Export {
+struct Reset {
   struct Request {
-    std::string fileName;
+    std::string viewSecretKey;
+    uint32_t scanHeight = std::numeric_limits<uint32_t>::max();
 
     void serialize(CryptoNote::ISerializer& serializer);
   };
@@ -57,10 +58,9 @@ struct Export {
   };
 };
 
-struct Reset {
+struct Export {
   struct Request {
-    std::string viewSecretKey;
-    uint32_t scanHeight = std::numeric_limits<uint32_t>::max();
+    std::string fileName;
 
     void serialize(CryptoNote::ISerializer& serializer);
   };
@@ -117,7 +117,7 @@ struct GetStatus {
 struct ValidateAddress {
   struct Request {
     std::string address;
-
+    
     void serialize(CryptoNote::ISerializer& serializer);
   };
 
@@ -196,6 +196,20 @@ struct DeleteAddress {
   };
 
   struct Response {
+    void serialize(CryptoNote::ISerializer& serializer);
+  };
+};
+
+struct HasAddress {
+  struct Request {
+    std::string address;
+
+    void serialize(CryptoNote::ISerializer& serializer);
+  };
+
+  struct Response {
+    bool isOurs;
+
     void serialize(CryptoNote::ISerializer& serializer);
   };
 };
@@ -398,7 +412,7 @@ struct SignMessage {
   struct Request {
     std::string address;
     std::string message;
-
+  
     void serialize(CryptoNote::ISerializer& serializer);
   };
 
@@ -508,39 +522,6 @@ struct SendDelayedTransaction {
   };
 
   struct Response {
-    void serialize(CryptoNote::ISerializer& serializer);
-  };
-};
-
-struct SendFusionTransaction {
-  struct Request {
-    uint64_t threshold;
-    uint32_t anonymity = DEFAULT_ANONYMITY_LEVEL;
-    std::vector<std::string> addresses;
-    std::string destinationAddress;
-
-    void serialize(CryptoNote::ISerializer& serializer);
-  };
-
-  struct Response {
-    std::string transactionHash;
-
-    void serialize(CryptoNote::ISerializer& serializer);
-  };
-};
-
-struct EstimateFusion {
-  struct Request {
-    uint64_t threshold;
-    std::vector<std::string> addresses;
-
-    void serialize(CryptoNote::ISerializer& serializer);
-  };
-
-  struct Response {
-    uint32_t fusionReadyCount;
-    uint32_t totalOutputCount;
-
     void serialize(CryptoNote::ISerializer& serializer);
   };
 };

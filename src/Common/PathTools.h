@@ -1,5 +1,4 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
-// Copyright (c) 2016-2019, The Karbo developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 //
 // This file is part of Karbo.
 //
@@ -33,5 +32,6 @@ std::string GetExtension(const std::string& path);
 std::string RemoveExtension(const std::string& path);
 std::string ReplaceExtenstion(const std::string& path, const std::string& extension);
 bool HasParentPath(const std::string& path);
+bool validateCertPath(std::string& path);
 
 }

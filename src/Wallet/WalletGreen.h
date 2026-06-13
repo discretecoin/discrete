@@ -1,7 +1,5 @@
 // Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
-// Copyright (c) 2018, The BBSCoin Developers
-// Copyright (c) 2018-2019, The TurtleCoin Developers
-// Copyright (c) 2016-2019, The Karbo Developers
+// Copyright (c) 2016-2026, The Karbo developers
 //
 // This file is part of Karbo.
 //
@@ -25,7 +23,6 @@
 #include <queue>
 #include <unordered_map>
 
-#include "IFusionManager.h"
 #include "WalletIndices.h"
 
 #include "Logging/LoggerRef.h"
@@ -33,6 +30,8 @@
 #include <System/Event.h>
 #include "Transfers/TransfersSynchronizer.h"
 #include "Transfers/BlockchainSynchronizer.h"
+#include "Wallet/PqConsumer.h"
+#include "Wallet/PqTransactionBuilder.h"
 #include "../CryptoNoteConfig.h"
 
 namespace CryptoNote {
@@ -40,11 +39,31 @@ namespace CryptoNote {
 class WalletGreen : public IWallet,
                     ITransfersObserver,
                     IBlockchainSynchronizerObserver,
-                    ITransfersSynchronizerObserver,
-                    public IFusionManager {
+                    ITransfersSynchronizerObserver {
 public:
   WalletGreen(System::Dispatcher& dispatcher, const Currency& currency, INode& node, Logging::ILogger& logger, uint32_t transactionSoftLockTime = CryptoNote::parameters::CRYPTONOTE_TX_SPENDABLE_AGE);
-  virtual ~WalletGreen() override;
+  virtual ~WalletGreen();
+
+  INode& getNode() { return m_node; }
+
+  // --- PQ (post-quantum) balance / spend (concrete; not on IWallet) ----------
+  // Mirrors WalletLegacy. Available only when PQ activation is scheduled and the
+  // wallet holds a spend secret (the PQ identity derives from the primary
+  // address's spend key). Tracking wallets / pre-activation chains return
+  // false / 0 / empty.
+  bool pqEnabled() const { return static_cast<bool>(m_pqConsumer); }
+  uint64_t pqActualBalance() const;
+  std::vector<PqSpendInput> pqSpendableInputs() const;
+  uint32_t pqSyncedHeight() const;
+  // Build a signed TX_BRIDGE migrating `amount` of the LEGACY balance (across all
+  // of this wallet's addresses) to the given PQ recipient, with unbridged change
+  // returned to the primary CN address. `minimumFee` is the normal legacy minimum fee
+  // because TX_BRIDGE uses classical KeyInputs. Throws on insufficient unlocked
+  // funds.
+  Transaction createBridgeTransaction(const CryptoPQ::KemPublicKey& destViewPub,
+                                      const CryptoPQ::DsaPublicKey& destSpendPub,
+                                      uint64_t amount, uint64_t minimumFee,
+                                      uint64_t mixin, uint64_t& feeOut);
 
   virtual void initialize(const std::string& path, const std::string& password) override;
   virtual void initializeWithViewKey(const std::string& path, const std::string& password, const Crypto::SecretKey& viewSecretKey) override;
@@ -56,15 +75,21 @@ public:
 
   virtual void changePassword(const std::string& oldPassword, const std::string& newPassword) override;
   virtual void save(WalletSaveLevel saveLevel = WalletSaveLevel::SAVE_ALL, const std::string& extra = "") override;
-  virtual void reset(const uint32_t scanHeight) override;
+  virtual void reset(const uint64_t scanHeight) override;
   virtual void exportWallet(const std::string& path, bool encrypt = true, WalletSaveLevel saveLevel = WalletSaveLevel::SAVE_ALL, const std::string& extra = "") override;
 
   virtual size_t getAddressCount() const override;
   virtual std::string getAddress(size_t index) const override;
+  virtual AccountPublicAddress getAccountPublicAddress(size_t index) const override;
+  virtual bool isMyAddress(const std::string& address) const override;
   virtual KeyPair getAddressSpendKey(size_t index) const override;
   virtual KeyPair getAddressSpendKey(const std::string& address) const override;
   virtual KeyPair getViewKey() const override;
+  virtual AddressGenerationMode getAddressGenerationMode() const override;
+  virtual Crypto::SecretKey getDeterministicSeed() const override;
+  virtual void setAddressGenerationMode(AddressGenerationMode mode, const Crypto::SecretKey& deterministicSeed) override;
   virtual std::string createAddress() override;
+  virtual std::string createAddress(uint32_t scanHeight) override;
   virtual std::string createAddress(const Crypto::SecretKey& spendSecretKey, bool reset = true) override;
   virtual std::string createAddress(const Crypto::PublicKey& spendPublicKey, bool reset = true) override;
   virtual std::string createAddress(const Crypto::SecretKey& spendSecretKey, const uint64_t& creationTimestamp) override;
@@ -85,7 +110,9 @@ public:
   virtual WalletTransaction getTransaction(size_t transactionIndex) const override;
   virtual Crypto::SecretKey getTransactionSecretKey(size_t transactionIndex) const override;
   virtual Crypto::SecretKey getTransactionSecretKey(Crypto::Hash& transactionHash) const override;
+
   virtual bool getTransactionProof(const Crypto::Hash& transactionHash, const CryptoNote::AccountPublicAddress& destinationAddress, const Crypto::SecretKey& txKey, std::string& transactionProof) override;
+
   virtual size_t getTransactionTransferCount(size_t transactionIndex) const override;
   virtual WalletTransfer getTransactionTransfer(size_t transactionIndex, size_t transferIndex) const override;
 
@@ -104,6 +131,10 @@ public:
   virtual bool verifyMessage(const std::string &message, const std::string& address, const std::string &signature) override;
 
   virtual size_t transfer(const TransactionParameters& sendingTransaction, Crypto::SecretKey& txSecretKey) override;
+  size_t transfer(const TransactionParameters& sendingTransaction) {
+    Crypto::SecretKey txSecretKey;
+    return transfer(sendingTransaction, txSecretKey);
+  }
 
   virtual size_t makeTransaction(const TransactionParameters& sendingTransaction) override;
   virtual void commitTransaction(size_t) override;
@@ -113,21 +144,14 @@ public:
   virtual void stop() override;
   virtual WalletEvent getEvent() override;
 
-  virtual size_t createFusionTransaction(uint64_t threshold, uint16_t mixin,
-    const std::vector<std::string>& sourceAddresses = {}, const std::string& destinationAddress = "") override;
-  virtual bool isFusionTransaction(size_t transactionId) const override;
-  virtual IFusionManager::EstimateResult estimate(uint64_t threshold, const std::vector<std::string>& sourceAddresses = {}) const override;
-
   void updateInternalCache();
   size_t getMaxTxSize();
   bool txIsTooLarge(const TransactionParameters& sendingTransaction);
   void clearCaches() { return clearCaches(true, true); };
   size_t getTxSize(const TransactionParameters &sendingTransaction);
   void clearCacheAndShutdown();
-  void createViewWallet(const std::string &password,
-  const std::string address,
-  const Crypto::SecretKey &viewSecretKey,
-  const std::string& path);
+  void createViewWallet(const std::string &password, const std::string address, const Crypto::SecretKey &viewSecretKey, const std::string& path);
+
   uint64_t getBalanceMinusDust(const std::vector<std::string>& addresses);
 
 protected:
@@ -135,6 +159,7 @@ protected:
     Crypto::PublicKey spendPublicKey;
     Crypto::SecretKey spendSecretKey;
     uint64_t creationTimestamp;
+    uint32_t hdIndex = WALLET_INVALID_HD_INDEX;
   };
 
   void throwIfNotInitialized() const;
@@ -153,8 +178,11 @@ protected:
   static void incIv(Crypto::chacha8_iv& iv);
   void incNextIv();
   void initWithKeys(const std::string& path, const std::string& password, const Crypto::PublicKey& viewPublicKey, const Crypto::SecretKey& viewSecretKey, const uint64_t& _creationTimestamp);
-  std::string doCreateAddress(const Crypto::PublicKey& spendPublicKey, const Crypto::SecretKey& spendSecretKey, uint64_t creationTimestamp);
+  CryptoNote::KeyPair deriveHdSpendKey(uint32_t hdIndex) const;
+  NewAddressData createHdAddressData(uint64_t creationTimestamp);
+  std::string doCreateAddress(const Crypto::PublicKey& spendPublicKey, const Crypto::SecretKey& spendSecretKey, uint64_t creationTimestamp, uint32_t hdIndex = WALLET_INVALID_HD_INDEX);
   std::vector<std::string> doCreateAddressList(const std::vector<NewAddressData>& addressDataList);
+
   Crypto::SecretKey getTransactionDeterministicSecretKey(Crypto::Hash& transactionHash) const;
 
   uint64_t getBlockTimestamp(const uint32_t blockHeight);
@@ -244,11 +272,10 @@ protected:
   const WalletRecord& getWalletRecord(CryptoNote::ITransfersContainer* container) const;
 
   CryptoNote::AccountPublicAddress parseAddress(const std::string& address) const;
-  std::string addWallet(const Crypto::PublicKey& spendPublicKey, const Crypto::SecretKey& spendSecretKey, uint64_t creationTimestamp);
+  std::string addWallet(const Crypto::PublicKey& spendPublicKey, const Crypto::SecretKey& spendSecretKey, uint64_t creationTimestamp, uint32_t hdIndex = WALLET_INVALID_HD_INDEX);
   AccountKeys makeAccountKeys(const WalletRecord& wallet) const;
   size_t getTransactionId(const Crypto::Hash& transactionHash) const;
   void pushEvent(const WalletEvent& event);
-  bool isFusionTransaction(const WalletTransaction& walletTx) const;
 
   struct PreparedTransaction {
     std::unique_ptr<ITransaction> transaction;
@@ -260,7 +287,7 @@ protected:
   void prepareTransaction(std::vector<WalletOuts>&& wallets,
     const std::vector<WalletOrder>& orders,
     uint64_t fee,
-    uint16_t mixIn,
+    uint64_t mixIn,
     const std::string& extra,
     uint64_t unlockTimestamp,
     const DonationSettings& donation,
@@ -270,24 +297,24 @@ protected:
 
   size_t doTransfer(const TransactionParameters& transactionParameters, Crypto::SecretKey& txSecretKey);
 
-  void checkIfEnoughMixins(std::vector<CryptoNote::COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::outs_for_amount>& mixinResult, uint16_t mixIn) const;
+  void checkIfEnoughMixins(std::vector<CryptoNote::COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::outs_for_amount>& mixinResult, uint64_t mixIn) const;
   std::vector<WalletTransfer> convertOrdersToTransfers(const std::vector<WalletOrder>& orders) const;
   uint64_t countNeededMoney(const std::vector<CryptoNote::WalletTransfer>& destinations, uint64_t fee) const;
   CryptoNote::AccountPublicAddress parseAccountAddressString(const std::string& addressString) const;
   uint64_t pushDonationTransferIfPossible(const DonationSettings& donation, uint64_t freeAmount, uint64_t dustThreshold, std::vector<WalletTransfer>& destinations) const;
   void validateAddresses(const std::vector<std::string>& addresses) const;
   void validateOrders(const std::vector<WalletOrder>& orders) const;
-  void validateChangeDestination(const std::vector<std::string>& sourceAddresses, const std::string& changeDestination, bool isFusion) const;
+  void validateChangeDestination(const std::vector<std::string>& sourceAddresses, const std::string& changeDestination) const;
   void validateSourceAddresses(const std::vector<std::string>& sourceAddresses) const;
   void validateTransactionParameters(const TransactionParameters& transactionParameters) const;
 
   void requestMixinOuts(const std::vector<OutputToTransfer>& selectedTransfers,
-    uint16_t mixIn,
+    uint64_t mixIn,
     std::vector<CryptoNote::COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::outs_for_amount>& mixinResult);
 
   void prepareInputs(const std::vector<OutputToTransfer>& selectedTransfers,
     std::vector<CryptoNote::COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::outs_for_amount>& mixinResult,
-    uint16_t mixIn,
+    uint64_t mixIn,
     std::vector<InputInfo>& keysInfo);
 
   uint64_t selectTransfers(uint64_t needeMoney,
@@ -304,7 +331,7 @@ protected:
     std::vector<InputInfo>& keysInfo, const std::string& extra, uint64_t unlockTimestamp, Crypto::SecretKey& txSecretKey);
 
   void sendTransaction(const CryptoNote::Transaction& cryptoNoteTransaction);
-  size_t validateSaveAndSendTransaction(const ITransactionReader& transaction, const std::vector<WalletTransfer>& destinations, bool isFusion, bool send);
+  size_t validateSaveAndSendTransaction(const ITransactionReader& transaction, const std::vector<WalletTransfer>& destinations, bool send);
 
   size_t insertBlockchainTransaction(const TransactionInformation& info, int64_t txBalance);
   size_t insertOutgoingTransactionAndPushEvent(const Crypto::Hash& transactionHash, uint64_t fee, const BinaryArray& extra, uint64_t unlockTimestamp, Crypto::SecretKey& txSecretKey);
@@ -326,6 +353,14 @@ protected:
   void deleteUnlockTransactionJob(const Crypto::Hash& transactionHash);
   void startBlockchainSynchronizer();
   void stopBlockchainSynchronizer();
+  // Create + register the PQ scanning consumer for the primary address, gated on
+  // a spend secret being present and PQ activation being scheduled. No-op if
+  // already created or gates fail.
+  void initPqConsumer(const Crypto::SecretKey& spendSecretKey, const SynchronizationStart& syncStart);
+  // Serialize the PQ consumer's sync cursor + PqWalletState into m_pqState (for
+  // save), and restore them from m_pqState into a live consumer (after load).
+  void buildPqStateBlob();
+  void restorePqStateBlob();
   void addUnconfirmedTransaction(const ITransactionReader& transaction);
   void removeUnconfirmedTransaction(const Crypto::Hash& transactionHash);
 
@@ -340,10 +375,6 @@ protected:
   void loadWalletCache(std::unordered_set<Crypto::PublicKey>& addedKeys, std::unordered_set<Crypto::PublicKey>& deletedKeys, std::string& extra);
   void saveWalletCache(ContainerStorage& storage, const Crypto::chacha8_key& key, WalletSaveLevel saveLevel, const std::string& extra);
   void subscribeWallets();
-
-  std::vector<OutputToTransfer> pickRandomFusionInputs(const std::vector<std::string>& addresses,
-    uint64_t threshold, size_t minInputCount, size_t maxInputCount);
-  static ReceiverAmounts decomposeFusionOutputs(const AccountPublicAddress& address, uint64_t inputsAmount);
 
   enum class WalletState {
     INITIALIZED,
@@ -366,7 +397,6 @@ protected:
   void filterOutTransactions(WalletTransactions& transactions, WalletTransfers& transfers, std::function<bool (const WalletTransaction&)>&& pred) const;
   void initBlockchain(const Crypto::PublicKey& viewPublicKey);
   CryptoNote::AccountPublicAddress getChangeDestination(const std::string& changeDestinationAddress, const std::vector<std::string>& sourceAddresses) const;
-  bool isMyAddress(const std::string& address) const;
 
   void deleteContainerFromUnlockTransactionJobs(const ITransfersContainer* container);
   std::vector<size_t> deleteTransfersForAddress(const std::string& address, std::vector<size_t>& deletedTransactions);
@@ -383,12 +413,14 @@ protected:
   UnlockTransactionJobs m_unlockTransactionsJob;
   WalletTransactions m_transactions;
   WalletTransfers m_transfers; //sorted
-  mutable std::unordered_map<size_t, bool> m_fusionTxsCache; // txIndex -> isFusion
   UncommitedTransactions m_uncommitedTransactions;
 
   bool m_blockchainSynchronizerStarted;
   BlockchainSynchronizer m_blockchainSynchronizer;
   TransfersSyncronizer m_synchronizer;
+  // PQ output scanning consumer (created lazily for the primary address when PQ
+  // activation is scheduled). Null otherwise. See initPqConsumer.
+  std::unique_ptr<PqConsumer> m_pqConsumer;
 
   System::Event m_eventOccurred;
   std::queue<WalletEvent> m_events;
@@ -400,9 +432,13 @@ protected:
   Crypto::chacha8_key m_key;
   std::string m_path;
   std::string m_extra; // workaround for wallet reset
+  std::string m_pqState; // persisted PQ consumer cursor + PqWalletState (see save/loadPqState)
 
   Crypto::PublicKey m_viewPublicKey;
   Crypto::SecretKey m_viewSecretKey;
+  AddressGenerationMode m_addressGenerationMode;
+  Crypto::SecretKey m_deterministicSeed;
+  uint32_t m_nextDeterministicIndex;
 
   uint64_t m_actualBalance;
   uint64_t m_pendingBalance;

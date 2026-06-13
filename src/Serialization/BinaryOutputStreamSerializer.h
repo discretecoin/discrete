@@ -1,5 +1,4 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
-// Copyright (c) 2016-2019, The Karbo developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 //
 // This file is part of Karbo.
 //
@@ -27,7 +26,7 @@ namespace CryptoNote {
 class BinaryOutputStreamSerializer : public ISerializer {
 public:
   BinaryOutputStreamSerializer(Common::IOutputStream& strm) : stream(strm) {}
-  virtual ~BinaryOutputStreamSerializer() override {}
+  virtual ~BinaryOutputStreamSerializer() {}
 
   virtual ISerializer::SerializerType type() const override;
 

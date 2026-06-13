@@ -1,6 +1,6 @@
 // Copyright (c) 2018, The TurtleCoin Developers
 // Copyright (c) 2018-2019, The Karbo Developers
-// 
+//
 // Please see the included LICENSE file for more information.
 
 ////////////////////////////////
@@ -9,16 +9,15 @@
 
 #include <GreenWallet/Tools.h>
 
-using namespace Tools;
-
 std::vector<Command> startupCommands()
 {
-    return 
+    return
     {
         Command("open", "Open a wallet already on your system"),
         Command("create", "Create a new wallet"),
         Command("seed_restore", "Restore a wallet using a seed phrase of words"),
         Command("key_restore", "Restore a wallet using a view and spend key"),
+        Command("gui_restore", "Restore a wallet using base58-encoded keys from GUI wallet"),
         Command("view_wallet", "Import a view only wallet"),
         Command("exit", "Exit the program"),
     };
@@ -36,39 +35,46 @@ std::vector<Command> nodeDownCommands()
 
 std::vector<AdvancedCommand> allCommands()
 {
-	return
-	{
-		/* Basic commands */
-		AdvancedCommand("advanced", "List available advanced commands", true, false),
-		AdvancedCommand("address", "Display your payment address", true, false),
-		AdvancedCommand("balance", "Display how much " + WalletConfig::ticker + " you have", true, false),
-		AdvancedCommand("backup", "Backup your private keys and/or seed", true, false),
-		AdvancedCommand("exit", "Exit and save your wallet", true, false),
-		AdvancedCommand("help", "List this help message", true, false),
-		AdvancedCommand("transfer", "Send " + WalletConfig::ticker + " to someone", false, false),
+    return
+    {
+        /* Basic commands */
+        AdvancedCommand("advanced", "List available advanced commands", true, false),
+        AdvancedCommand("address", "Display your payment address", true, false),
+        AdvancedCommand("balance", "Display how much " + WalletConfig::ticker + " you have", true, false),
+        AdvancedCommand("backup", "Backup your private keys and/or seed", true, false),
+        AdvancedCommand("exit", "Exit and save your wallet", true, false),
+        AdvancedCommand("help", "List this help message", true, false),
+        AdvancedCommand("transfer", "Send " + WalletConfig::ticker + " to someone", false, false),
 
-		/* Advanced commands */
-		AdvancedCommand("ab_add", "Add a person to your address book", true, true),
-		AdvancedCommand("ab_delete", "Delete a person in your address book", true, true),
-		AdvancedCommand("ab_list", "List everyone in your address book", true, true),
-		AdvancedCommand("ab_send", "Send " + WalletConfig::ticker + " to someone in your address book", false, true),
-		AdvancedCommand("change_password", "Change your wallet password", true, true),
-		//AdvancedCommand("make_integrated_address", "Make a combined address + payment ID", true, true),
-		AdvancedCommand("incoming_transfers", "Show incoming transfers", true, true),
-		AdvancedCommand("list_transfers", "Show all transfers", false, true),
-		AdvancedCommand("optimize", "Optimize your wallet to send large amounts", false, true),
-		AdvancedCommand("outgoing_transfers", "Show outgoing transfers", false, true),
-		AdvancedCommand("reserve_proof", "Get proof of balance", false, true),
-		AdvancedCommand("reset", "Recheck the chain from zero for transactions", true, true),
-		AdvancedCommand("save", "Save your wallet state", true, true),
-		AdvancedCommand("save_csv", "Save all wallet transactions to a CSV file", true, true),
-		AdvancedCommand("send_all", "Send all your balance to someone", false, true),
-		AdvancedCommand("sign_message", "Sign message with your wallet keys", false, true),
-		AdvancedCommand("status", "Display sync status and network hashrate", true, true),
-		AdvancedCommand("tx_key", "Display transaction secret key if it's stored in wallet cache", false, true),
-		AdvancedCommand("tx_proof", "Display proof of payment to specified address", false, true),
-		AdvancedCommand("verify_message", "Verify signed message", true, true),
-	};
+        /* Advanced commands */
+        AdvancedCommand("ab_add", "Add a person to your address book", true, true),
+        AdvancedCommand("ab_delete", "Delete a person in your address book", true, true),
+        AdvancedCommand("ab_list", "List everyone in your address book", true, true),
+        AdvancedCommand("ab_send", "Send " + WalletConfig::ticker + " to someone in your address book", false, true),
+        AdvancedCommand("change_password", "Change your wallet password", true, true),
+        //AdvancedCommand("make_integrated_address", "Make a combined address + payment ID", true, true),
+        AdvancedCommand("incoming_transfers", "Show incoming transfers", true, true),
+        AdvancedCommand("list_transfers", "Show all transfers", false, true),
+        AdvancedCommand("outgoing_transfers", "Show outgoing transfers", false, true),
+        AdvancedCommand("reserve_proof", "Get proof of balance", false, true),
+        AdvancedCommand("reset", "Recheck the chain from zero for transactions", true, true),
+        AdvancedCommand("save", "Save your wallet state", true, true),
+        AdvancedCommand("save_csv", "Save all wallet transactions to a CSV file", true, true),
+        AdvancedCommand("send_all", "Send all your balance to someone", false, true),
+        AdvancedCommand("sign_message", "Sign message with your wallet keys", false, true),
+        AdvancedCommand("status", "Display sync status and network hashrate", true, true),
+        AdvancedCommand("tx_key", "Display transaction secret key if it's stored in wallet cache", false, true),
+        AdvancedCommand("tx_proof", "Display proof of payment to specified address", false, true),
+        AdvancedCommand("verify_message", "Verify signed message", true, true),
+        AdvancedCommand("register_account", "Register an account number for easy payments", false, true),
+        AdvancedCommand("pq_address", "Display your post-quantum (PQ) address", false, true),
+        AdvancedCommand("pq_balance", "Display your separate post-quantum (PQ) balance", false, true),
+        AdvancedCommand("pq_transfer", "Send PQ funds to a PQ address", false, true),
+        AdvancedCommand("bridge_legacy", "One-way migrate legacy funds to a PQ address", false, true),
+        AdvancedCommand("pq_register", "Register a free post-quantum (PQ) account number", false, true),
+        AdvancedCommand("pq_register_paid", "Register a post-quantum (PQ) account number with a fee", false, true),
+        AdvancedCommand("pq_account", "Show your post-quantum (PQ) account number", false, true),
+    };
 }
 
 std::vector<AdvancedCommand> basicCommands()

@@ -1,24 +1,26 @@
 // Copyright (c) 2018, The TurtleCoin Developers
-// Copyright (c) 2018-2020, The Karbo Developers
-// 
+// Copyright (c) 2018-2019, The Karbo Developers
+//
 // Please see the included LICENSE file for more information.
 
 ///////////////////////////
 #include <GreenWallet/Sync.h>
 ///////////////////////////
 
-#include <iostream>
-
 #include <Common/StringTools.h>
+
+#include <chrono>
+#include <iostream>
+#include <thread>
+
 #include <Common/ColouredMsg.h>
-#include <Common/FormatTools.h>
 #include <GreenWallet/CommandImplementations.h>
 #include <GreenWallet/GetInput.h>
 #include <GreenWallet/Tools.h>
 #include <GreenWallet/Types.h>
 #include <GreenWallet/WalletConfig.h>
 
-using namespace Tools;
+#define _GLIBCXX_USE_NANOSLEEP 1
 
 void checkForNewTransactions(std::shared_ptr<WalletInfo> walletInfo)
 {
@@ -28,13 +30,13 @@ void checkForNewTransactions(std::shared_ptr<WalletInfo> walletInfo)
 
     if (newTransactionCount != walletInfo->knownTransactionCount)
     {
-        for (size_t i = walletInfo->knownTransactionCount; 
+        for (size_t i = walletInfo->knownTransactionCount;
                     i < newTransactionCount; i++)
         {
-            const CryptoNote::WalletTransaction t 
+            const CryptoNote::WalletTransaction t
                 = walletInfo->wallet.getTransaction(i);
 
-            /* Don't print outgoing or fusion transfers */
+            /* Don't print outgoing transfers */
             if (t.totalAmount > 0)
             {
                 std::cout << std::endl
@@ -45,7 +47,7 @@ void checkForNewTransactions(std::shared_ptr<WalletInfo> walletInfo)
                           << SuccessMsg("Hash: " + Common::podToHex(t.hash))
                           << std::endl
                           << SuccessMsg("Amount: "
-                                      + Common::formatAmountWithTicker(t.totalAmount))
+                                      + formatAmount(t.totalAmount))
                           << std::endl
                           << InformationMsg(getPrompt(walletInfo))
                           << std::flush;
@@ -90,10 +92,10 @@ void syncWallet(CryptoNote::INode &node,
 
         transactionCount = 0;
 
-		// WalletGreen will handle it
-		transactionCount = walletInfo->wallet.getTransactionCount();
-		walletInfo->knownTransactionCount = transactionCount;
-		walletHeight = walletInfo->wallet.getTransaction(transactionCount - 1).blockHeight;
+        // WalletGreen will handle it
+        transactionCount = walletInfo->wallet.getTransactionCount();
+        walletInfo->knownTransactionCount = transactionCount;
+        walletHeight = walletInfo->wallet.getTransaction(transactionCount - 1).blockHeight;
         //walletInfo->wallet.clearCaches();
     }
 
@@ -167,7 +169,7 @@ void syncWallet(CryptoNote::INode &node,
                    to sometimes force the sync to resume properly.
                    So we'll try this before warning the user.
                 */
-				walletInfo->wallet.save();
+                walletInfo->wallet.save();
                 waitSeconds = 5;
             }
         }
@@ -186,7 +188,7 @@ void syncWallet(CryptoNote::INode &node,
                     CryptoNote::WalletTransaction t
                         = walletInfo->wallet.getTransaction(i);
 
-                    /* Don't print out fusion transactions */
+                    /* Don't print out zero-amount transactions */
                     if (t.totalAmount != 0)
                     {
                         std::cout << std::endl
@@ -218,7 +220,7 @@ void syncWallet(CryptoNote::INode &node,
 
     /* In case the user force closes, we don't want them to have to rescan
        the whole chain. */
-	walletInfo->wallet.save();
+    walletInfo->wallet.save();
 
     walletInfo->knownTransactionCount = transactionCount;
 }

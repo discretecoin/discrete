@@ -2,8 +2,6 @@
 // Copyright (c) 2014-2017 XDN developers
 // Copyright (c) 2016-2017 BXC developers
 // Copyright (c) 2017 UltraNote developers
-// Copyright (c) 2016-2019, The Karbo developers
-// 
 // Distributed under the MIT/X11 software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -24,7 +22,7 @@ public:
   typedef std::vector<JsonValue> Array;
   typedef bool Bool;
   typedef int64_t Integer;
-  typedef std::nullptr_t Nil;
+  typedef std::nullptr_t Nile;
   typedef std::map<Key, JsonValue> Object;
   typedef double Real;
   typedef std::string String;
@@ -47,7 +45,7 @@ public:
   JsonValue(Array&& value);
   explicit JsonValue(Bool value);
   JsonValue(Integer value);
-  JsonValue(Nil value);
+  JsonValue(Nile value);
   JsonValue(const Object& value);
   JsonValue(Object&& value);
   JsonValue(Real value);
@@ -66,7 +64,7 @@ public:
   JsonValue& operator=(Array&& value);
   //JsonValue& operator=(Bool value);
   JsonValue& operator=(Integer value);
-  JsonValue& operator=(Nil value);
+  JsonValue& operator=(Nile value);
   JsonValue& operator=(const Object& value);
   JsonValue& operator=(Object&& value);
   JsonValue& operator=(Real value);

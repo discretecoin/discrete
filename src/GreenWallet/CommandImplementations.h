@@ -1,5 +1,5 @@
 // Copyright (c) 2018, The TurtleCoin Developers
-// Copyright (c) 2018-2020, The Karbo Developers
+// Copyright (c) 2018-2019, The Karbo Developers
 // 
 // Please see the included LICENSE file for more information.
 
@@ -22,13 +22,13 @@ void reset(CryptoNote::INode &node, std::shared_ptr<WalletInfo> walletInfo);
 void status(CryptoNote::INode &node, CryptoNote::WalletGreen &wallet);
 
 void printHeights(uint32_t localHeight, uint32_t remoteHeight,
-	uint32_t walletHeight);
+    uint32_t walletHeight);
 
 void printSyncStatus(uint32_t localHeight, uint32_t remoteHeight,
-	uint32_t walletHeight);
+    uint32_t walletHeight);
 
 void printSyncSummary(uint32_t localHeight, uint32_t remoteHeight,
-	uint32_t walletHeight);
+    uint32_t walletHeight);
 
 void printPeerCount(size_t peerCount);
 
@@ -69,3 +69,19 @@ void txProof(CryptoNote::WalletGreen &wallet);
 void signMessage(std::shared_ptr<WalletInfo> walletInfo, bool viewWallet);
 
 void verifyMessage(CryptoNote::WalletGreen &wallet);
+
+void registerAccountNumber(std::shared_ptr<WalletInfo> walletInfo, CryptoNote::INode &node);
+
+void pqAddress(std::shared_ptr<WalletInfo> walletInfo);
+
+void pqBalance(std::shared_ptr<WalletInfo> walletInfo);
+
+void pqTransfer(std::shared_ptr<WalletInfo> walletInfo, CryptoNote::INode &node);
+
+void bridgeLegacy(std::shared_ptr<WalletInfo> walletInfo, CryptoNote::INode &node);
+
+void pqRegister(std::shared_ptr<WalletInfo> walletInfo, CryptoNote::INode &node);
+
+void pqRegisterPaid(std::shared_ptr<WalletInfo> walletInfo, CryptoNote::INode &node);
+
+void pqAccount(std::shared_ptr<WalletInfo> walletInfo, CryptoNote::INode &node);

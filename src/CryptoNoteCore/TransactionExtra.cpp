@@ -1,5 +1,5 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
-// Copyright (c) 2016-2019, The Karbo developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2016-2020, Karbo developers
 //
 // This file is part of Karbo.
 //
@@ -22,8 +22,12 @@
 #include "Common/StreamTools.h"
 #include "Common/StringTools.h"
 #include "CryptoNoteTools.h"
+#include "../crypto/crypto.h"
+#include "crypto_pq/PqHash.h"
 #include "Serialization/BinaryOutputStreamSerializer.h"
 #include "Serialization/BinaryInputStreamSerializer.h"
+
+#include <cstring>
 
 using namespace Crypto;
 using namespace Common;
@@ -86,6 +90,42 @@ bool parseTransactionExtra(const std::vector<uint8_t> &transactionExtra, std::ve
         transactionExtraFields.push_back(mmTag);
         break;
       }
+
+      case TX_EXTRA_TAG_ACCOUNT_REGISTRATION: {
+        TransactionExtraAccountRegistration reg;
+        ar(reg.spendPublicKey, "spend_public_key");
+        ar(reg.viewPublicKey, "view_public_key");
+        transactionExtraFields.push_back(reg);
+        break;
+      }
+
+      case TX_EXTRA_TAG_PQ_ACCOUNT_REGISTRATION: {
+        TransactionExtraPqAccountRegistration reg;
+        read(iss, reg.viewPub.data(), reg.viewPub.size());
+        read(iss, reg.spendPub.data(), reg.spendPub.size());
+        transactionExtraFields.push_back(reg);
+        break;
+      }
+
+      case TX_EXTRA_TAG_POW: {
+        TransactionExtraPow pow;
+        ar(pow.refBlockHash, "ref_block_hash");
+        uint8_t le[8];
+        read(iss, le, sizeof(le));
+        pow.nonce = 0;
+        for (int i = 0; i < 8; ++i) {
+          pow.nonce |= static_cast<uint64_t>(le[i]) << (8 * i);
+        }
+        transactionExtraFields.push_back(pow);
+        break;
+      }
+
+      case TX_EXTRA_TAG_PQ_MINER_SPEND_PUB: {
+        TransactionExtraPqMinerSpendPub minerKey;
+        read(iss, minerKey.spendPub.data(), minerKey.spendPub.size());
+        transactionExtraFields.push_back(minerKey);
+        break;
+      }
       }
     }
   } catch (std::exception &) {
@@ -119,6 +159,22 @@ struct ExtraSerializerVisitor : public boost::static_visitor<bool> {
 
   bool operator()(const TransactionExtraMergeMiningTag& t) {
     return appendMergeMiningTagToExtra(extra, t);
+  }
+
+  bool operator()(const TransactionExtraAccountRegistration& t) {
+    return addAccountRegistrationToExtra(extra, t.spendPublicKey, t.viewPublicKey);
+  }
+
+  bool operator()(const TransactionExtraPqAccountRegistration& t) {
+    return addPqAccountRegistrationToExtra(extra, t.viewPub, t.spendPub);
+  }
+
+  bool operator()(const TransactionExtraPow& t) {
+    return appendPowTagToExtra(extra, t);
+  }
+
+  bool operator()(const TransactionExtraPqMinerSpendPub& t) {
+    return addPqMinerSpendPubToExtra(extra, t.spendPub);
   }
 };
 
@@ -244,5 +300,157 @@ bool getPaymentIdFromTxExtra(const std::vector<uint8_t>& extra, Hash& paymentId)
   return true;
 }
 
+bool addAccountRegistrationToExtra(std::vector<uint8_t>& tx_extra, const PublicKey& spendKey, const PublicKey& viewKey) {
+  size_t start = tx_extra.size();
+  tx_extra.resize(start + 1 + sizeof(PublicKey) + sizeof(PublicKey));
+  tx_extra[start] = TX_EXTRA_TAG_ACCOUNT_REGISTRATION;
+  memcpy(&tx_extra[start + 1], &spendKey, sizeof(PublicKey));
+  memcpy(&tx_extra[start + 1 + sizeof(PublicKey)], &viewKey, sizeof(PublicKey));
+  return true;
+}
+
+bool getAccountRegistrationFromExtra(const std::vector<uint8_t>& tx_extra, TransactionExtraAccountRegistration& reg) {
+  std::vector<TransactionExtraField> tx_extra_fields;
+  if (!parseTransactionExtra(tx_extra, tx_extra_fields)) {
+    return false;
+  }
+  return findTransactionExtraFieldByType(tx_extra_fields, reg);
+}
+
+bool isWellFormedAccountRegistration(const std::vector<uint8_t>& tx_extra) {
+  std::vector<TransactionExtraField> extraFields;
+  if (!parseTransactionExtra(tx_extra, extraFields)) {
+    return false;
+  }
+
+  int regCount = 0;
+  bool hasNonce = false;
+  for (const auto& field : extraFields) {
+    if (field.type() == typeid(TransactionExtraAccountRegistration)) {
+      ++regCount;
+    }
+    if (field.type() == typeid(TransactionExtraNonce)) {
+      hasNonce = true;
+    }
+  }
+
+  if (regCount != 1) {
+    return false;
+  }
+
+  if (hasNonce) {
+    return false;
+  }
+
+  TransactionExtraAccountRegistration reg;
+  findTransactionExtraFieldByType(extraFields, reg);
+
+  if (!Crypto::check_key(reg.spendPublicKey) || !Crypto::check_key(reg.viewPublicKey)) {
+    return false;
+  }
+
+  static const Crypto::PublicKey identity = {};
+  if (reg.spendPublicKey == identity || reg.viewPublicKey == identity) {
+    return false;
+  }
+
+  return true;
+}
+
+bool addPqAccountRegistrationToExtra(std::vector<uint8_t>& tx_extra,
+                                     const std::array<uint8_t, TX_EXTRA_PQ_VIEW_PUBKEY_SIZE>& viewPub,
+                                     const std::array<uint8_t, TX_EXTRA_PQ_SPEND_PUBKEY_SIZE>& spendPub) {
+  size_t start = tx_extra.size();
+  tx_extra.resize(start + 1 + viewPub.size() + spendPub.size());
+  tx_extra[start] = TX_EXTRA_TAG_PQ_ACCOUNT_REGISTRATION;
+  memcpy(&tx_extra[start + 1], viewPub.data(), viewPub.size());
+  memcpy(&tx_extra[start + 1 + viewPub.size()], spendPub.data(), spendPub.size());
+  return true;
+}
+
+bool getPqAccountRegistrationFromExtra(const std::vector<uint8_t>& tx_extra, TransactionExtraPqAccountRegistration& reg) {
+  std::vector<TransactionExtraField> tx_extra_fields;
+  if (!parseTransactionExtra(tx_extra, tx_extra_fields)) {
+    return false;
+  }
+  return findTransactionExtraFieldByType(tx_extra_fields, reg);
+}
+
+Crypto::Hash getPqAccountIdentityHash(const TransactionExtraPqAccountRegistration& reg) {
+  return getPqAccountIdentityHash(reg.viewPub, reg.spendPub);
+}
+
+Crypto::Hash getPqAccountIdentityHash(
+    const std::array<uint8_t, TX_EXTRA_PQ_VIEW_PUBKEY_SIZE>& viewPub,
+    const std::array<uint8_t, TX_EXTRA_PQ_SPEND_PUBKEY_SIZE>& spendPub) {
+  static const char domain[] = "karbo-pq-account-id-v1";
+  std::vector<uint8_t> buf;
+  buf.reserve(sizeof(domain) - 1 + viewPub.size() + spendPub.size());
+  buf.insert(buf.end(), domain, domain + sizeof(domain) - 1);
+  buf.insert(buf.end(), viewPub.begin(), viewPub.end());
+  buf.insert(buf.end(), spendPub.begin(), spendPub.end());
+
+  CryptoPQ::Hash256 digest = CryptoPQ::sha3_256(buf.data(), buf.size());
+  Crypto::Hash out;
+  std::memcpy(out.data, digest.data(), 32);
+  return out;
+}
+
+bool appendPowTagToExtra(std::vector<uint8_t>& tx_extra, const TransactionExtraPow& pow) {
+  size_t start = tx_extra.size();
+  tx_extra.resize(start + 1 + sizeof(Hash) + 8);
+  tx_extra[start] = TX_EXTRA_TAG_POW;
+  memcpy(&tx_extra[start + 1], &pow.refBlockHash, sizeof(Hash));
+  // nonce: 8 bytes little-endian, the final bytes of the tag (and of tx_extra,
+  // when this is appended last).
+  size_t noncePos = start + 1 + sizeof(Hash);
+  for (int i = 0; i < 8; ++i) {
+    tx_extra[noncePos + i] = static_cast<uint8_t>((pow.nonce >> (8 * i)) & 0xFF);
+  }
+  return true;
+}
+
+bool getPowTagFromExtra(const std::vector<uint8_t>& tx_extra, TransactionExtraPow& pow) {
+  std::vector<TransactionExtraField> tx_extra_fields;
+  if (!parseTransactionExtra(tx_extra, tx_extra_fields)) {
+    return false;
+  }
+  return findTransactionExtraFieldByType(tx_extra_fields, pow);
+}
+
+bool isPowTagLastField(const std::vector<uint8_t>& tx_extra) {
+  std::vector<TransactionExtraField> extraFields;
+  if (!parseTransactionExtra(tx_extra, extraFields) || extraFields.empty()) {
+    return false;
+  }
+  int powCount = 0;
+  for (const auto& f : extraFields) {
+    if (f.type() == typeid(TransactionExtraPow)) {
+      ++powCount;
+    }
+  }
+  return powCount == 1 && extraFields.back().type() == typeid(TransactionExtraPow);
+}
+
+bool addPqMinerSpendPubToExtra(std::vector<uint8_t>& tx_extra,
+                               const std::array<uint8_t, TX_EXTRA_PQ_SPEND_PUBKEY_SIZE>& spendPub) {
+  tx_extra.push_back(TX_EXTRA_TAG_PQ_MINER_SPEND_PUB);
+  tx_extra.insert(tx_extra.end(), spendPub.begin(), spendPub.end());
+  return true;
+}
+
+bool getPqMinerSpendPubFromExtra(const std::vector<uint8_t>& tx_extra,
+                                 std::array<uint8_t, TX_EXTRA_PQ_SPEND_PUBKEY_SIZE>& spendPub) {
+  std::vector<TransactionExtraField> fields;
+  if (!parseTransactionExtra(tx_extra, fields)) {
+    return false;
+  }
+  TransactionExtraPqMinerSpendPub field;
+  if (!findTransactionExtraFieldByType(fields, field)) {
+    return false;
+  }
+  spendPub = field.spendPub;
+  return true;
+}
 
 }

@@ -1,5 +1,5 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
-// Copyright (c) 2016-2019, The Karbo developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2016-2026, The Karbo developers
 //
 // This file is part of Karbo.
 //
@@ -18,17 +18,13 @@
 
 #include "TransfersSubscription.h"
 #include "IWalletLegacy.h"
-#include "CryptoNoteCore/CryptoNoteBasicImpl.h"
 
 using namespace Crypto;
-using namespace Logging;
 
 namespace CryptoNote {
 
 TransfersSubscription::TransfersSubscription(const CryptoNote::Currency& currency, Logging::ILogger& logger, const AccountSubscription& sub)
-  : subscription(sub), logger(logger, "TransfersSubscription"), transfers(currency, logger, sub.transactionSpendableAge),
-    m_address(currency.accountAddressAsString(sub.keys.address)) {
-}
+  : subscription(sub), logger(logger, "TransfersSubscription"), transfers(currency, logger, sub.transactionSpendableAge) {}
 
 
 SynchronizationStart TransfersSubscription::getSyncStart() {
@@ -38,7 +34,6 @@ SynchronizationStart TransfersSubscription::getSyncStart() {
 void TransfersSubscription::onBlockchainDetach(uint32_t height) {
   std::vector<Hash> deletedTransactions = transfers.detach(height);
   for (auto& hash : deletedTransactions) {
-    logger(TRACE) << "Transaction deleted from wallet " << m_address << ", hash " << hash;
     m_observerManager.notify(&ITransfersObserver::onTransactionDeleted, this, hash);
   }
 }
@@ -59,10 +54,10 @@ const AccountKeys& TransfersSubscription::getKeys() const {
 }
 
 bool TransfersSubscription::addTransaction(const TransactionBlockInfo& blockInfo, const ITransactionReader& tx,
-                                           const std::vector<TransactionOutputInformationIn>& transfersList) {
-  bool added = transfers.addTransaction(blockInfo, tx, transfersList);
+                                           const std::vector<TransactionOutputInformationIn>& transfersList,
+                                           bool isOutgoing) {
+  bool added = transfers.addTransaction(blockInfo, tx, transfersList, isOutgoing);
   if (added) {
-    logger(TRACE) << "Transaction updates balance of wallet " << m_address << ", hash " << tx.getTransactionHash();
     m_observerManager.notify(&ITransfersObserver::onTransactionUpdated, this, tx.getTransactionHash());
   }
 
@@ -79,7 +74,6 @@ ITransfersContainer& TransfersSubscription::getContainer() {
 
 void TransfersSubscription::deleteUnconfirmedTransaction(const Hash& transactionHash) {
   if (transfers.deleteUnconfirmedTransaction(transactionHash)) {
-    logger(TRACE) << "Transaction deleted from wallet " << m_address << ", hash " << transactionHash;
     m_observerManager.notify(&ITransfersObserver::onTransactionDeleted, this, transactionHash);
   }
 }

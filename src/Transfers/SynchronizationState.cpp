@@ -1,5 +1,4 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
-// Copyright (c) 2016-2019, The Karbo developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 //
 // This file is part of Karbo.
 //
@@ -52,9 +51,8 @@ SynchronizationState::ShortHistory SynchronizationState::getShortHistory(uint32_
     ++i;
   }
 
-  if (!genesis_included) {
+  if (!genesis_included)
     history.push_back(m_blockchain[0]);
-  }
 
   return history;
 }
@@ -97,7 +95,6 @@ void SynchronizationState::detach(uint32_t height) {
 void SynchronizationState::addBlocks(const Crypto::Hash* blockHashes, uint32_t height, uint32_t count) {
   assert(blockHashes);
   auto size = m_blockchain.size();
-  if (size) {}
   assert( size == height);
   m_blockchain.insert(m_blockchain.end(), blockHashes, blockHashes + count);
 }

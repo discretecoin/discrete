@@ -1,0 +1,109 @@
+{
+  "_comment": [
+    "Known-answer vectors for the Karbo PQ Phase 1 domain-separated derivations",
+    "(spec v2.4, sections 6 and 8). These are the published cross-implementation",
+    "test vectors: any node software must reproduce them byte-for-byte. A mismatch",
+    "is a chain split (spec section 14), so these values never change once shipped.",
+    "Mirrored by tests/test_pq_derive.cpp.",
+    "",
+    "Fixed inputs use pat(N,a,b)[i] = (i*a + b) mod 256, i in [0,N).",
+    "Integers (prevOutIndex, amount, fee) are little-endian on the wire.",
+    "All outputs are SHA3-256 / HKDF-SHA3-256 (FIPS 202/SP800-56C), hex-encoded."
+  ],
+  "transaction_version": 2,
+  "block_major_version": 6,
+  "domains": {
+    "view_root":    "karbo-pq-view-root-v1",
+    "spend_root":   "karbo-pq-spend-root-v1",
+    "inputs_hash":  "karbo-pq-inputs-hash-v1",
+    "out_context":  "karbo-pq-out-context-v1",
+    "aead_key":     "karbo-pq-aead-key-v1",
+    "spend_commit": "karbo-pq-spend-commit-v1",
+    "nullifier":    "karbo-pq-nullifier-v1",
+    "tx_sign":      "karbo-pq-tx-sign-v1",
+    "_reserved_phase2": "karbo-pq-ct-mask-v1"
+  },
+  "vectors": {
+    "view_seed": {
+      "_note": "L=64 (FIPS 203 KeyGen d||z); spec L=32 is overridden — see PqSeed.h.",
+      "seed_master": "pat(32,1,0)",
+      "salt": "00 * 32",
+      "info": "karbo-pq-view-root-v1",
+      "L": 64,
+      "output": "79c534a401ab72ff802da7441fbfa1d027f5f38e81192b6e0e81e5b840341ef33fd6632bafa1a8cfb124118b33d6d3346335c2b2adc3d053a664dca0e7bce3b7"
+    },
+    "spend_seed": {
+      "_note": "ML-DSA-65 xi for the long-term spend keypair (ownership-model fix). L=32 used directly as FIPS 204 xi.",
+      "seed_master": "pat(32,1,0)",
+      "salt": "00 * 32",
+      "info": "karbo-pq-spend-root-v1",
+      "L": 32,
+      "output": "a79a34b7614d62dfc1e0a9364557e342c92cce4a09b814e96f7e8381043a2ad0"
+    },
+    "inputs_hash": {
+      "inputs": [
+        { "prev_txid": "pat(32,1,0)",   "prev_out_index": 7 },
+        { "prev_txid": "pat(32,255,5)", "prev_out_index": 16909060 }
+      ],
+      "output": "05369b29b04c0150080312173ec816f49955043648896ac46d21c15860122400"
+    },
+    "out_context": {
+      "inputs_hash": "<inputs_hash above>",
+      "kem_ct": "pat(1088,7,3)",
+      "output_index": 1,
+      "output": "2d8b4e207f8cd9b052e4ebd6e6a752b4a6f1363e52481a00445c8cec0a2f8615"
+    },
+    "aead_key": {
+      "ss": "pat(32,1,0)",
+      "out_context": "<out_context above>",
+      "output": "e93bdb04989a7a2833eea56830bb5d5091d2b4ecda8b0754a0abf8d69b0225c9"
+    },
+    "pq_output_enc_payload": {
+      "_note": "ChaCha20-Poly1305(key=aead_key, nonce=00*12, aad=out_context||LE64(amount), msg=rho). 48 bytes (32 ct + 16 tag).",
+      "ss": "pat(32,1,0)",
+      "kem_ct": "pat(1088,7,3)",
+      "out_context": "<out_context above>",
+      "output_index": 1,
+      "amount": 1000000,
+      "rho": "pat(32,3,9)",
+      "output": "b228e03adc437d64c251fcb8bc35f115ccc096cf8a5af789fd72ac3533764593aa115dcb2b4845404ec9dcf2b06191da"
+    },
+    "spend_commit": {
+      "_note": "spend_pub is the recipient's long-term ML-DSA-65 spend key (ownership-model fix).",
+      "spend_pub": "pat(1952,5,1)",
+      "rho": "pat(32,3,9)",
+      "output": "e68cb8c9336055b6627ca1a23f7b1a0962a2952d1f58466d28039c67405ca46d"
+    },
+    "nullifier": {
+      "spend_pub": "pat(1952,5,1)",
+      "rho": "pat(32,3,9)",
+      "output": "93722da8561f4e172bdfc97d8abbde3ce29b09dc29c86fcb9edb550870c20869"
+    },
+    "tx_signing_digest": {
+      "_note": "Amended §8.1: binds version || txType || LE64(unlockTime) || inputs || outputs || LE32(extra_len)||extra || LE64(fee). txType/unlockTime/extra added to close a malleability gap (txid covers them).",
+      "version": 2,
+      "txType": 1,
+      "unlockTime": 0,
+      "extra": "",
+      "inputs": [
+        {
+          "prev_txid": "pat(32,1,0)",
+          "prev_out_index": 7,
+          "auth_pub": "pat(1952,5,1)",
+          "rho_reveal": "pat(32,3,9)"
+        }
+      ],
+      "outputs": [
+        {
+          "type": 16,
+          "amount": 1000000,
+          "kem_ct": "pat(1088,7,3)",
+          "enc_payload": "pat(48,2,1)",
+          "spend_commit": "<spend_commit above>"
+        }
+      ],
+      "fee": 12345,
+      "output": "c875c53291a7b0b0acdd8888780e680af7ff9f21087390dce1eb9ad85d78b732"
+    }
+  }
+}

@@ -1,4 +1,4 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 //
 // This file is part of Karbo.
 //
@@ -57,8 +57,10 @@ int main(int argc, char *argv[]) {
             begin = end - currency.difficultyWindow();
         }
         uint64_t res = currency.nextDifficulty(
+            static_cast<uint32_t>(n),
+            CryptoNote::BLOCK_MAJOR_VERSION_1,
             vector<uint64_t>(timestamps.begin() + begin, timestamps.begin() + end),
-            vector<uint64_t>(cumulative_difficulties.begin() + begin, cumulative_difficulties.begin() + end));
+            vector<CryptoNote::Difficulty>(cumulative_difficulties.begin() + begin, cumulative_difficulties.begin() + end));
         if (res != difficulty) {
             cerr << "Wrong difficulty for block " << n << endl
                 << "Expected: " << difficulty << endl

@@ -1,5 +1,4 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
-// Copyright (c) 2016-2019, The Karbo developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 //
 // This file is part of Karbo.
 //
@@ -128,7 +127,7 @@ void MemoryMappedFile::open(const std::string& path, std::error_code& ec) {
     close(ignore);
   });
 
-  m_file = ::open(path.c_str(), O_RDWR, S_IRUSR | S_IWUSR);
+  m_file = ::open(path.c_str(), O_RDWR);
   if (m_file == -1) {
     return;
   }

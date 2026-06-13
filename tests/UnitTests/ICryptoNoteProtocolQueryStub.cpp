@@ -1,4 +1,4 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 //
 // This file is part of Karbo.
 //
@@ -35,6 +35,13 @@ size_t ICryptoNoteProtocolQueryStub::getPeerCount() const {
 
 bool ICryptoNoteProtocolQueryStub::isSynchronized() const {
   return synchronized;
+}
+
+bool ICryptoNoteProtocolQueryStub::getConnections(std::vector<CryptoNote::CryptoNoteConnectionContext>& /*connections*/) const {
+  return false;
+}
+
+void ICryptoNoteProtocolQueryStub::printDandelions() const {
 }
 
 void ICryptoNoteProtocolQueryStub::setPeerCount(uint32_t count) {

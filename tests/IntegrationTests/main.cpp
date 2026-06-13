@@ -1,4 +1,4 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 //
 // This file is part of Karbo.
 //
@@ -373,7 +373,7 @@ public:
     localNode->addObserver(&localHCO);
     remoteNode->addObserver(&remoteHCO);
     for (size_t blockNumber = 0; blockNumber < blocksCount; ++blockNumber) {
-      nodeDaemons.front()->startMining(1, wallet->getAddress());
+      nodeDaemons.front()->startMining(1, Tests::accountKeysFromWallet(*wallet));
       blockMined.wait();
       CHECK_AND_ASSERT_MES(blockArrivedToRemote.wait_for(std::chrono::milliseconds(5000)), false, "block propagation too slow >5000ms.");
       nodeDaemons.front()->stopMining();
@@ -813,21 +813,6 @@ public:
   SimpleTest test;
 };
 
-class SimpleTestCaseOtherConfig : public ::testing::Test {
-
-public:
-
-  SimpleTestCaseOtherConfig() : 
-    currency(CryptoNote::CurrencyBuilder(logger).testnet(true).mempoolTxLiveTime(60).currency()),
-    test(currency, dispatcher, baseCfg) {
-  }
-
-  System::Dispatcher dispatcher;
-  Logging::ConsoleLogger logger;
-  CryptoNote::Currency currency;
-  SimpleTest test;
-};
-
 TEST_F(SimpleTestCase, WALLET2WALLET) {
   ASSERT_TRUE(test.perform1());
 }
@@ -844,7 +829,8 @@ TEST_F(SimpleTestCase, TESTPOOLANDINPROCNODE) {
   ASSERT_TRUE(test.perform5());
 }
 
-TEST_F(SimpleTestCaseOtherConfig, TESTPOOLDELETION) {
+TEST_F(SimpleTestCase, TESTPOOLDELETION) {
+  currency = CryptoNote::CurrencyBuilder(logger).testnet(true).mempoolTxLiveTime(60).currency();
   ASSERT_TRUE(test.perform6());
 }
 

@@ -1,7 +1,5 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
-// Copyright (c) 2014-2018, The Monero Project
-// Copyright (c) 2018-2019, The TurtleCoin Developers
-// Copyright (c) 2016-2020, The Karbo developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2016-2022, The Karbo developers
 //
 // This file is part of Karbo.
 //
@@ -33,12 +31,16 @@
 #include <boost/utility/value_init.hpp>
 
 #include "crypto/crypto.h"
+#include "crypto/random.h"
 #include "Common/CommandLine.h"
 #include "Common/StringTools.h"
 #include "Serialization/SerializationTools.h"
 
 #include "CryptoNoteFormatUtils.h"
 #include "TransactionExtra.h"
+#include "crypto_pq/PqDsa.h"
+
+#undef ERROR
 
 using namespace Logging;
 
@@ -49,7 +51,7 @@ namespace CryptoNote
     m_currency(currency),
     logger(log, "miner"),
     m_stop(true),
-    m_template(boost::value_initialized<BlockTemplate>()),
+    m_template(boost::value_initialized<Block>()),
     m_template_no(0),
     m_diffic(0),
     m_handler(handler),
@@ -59,10 +61,12 @@ namespace CryptoNote
     m_last_hr_merge_time(0),
     m_hashes(0),
     m_do_print_hashrate(false),
+    m_do_log_hashrate(false),
     m_do_mining(false),
     m_current_hash_rate(0),
     m_update_block_template_interval(5),
-    m_update_merge_hr_interval(2)
+    m_update_merge_hr_interval(2),
+    m_update_log_hr_interval(60)
   {
   }
   //-----------------------------------------------------------------------------------------------------
@@ -70,22 +74,20 @@ namespace CryptoNote
     stop();
   }
   //-----------------------------------------------------------------------------------------------------
-  bool miner::set_block_template(const BlockTemplate& bl, const Difficulty& di) {
+  bool miner::set_block_template(const Block& bl, const Difficulty& di) {
     std::lock_guard<decltype(m_template_lock)> lk(m_template_lock);
 
     m_template = bl;
 
     if (m_template.majorVersion == BLOCK_MAJOR_VERSION_2 || m_template.majorVersion == BLOCK_MAJOR_VERSION_3) {
-      CachedBlock cachedBlk(m_template);
-      CryptoNote::TransactionExtraMergeMiningTag mmTag;
-      mmTag.depth = 0;
-      try {
-        m_template.parentBlock.baseTransaction.extra.clear();
-        mmTag.merkleRoot = cachedBlk.getAuxiliaryBlockHeaderHash();
-        if (!CryptoNote::appendMergeMiningTagToExtra(m_template.parentBlock.baseTransaction.extra, mmTag)) {
-          return false;
-        }
-      } catch (std::exception&) {
+      CryptoNote::TransactionExtraMergeMiningTag mm_tag;
+      mm_tag.depth = 0;
+      if (!CryptoNote::get_aux_block_header_hash(m_template, mm_tag.merkleRoot)) {
+        return false;
+      }
+
+      m_template.parentBlock.baseTransaction.extra.clear();
+      if (!CryptoNote::appendMergeMiningTagToExtra(m_template.parentBlock.baseTransaction.extra, mm_tag)) {
         return false;
       }
     }
@@ -105,7 +107,7 @@ namespace CryptoNote
   }
   //-----------------------------------------------------------------------------------------------------
   bool miner::request_block_template() {
-    BlockTemplate bl = boost::value_initialized<BlockTemplate>();
+    Block bl = boost::value_initialized<Block>();
     Difficulty di = 0;
     uint32_t height;
     CryptoNote::BinaryArray extra_nonce;
@@ -114,8 +116,8 @@ namespace CryptoNote
       extra_nonce = m_extra_messages[m_config.current_extra_message_index];
     }
 
-    if(!m_handler.getBlockTemplate(bl, m_mine_address, extra_nonce, di, height)) {
-      logger(ERROR) << "Failed to getBlockTemplate(), stopping mining";
+    if(!m_handler.get_block_template(bl, m_mine_account, di, height, extra_nonce)) {
+      logger(ERROR) << "Failed to get_block_template(), stopping mining";
       return false;
     }
 
@@ -132,7 +134,12 @@ namespace CryptoNote
     });
 
     m_update_merge_hr_interval.call([&](){
-      merge_hr();
+      merge_hr(false);
+      return true;
+    });
+    
+    m_update_log_hr_interval.call([&](){
+      merge_hr(true);
       return true;
     });
 
@@ -150,7 +157,7 @@ namespace CryptoNote
   }
 
   //-----------------------------------------------------------------------------------------------------
-  void miner::merge_hr()
+  void miner::merge_hr(bool do_log)
   {
     if(m_last_hr_merge_time && is_mining()) {
       m_current_hash_rate = m_hashes * 1000 / (millisecondsSinceEpoch() - m_last_hr_merge_time + 1);
@@ -159,13 +166,16 @@ namespace CryptoNote
       if(m_last_hash_rates.size() > 19)
         m_last_hash_rates.pop_front();
 
-      if(m_do_print_hashrate) {
-        uint64_t total_hr = std::accumulate(m_last_hash_rates.begin(), m_last_hash_rates.end(), static_cast<uint64_t>(0));
-        float hr = static_cast<float>(total_hr)/static_cast<float>(m_last_hash_rates.size());
-        std::cout << "Hashrate: " << std::setprecision(2) << std::fixed << hr << "        \r";
-      }
+      uint64_t total_hr = std::accumulate(m_last_hash_rates.begin(), m_last_hash_rates.end(), (uint64_t)0);
+      float hr = static_cast<float>(total_hr) / static_cast<float>(m_last_hash_rates.size());
+
+      if(m_do_print_hashrate)
+        std::cout << "Hashrate: " << std::setprecision(2) << std::fixed << hr << " H/s" << "        \r";
+
+      if (do_log && m_do_log_hashrate)
+        logger(INFO, BRIGHT_WHITE) << "Hashrate: " << std::setprecision(2) << std::fixed << hr << " H/s";
     }
-    
+
     m_last_hr_merge_time = millisecondsSinceEpoch();
     m_hashes = 0;
   }
@@ -199,32 +209,33 @@ namespace CryptoNote
       logger(INFO) << "Loaded " << m_extra_messages.size() << " extra messages, current index " << m_config.current_extra_message_index;
     }
 
-    if (!config.miningAddress.empty() && !config.miningKey.empty()) {
-      if (!m_currency.parseAccountAddressString(config.miningAddress, m_mine_address)) {
-        logger(ERROR) << "Target account address " << config.miningAddress << " has wrong format, starting daemon canceled";
-        return false;
-      }
-
+    if (!config.miningSpendKey.empty() && !config.miningViewKey.empty()) {
       Crypto::Hash private_key_hash;
       size_t size;
-      if (!Common::fromHex(config.miningKey, &private_key_hash, sizeof(private_key_hash), size) || size != sizeof(private_key_hash)) {
-        logger(Logging::INFO) << "Could not parse private key";
+      if (!Common::fromHex(config.miningSpendKey, &private_key_hash, sizeof(private_key_hash), size) || size != sizeof(private_key_hash)) {
+        logger(Logging::INFO) << "Could not parse private spend key";
         return false;
       }
-      m_mine_key = *(struct Crypto::SecretKey *) &private_key_hash;
-
-      Crypto::PublicKey pub;
-      if (!secret_key_to_public_key(m_mine_key, pub) && pub != m_mine_address.spendPublicKey) {
-        logger(ERROR) << "Address doesn't match the key. Is it really Private Spend Key for this address?";
+      m_mine_account.spendSecretKey = *(struct Crypto::SecretKey *) &private_key_hash;
+      if (!Common::fromHex(config.miningViewKey, &private_key_hash, sizeof(private_key_hash), size) || size != sizeof(private_key_hash)) {
+        logger(Logging::INFO) << "Could not parse private view key";
         return false;
       }
+      m_mine_account.viewSecretKey = *(struct Crypto::SecretKey *) &private_key_hash;
 
-      m_threads_total = 1;
+      Crypto::secret_key_to_public_key(m_mine_account.spendSecretKey, m_mine_account.address.spendPublicKey);
+      Crypto::secret_key_to_public_key(m_mine_account.viewSecretKey, m_mine_account.address.viewPublicKey);
+
       m_do_mining = true;
-      if (config.miningThreads > 0) {
-        m_threads_total = config.miningThreads;
-      }
     }
+
+    m_threads_total = 1;
+    if (config.miningThreads > 0) {
+      m_threads_total = config.miningThreads;
+    }
+
+    m_do_print_hashrate = config.printHashrate;
+    m_do_log_hashrate = config.logHashrate;
 
     return true;
   }
@@ -234,8 +245,20 @@ namespace CryptoNote
     return !m_stop;
   }
   //-----------------------------------------------------------------------------------------------------
-  bool miner::start(const AccountPublicAddress& adr, const Crypto::SecretKey& key, size_t threads_count)
-  {   
+  bool miner::startPq(const CryptoPQ::KemPublicKey& viewPub,
+                      const CryptoPQ::DsaPublicKey& spendPub,
+                      const CryptoPQ::DsaSecretKey& spendSk,
+                      size_t threads_count) {
+    m_pq_view_pub   = viewPub;
+    m_pq_spend_pub  = spendPub;
+    m_pq_spend_sk   = spendSk;
+    m_pq_keys_set   = true;
+    // Delegate to the common threading setup (with a dummy ECC account).
+    return start(AccountKeys{}, threads_count);
+  }
+
+  bool miner::start(const AccountKeys& acc, size_t threads_count)
+  {
     if (is_mining()) {
       logger(ERROR) << "Starting miner but it's already started";
       return false;
@@ -248,22 +271,20 @@ namespace CryptoNote
       return false;
     }
 
-    m_mine_address = adr;
-    m_mine_key = key;
-    Crypto::PublicKey pub;
-    if (!secret_key_to_public_key(key, pub) && pub != adr.spendPublicKey) {
-      logger(ERROR) << "Address doesn't match the key. Is it really Private Spend Key for this address?";
-      return false;
-    }
+    m_mine_account = acc;
 
     m_threads_total = static_cast<uint32_t>(threads_count);
     m_starter_nonce = Random::randomValue<uint32_t>();
 
     if (!m_template_no) {
-      request_block_template(); //lets update block template
+      if (!request_block_template()) { //lets update block template
+        return false;
+      }
     }
 
+    m_do_mining = true;
     m_stop = false;
+    m_pausers_count = 0; // in case mining wasn't resumed after pause
 
     for (uint32_t i = 0; i != threads_count; i++) {
       m_threads.push_back(std::thread(std::bind(&miner::worker_thread, this, i)));
@@ -289,25 +310,96 @@ namespace CryptoNote
   }
 
   //-----------------------------------------------------------------------------------------------------
-  bool miner::stop()
+  bool miner::stop(bool keepMiningRequested)
   {
-    send_stop_signal();
+    if (!keepMiningRequested) {
+      m_do_mining = false;
+    }
+
     std::lock_guard<std::mutex> lk(m_threads_lock);
+
+    bool mining = !m_threads.empty();
+    if (!mining)
+    {
+      logger(TRACE) << "Not mining - nothing to stop";
+      return false;
+    }
+
+    send_stop_signal();
 
     for (auto& th : m_threads) {
       th.join();
     }
 
     m_threads.clear();
-    if (is_mining())
-      logger(INFO) << "Mining has been stopped, " << m_threads.size() << " finished" ;
+    m_current_hash_rate = 0;
+    m_last_hash_rates.clear();
+    logger(INFO) << "Mining has been stopped, " << m_threads.size() << " finished" ;
     return true;
+  }
+  //-----------------------------------------------------------------------------------------------------
+  bool miner::find_nonce_for_given_block(Crypto::cn_context &context, Block& bl, const Difficulty& diffic) {
+
+    unsigned nthreads = std::thread::hardware_concurrency();
+
+    if (nthreads > 0 && diffic > 5) {
+      std::vector<std::future<void>> threads(nthreads);
+      std::atomic<uint32_t> foundNonce;
+      std::atomic<bool> found(false);
+      uint32_t startNonce = Random::randomValue<uint32_t>();
+
+      for (unsigned i = 0; i < nthreads; ++i) {
+        threads[i] = std::async(std::launch::async, [&, i]() {
+          Crypto::cn_context localctx;
+          Crypto::Hash h;
+
+          Block lb(bl); // copy to local block
+
+          for (uint32_t nonce = startNonce + i; !found; nonce += nthreads) {
+            lb.nonce = nonce;
+
+            if (!m_handler.getBlockLongHash(localctx, lb, h)) {
+              return;
+            }
+
+            if (check_hash(h, diffic)) {
+              foundNonce = nonce;
+              found = true;
+              return;
+            }
+          }
+        });
+      }
+
+      for (auto& t : threads) {
+        t.wait();
+      }
+
+      if (found) {
+        bl.nonce = foundNonce.load();
+      }
+
+      return found;
+    } else {
+      for (; bl.nonce != std::numeric_limits<uint32_t>::max(); bl.nonce++) {
+        Crypto::Hash h;
+        if (!m_handler.getBlockLongHash(context, bl, h)) {
+          return false;
+        }
+
+        if (check_hash(h, diffic)) {
+          return true;
+        }
+      }
+    }
+
+    return false;
   }
   //-----------------------------------------------------------------------------------------------------
   void miner::on_synchronized()
   {
-    if(m_do_mining) {
-      start(m_mine_address, m_mine_key, m_threads_total);
+    if(m_do_mining && !is_mining()) {
+      start(m_mine_account, m_threads_total);
     }
   }
   //-----------------------------------------------------------------------------------------------------
@@ -339,7 +431,7 @@ namespace CryptoNote
     Difficulty local_diff = 0;
     uint32_t local_template_ver = 0;
     Crypto::cn_context context;
-    BlockTemplate b;
+    Block b;
 
     while(!m_stop)
     {
@@ -367,39 +459,58 @@ namespace CryptoNote
       }
 
       b.nonce = nonce;
-      Crypto::Hash h;
 
-      CachedBlock cb(b);
+      // step 1: sign the block with miner's ML-DSA-65 spend key.
+      if (!m_pq_keys_set) {
+        logger(ERROR) << "PQ miner keys not set — call startPq() before mining.";
+        m_stop = true;
+      }
       if (!m_stop) {
-        if (!m_handler.getBlockLongHash(context, cb, h)) {
+        try {
+          BinaryArray ba;
+          if (!get_block_hashing_blob(b, ba)) {
+            logger(ERROR) << "get_block_hashing_blob for PQ block signature failed.";
+            m_stop = true;
+          } else {
+            Crypto::Hash h = Crypto::cn_fast_hash(ba.data(), ba.size());
+            CryptoPQ::DsaSignature sig = CryptoPQ::dsa_sign(
+                m_pq_spend_sk, h.data, sizeof(h.data));
+            b.signature.assign(sig.begin(), sig.end());
+          }
+        } catch (const std::exception& e) {
+          logger(WARNING) << "PQ block signing failed: " << e.what();
+          m_stop = true;
+        }
+      }
+
+      // step 2: get long hash
+      Crypto::Hash pow;
+      if (!m_stop) {
+        if (!m_handler.getBlockLongHash(context, b, pow)) {
           logger(ERROR) << "getBlockLongHash failed.";
           m_stop = true;
         }
       }
 
-      if (!m_stop && check_hash(h, local_diff))
-      {
+      if (!m_stop && check_hash(pow, local_diff)) {
         // we lucky!
         ++m_config.current_extra_message_index;
 
-        Crypto::Hash id = cb.getBlockHash();
-
-        logger(INFO, GREEN) << "Found block for difficulty: "
-          << local_diff
-          << " at height " << cb.getBlockIndex()
-          << " v. " << (int)b.majorVersion << "\r\n"
-          << " POW: " << Common::podToHex(h) << "\r\n"
-          << " ID:  " << Common::podToHex(id);
-
-        // now sing the block
-        try {
-          Crypto::generate_signature(id, m_mine_address.spendPublicKey, m_mine_key, b.signature);
-        }
-        catch (std::exception& e) {
-          logger(WARNING) << "Signing failed: " << e.what();
+        uint32_t bh = boost::get<BaseInput>(b.baseTransaction.inputs[0]).blockIndex;
+        Crypto::Hash id;
+        if (!get_block_hash(b, id)) {
+          logger(ERROR) << "Failed to get block hash.";
+          m_stop = true;
         }
 
-        if(!m_handler.handleBlockFound(b)) {
+        logger(INFO, GREEN) << "Found block for difficulty "
+                            << local_diff
+                            << " at height " << bh
+                            << " v. " << (int)b.majorVersion << "\r\n"
+                            << "POW: " << Common::podToHex(pow) << "\r\n"
+                            << " ID: " << Common::podToHex(id);
+
+        if (!m_handler.handle_block_found(b)) {
           --m_config.current_extra_message_index;
         } else {
           //success update, lets update config

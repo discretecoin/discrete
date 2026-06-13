@@ -1,5 +1,5 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
-// Copyright (c) 2016-2020, The Karbo developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2016-2019, Karbo developers
 //
 // This file is part of Karbo.
 //
@@ -94,7 +94,8 @@ void WalletLegacySerializer::saveKeys(CryptoNote::ISerializer& serializer) {
 
 Crypto::chacha8_iv WalletLegacySerializer::encrypt(const std::string& plain, const std::string& password, std::string& cipher) {
   Crypto::chacha8_key key;
-  Crypto::generate_chacha8_key(password, key);
+  Crypto::cn_context context;
+  Crypto::generate_chacha8_key(context, password, key);
 
   cipher.resize(plain.size());
 
@@ -131,10 +132,10 @@ void WalletLegacySerializer::deserialize(std::istream& stream, const std::string
   CryptoNote::BinaryInputStreamSerializer serializer(decryptedStream);
 
   loadKeys(serializer);
-  throwIfKeysMismatch(account.getAccountKeys().viewSecretKey, account.getAccountKeys().address.viewPublicKey);
+  throwIfKeysMissmatch(account.getAccountKeys().viewSecretKey, account.getAccountKeys().address.viewPublicKey);
 
   if (account.getAccountKeys().spendSecretKey != NULL_SECRET_KEY) {
-    throwIfKeysMismatch(account.getAccountKeys().spendSecretKey, account.getAccountKeys().address.spendPublicKey);
+    throwIfKeysMissmatch(account.getAccountKeys().spendSecretKey, account.getAccountKeys().address.spendPublicKey);
   } else {
     if (!Crypto::check_key(account.getAccountKeys().address.spendPublicKey)) {
       throw std::system_error(make_error_code(CryptoNote::error::WRONG_PASSWORD));
@@ -223,7 +224,8 @@ bool WalletLegacySerializer::deserialize(std::istream& stream, const std::string
 
 void WalletLegacySerializer::decrypt(const std::string& cipher, std::string& plain, Crypto::chacha8_iv iv, const std::string& password) {
   Crypto::chacha8_key key;
-  Crypto::generate_chacha8_key(password, key);
+  Crypto::cn_context context;
+  Crypto::generate_chacha8_key(context, password, key);
 
   plain.resize(cipher.size());
 

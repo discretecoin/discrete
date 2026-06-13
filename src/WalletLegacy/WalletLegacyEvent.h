@@ -1,5 +1,4 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
-// Copyright (c) 2016-2019, The Karbo developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 //
 // This file is part of Karbo.
 //
@@ -28,7 +27,7 @@ class WalletLegacyEvent
 {
 public:
   virtual ~WalletLegacyEvent() {
-  }
+  };
 
   virtual void notify(Tools::ObserverManager<CryptoNote::IWalletLegacyObserver>& observer) = 0;
 };
@@ -36,8 +35,8 @@ public:
 class WalletTransactionUpdatedEvent : public WalletLegacyEvent
 {
 public:
-  WalletTransactionUpdatedEvent(TransactionId transactionId) : m_id(transactionId) {}
-  virtual ~WalletTransactionUpdatedEvent() override {}
+  WalletTransactionUpdatedEvent(TransactionId transactionId) : m_id(transactionId) {};
+  virtual ~WalletTransactionUpdatedEvent() {};
 
   virtual void notify(Tools::ObserverManager<CryptoNote::IWalletLegacyObserver>& observer) override
   {
@@ -51,8 +50,8 @@ private:
 class WalletSendTransactionCompletedEvent : public WalletLegacyEvent
 {
 public:
-  WalletSendTransactionCompletedEvent(TransactionId transactionId, std::error_code result) : m_id(transactionId), m_error(result) {}
-  virtual ~WalletSendTransactionCompletedEvent() override {}
+  WalletSendTransactionCompletedEvent(TransactionId transactionId, std::error_code result) : m_id(transactionId), m_error(result) {};
+  virtual ~WalletSendTransactionCompletedEvent() {};
 
   virtual void notify(Tools::ObserverManager<CryptoNote::IWalletLegacyObserver>& observer) override
   {
@@ -67,8 +66,8 @@ private:
 class WalletExternalTransactionCreatedEvent : public WalletLegacyEvent
 {
 public:
-  WalletExternalTransactionCreatedEvent(TransactionId transactionId) : m_id(transactionId) {}
-  virtual ~WalletExternalTransactionCreatedEvent() override {}
+  WalletExternalTransactionCreatedEvent(TransactionId transactionId) : m_id(transactionId) {};
+  virtual ~WalletExternalTransactionCreatedEvent() {};
 
   virtual void notify(Tools::ObserverManager<CryptoNote::IWalletLegacyObserver>& observer) override
   {
@@ -81,8 +80,8 @@ private:
 class WalletSynchronizationProgressUpdatedEvent : public WalletLegacyEvent
 {
 public:
-  WalletSynchronizationProgressUpdatedEvent(uint32_t current, uint32_t total) : m_current(current), m_total(total) {}
-  virtual ~WalletSynchronizationProgressUpdatedEvent() override {}
+  WalletSynchronizationProgressUpdatedEvent(uint32_t current, uint32_t total) : m_current(current), m_total(total) {};
+  virtual ~WalletSynchronizationProgressUpdatedEvent() {};
 
   virtual void notify(Tools::ObserverManager<CryptoNote::IWalletLegacyObserver>& observer) override
   {
@@ -96,8 +95,8 @@ private:
 
 class WalletSynchronizationCompletedEvent : public WalletLegacyEvent {
 public:
-  WalletSynchronizationCompletedEvent(uint32_t current, uint32_t total, std::error_code result) : m_ec(result) {}
-  virtual ~WalletSynchronizationCompletedEvent() override {}
+  WalletSynchronizationCompletedEvent(uint32_t current, uint32_t total, std::error_code result) : m_ec(result) {};
+  virtual ~WalletSynchronizationCompletedEvent() {};
 
   virtual void notify(Tools::ObserverManager<CryptoNote::IWalletLegacyObserver>& observer) override {
     observer.notify(&IWalletLegacyObserver::synchronizationCompleted, m_ec);
@@ -110,8 +109,8 @@ private:
 class WalletActualBalanceUpdatedEvent : public WalletLegacyEvent
 {
 public:
-  WalletActualBalanceUpdatedEvent(uint64_t balance) : m_balance(balance) {}
-  virtual ~WalletActualBalanceUpdatedEvent() override {}
+  WalletActualBalanceUpdatedEvent(uint64_t balance) : m_balance(balance) {};
+  virtual ~WalletActualBalanceUpdatedEvent() {};
 
   virtual void notify(Tools::ObserverManager<CryptoNote::IWalletLegacyObserver>& observer) override
   {
@@ -124,8 +123,8 @@ private:
 class WalletPendingBalanceUpdatedEvent : public WalletLegacyEvent
 {
 public:
-  WalletPendingBalanceUpdatedEvent(uint64_t balance) : m_balance(balance) {}
-  virtual ~WalletPendingBalanceUpdatedEvent() override {}
+  WalletPendingBalanceUpdatedEvent(uint64_t balance) : m_balance(balance) {};
+  virtual ~WalletPendingBalanceUpdatedEvent() {};
 
   virtual void notify(Tools::ObserverManager<CryptoNote::IWalletLegacyObserver>& observer) override
   {

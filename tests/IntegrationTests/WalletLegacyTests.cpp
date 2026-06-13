@@ -1,4 +1,4 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 //
 // This file is part of Karbo.
 //
@@ -20,9 +20,11 @@
 #include <System/Timer.h>
 #include "WalletLegacy/WalletLegacy.h"
 #include "WalletLegacyObserver.h"
+#include <Logging/LoggerRef.h>
 
 using namespace Tests;
 using namespace CryptoNote;
+using namespace Logging;
 
 class WalletLegacyTests : public BaseTest {
 
@@ -41,7 +43,8 @@ TEST_F(WalletLegacyTests, checkNetworkShutdown) {
 
   {
     auto node = daemon.makeINode();
-    WalletLegacy wallet(currency, *node);
+	
+    WalletLegacy wallet(currency, *node, logger);
     wallet.initAndGenerate("pass");
 
     WalletLegacyObserver observer;

@@ -1,5 +1,4 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
-// Copyright (c) 2016-2019, The Karbo developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 //
 // This file is part of Karbo.
 //
@@ -18,98 +17,68 @@
 
 #pragma once
 
-#include <functional>
 #include <vector>
 
 #include <CryptoNote.h>
 
 namespace CryptoNote {
 
-namespace Messages {
-// immutable messages
-struct NewBlock {
-  uint32_t blockIndex;
+class NewBlockMessage {
+public:
+  NewBlockMessage(const Crypto::Hash& hash);
+  NewBlockMessage() = default;
+  void get(Crypto::Hash& hash) const;
+private:
   Crypto::Hash blockHash;
 };
 
-struct NewAlternativeBlock {
-  uint32_t blockIndex;
+class NewAlternativeBlockMessage {
+public:
+  NewAlternativeBlockMessage(const Crypto::Hash& hash);
+  NewAlternativeBlockMessage() = default;
+  void get(Crypto::Hash& hash) const;
+private:
   Crypto::Hash blockHash;
 };
 
-struct ChainSwitch {
-  uint32_t commonRootIndex;
+class ChainSwitchMessage {
+public:
+  ChainSwitchMessage(std::vector<Crypto::Hash>&& hashes);
+  ChainSwitchMessage(const ChainSwitchMessage& other);
+  void get(std::vector<Crypto::Hash>& hashes) const;
+private:
   std::vector<Crypto::Hash> blocksFromCommonRoot;
 };
 
-struct AddTransaction {
-  std::vector<Crypto::Hash> hashes;
-};
-
-struct DeleteTransaction {
-  std::vector<Crypto::Hash> hashes;
-  enum class Reason {
-    InBlock,
-    Outdated,
-    NotActual
-  } reason;
-};
-}
-
 class BlockchainMessage {
 public:
-  enum class Type {
-    NewBlock,
-    NewAlternativeBlock,
-    ChainSwitch,
-    AddTransaction,
-    DeleteTransaction
+  enum class MessageType {
+    NEW_BLOCK_MESSAGE,
+    NEW_ALTERNATIVE_BLOCK_MESSAGE,
+    CHAIN_SWITCH_MESSAGE
   };
 
-  using NewBlock = Messages::NewBlock;
-  using NewAlternativeBlock = Messages::NewAlternativeBlock;
-  using ChainSwitch = Messages::ChainSwitch;
-  using AddTransaction = Messages::AddTransaction;
-  using DeleteTransaction = Messages::DeleteTransaction;
-
-  BlockchainMessage(const NewBlock& message);
-  BlockchainMessage(const NewAlternativeBlock& message);
-  BlockchainMessage(const ChainSwitch& message);
-  BlockchainMessage(const AddTransaction& message);
-  BlockchainMessage(const DeleteTransaction& message);
+  BlockchainMessage(NewBlockMessage&& message);
+  BlockchainMessage(NewAlternativeBlockMessage&& message);
+  BlockchainMessage(ChainSwitchMessage&& message);
 
   BlockchainMessage(const BlockchainMessage& other);
 
   ~BlockchainMessage();
 
-  // pattern matchin API
-  void match(std::function<void(const NewBlock&)>, std::function<void(const NewAlternativeBlock&)>,
-             std::function<void(const ChainSwitch&)>, std::function<void(const AddTransaction&)>,
-             std::function<void(const DeleteTransaction&)>) const;
+  MessageType getType() const;
 
-  // API with explicit type handling
-  Type getType() const;
-  const NewBlock& getNewBlock() const;
-  const NewAlternativeBlock& getNewAlternativeBlock() const;
-  const ChainSwitch& getChainSwitch() const;
-  const AddTransaction& getAddTransaction() const;
-  const DeleteTransaction& getDeleteTransaction() const;
-
+  bool getNewBlockHash(Crypto::Hash& hash) const;
+  bool getNewAlternativeBlockHash(Crypto::Hash& hash) const;
+  bool getChainSwitch(std::vector<Crypto::Hash>& hashes) const;
 private:
-  const Type type;
+  const MessageType type;
+
   union {
-    NewBlock newBlock;
-    NewAlternativeBlock newAlternativeBlock;
-    ChainSwitch* chainSwitch;
-    AddTransaction* addTransaction;
-    DeleteTransaction* deleteTransaction;
+    NewBlockMessage newBlockMessage;
+    NewAlternativeBlockMessage newAlternativeBlockMessage;
+    ChainSwitchMessage* chainSwitchMessage;
   };
 };
 
-// factory functions
-BlockchainMessage makeChainSwitchMessage(uint32_t index, std::vector<Crypto::Hash>&& hashes);
-BlockchainMessage makeNewAlternativeBlockMessage(uint32_t index, const Crypto::Hash& hash);
-BlockchainMessage makeNewBlockMessage(uint32_t index, const Crypto::Hash& hash);
-BlockchainMessage makeAddTransactionMessage(std::vector<Crypto::Hash>&& hash);
-BlockchainMessage makeDelTransactionMessage(std::vector<Crypto::Hash>&& hash, Messages::DeleteTransaction::Reason r);
 }

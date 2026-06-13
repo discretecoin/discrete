@@ -1,6 +1,7 @@
 // Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
 // Copyright (c) 2014-2018, The Monero Project
 // Copyright (c) 2018-2019, The TurtleCoin Developers
+// Copyright (c) 2016-2019, The Karbo Developers
 // 
 // Please see the included LICENSE file for more information.#pragma once
 
@@ -38,14 +39,12 @@ namespace Crypto
         chacha8(data, length, reinterpret_cast<const uint8_t*>(&key), reinterpret_cast<const uint8_t*>(&iv), cipher);
     }
 
-    inline void generate_chacha8_key(const std::string& password, chacha8_key& key)
-    {
-        static_assert(sizeof(chacha8_key) <= sizeof(Hash), "Size of hash must be at least that of chacha8_key");
-        Hash pwd_hash;
-        Crypto::cn_context context;
-        cn_slow_hash(context, password.data(), password.size(), pwd_hash);
-        memcpy(&key, &pwd_hash, sizeof(key));
-        memset(&pwd_hash, 0, sizeof(pwd_hash));
+    inline void generate_chacha8_key(Crypto::cn_context& context, const std::string& password, chacha8_key& key) {
+      static_assert(sizeof(chacha8_key) <= sizeof(Hash), "Size of hash must be at least that of chacha8_key");
+      Hash pwd_hash;
+      cn_slow_hash(context, password.data(), password.size(), pwd_hash);
+      memcpy(&key, &pwd_hash, sizeof(key));
+      memset(&pwd_hash, 0, sizeof(pwd_hash));
     }
 
     /**

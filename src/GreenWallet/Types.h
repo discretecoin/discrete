@@ -1,14 +1,13 @@
 // Copyright (c) 2018, The TurtleCoin Developers
-// Copyright (c) 2018-2020, The Karbo Developers
+// Copyright (c) 2018-2019, The Karbo Developers
 // 
 // Please see the included LICENSE file for more information.
 
 #pragma once
 
+#include <stdint.h>
 #include "CryptoNoteConfig.h"
-
 #include <Serialization/ISerializer.h>
-
 #include <Wallet/WalletGreen.h>
 
 struct CLICommand
@@ -89,7 +88,7 @@ struct Config
     bool disableVerify = false;
 
     /* The daemon port */
-    int port = CryptoNote::RPC_DEFAULT_PORT;
+    uint16_t port = CryptoNote::RPC_DEFAULT_PORT;
 
     /* The url path */
     std::string path = "/";

@@ -1,23 +1,13 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
-// Copyright (c) 2016-2019, The Karbo developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2016-2026, The Karbo developers
 //
 // This file is part of Karbo.
-//
-// Karbo is free software: you can redistribute it and/or modify
-// it under the terms of the GNU Lesser General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// Karbo is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU Lesser General Public License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with Karbo.  If not, see <http://www.gnu.org/licenses/>.
 
 #include "JsonRpc.h"
-#include "HttpClient.h"
+#include <HTTP/HttpClient.h>
+#include <HTTP/HttpRequest.h>
+#include <HTTP/HttpResponse.h>
+#include <Common/base64.hpp>
 #include "CryptoNoteCore/TransactionPool.h"
 
 namespace CryptoNote {
@@ -40,15 +30,20 @@ JsonRpcError::JsonRpcError(int c) : code(c) {
 JsonRpcError::JsonRpcError(int c, const std::string& msg) : code(c), message(msg) {
 }
 
-void invokeJsonRpcCommand(HttpClient& httpClient, JsonRpcRequest& jsReq, JsonRpcResponse& jsRes, const std::string& user, const std::string& password) {
+void invokeJsonRpcCommand(HttpClient& httpClient, JsonRpcRequest& jsReq, JsonRpcResponse& jsRes,
+  const std::string& user, const std::string& password) {
   HttpRequest httpReq;
   HttpResponse httpRes;
+
+  httpReq.setMethod("POST");
+  httpReq.setUrl("/json_rpc");
+  httpReq.addHeader("Content-Type", "application/json");
+  httpReq.addHeader("User-Agent", "NodeRpcProxy");
 
   if (!user.empty() || !password.empty()) {
     httpReq.addHeader("Authorization", "Basic " + base64::encode(Common::asBinaryArray(user + ":" + password)));
   }
-  httpReq.addHeader("Content-Type", "application/json");
-  httpReq.setUrl("/json_rpc");
+
   httpReq.setBody(jsReq.getBody());
 
   httpClient.request(httpReq, httpRes);
@@ -64,7 +59,6 @@ void invokeJsonRpcCommand(HttpClient& httpClient, JsonRpcRequest& jsReq, JsonRpc
     throw err;
   }
 }
-
 
 }
 }

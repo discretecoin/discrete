@@ -1,4 +1,4 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 //
 // This file is part of Karbo.
 //
@@ -79,7 +79,7 @@ namespace Tests {
 
       void init(po::options_description& desc) {
         desc.add_options()
-          ("daemon-dir,d", po::value<std::string>()->default_value("."), "path to bytecoind.exe")
+          ("daemon-dir,d", po::value<std::string>()->default_value("."), "path to karbowanecd")
           ("data-dir,n", po::value<std::string>()->default_value("."), "path to daemon's data directory")
           ("add-daemons,a", po::value<std::vector<std::string>>()->multitoken(), "add daemon to topology");
       }
@@ -140,6 +140,7 @@ namespace Tests {
       std::vector< std::unique_ptr<TestNode> > nodeDaemons;
       System::Dispatcher& m_dispatcher;
       const CryptoNote::Currency& m_currency;
+	  Logging::ConsoleLogger m_logger;
 
       void launchTestnet(size_t count, Topology t = Line);
       void launchTestnetWithInprocNode(size_t count, Topology t = Line);
@@ -150,7 +151,7 @@ namespace Tests {
       void stopNode(size_t index);
 
       bool makeWallet(std::unique_ptr<CryptoNote::IWalletLegacy> & wallet, std::unique_ptr<CryptoNote::INode>& node, const std::string& password = "pass");
-      bool mineBlocks(TestNode& node, const CryptoNote::AccountPublicAddress& address, size_t blockCount);
+      bool mineBlocks(TestNode& node, const CryptoNote::AccountKeys& minerKeys, size_t blockCount);
       bool mineBlock(std::unique_ptr<CryptoNote::IWalletLegacy>& wallet);
       bool mineBlock();
       bool startMining(size_t threads);
@@ -164,7 +165,7 @@ namespace Tests {
       bool waitForPoolSize(size_t nodeIndex, CryptoNote::INode& node, size_t expectedPoolSize,
         std::vector<std::unique_ptr<CryptoNote::ITransactionReader>>& txPool);
 
-      bool prepareAndSubmitBlock(TestNode& node, CryptoNote::BlockTemplate&& blockTemplate);
+      bool prepareAndSubmitBlock(TestNode& node, CryptoNote::Block&& blockTemplate);
 
 #ifdef __linux__
       std::vector<__pid_t> pids;

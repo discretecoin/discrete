@@ -1,4 +1,5 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2014-2018, The Monero Project
 // Copyright (c) 2018-2019, The TurtleCoin Developers
 // Copyright (c) 2016-2020, The Karbo developers
 //
@@ -35,18 +36,65 @@ namespace CryptoNote
   /************************************************************************/
   /*                                                                      */
   /************************************************************************/
+  struct block_complete_entry
+  {
+    std::string block;
+    std::vector<std::string> txs;
 
-  //just to keep backward compatibility with BlockCompleteEntry serialization
-  struct RawBlockLegacy {
-    BinaryArray block;
-    std::vector<BinaryArray> transactions;
+    void serialize(ISerializer& s) {
+      KV_MEMBER(block);
+      KV_MEMBER(txs);
+    }
+
   };
 
+  struct BlockFullInfo : public block_complete_entry
+  {
+    Crypto::Hash block_id;
+
+    void serialize(ISerializer& s) {
+      KV_MEMBER(block_id);
+      KV_MEMBER(block);
+      KV_MEMBER(txs);
+    }
+  };
+
+  struct TransactionPrefixInfo {
+    Crypto::Hash txHash;
+    TransactionPrefix txPrefix;
+
+    void serialize(ISerializer& s) {
+      KV_MEMBER(txHash);
+      KV_MEMBER(txPrefix);
+    }
+  };
+
+  struct BlockShortInfo {
+    Crypto::Hash blockId;
+    std::string block;
+    std::vector<TransactionPrefixInfo> txPrefixes;
+
+    void serialize(ISerializer& s) {
+      KV_MEMBER(blockId);
+      KV_MEMBER(block);
+      KV_MEMBER(txPrefixes);
+    }
+  };
+
+  /************************************************************************/
+  /*                                                                      */
+  /************************************************************************/
   struct NOTIFY_NEW_BLOCK_request
   {
-    RawBlockLegacy b;
+    block_complete_entry b;
     uint32_t current_blockchain_height;
     uint32_t hop;
+
+    void serialize(ISerializer& s) {
+      KV_MEMBER(b)
+      KV_MEMBER(current_blockchain_height)
+      KV_MEMBER(hop)
+    }
   };
 
   struct NOTIFY_NEW_BLOCK
@@ -61,7 +109,13 @@ namespace CryptoNote
   struct NOTIFY_NEW_TRANSACTIONS_request
   {
     bool stem = false;
-    std::vector<BinaryArray> txs;
+    std::vector<std::string> txs;
+
+    void serialize(ISerializer& s) {
+      KV_MEMBER(stem)
+      KV_MEMBER(txs)
+    }
+
   };
 
   struct NOTIFY_NEW_TRANSACTIONS
@@ -93,9 +147,17 @@ namespace CryptoNote
   struct NOTIFY_RESPONSE_GET_OBJECTS_request
   {
     std::vector<std::string> txs;
-    std::vector<RawBlockLegacy> blocks;
+    std::vector<block_complete_entry> blocks;
     std::vector<Crypto::Hash> missed_ids;
     uint32_t current_blockchain_height;
+
+    void serialize(ISerializer& s) {
+      KV_MEMBER(txs)
+      KV_MEMBER(blocks)
+      serializeAsBinary(missed_ids, "missed_ids", s);
+      KV_MEMBER(current_blockchain_height)
+    }
+
   };
 
   struct NOTIFY_RESPONSE_GET_OBJECTS
@@ -157,15 +219,15 @@ namespace CryptoNote
   /*                                                                      */
   /************************************************************************/
   struct NOTIFY_NEW_LITE_BLOCK_request {
-    BinaryArray block;
+    std::string block;
     uint32_t current_blockchain_height;
     uint32_t hop;
 
-    //void serialize(ISerializer& s) {
-    //  KV_MEMBER(block)
-    //  KV_MEMBER(current_blockchain_height)
-    //  KV_MEMBER(hop)
-    //}
+    void serialize(ISerializer& s) {
+      KV_MEMBER(block)
+      KV_MEMBER(current_blockchain_height)
+      KV_MEMBER(hop)
+    }
   };
 
   struct NOTIFY_NEW_LITE_BLOCK {
@@ -178,11 +240,11 @@ namespace CryptoNote
     uint32_t current_blockchain_height;
     std::vector<Crypto::Hash> missing_txs;
 
-    //void serialize(ISerializer& s) {
-    //  KV_MEMBER(blockHash)
-    //  KV_MEMBER(current_blockchain_height)
-    //  serializeAsBinary(missing_txs, "missing_txs", s);
-    //}
+    void serialize(ISerializer& s) {
+      KV_MEMBER(blockHash)
+      KV_MEMBER(current_blockchain_height)
+      serializeAsBinary(missing_txs, "missing_txs", s);
+    }
   };
 
   struct NOTIFY_MISSING_TXS {

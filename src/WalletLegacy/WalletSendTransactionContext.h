@@ -1,5 +1,5 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
-// Copyright (c) 2016-2019, The Karbo developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2018, Karbo developers
 //
 // This file is part of Karbo.
 //
@@ -22,7 +22,6 @@
 #include <vector>
 
 #include "CryptoNoteCore/CryptoNoteBasic.h"
-#include "Rpc/CoreRpcServerCommandsDefinitions.h"
 #include "IWalletLegacy.h"
 #include "ITransfersContainer.h"
 

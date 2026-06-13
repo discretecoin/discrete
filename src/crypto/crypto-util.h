@@ -17,6 +17,15 @@ extern "C" {
 void sodium_memzero(void *pnt, size_t length);
 int sodium_compare(const void *a1, const void *a2, size_t length);
 
+// Fill `buf` with `length` bytes from the OS CSPRNG.
+//   Windows: BCryptGenRandom (BCRYPT_USE_SYSTEM_PREFERRED_RNG)
+//   Linux:   getrandom(2), with /dev/urandom fallback
+//   *BSD/mac: arc4random_buf
+// Aborts the process on hard failure — there is no safe way to continue
+// generating cryptographic material without entropy. Callers MUST treat
+// the output as secret and zero it after use.
+void secure_random_bytes(void *buf, size_t length);
+
 #if defined(__cplusplus)
 }
 #endif

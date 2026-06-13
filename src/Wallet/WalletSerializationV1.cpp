@@ -1,5 +1,5 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
-// Copyright (c) 2016-2019, The Karbo developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2018, Karbo developers
 //
 // This file is part of Karbo.
 //
@@ -93,7 +93,7 @@ struct WalletTransactionDto {
   uint64_t creationTime;
   uint64_t unlockTime;
   std::string extra;
-  boost::optional<Crypto::SecretKey> secretKey;
+  boost::optional<Crypto::SecretKey> secretKey = CryptoNote::NULL_SECRET_KEY;
 };
 
 //DO NOT CHANGE IT
@@ -432,7 +432,7 @@ void WalletSerializerV1::loadSecretKey(Common::IInputStream& source, CryptoConte
 }
 
 void WalletSerializerV1::checkKeys() {
-  throwIfKeysMismatch(m_viewSecretKey, m_viewPublicKey);
+  throwIfKeysMissmatch(m_viewSecretKey, m_viewPublicKey);
 }
 
 void WalletSerializerV1::loadFlags(bool& details, bool& cache, Common::IInputStream& source, CryptoContext& cryptoContext) {
@@ -464,7 +464,7 @@ void WalletSerializerV1::loadWallets(Common::IInputStream& source, CryptoContext
     }
 
     if (dto.spendSecretKey != NULL_SECRET_KEY) {
-      throwIfKeysMismatch(dto.spendSecretKey, dto.spendPublicKey, "Restored spend public key doesn't correspond to secret key");
+      throwIfKeysMissmatch(dto.spendSecretKey, dto.spendPublicKey, "Restored spend public key doesn't correspond to secret key");
     } else {
       if (!Crypto::check_key(dto.spendPublicKey)) {
         throw std::system_error(make_error_code(error::WRONG_PASSWORD), "Public spend key is incorrect");
@@ -500,7 +500,6 @@ void WalletSerializerV1::subscribeWallets() {
 
     auto& subscription = m_synchronizer.addSubscription(sub);
     bool r = index.modify(it, [&subscription] (WalletRecord& rec) { rec.container = &subscription.getContainer(); });
-    if (r) {}
     assert(r);
 
     subscription.addObserver(&m_transfersObserver);
@@ -542,7 +541,6 @@ void WalletSerializerV1::loadUnlockTransactionsJobs(Common::IInputStream& source
   auto& index = m_unlockTransactions.get<TransactionHashIndex>();
   auto& walletsIndex = m_walletsContainer.get<RandomAccessIndex>();
   const uint64_t walletsSize = walletsIndex.size();
-  if (walletsSize) {}
 
   uint64_t jobsCount = 0;
   deserializeEncrypted(jobsCount, "unlock_transactions_jobs_count", cryptoContext, source);

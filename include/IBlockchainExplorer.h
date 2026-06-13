@@ -1,5 +1,4 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
-// Copyright (c) 2016-2019, The Karbo developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 //
 // This file is part of Karbo.
 //
@@ -18,10 +17,8 @@
 
 #pragma once
 
-#include <array>
 #include <vector>
-#include <istream>
-#include <ostream>
+#include <array>
 
 #include "BlockchainExplorerData.h"
 
@@ -31,7 +28,7 @@ class IBlockchainObserver {
 public:
   virtual ~IBlockchainObserver() {}
 
-  virtual void blockchainUpdated(const std::vector<BlockDetails>& newBlocks, const std::vector<BlockDetails>& alternativeBlocks) {}
+  virtual void blockchainUpdated(const std::vector<BlockDetails>& newBlocks, const std::vector<BlockDetails>& orphanedBlocks) {}
   virtual void poolUpdated(const std::vector<TransactionDetails>& newTransactions, const std::vector<std::pair<Crypto::Hash, TransactionRemoveReason>>& removedTransactions) {}
 
   virtual void blockchainSynchronized(const BlockDetails& topBlock) {}
@@ -39,7 +36,7 @@ public:
 
 class IBlockchainExplorer {
 public:
-  virtual ~IBlockchainExplorer() {}
+  virtual ~IBlockchainExplorer() {};
 
   virtual bool addObserver(IBlockchainObserver* observer) = 0;
   virtual bool removeObserver(IBlockchainObserver* observer) = 0;
@@ -55,6 +52,7 @@ public:
 
   virtual bool getTransactions(const std::vector<Crypto::Hash>& transactionHashes, std::vector<TransactionDetails>& transactions) = 0;
   virtual bool getTransactionsByPaymentId(const Crypto::Hash& paymentId, std::vector<TransactionDetails>& transactions) = 0;
+  virtual bool getPoolTransactions(uint64_t timestampBegin, uint64_t timestampEnd, uint32_t transactionsNumberLimit, std::vector<TransactionDetails>& transactions, uint64_t& transactionsNumberWithinTimestamps) = 0;
   virtual bool getPoolState(const std::vector<Crypto::Hash>& knownPoolTransactionHashes, Crypto::Hash knownBlockchainTop, bool& isBlockchainActual, std::vector<TransactionDetails>& newTransactions, std::vector<Crypto::Hash>& removedTransactions) = 0;
 
   virtual uint64_t getRewardBlocksWindow() = 0;

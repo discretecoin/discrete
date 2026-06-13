@@ -1,6 +1,6 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 // Copyright (c) 2014-2017, The Monero project
-// Copyright (c) 2016-2020, The Karbo developers
+// Copyright (c) 2016-2026, The Karbo developers
 //
 // This file is part of Karbo.
 //
@@ -20,7 +20,6 @@
 #pragma once
 
 #include <list>
-
 #include <boost/multi_index_container.hpp>
 #include <boost/multi_index/ordered_index.hpp>
 #include <boost/multi_index/identity.hpp>
@@ -71,7 +70,7 @@ public:
 
   private:
     peers_indexed& m_peers;
-    const size_t m_maxSize;
+    const size_t m_maxSize;;
   };
 
   PeerlistManager();
@@ -90,17 +89,17 @@ public:
   bool append_with_peer_gray(const PeerlistEntry& pr);
   bool set_peer_just_seen(PeerIdType peer, uint32_t ip, uint32_t port);
   bool set_peer_just_seen(PeerIdType peer, const NetworkAddress& addr);
-  bool set_peer_unreachable(const PeerlistEntry& pr);
   bool is_ip_allowed(uint32_t ip) const;
   void trim_white_peerlist();
   void trim_gray_peerlist();
+  void trim_anchor_peerlist();
 
   void serialize(ISerializer& s);
 
   Peerlist& getWhite();
   Peerlist& getGray();
 
-  bool get_and_empty_anchor_peerlist(std::vector<AnchorPeerlistEntry>& apl);
+  bool get_anchor_peerlist(std::vector<AnchorPeerlistEntry>& apl) const;
   bool remove_from_peer_anchor(const NetworkAddress& addr);
 
 private:

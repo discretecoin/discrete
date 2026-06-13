@@ -1,6 +1,5 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
-// Copyright (c) 2018-2019, The TurtleCoin Developers
-// Copyright (c) 2016-2020, The Karbo developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2016-2022, The Karbo developers
 //
 // This file is part of Karbo.
 //
@@ -20,6 +19,7 @@
 #pragma once
 
 #include <atomic>
+#include <mutex>
 
 #include <Common/ObserverManager.h>
 
@@ -36,6 +36,8 @@
 #include "P2p/ConnectionContext.h"
 
 #include <Logging/LoggerRef.h>
+
+#define CURRENCY_PROTOCOL_MAX_OBJECT_REQUEST_COUNT 500
 
 namespace System {
   class Dispatcher;
@@ -55,7 +57,7 @@ namespace CryptoNote
 
     bool hasTransactions() {
       std::lock_guard<std::recursive_mutex> lk(m_stempool_mutex);
-      return m_stempool.empty();
+      return !m_stempool.empty();
     }
 
     bool hasTransaction(const Crypto::Hash& txid) {
@@ -63,11 +65,11 @@ namespace CryptoNote
       return m_stempool.find(txid) != m_stempool.end();
     }
 
-    bool addTransaction(const Crypto::Hash& txid, BinaryArray tx_blob) {
+    bool addTransaction(const Crypto::Hash& txid, std::string tx_blob) {
       std::lock_guard<std::recursive_mutex> lk(m_stempool_mutex);
       auto r = m_stempool.insert(tx_blob_by_hash::value_type(txid, tx_blob));
 
-      return true;
+      return r.second;
     }
 
     bool removeTransaction(const Crypto::Hash& txid) {
@@ -81,9 +83,9 @@ namespace CryptoNote
       return false;
     }
 
-    std::vector<std::pair<Crypto::Hash, BinaryArray>> getTransactions() {
+    std::vector<std::pair<Crypto::Hash, std::string>> getTransactions() {
       std::lock_guard<std::recursive_mutex> lk(m_stempool_mutex);
-      std::vector<std::pair<Crypto::Hash, BinaryArray>> txs;
+      std::vector<std::pair<Crypto::Hash, std::string>> txs;
       for (const auto & s : m_stempool) {
         txs.push_back(std::make_pair(s.first, s.second));
       }
@@ -98,18 +100,30 @@ namespace CryptoNote
     }
 
   private:
-    typedef std::unordered_map<Crypto::Hash, BinaryArray> tx_blob_by_hash;
+    typedef std::unordered_map<Crypto::Hash, std::string> tx_blob_by_hash;
     tx_blob_by_hash m_stempool;
     std::recursive_mutex m_stempool_mutex;
   };
 
-  class CryptoNoteProtocolHandler : public ICryptoNoteProtocolHandler
+  class CryptoNoteProtocolHandler : 
+    public i_cryptonote_protocol, 
+    public ICryptoNoteProtocolQuery
   {
   public:
 
+
+    struct parsed_block_entry
+    {
+      Block block;
+      std::vector<BinaryArray> txs;
+
+      void serialize(ISerializer& s) {
+        KV_MEMBER(block);
+        KV_MEMBER(txs);
+      }
+    };
+
     CryptoNoteProtocolHandler(const Currency& currency, System::Dispatcher& dispatcher, ICore& rcore, IP2pEndpoint* p_net_layout, Logging::ILogger& log);
-    
-    virtual ~CryptoNoteProtocolHandler() override;
 
     virtual bool addObserver(ICryptoNoteProtocolObserver* observer) override;
     virtual bool removeObserver(ICryptoNoteProtocolObserver* observer) override;
@@ -126,15 +140,18 @@ namespace CryptoNote
     bool on_idle();
     void onConnectionOpened(CryptoNoteConnectionContext& context);
     void onConnectionClosed(CryptoNoteConnectionContext& context);
-    CoreStatistics getStatistics();
+    bool get_stat_info(core_stat_info& stat_inf);
     bool get_payload_sync_data(CORE_SYNC_DATA& hshd);
-    bool process_payload_sync_data(const CORE_SYNC_DATA& hshd, CryptoNoteConnectionContext& context, bool is_initial);
+    bool process_payload_sync_data(const CORE_SYNC_DATA& hshd, CryptoNoteConnectionContext& context, bool is_inital);
     int handleCommand(bool is_notify, int command, const BinaryArray& in_buff, BinaryArray& buff_out, CryptoNoteConnectionContext& context, bool& handled);
     virtual size_t getPeerCount() const override;
     virtual uint32_t getObservedHeight() const override;
     void requestMissingPoolTransactions(const CryptoNoteConnectionContext& context);
     bool select_dandelion_stem();
     bool fluffStemPool();
+    void printDandelions() const override;
+
+    std::atomic<bool> m_init_select_dandelion_called;
 
   private:
     //----------------- commands handlers ----------------------------------------------
@@ -149,8 +166,8 @@ namespace CryptoNote
     int handle_notify_missing_txs(int command, NOTIFY_MISSING_TXS::request &arg, CryptoNoteConnectionContext &context);
 
     //----------------- i_cryptonote_protocol ----------------------------------
-    virtual void relayBlock(NOTIFY_NEW_BLOCK::request& arg) override;
-    virtual void relayTransactions(const std::vector<BinaryArray>& transactions) override;
+    virtual void relay_block(NOTIFY_NEW_BLOCK::request& arg) override;
+    virtual void relay_transactions(NOTIFY_NEW_TRANSACTIONS::request& arg) override;
 
     //----------------------------------------------------------------------------------
     uint32_t get_current_blockchain_height();
@@ -158,7 +175,9 @@ namespace CryptoNote
     bool on_connection_synchronized();
     void updateObservedHeight(uint32_t peerHeight, const CryptoNoteConnectionContext& context);
     void recalculateMaxObservedHeight(const CryptoNoteConnectionContext& context);
-    int processObjects(CryptoNoteConnectionContext& context, std::vector<RawBlock>&& rawBlocks, const std::vector<CachedBlock>& cachedBlocks);
+    std::vector<CryptoNoteConnectionContext> get_dandelion_stem_snapshot() const;
+    bool get_dandelion_stem_peer(CryptoNoteConnectionContext& peer, const net_connection_id* excludeConnection = nullptr) const;
+    int processObjects(CryptoNoteConnectionContext& context, const std::vector<parsed_block_entry>& blocks);
     Logging::LoggerRef logger;
 
   private:
@@ -172,6 +191,7 @@ namespace CryptoNote
     IP2pEndpoint* m_p2p;
     std::atomic<bool> m_synchronized;
     std::atomic<bool> m_stop;
+    std::recursive_mutex m_sync_lock;
 
     mutable std::mutex m_observedHeightMutex;
     uint32_t m_observedHeight;
@@ -181,6 +201,7 @@ namespace CryptoNote
 
     OnceInInterval m_dandelionStemSelectInterval;
     OnceInInterval m_dandelionStemFluffInterval;
+    mutable std::mutex m_dandelionStemMutex;
     std::vector<CryptoNoteConnectionContext> m_dandelion_stem;
 
     StemPool m_stemPool;

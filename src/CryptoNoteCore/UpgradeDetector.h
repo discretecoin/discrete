@@ -1,5 +1,4 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
-// Copyright (c) 2016-2019, The Karbo developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 //
 // This file is part of Karbo.
 //
@@ -29,6 +28,8 @@
 #include "CryptoNoteConfig.h"
 #include <Logging/LoggerRef.h>
 
+#undef ERROR
+
 namespace CryptoNote {
   class UpgradeDetectorBase {
   public:
@@ -56,7 +57,7 @@ namespace CryptoNote {
           m_votingCompleteHeight = UNDEF_HEIGHT;
 
         } else if (m_targetVersion - 1 == m_blockchain.back().bl.majorVersion) {
-          m_votingCompleteHeight = findVotingCompleteHeight(static_cast<uint32_t>(m_blockchain.size() - 1));
+          m_votingCompleteHeight = findVotingCompleteHeight(static_cast<uint32_t>(m_blockchain.size()) - 1);
 
         } else if (m_targetVersion <= m_blockchain.back().bl.majorVersion) {
           auto it = std::lower_bound(m_blockchain.begin(), m_blockchain.end(), m_targetVersion,
@@ -138,26 +139,25 @@ namespace CryptoNote {
             struct tm* upgradeTime = localtime(&upgradeTimestamp);;
             char upgradeTimeStr[40];
             strftime(upgradeTimeStr, 40, "%H:%M:%S %Y.%m.%d", upgradeTime);
-            CryptoNote::CachedBlock cachedBlock(m_blockchain.back().bl);
 
-            logger(Logging::TRACE, Logging::BRIGHT_GREEN) << "###### UPGRADE is going to happen after block index " << upgradeHeight() << " at about " <<
+            logger(Logging::INFO, Logging::BRIGHT_GREEN) << "###### UPGRADE is going to happen after block index " << upgradeHeight() << " at about " <<
               upgradeTimeStr << " (in " << Common::timeIntervalToString(interval) << ")! Current last block index " << (m_blockchain.size() - 1) <<
-              ", hash " << cachedBlock.getBlockHash();
+              ", hash " << get_block_hash(m_blockchain.back().bl);
           }
         } else if (m_blockchain.size() == upgradeHeight() + 1) {
           assert(m_blockchain.back().bl.majorVersion == m_targetVersion - 1);
 
-          logger(Logging::TRACE, Logging::BRIGHT_GREEN) << "###### UPGRADE has happened! Starting from block index " << (upgradeHeight() + 1) <<
+          logger(Logging::INFO, Logging::BRIGHT_GREEN) << "###### UPGRADE has happened! Starting from block index " << (upgradeHeight() + 1) <<
             " blocks with major version below " << static_cast<int>(m_targetVersion) << " will be rejected!";
         } else {
           assert(m_blockchain.back().bl.majorVersion == m_targetVersion);
         }
 
       } else {
-        uint32_t lastBlockHeight = static_cast<uint32_t>(m_blockchain.size() - 1);
+        uint32_t lastBlockHeight = static_cast<uint32_t>(m_blockchain.size()) - 1;
         if (isVotingComplete(lastBlockHeight)) {
           m_votingCompleteHeight = lastBlockHeight;
-          logger(Logging::TRACE, Logging::BRIGHT_GREEN) << "###### UPGRADE voting complete at block index " << m_votingCompleteHeight <<
+          logger(Logging::INFO, Logging::BRIGHT_GREEN) << "###### UPGRADE voting complete at block index " << m_votingCompleteHeight <<
             "! UPGRADE is going to happen after block index " << upgradeHeight() << "!";
         }
       }
@@ -168,7 +168,7 @@ namespace CryptoNote {
         assert(m_currency.upgradeHeight(m_targetVersion) == UNDEF_HEIGHT);
 
         if (m_blockchain.size() == m_votingCompleteHeight) {
-          logger(Logging::TRACE, Logging::BRIGHT_YELLOW) << "###### UPGRADE after block index " << upgradeHeight() << " has been canceled!";
+          logger(Logging::INFO, Logging::BRIGHT_YELLOW) << "###### UPGRADE after block index " << upgradeHeight() << " has been canceled!";
           m_votingCompleteHeight = UNDEF_HEIGHT;
         } else {
           assert(m_blockchain.size() > m_votingCompleteHeight);
@@ -182,7 +182,7 @@ namespace CryptoNote {
       }
 
       size_t voteCounter = 0;
-      for (size_t i = height + 1 - m_currency.upgradeVotingWindow(); i <= height; ++i) {
+      for (uint32_t i = height + 1 - m_currency.upgradeVotingWindow(); i <= height; ++i) {
         const auto& b = m_blockchain[i].bl;
         voteCounter += (b.majorVersion == m_targetVersion - 1) && (b.minorVersion == BLOCK_MINOR_VERSION_1) ? 1 : 0;
       }

@@ -1,4 +1,4 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 // Copyright (c) 2016-2020, The Karbo developers
 //
 // This file is part of Karbo.
@@ -19,7 +19,6 @@
 #include "NodeFactory.h"
 
 #include "NodeRpcProxy/NodeRpcProxy.h"
-#include "BlockchainExplorerData.h"
 #include <memory>
 #include <future>
 
@@ -50,27 +49,18 @@ public:
   virtual uint64_t getAltBlocksCount() const { return 0; }
   virtual uint64_t getOutConnectionsCount() const { return 0; }
   virtual uint64_t getIncConnectionsCount() const { return 0; }
-  virtual uint64_t getRpcConnectionsCount() const { return 0; return 0; }
+  virtual uint64_t getRpcConnectionsCount() const { return 0;return 0; }
   virtual uint64_t getWhitePeerlistSize() const { return 0; }
   virtual uint64_t getGreyPeerlistSize() const { return 0; }
-  virtual std::string getNodeVersion() const { return std::string(); }
-  virtual bool isConnected() const override { return true; }
-
-  virtual void getBlockHashesByTimestamps(uint64_t timestampBegin, size_t secondsCount, std::vector<Crypto::Hash>& blockHashes, const Callback& callback) override {
-    callback(std::error_code());
-  }
-
-  virtual void getTransactionHashesByPaymentId(const Crypto::Hash& paymentId, std::vector<Crypto::Hash>& transactionHashes, const Callback& callback) override {
-    callback(std::error_code());
-  }
+  virtual std::string getNodeVersion() const { return ""; }
 
   virtual CryptoNote::BlockHeaderInfo getLastLocalBlockHeaderInfo() const override { return CryptoNote::BlockHeaderInfo(); }
 
   virtual void relayTransaction(const CryptoNote::Transaction& transaction, const Callback& callback) override { callback(std::error_code()); }
-  virtual void getRandomOutsByAmounts(std::vector<uint64_t>&& amounts, uint16_t outsCount,
+  virtual void getRandomOutsByAmounts(std::vector<uint64_t>&& amounts, uint64_t outsCount,
     std::vector<CryptoNote::COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::outs_for_amount>& result, const Callback& callback) override {
   }
-  virtual void getNewBlocks(std::vector<Crypto::Hash>&& knownBlockIds, std::vector<CryptoNote::RawBlock>& newBlocks, uint32_t& startHeight, const Callback& callback) override {
+  virtual void getNewBlocks(std::vector<Crypto::Hash>&& knownBlockIds, std::vector<CryptoNote::block_complete_entry>& newBlocks, uint32_t& startHeight, const Callback& callback) override {
     startHeight = 0;
     callback(std::error_code());
   }
@@ -94,32 +84,34 @@ public:
   virtual void getBlocks(const std::vector<Crypto::Hash>& blockHashes, std::vector<CryptoNote::BlockDetails>& blocks,
     const Callback& callback) override { callback(std::error_code()); }
 
-  virtual void getBlock(const uint32_t blockHeight, CryptoNote::BlockDetails &block, const Callback& callback) override { callback(std::error_code()); }
+  virtual void getBlocks(uint64_t timestampBegin, uint64_t timestampEnd, uint32_t blocksNumberLimit, std::vector<CryptoNote::BlockDetails>& blocks, uint32_t& blocksNumberWithinTimestamps,
+    const Callback& callback) override { callback(std::error_code()); }
 
-  virtual void getBlockTimestamp(uint32_t height, uint64_t& timestamp, const Callback& callback) override { callback(std::error_code()); }
-
-  virtual void getTransaction(const Crypto::Hash& transactionHash, CryptoNote::Transaction& transaction, const Callback& callback) override { callback(std::error_code()); }
+  virtual void getBlock(const uint32_t blockHeight, CryptoNote::BlockDetails &block,
+    const Callback& callback) override { callback(std::error_code()); }
 
   virtual void getTransactions(const std::vector<Crypto::Hash>& transactionHashes, std::vector<CryptoNote::TransactionDetails>& transactions,
     const Callback& callback) override { callback(std::error_code()); }
 
-  virtual void getTransactionsByPaymentId(const Crypto::Hash& paymentId, std::vector<CryptoNote::TransactionDetails>& transactions,
+  virtual void getTransaction(const Crypto::Hash& transactionHash, CryptoNote::Transaction& transaction, const Callback& callback) override { callback(std::error_code()); }
+
+  virtual void getPoolTransactions(uint64_t timestampBegin, uint64_t timestampEnd, uint32_t transactionsNumberLimit, std::vector<CryptoNote::TransactionDetails>& transactions, uint64_t& transactionsNumberWithinTimestamps,
     const Callback& callback) override { callback(std::error_code()); }
 
-  virtual void getMultisignatureOutputByGlobalIndex(uint64_t amount, uint32_t gindex, CryptoNote::MultisignatureOutput& out,
+  virtual void getTransactionsByPaymentId(const Crypto::Hash& paymentId, std::vector<CryptoNote::TransactionDetails>& transactions, 
     const Callback& callback) override { callback(std::error_code()); }
+
+  void getBlockTimestamp(uint32_t height, uint64_t& timestamp, const Callback& callback) { callback(std::error_code()); }
 
   virtual void isSynchronized(bool& syncStatus, const Callback& callback) override { callback(std::error_code()); }
 
   virtual void getConnections(std::vector<CryptoNote::p2pConnection>& connections, const Callback& callback) override { callback(std::error_code()); }
 
   virtual std::string feeAddress() const override { return std::string(); }
-
   virtual uint64_t feeAmount() const override { return 0; }
 
-  virtual void setRootCert(const std::string &path) { }
-
-  virtual void disableVerify() { }
+  virtual void setRootCert(const std::string &path) override { }
+  virtual void disableVerify() override { }
 
 };
 
@@ -156,9 +148,8 @@ NodeFactory::~NodeFactory() {
 CryptoNote::INode* NodeFactory::createNode(const std::string& daemonAddress,
                                            uint16_t daemonPort,
                                            const std::string &daemonPath,
-                                           const bool &daemonSSL,
-                                           Logging::ILogger& logger) {
-  std::unique_ptr<CryptoNote::INode> node(new CryptoNote::NodeRpcProxy(daemonAddress, daemonPort, daemonPath, daemonSSL, logger));
+                                           const bool &daemonSSL) {
+  std::unique_ptr<CryptoNote::INode> node(new CryptoNote::NodeRpcProxy(daemonAddress, daemonPort, daemonPath, daemonSSL));
 
   NodeInitObserver initObserver;
   node->init(std::bind(&NodeInitObserver::initCompleted, &initObserver, std::placeholders::_1));

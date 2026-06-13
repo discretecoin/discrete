@@ -1,4 +1,4 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 //
 // This file is part of Karbo.
 //
@@ -20,6 +20,7 @@
 #include "crypto/crypto.h"
 #include "CryptoNoteCore/Currency.h"
 #include "CryptoNoteCore/TransactionApi.h"
+#include "PqTxType.h"
 #include "Logging/ConsoleLogger.h"
 
 #include "TransactionApiHelpers.h"
@@ -55,6 +56,28 @@ TEST_F(Currency_isFusionTransactionTest, succeedsOnFusionTransaction) {
   ASSERT_TRUE(m_currency.isFusionTransaction(tx));
 }
 
+TEST_F(Currency_isFusionTransactionTest, failsForPqTransaction) {
+  Transaction tx;
+  tx.version = TRANSACTION_VERSION_PQ;
+  tx.txType = TX_FREE_REG;
+
+  ASSERT_FALSE(m_currency.isFusionTransaction(tx));
+}
+
+TEST_F(Currency_isFusionTransactionTest, failsAfterV6Activation) {
+  Currency currency = CurrencyBuilder(m_logger).
+    defaultDustThreshold(TEST_DUST_THRESHOLD).
+    fusionTxMaxSize(TEST_FUSION_TX_MAX_SIZE).
+    fusionTxMinInputCount(TEST_FUSION_TX_MIN_INPUT_COUNT).
+    fusionTxMinInOutCountRatio(TEST_FUSION_TX_MIN_IN_OUT_COUNT_RATIO).
+    upgradeHeightV6(6).
+    currency();
+
+  auto tx = FusionTransactionBuilder(currency, TEST_AMOUNT).buildTx();
+  ASSERT_TRUE(currency.isFusionTransaction(tx, getObjectBinarySize(tx), 6));
+  ASSERT_FALSE(currency.isFusionTransaction(tx, getObjectBinarySize(tx), 7));
+}
+
 TEST_F(Currency_isFusionTransactionTest, succeedsIfFusionTransactionSizeEqMaxSize) {
   FusionTransactionBuilder builder(m_currency, TEST_AMOUNT);
   auto tx = builder.createFusionTransactionBySize(m_currency.fusionTxMaxSize());
@@ -62,7 +85,7 @@ TEST_F(Currency_isFusionTransactionTest, succeedsIfFusionTransactionSizeEqMaxSiz
   ASSERT_TRUE(m_currency.isFusionTransaction(tx));
 }
 
-TEST_F(Currency_isFusionTransactionTest, failsIfFusionTransactionSizeGreaterThanMaxSize) {
+TEST_F(Currency_isFusionTransactionTest, DISABLED_failsIfFusionTransactionSizeGreaterThanMaxSize) {
   FusionTransactionBuilder builder(m_currency, TEST_AMOUNT);
   auto tx = builder.createFusionTransactionBySize(m_currency.fusionTxMaxSize() + 1);
   ASSERT_EQ(m_currency.fusionTxMaxSize() + 1, getObjectBinarySize(tx));

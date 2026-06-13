@@ -1,5 +1,4 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
-// Copyright (c) 2016-2019, The Karbo developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 //
 // This file is part of Karbo.
 //
@@ -23,11 +22,11 @@
 
 namespace CryptoNote {
   struct IMinerHandler {
-    virtual bool handleBlockFound(BlockTemplate& b) = 0;
-    virtual bool getBlockTemplate(BlockTemplate& b, const AccountPublicAddress& adr, const BinaryArray& extraNonce, Difficulty& difficulty, uint32_t& height) const = 0;
-    virtual bool getBlockLongHash(Crypto::cn_context &context, const CachedBlock& block, Crypto::Hash& res) = 0;
+    virtual bool handle_block_found(Block& b) = 0;
+    virtual bool get_block_template(Block& b, const AccountKeys& acc, Difficulty& diffic, uint32_t& height, const BinaryArray& ex_nonce) = 0;
+    virtual bool getBlockLongHash(Crypto::cn_context &context, const Block& b, Crypto::Hash& res) = 0;
 
   protected:
-    ~IMinerHandler() {}
+    ~IMinerHandler(){};
   };
 }

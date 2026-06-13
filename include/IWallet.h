@@ -1,5 +1,5 @@
 // Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
-// Copyright (c) 2016-2019, The Karbo developers
+// Copyright (c) 2016-2026, The Karbo developers
 //
 // This file is part of Karbo.
 //
@@ -51,6 +51,11 @@ enum class WalletSaveLevel : uint8_t {
   SAVE_KEYS_ONLY,
   SAVE_KEYS_AND_TRANSACTIONS,
   SAVE_ALL
+};
+
+enum class AddressGenerationMode : uint8_t {
+  HD_DETERMINISTIC = 0,
+  INDEPENDENT_SPEND_KEYS = 1
 };
 
 struct WalletTransactionCreatedData {
@@ -115,7 +120,7 @@ struct TransactionParameters {
   std::vector<std::string> sourceAddresses;
   std::vector<WalletOrder> destinations;
   uint64_t fee = 0;
-  uint16_t mixIn = 0;
+  uint64_t mixIn = 0;
   std::string extra;
   uint64_t unlockTimestamp = 0;
   DonationSettings donation;
@@ -146,15 +151,23 @@ public:
 
   virtual void changePassword(const std::string& oldPassword, const std::string& newPassword) = 0;
   virtual void save(WalletSaveLevel saveLevel = WalletSaveLevel::SAVE_ALL, const std::string& extra = "") = 0;
-  virtual void reset(const uint32_t scanHeight) = 0;
+  virtual void reset(const uint64_t scanHeight) = 0;
   virtual void exportWallet(const std::string& path, bool encrypt = true, WalletSaveLevel saveLevel = WalletSaveLevel::SAVE_ALL, const std::string& extra = "") = 0;
 
   virtual size_t getAddressCount() const = 0;
   virtual std::string getAddress(size_t index) const = 0;
+  virtual bool isMyAddress(const std::string& address) const = 0;
+
+  virtual AccountPublicAddress getAccountPublicAddress(size_t index) const = 0;
   virtual KeyPair getAddressSpendKey(size_t index) const = 0;
   virtual KeyPair getAddressSpendKey(const std::string& address) const = 0;
   virtual KeyPair getViewKey() const = 0;
+  virtual AddressGenerationMode getAddressGenerationMode() const = 0;
+  virtual Crypto::SecretKey getDeterministicSeed() const = 0;
+  virtual void setAddressGenerationMode(AddressGenerationMode mode, const Crypto::SecretKey& deterministicSeed) = 0;
+
   virtual std::string createAddress() = 0;
+  virtual std::string createAddress(uint32_t scanHeight) = 0;
   virtual std::string createAddress(const Crypto::SecretKey& spendSecretKey, bool reset = true) = 0;
   virtual std::string createAddress(const Crypto::PublicKey& spendPublicKey, bool reset = true) = 0;
   virtual std::string createAddress(const Crypto::SecretKey& spendSecretKey, const uint64_t& creationTimestamp) = 0;
@@ -188,12 +201,12 @@ public:
   virtual std::vector<size_t> getDelayedTransactionIds() const = 0;
   virtual std::vector<TransactionOutputInformation> getTransfers(size_t index, uint32_t flags) const = 0;
 
-  virtual size_t transfer(const TransactionParameters& sendingTransaction, Crypto::SecretKey &txSecretKey) = 0;
-
   virtual std::string getReserveProof(const uint64_t &reserve, const std::string& address, const std::string &message) = 0;
 
   virtual std::string signMessage(const std::string &message, const std::string& address) = 0;
   virtual bool verifyMessage(const std::string &message, const std::string& address, const std::string &signature) = 0;
+
+  virtual size_t transfer(const TransactionParameters& sendingTransaction, Crypto::SecretKey &txSecretKey) = 0;
 
   virtual size_t makeTransaction(const TransactionParameters& sendingTransaction) = 0;
   virtual void commitTransaction(size_t transactionId) = 0;

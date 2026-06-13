@@ -1,4 +1,4 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 // Copyright (c) 2016-2020, The Karbo developers
 //
 // This file is part of Karbo.
@@ -43,7 +43,6 @@ public:
   virtual void lastKnownBlockHeightUpdated(uint32_t height) {}
   virtual void poolChanged() {}
   virtual void blockchainSynchronized(uint32_t topHeight) {}
-  virtual void chainSwitched(uint32_t newTopIndex, uint32_t commonRoot, const std::vector<Crypto::Hash>& hashes) {}
 };
 
 struct OutEntry {
@@ -64,7 +63,7 @@ struct TransactionShortInfo {
 struct BlockShortEntry {
   Crypto::Hash blockHash;
   bool hasBlock;
-  CryptoNote::BlockTemplate block;
+  CryptoNote::Block block;
   std::vector<TransactionShortInfo> txsShortInfo;
 };
 
@@ -132,12 +131,9 @@ public:
   virtual bool addObserver(INodeObserver* observer) = 0;
   virtual bool removeObserver(INodeObserver* observer) = 0;
 
-  //precondition: must be called in dispatcher's thread
   virtual void init(const Callback& callback) = 0;
-  //precondition: must be called in dispatcher's thread
   virtual bool shutdown() = 0;
 
-  //precondition: all of following methods must not be invoked in dispatcher's thread
   virtual size_t getPeerCount() const = 0;
   virtual uint32_t getLastLocalBlockHeight() const = 0;
   virtual uint32_t getLastKnownBlockHeight() const = 0;
@@ -149,6 +145,7 @@ public:
   virtual uint64_t getAlreadyGeneratedCoins() const = 0;
   virtual uint64_t getLastLocalBlockTimestamp() const = 0;
   virtual uint32_t getNodeHeight() const = 0;
+  virtual BlockHeaderInfo getLastLocalBlockHeaderInfo() const = 0;
   virtual uint64_t getTransactionsCount() const = 0;
   virtual uint64_t getTransactionsPoolSize() const = 0;
   virtual uint64_t getAltBlocksCount() const = 0;
@@ -158,7 +155,6 @@ public:
   virtual uint64_t getWhitePeerlistSize() const = 0;
   virtual uint64_t getGreyPeerlistSize() const = 0;
   virtual std::string getNodeVersion() const = 0;
-  virtual bool isConnected() const = 0;
 
   virtual std::string feeAddress() const = 0;
   virtual uint64_t feeAmount() const = 0;
@@ -166,28 +162,42 @@ public:
   virtual void setRootCert(const std::string &path) = 0;
   virtual void disableVerify() = 0;
 
-  virtual void getBlockHashesByTimestamps(uint64_t timestampBegin, size_t secondsCount, std::vector<Crypto::Hash>& blockHashes, const Callback& callback) = 0;
-  virtual void getTransactionHashesByPaymentId(const Crypto::Hash& paymentId, std::vector<Crypto::Hash>& transactionHashes, const Callback& callback) = 0;
-
-  virtual BlockHeaderInfo getLastLocalBlockHeaderInfo() const = 0;
-
   virtual void relayTransaction(const Transaction& transaction, const Callback& callback) = 0;
-  virtual void getRandomOutsByAmounts(std::vector<uint64_t>&& amounts, uint16_t outsCount, std::vector<CryptoNote::COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::outs_for_amount>& result, const Callback& callback) = 0;
-  virtual void getNewBlocks(std::vector<Crypto::Hash>&& knownBlockIds, std::vector<RawBlock>& newBlocks, uint32_t& startHeight, const Callback& callback) = 0;
+  virtual void getRandomOutsByAmounts(std::vector<uint64_t>&& amounts, uint64_t outsCount, std::vector<CryptoNote::COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::outs_for_amount>& result, const Callback& callback) = 0;
+  virtual void getNewBlocks(std::vector<Crypto::Hash>&& knownBlockIds, std::vector<CryptoNote::block_complete_entry>& newBlocks, uint32_t& startHeight, const Callback& callback) = 0;
   virtual void getTransactionOutsGlobalIndices(const Crypto::Hash& transactionHash, std::vector<uint32_t>& outsGlobalIndices, const Callback& callback) = 0;
   virtual void queryBlocks(std::vector<Crypto::Hash>&& knownBlockIds, uint64_t timestamp, std::vector<BlockShortEntry>& newBlocks, uint32_t& startHeight, const Callback& callback) = 0;
   virtual void getPoolSymmetricDifference(std::vector<Crypto::Hash>&& knownPoolTxIds, Crypto::Hash knownBlockId, bool& isBcActual, std::vector<std::unique_ptr<ITransactionReader>>& newTxs, std::vector<Crypto::Hash>& deletedTxIds, const Callback& callback) = 0;
-  virtual void getMultisignatureOutputByGlobalIndex(uint64_t amount, uint32_t gindex, MultisignatureOutput& out, const Callback& callback) = 0;
-
   virtual void getBlocks(const std::vector<uint32_t>& blockHeights, std::vector<std::vector<BlockDetails>>& blocks, const Callback& callback) = 0;
   virtual void getBlocks(const std::vector<Crypto::Hash>& blockHashes, std::vector<BlockDetails>& blocks, const Callback& callback) = 0;
+  virtual void getBlocks(uint64_t timestampBegin, uint64_t timestampEnd, uint32_t blocksNumberLimit, std::vector<BlockDetails>& blocks, uint32_t& blocksNumberWithinTimestamps, const Callback& callback) = 0;
   virtual void getBlock(const uint32_t blockHeight, BlockDetails &block, const Callback& callback) = 0;
-  virtual void getBlockTimestamp(uint32_t height, uint64_t& timestamp, const Callback& callback) = 0;
   virtual void getTransaction(const Crypto::Hash& transactionHash, CryptoNote::Transaction& transaction, const Callback& callback) = 0;
   virtual void getTransactions(const std::vector<Crypto::Hash>& transactionHashes, std::vector<TransactionDetails>& transactions, const Callback& callback) = 0;
   virtual void getTransactionsByPaymentId(const Crypto::Hash& paymentId, std::vector<TransactionDetails>& transactions, const Callback& callback) = 0;
+  virtual void getPoolTransactions(uint64_t timestampBegin, uint64_t timestampEnd, uint32_t transactionsNumberLimit, std::vector<TransactionDetails>& transactions, uint64_t& transactionsNumberWithinTimestamps, const Callback& callback) = 0;
+  virtual void getBlockTimestamp(uint32_t height, uint64_t& timestamp, const Callback& callback) = 0;
   virtual void isSynchronized(bool& syncStatus, const Callback& callback) = 0;
   virtual void getConnections(std::vector<p2pConnection>& connections, const Callback& callback) = 0;
+
+  // Account number resolution (default implementations return error)
+  virtual void resolveAccountNumber(const std::string& accountNumber, std::string& address, const Callback& callback) {
+    callback(std::make_error_code(std::errc::not_supported));
+  }
+  virtual void getAccountNumber(const std::string& address, std::string& accountNumber, const Callback& callback) {
+    callback(std::make_error_code(std::errc::not_supported));
+  }
+  // PQ account registry. getPqAccount: full PQ identity (viewPub+spendPub hex)
+  // -> registration coords.
+  // resolvePqAccount: coords -> registered view+spend pubkeys (hex).
+  virtual void getPqAccount(const std::string& viewPubHex, const std::string& spendPubHex, bool& registered,
+                            uint32_t& blockHeight, uint32_t& txIndex, const Callback& callback) {
+    callback(std::make_error_code(std::errc::not_supported));
+  }
+  virtual void resolvePqAccount(uint32_t blockHeight, uint32_t txIndex, bool& found,
+                                std::string& viewPubHex, std::string& spendPubHex, const Callback& callback) {
+    callback(std::make_error_code(std::errc::not_supported));
+  }
 };
 
 }

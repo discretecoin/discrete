@@ -1,5 +1,5 @@
 // Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
-// Copyright (c) 2016-2019, The Karbo developers
+// Copyright (c) 2018, The Karbo developers
 //
 // This file is part of Karbo.
 //
@@ -29,14 +29,14 @@
 
 namespace CryptoNote {
 
-using CryptoNote::SerializationTag;
+enum class SerializationTag : uint8_t { Base = 0xff, Key = 0x2, Pq = 0x10, Transaction = 0xcc, Block = 0xbb };
 
 namespace {
 
 struct BinaryVariantTagGetter: boost::static_visitor<uint8_t> {
   uint8_t operator()(const CryptoNote::BaseInputDetails) { return static_cast<uint8_t>(SerializationTag::Base); }
   uint8_t operator()(const CryptoNote::KeyInputDetails) { return static_cast<uint8_t>(SerializationTag::Key); }
-  uint8_t operator()(const CryptoNote::MultisignatureInputDetails) { return static_cast<uint8_t>(SerializationTag::Multisignature); }
+  uint8_t operator()(const CryptoNote::PqInputDetails) { return static_cast<uint8_t>(SerializationTag::Pq); }
 };
 
 struct VariantSerializer : boost::static_visitor<> {
@@ -51,7 +51,7 @@ struct VariantSerializer : boost::static_visitor<> {
 
 void getVariantValue(CryptoNote::ISerializer& serializer, uint8_t tag, boost::variant<CryptoNote::BaseInputDetails,
                                                                                       CryptoNote::KeyInputDetails,
-                                                                                      CryptoNote::MultisignatureInputDetails>& in) {
+                                                                                      CryptoNote::PqInputDetails>& in) {
   switch (static_cast<SerializationTag>(tag)) {
   case SerializationTag::Base: {
     CryptoNote::BaseInputDetails v;
@@ -65,8 +65,8 @@ void getVariantValue(CryptoNote::ISerializer& serializer, uint8_t tag, boost::va
     in = v;
     break;
   }
-  case SerializationTag::Multisignature: {
-    CryptoNote::MultisignatureInputDetails v;
+  case SerializationTag::Pq: {
+    CryptoNote::PqInputDetails v;
     serializer(v, "data");
     in = v;
     break;
@@ -85,7 +85,7 @@ bool serializePod(T& v, Common::StringView name, CryptoNote::ISerializer& serial
 
 //namespace CryptoNote {
 
-void serialize(TransactionOutputDetails& output, ISerializer& serializer) {
+void serialize(transactionOutputDetails2& output, ISerializer& serializer) {
   serializer(output.output, "output");
   serializer(output.globalIndex, "globalIndex");
 }
@@ -106,12 +106,14 @@ void serialize(KeyInputDetails& inputToKey, ISerializer& serializer) {
   serializer(inputToKey.outputs, "outputs");
 }
 
-void serialize(MultisignatureInputDetails& inputMultisig, ISerializer& serializer) {
-  serializer(inputMultisig.input, "input");
-  serializer(inputMultisig.output, "output");
+void serialize(PqInputDetails& inputPq, ISerializer& serializer) {
+  serializer(inputPq.input, "input");
+  serializer(inputPq.amount, "amount");
+  serializePod(inputPq.nullifier, "nullifier", serializer);
+  serializer(inputPq.output, "output");
 }
 
-void serialize(TransactionInputDetails& input, ISerializer& serializer) {
+void serialize(transactionInputDetails2& input, ISerializer& serializer) {
   if (serializer.type() == ISerializer::OUTPUT) {
     BinaryVariantTagGetter tagGetter;
     uint8_t tag = boost::apply_visitor(tagGetter, input);
@@ -131,6 +133,12 @@ void serialize(TransactionExtraDetails& extra, ISerializer& serializer) {
   serializePod(extra.publicKey, "publicKey", serializer);
   serializer(extra.nonce, "nonce");
   serializeAsBinary(extra.raw, "raw", serializer);
+}
+
+void serialize(TransactionExtraDetails2& extra, ISerializer& serializer) {
+  serializePod(extra.publicKey, "publicKey", serializer);
+  serializer(extra.nonce, "nonce");
+  serializeAsBinary(extra.raw, "raw", serializer);
   serializer(extra.size, "size");
 }
 
@@ -144,10 +152,11 @@ void serialize(TransactionDetails& transaction, ISerializer& serializer) {
   serializer(transaction.unlockTime, "unlockTime");
   serializer(transaction.timestamp, "timestamp");
   serializer(transaction.version, "version");
+  serializer(transaction.txType, "txType");
   serializePod(transaction.paymentId, "paymentId", serializer);
   serializer(transaction.inBlockchain, "inBlockchain");
   serializePod(transaction.blockHash, "blockHash", serializer);
-  serializer(transaction.blockIndex, "blockIndex");
+  serializer(transaction.blockHeight, "blockIndex");
   serializer(transaction.extra, "extra");
   serializer(transaction.inputs, "inputs");
   serializer(transaction.outputs, "outputs");
@@ -187,9 +196,9 @@ void serialize(BlockDetails& block, ISerializer& serializer) {
   serializePod(block.prevBlockHash, "prevBlockHash", serializer);
   serializePod(block.proofOfWork, "proofOfWork", serializer);
   serializer(block.nonce, "nonce");
-  serializer(block.index, "index");
+  serializer(block.isOrphaned, "isOrphaned");
+  serializer(block.height, "index");
   serializer(block.depth, "depth");
-  serializer(block.isAlternative, "isOrphaned");
   serializePod(block.hash, "hash", serializer);
   serializer(block.difficulty, "difficulty");
   serializer(block.cumulativeDifficulty, "cumulativeDifficulty");
@@ -203,16 +212,8 @@ void serialize(BlockDetails& block, ISerializer& serializer) {
   serializer(block.effectiveSizeMedian, "effectiveSizeMedian");
   serializer(block.penalty, "penalty");
   serializer(block.totalFeeAmount, "totalFeeAmount");
+  serializer(block.minerSignature, "minerSignature");
   serializer(block.transactions, "transactions");
-}
-
-void serialize(BlockDetailsShort& block, ISerializer& serializer) {
-  serializer(block.timestamp, "timestamp");
-  serializer(block.index, "index");
-  serializePod(block.hash, "hash", serializer);
-  serializer(block.difficulty, "difficulty");
-  serializer(block.blockSize, "blockSize");
-  serializer(block.transactionsCount, "txCount");
 }
 
 } //namespace CryptoNote

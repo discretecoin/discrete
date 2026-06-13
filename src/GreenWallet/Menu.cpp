@@ -1,6 +1,6 @@
 // Copyright (c) 2018, The TurtleCoin Developers
 // Copyright (c) 2018-2019, The Karbo Developers
-// 
+//
 // Please see the included LICENSE file for more information.
 
 ///////////////////////////
@@ -15,8 +15,6 @@
 #include <GreenWallet/GetInput.h>
 #include <GreenWallet/Sync.h>
 #include <GreenWallet/Tools.h>
-
-using namespace Tools;
 
 template<typename T>
 std::string parseCommand(const std::vector<T> &printableCommands,
@@ -133,7 +131,7 @@ std::tuple<bool, std::shared_ptr<WalletInfo>>
         {
             return std::make_tuple(true, nullptr);
         }
-    
+
         /* If we're creating a wallet, don't print the lengthy sync process */
         if (launchCommand == "create")
         {
@@ -247,7 +245,7 @@ void mainLoop(std::shared_ptr<WalletInfo> walletInfo, CryptoNote::INode &node)
     {
         printCommands(basicCommands());
     }
-    
+
     while (true)
     {
         std::string command;

@@ -1,5 +1,5 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
-// Copyright (c) 2016-2019, The Karbo developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2016-2026, Karbo developers
 //
 // This file is part of Karbo.
 //
@@ -20,8 +20,9 @@
 
 #include "CryptoNoteCore/Account.h"
 #include "CryptoNoteCore/Currency.h"
-#include "CryptoNoteCore/CryptoNoteFormatUtils.h"
+
 #include "INode.h"
+#include "Wallet/TransactionBuilder.h"
 #include "WalletLegacy/WalletSendTransactionContext.h"
 #include "WalletLegacy/WalletUserTransactionsCache.h"
 #include "WalletLegacy/WalletUnconfirmedTransactions.h"
@@ -44,20 +45,23 @@ public:
   std::shared_ptr<WalletRequest> makeSendRequest(TransactionId& transactionId, std::deque<std::shared_ptr<WalletLegacyEvent>>& events,
     const std::vector<WalletLegacyTransfer>& transfers, const std::list<TransactionOutputInformation>& selectedOuts, uint64_t fee, const std::string& extra = "", uint64_t mixIn = 0, uint64_t unlockTimestamp = 0);
 
-  std::shared_ptr<WalletRequest> makeSendFusionRequest(TransactionId& transactionId, std::deque<std::shared_ptr<WalletLegacyEvent>>& events,
-	  const std::vector<WalletLegacyTransfer>& transfers, const std::list<TransactionOutputInformation>& fusionInputs, uint64_t fee, const std::string& extra = "", uint64_t mixIn = 0, uint64_t unlockTimestamp = 0);
-
   std::string makeRawTransaction(TransactionId& transactionId, std::deque<std::shared_ptr<WalletLegacyEvent>>& events, const std::vector<WalletLegacyTransfer>& transfers, const std::list<CryptoNote::TransactionOutputInformation>& _selectedOuts, uint64_t fee, const std::string& extra, uint64_t mixIn, uint64_t unlockTimestamp);
 
 private:
   std::shared_ptr<WalletRequest> makeGetRandomOutsRequest(std::shared_ptr<SendTransactionContext> context);
+  // Shared build path for both relayed (doSendTransaction) and prepare-only
+  // (makeRawTransaction) flows: turns a ready SendTransactionContext into a
+  // signed Transaction and updates the cache hash/secret key. Keeping a single
+  // helper guarantees the prepared raw tx is byte-identical to what a direct
+  // send would relay.
+  Transaction buildTransactionFromContext(std::shared_ptr<SendTransactionContext> context, WalletLegacyTransaction& transaction, uint64_t& totalAmount);
   std::shared_ptr<WalletRequest> doSendTransaction(std::shared_ptr<SendTransactionContext> context, std::deque<std::shared_ptr<WalletLegacyEvent>>& events);
   void prepareInputs(const std::list<TransactionOutputInformation>& selectedTransfers, std::vector<COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::outs_for_amount>& outs,
-      std::vector<TransactionSourceEntry>& sources, uint64_t mixIn);
-  void splitDestinations(TransferId firstTransferId, size_t transfersCount, const TransactionDestinationEntry& changeDts,
-    const TxDustPolicy& dustPolicy, std::vector<TransactionDestinationEntry>& splittedDests);
-  void digitSplitStrategy(TransferId firstTransferId, size_t transfersCount, const TransactionDestinationEntry& change_dst, uint64_t dust_threshold,
-    std::vector<TransactionDestinationEntry>& splitted_dsts, uint64_t& dust);
+      std::vector<TxBuildInput>& inputs, uint64_t mixIn);
+  void splitDestinations(TransferId firstTransferId, size_t transfersCount, const TxBuildOutput& changeDts,
+    const TxDustPolicy& dustPolicy, std::vector<TxBuildOutput>& splittedDests);
+  void digitSplitStrategy(TransferId firstTransferId, size_t transfersCount, const TxBuildOutput& change_dst, uint64_t dust_threshold,
+    std::vector<TxBuildOutput>& splitted_dsts, uint64_t& dust);
   void sendTransactionRandomOutsByAmount(std::shared_ptr<SendTransactionContext> context, std::deque<std::shared_ptr<WalletLegacyEvent>>& events,
       boost::optional<std::shared_ptr<WalletRequest> >& nextRequest, std::error_code ec);
   void relayTransactionCallback(std::shared_ptr<SendTransactionContext> context, std::deque<std::shared_ptr<WalletLegacyEvent>>& events,

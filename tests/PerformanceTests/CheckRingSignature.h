@@ -1,4 +1,4 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 //
 // This file is part of Karbo.
 //
@@ -22,6 +22,7 @@
 #include "CryptoNoteCore/Account.h"
 #include "CryptoNoteCore/CryptoNoteBasic.h"
 #include "CryptoNoteCore/CryptoNoteFormatUtils.h"
+#include "CryptoNoteCore/CryptoNoteSerialization.h"
 #include "CryptoNoteCore/CryptoNoteTools.h"
 #include "crypto/crypto.h"
 
@@ -47,11 +48,18 @@ public:
 
     m_alice.generate();
 
-    std::vector<TransactionDestinationEntry> destinations;
-    destinations.push_back(TransactionDestinationEntry(this->m_source_amount, m_alice.getAccountKeys().address));
+    std::vector<CryptoNote::TxBuildOutput> destinations;
+    destinations.push_back(CryptoNote::TxBuildOutput{m_alice.getAccountKeys().address, this->m_source_amount});
 
-    if (!constructTransaction(this->m_miners[this->real_source_idx].getAccountKeys(), this->m_sources, destinations, std::vector<uint8_t>(), m_tx, 0, this->m_logger))
+    Crypto::SecretKey txkey;
+    try {
+      auto itx = CryptoNote::buildTransaction(this->m_sources, destinations,
+          this->m_miners[this->real_source_idx].getAccountKeys().viewSecretKey, "", 0, 0, txkey);
+      if (!CryptoNote::fromBinaryArray(m_tx, itx->getTransactionData()))
+        return false;
+    } catch (...) {
       return false;
+    }
 
     getObjectHash(*static_cast<TransactionPrefix*>(&m_tx), m_tx_prefix_hash);
 
@@ -61,7 +69,7 @@ public:
   bool test()
   {
     const CryptoNote::KeyInput& txin = boost::get<CryptoNote::KeyInput>(m_tx.inputs[0]);
-    return Crypto::check_ring_signature(m_tx_prefix_hash, txin.keyImage, this->m_public_key_ptrs, ring_size, m_tx.signatures[0].data(), true);
+    return Crypto::check_ring_signature(m_tx_prefix_hash, txin.keyImage, this->m_public_key_ptrs, ring_size, m_tx.signatures[0].data());
   }
 
 private:

@@ -1,4 +1,4 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 //
 // This file is part of Karbo.
 //
@@ -32,6 +32,7 @@
 #include "Wallet/WalletGreen.h"
 
 #include "../IntegrationTestLib/TestNetwork.h"
+#include "../IntegrationTestLib/TestNode.h"
 #include "../IntegrationTestLib/NodeObserver.h"
 #include "../IntegrationTestLib/NodeCallback.h"
 
@@ -201,7 +202,8 @@ TEST_F(NodeTest, generateBlockchain) {
     wallet.initialize(TEST_WALLET_FILE, password);
 
     std::string minerAddress = wallet.createAddress();
-    daemon.startMining(1, minerAddress);
+    (void)minerAddress;
+    daemon.startMining(1, Tests::accountKeysFromWallet(wallet, 0));
 
     System::Timer timer(dispatcher);
 
@@ -221,7 +223,7 @@ TEST_F(NodeTest, generateBlockchain) {
 
 TEST_F(NodeTest, dumpBlockchain) {
   startNetworkWithBlockchain("testnet_300");
-  //auto& daemon = network.getNode(0);
+  auto& daemon = network.getNode(0);
   auto mainNode = network.getNode(0).makeINode();
   dumpBlockchainInfo(*mainNode);
 }
@@ -247,7 +249,8 @@ TEST_F(NodeTest, addMoreBlocks) {
     wallet.load(TEST_WALLET_FILE, password);
 
     std::string minerAddress = wallet.getAddress(0);
-    daemon.startMining(1, minerAddress);
+    (void)minerAddress;
+    daemon.startMining(1, Tests::accountKeysFromWallet(wallet, 0));
 
     System::Timer timer(dispatcher);
 
@@ -306,7 +309,7 @@ TEST_F(NodeTest, queryBlocks) {
   auto startBlockIter = std::find_if(blocks.begin(), blocks.end(), [](const BlockShortEntry& e) { return e.hasBlock; });
   ASSERT_TRUE(startBlockIter != blocks.end());
 
-  const BlockTemplate& startBlock = startBlockIter->block;
+  const Block& startBlock = startBlockIter->block;
 
   std::cout << "Starting block timestamp: " << startBlock.timestamp << std::endl;
   auto startFullIndex = std::distance(blocks.begin(), startBlockIter);

@@ -1,5 +1,4 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
-// Copyright (c) 2016-2019, The Karbo developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 //
 // This file is part of Karbo.
 //
@@ -58,7 +57,7 @@ public:
   ~RemoteContext() {
     try {
       wait();
-    } catch (...) {
+    } catch (std::exception&) {
     }
 
     try {
@@ -66,7 +65,7 @@ public:
       if (future.valid()) {
         future.wait();
       }
-    } catch (...) {
+    } catch (std::exception&) {
     }
   }
 

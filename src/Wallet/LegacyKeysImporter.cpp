@@ -1,5 +1,4 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
-// Copyright (c) 2016-2019, The Karbo developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 //
 // This file is part of Karbo.
 //
@@ -61,7 +60,8 @@ void loadKeysFromFile(const std::string& filename, const std::string& password, 
   }
 
   chacha8_key key;
-  generate_chacha8_key(password, key);
+  cn_context cn_context;
+  generate_chacha8_key(cn_context, password, key);
   std::string account_data;
   account_data.resize(keys_file_data.account_data.size());
   chacha8(keys_file_data.account_data.data(), keys_file_data.account_data.size(), key, keys_file_data.iv, &account_data[0]);
@@ -71,8 +71,8 @@ void loadKeysFromFile(const std::string& filename, const std::string& password, 
   }
 
   const CryptoNote::AccountKeys& keys = account.getAccountKeys();
-  CryptoNote::throwIfKeysMismatch(keys.viewSecretKey, keys.address.viewPublicKey);
-  CryptoNote::throwIfKeysMismatch(keys.spendSecretKey, keys.address.spendPublicKey);
+  CryptoNote::throwIfKeysMissmatch(keys.viewSecretKey, keys.address.viewPublicKey);
+  CryptoNote::throwIfKeysMissmatch(keys.spendSecretKey, keys.address.spendPublicKey);
 }
 
 }

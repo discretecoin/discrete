@@ -1,5 +1,4 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
-// Copyright (c) 2016-2019, The Karbo developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 //
 // This file is part of Karbo.
 //
@@ -70,7 +69,6 @@ namespace CryptoNote {
   std::string getAccountAddressAsStr(uint64_t prefix, const AccountPublicAddress& adr) {
     BinaryArray ba;
     bool r = toBinaryArray(adr, ba);
-    if (r) {}
     assert(r);
     return Tools::Base58::encode_addr(prefix, Common::asString(ba));
   }
@@ -97,15 +95,14 @@ namespace CryptoNote {
       check_key(adr.spendPublicKey) &&
       check_key(adr.viewPublicKey);
   }
-  ////-----------------------------------------------------------------------
-  //bool operator ==(const CryptoNote::Transaction& a, const CryptoNote::Transaction& b) {
-  //  return getObjectHash(a) == getObjectHash(b);
-  //}
-  ////-----------------------------------------------------------------------
-  //bool operator ==(const CryptoNote::BlockTemplate& a, const CryptoNote::BlockTemplate& b) {
-
-  //  return CryptoNote::get_block_hash(a) == CryptoNote::get_block_hash(b);
-  //}
+  //-----------------------------------------------------------------------
+  bool operator ==(const CryptoNote::Transaction& a, const CryptoNote::Transaction& b) {
+    return getObjectHash(a) == getObjectHash(b);
+  }
+  //-----------------------------------------------------------------------
+  bool operator ==(const CryptoNote::Block& a, const CryptoNote::Block& b) {
+    return CryptoNote::get_block_hash(a) == CryptoNote::get_block_hash(b);
+  }
 }
 
 //--------------------------------------------------------------------------------

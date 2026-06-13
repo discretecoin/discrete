@@ -1,6 +1,6 @@
 // Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 // Copyright (c) 2014-2016, The Monero Project
-// Copyright (c) 2016-2020, Karbo developers
+// Copyright (c) 2016-2026, The Karbo developers
 //
 // All rights reserved.
 //
@@ -54,7 +54,10 @@
 #include "Transfers/BlockchainSynchronizer.h"
 #include "Transfers/TransfersSynchronizer.h"
 
-#include "Logging/LoggerRef.h"
+#include "Wallet/PqConsumer.h"
+#include "Wallet/PqTransactionBuilder.h"
+
+#include <Logging/LoggerRef.h>
 
 namespace CryptoNote {
 
@@ -74,22 +77,42 @@ public:
 
   virtual void initAndGenerateNonDeterministic(const std::string& password) override;
   virtual void initAndGenerateDeterministic(const std::string& password) override;
+  void initAndGenerate(const std::string& password) { initAndGenerateDeterministic(password); }
   virtual void initAndLoad(std::istream& source, const std::string& password) override;
   virtual void initWithKeys(const AccountKeys& accountKeys, const std::string& password) override;
   virtual void initWithKeys(const AccountKeys& accountKeys, const std::string& password, const uint32_t scanHeight) override;
   virtual void shutdown() override;
   virtual void reset() override;
+  virtual bool tryLoadWallet(std::istream& source, const std::string& password) override;
 
   virtual void save(std::ostream& destination, bool saveDetailed = true, bool saveCache = true) override;
 
   virtual std::error_code changePassword(const std::string& oldPassword, const std::string& newPassword) override;
-  virtual bool tryLoadWallet(std::istream& source, const std::string& password) override;
 
   virtual std::string getAddress() override;
 
   virtual uint64_t actualBalance() override;
   virtual uint64_t pendingBalance() override;
   virtual uint64_t unmixableBalance() override;
+
+  // --- PQ (post-quantum) balance / spend, concrete (not on IWalletLegacy) ----
+  // Available only for full wallets (a spend secret is required to derive the
+  // PQ identity). Tracking wallets return false / 0 / empty.
+  bool pqEnabled() const { return static_cast<bool>(m_pqConsumer); }
+  uint64_t pqActualBalance() const;
+  std::vector<PqSpendInput> pqSpendableInputs() const;
+  uint32_t pqSyncedHeight() const;
+
+  // Build a signed TX_BRIDGE migrating `amount` of the LEGACY balance to the
+  // given PQ recipient, with unbridged change returned to this wallet's CN
+  // address.
+  // One-way (legacy -> PQ). `minimumFee` is the normal legacy minimum fee because
+  // TX_BRIDGE uses classical KeyInputs. `feeOut` reports the fee charged. Throws
+  // std::runtime_error on insufficient unlocked legacy funds.
+  Transaction createBridgeTransaction(const CryptoPQ::KemPublicKey& destViewPub,
+                                      const CryptoPQ::DsaPublicKey& destSpendPub,
+                                      uint64_t amount, uint64_t minimumFee,
+                                      uint64_t mixin, uint64_t& feeOut);
 
   virtual size_t getTransactionCount() override;
   virtual size_t getTransferCount() override;
@@ -100,6 +123,12 @@ public:
   virtual bool getTransaction(TransactionId transactionId, WalletLegacyTransaction& transaction) override;
   virtual bool getTransfer(TransferId transferId, WalletLegacyTransfer& transfer) override;
   virtual std::vector<Payments> getTransactionsByPaymentIds(const std::vector<PaymentId>& paymentIds) const override;
+  virtual bool getTxProof(Crypto::Hash& txid, CryptoNote::AccountPublicAddress& address, Crypto::SecretKey& tx_key, std::string& sig_str) override;
+  virtual std::string getReserveProof(const uint64_t &reserve, const std::string &message) override;
+  virtual Crypto::SecretKey getTxKey(Crypto::Hash& txid) override;
+  virtual bool get_tx_key(Crypto::Hash& txid, Crypto::SecretKey& txSecretKey) override;
+  virtual void getAccountKeys(AccountKeys& keys) override;
+  virtual bool getSeed(std::string& electrum_words) override;
 
   virtual std::vector<TransactionOutputInformation> getOutputs() override;
   virtual std::vector<TransactionOutputInformation> getLockedOutputs() override;
@@ -109,31 +138,18 @@ public:
   virtual TransactionId sendTransaction(const WalletLegacyTransfer& transfer, uint64_t fee, const std::string& extra = "", uint64_t mixIn = 0, uint64_t unlockTimestamp = 0) override;
   virtual TransactionId sendTransaction(const std::vector<WalletLegacyTransfer>& transfers, uint64_t fee, const std::string& extra = "", uint64_t mixIn = 0, uint64_t unlockTimestamp = 0) override;
   virtual TransactionId sendTransaction(const std::vector<WalletLegacyTransfer>& transfers, const std::list<TransactionOutputInformation>& selectedOuts, uint64_t fee, const std::string& extra = "", uint64_t mixIn = 0, uint64_t unlockTimestamp = 0) override;
-  virtual TransactionId sendFusionTransaction(const std::list<TransactionOutputInformation>& fusionInputs, uint64_t fee, const std::string& extra = "", uint64_t mixIn = 0, uint64_t unlockTimestamp = 0) override;
   virtual std::string prepareRawTransaction(TransactionId& transactionId, const std::vector<WalletLegacyTransfer>& transfers, uint64_t fee, const std::string& extra, uint64_t mixIn, uint64_t unlockTimestamp) override;
   virtual std::string prepareRawTransaction(TransactionId& transactionId, const std::vector<WalletLegacyTransfer>& transfers, const std::list<TransactionOutputInformation>& selectedOuts, uint64_t fee, const std::string& extra, uint64_t mixIn, uint64_t unlockTimestamp) override;
   virtual std::string prepareRawTransaction(TransactionId& transactionId, const WalletLegacyTransfer& transfer, uint64_t fee, const std::string& extra, uint64_t mixIn, uint64_t unlockTimestamp) override;
   virtual std::error_code cancelTransaction(size_t transactionId) override;
 
-  virtual size_t estimateFusion(const uint64_t& threshold) override;
-  virtual std::list<TransactionOutputInformation> selectFusionTransfersToSend(uint64_t threshold, size_t minInputCount, size_t maxInputCount) override;
-  virtual bool isFusionTransaction(const WalletLegacyTransaction& walletTx) const override;
-
-  virtual void getAccountKeys(AccountKeys& keys) override;
-  virtual bool getSeed(std::string& electrum_words) override;
-  
-  virtual bool getTransactionInformation(const Crypto::Hash& transactionHash, TransactionInformation& info, uint64_t* amountIn = nullptr, uint64_t* amountOut = nullptr) const override;
+  virtual bool getTransactionInformation(const Crypto::Hash& transactionHash, TransactionInformation& info,
+      uint64_t* amountIn = nullptr, uint64_t* amountOut = nullptr) const override;
   virtual std::vector<TransactionOutputInformation> getTransactionOutputs(const Crypto::Hash& transactionHash, uint32_t flags = ITransfersContainer::IncludeDefault) const override;
   virtual std::vector<TransactionOutputInformation> getTransactionInputs(const Crypto::Hash& transactionHash, uint32_t flags) const override;
 
   virtual std::string sign_message(const std::string &message) override;
   virtual bool verify_message(const std::string &message, const CryptoNote::AccountPublicAddress &address, const std::string &signature) override;
-
-  virtual Crypto::SecretKey getTxKey(Crypto::Hash& txid) override;
-  virtual bool get_tx_key(Crypto::Hash& txid, Crypto::SecretKey& txSecretKey) override;
-  virtual bool getTxProof(Crypto::Hash& txid, CryptoNote::AccountPublicAddress& address, Crypto::SecretKey& tx_key, std::string& sig_str) override;
-  virtual bool checkTxProof(Crypto::Hash& txid, CryptoNote::AccountPublicAddress& address, std::string& sig_str) override;
-  virtual std::string getReserveProof(const uint64_t &reserve, const std::string &message) override;
 
   virtual bool isTrackingWallet() override;
 
@@ -172,7 +188,7 @@ private:
   };
 
   WalletState m_state;
-  std::mutex m_cacheMutex;
+  mutable std::mutex m_cacheMutex;
   CryptoNote::AccountBase m_account;
   std::string m_password;
   const CryptoNote::Currency& m_currency;
@@ -187,6 +203,9 @@ private:
   BlockchainSynchronizer m_blockchainSync;
   TransfersSyncronizer m_transfersSync;
   ITransfersContainer* m_transferDetails;
+  // PQ (post-quantum) output scanning runs as a second consumer on the same
+  // synchronizer. Null for tracking wallets (no spend secret -> no PQ identity).
+  std::unique_ptr<PqConsumer> m_pqConsumer;
 
   WalletUserTransactionsCache m_transactionsCache;
   std::unique_ptr<WalletTransactionSender> m_sender;

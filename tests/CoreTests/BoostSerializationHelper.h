@@ -1,4 +1,4 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 //
 // This file is part of Karbo.
 //
@@ -29,7 +29,7 @@ namespace Tools {
 template <class t_object>
 bool serialize_obj_to_file(t_object& obj, const std::string& file_path) {
   try {
-    std::ofstream file(file_path);
+    std::ofstream file(file_path, std::ios_base::binary | std::ios_base::out);
     boost::archive::binary_oarchive a(file);
     a << obj;
     if (file.fail()) {

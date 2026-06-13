@@ -1,6 +1,6 @@
 // Copyright (c) 2018, The TurtleCoin Developers
-// Copyright (c) 2018-2020, The Karbo Developers
-// 
+// Copyright (c) 2018-2019, The Karbo Developers
+//
 // Please see the included LICENSE file for more information.
 
 #include <initializer_list>
@@ -21,8 +21,6 @@
 #include <GreenWallet/Tools.h>
 #include <GreenWallet/Transfer.h>
 #include <GreenWallet/WalletConfig.h>
-
-using namespace Tools;
 
 const std::string getAddressBookName(AddressBook addressBook)
 {
@@ -214,7 +212,7 @@ void sendFromAddressBook(std::shared_ptr<WalletInfo> walletInfo,
     auto mixin = WalletConfig::defaultMixin;
 
     if (!feeAddress.empty() && nodeFee == 0)
-      nodeFee = Tools::calculateNodeFee(amount);
+      nodeFee = calculateNodeFee(amount);
     else if (!feeAddress.empty() && nodeFee != 0)
       nodeFee = std::min<uint64_t>(nodeFee, (uint64_t)CryptoNote::parameters::COIN);
 

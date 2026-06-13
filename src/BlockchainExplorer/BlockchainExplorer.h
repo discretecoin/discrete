@@ -1,5 +1,5 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
-// Copyright (c) 2016-2020, The Karbo developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2016-2019, The Karbo developers
 //
 // This file is part of Karbo.
 //
@@ -25,20 +25,14 @@
 #include "IBlockchainExplorer.h"
 #include "INode.h"
 
-#include "BlockchainExplorerErrors.h"
 #include "Common/ObserverManager.h"
-#include "Serialization/BinaryInputStreamSerializer.h"
-#include "Serialization/BinaryOutputStreamSerializer.h"
+#include "BlockchainExplorerErrors.h"
+
 #include "Wallet/WalletAsyncContextCounter.h"
 
 #include "Logging/LoggerRef.h"
 
 namespace CryptoNote {
-
-enum State {
-  NOT_INITIALIZED,
-  INITIALIZED
-};
 
 class BlockchainExplorer : public IBlockchainExplorer, public INodeObserver {
 public:
@@ -50,7 +44,7 @@ public:
   BlockchainExplorer& operator=(const BlockchainExplorer&) = delete;
   BlockchainExplorer& operator=(BlockchainExplorer&&) = delete;
 
-  virtual ~BlockchainExplorer() override;
+  virtual ~BlockchainExplorer();
     
   virtual bool addObserver(IBlockchainObserver* observer) override;
   virtual bool removeObserver(IBlockchainObserver* observer) override;
@@ -63,6 +57,7 @@ public:
 
   virtual bool getTransactions(const std::vector<Crypto::Hash>& transactionHashes, std::vector<TransactionDetails>& transactions) override;
   virtual bool getTransactionsByPaymentId(const Crypto::Hash& paymentId, std::vector<TransactionDetails>& transactions) override;
+  virtual bool getPoolTransactions(uint64_t timestampBegin, uint64_t timestampEnd, uint32_t transactionsNumberLimit, std::vector<TransactionDetails>& transactions, uint64_t& transactionsNumberWithinTimestamps) override;
   virtual bool getPoolState(const std::vector<Crypto::Hash>& knownPoolTransactionHashes, Crypto::Hash knownBlockchainTop, bool& isBlockchainActual, std::vector<TransactionDetails>& newTransactions, std::vector<Crypto::Hash>& removedTransactions) override;
 
   virtual uint64_t getRewardBlocksWindow() override;
@@ -74,9 +69,8 @@ public:
   virtual void shutdown() override;
 
   virtual void poolChanged() override;
-  virtual void blockchainSynchronized(uint32_t topIndex) override;
-  virtual void localBlockchainUpdated(uint32_t index) override;
-  virtual void chainSwitched(uint32_t newTopIndex, uint32_t commonRoot, const std::vector<Crypto::Hash>& hashes) override;
+  virtual void blockchainSynchronized(uint32_t topHeight) override;
+  virtual void localBlockchainUpdated(uint32_t height) override;
 
   typedef WalletAsyncContextCounter AsyncContextCounter;
 
@@ -100,14 +94,14 @@ private:
     std::atomic<State> m_state;
   };
 
-  bool getBlockchainTop(BlockDetails& topBlock, bool checkInitialization);
-  bool getBlocks(const std::vector<uint32_t>& blockHeights, std::vector<std::vector<BlockDetails>>& blocks, bool checkInitialization);
-
-  void rebuildIndexes();
-  void handleBlockchainUpdatedNotification(const std::vector<std::vector<BlockDetails>>& blocks);
+  enum State {
+    NOT_INITIALIZED,
+    INITIALIZED
+  };
 
   BlockDetails knownBlockchainTop;
-  std::unordered_map<Crypto::Hash, TransactionDetails> knownPoolState;
+  uint32_t knownBlockchainTopHeight;
+  std::unordered_set<Crypto::Hash> knownPoolState;
 
   std::atomic<State> state;
   std::atomic<bool> synchronized;

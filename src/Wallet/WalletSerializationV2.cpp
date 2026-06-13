@@ -1,5 +1,5 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
-// Copyright (c) 2016-2019, The Karbo developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2018, Karbo developers
 //
 // This file is part of Karbo.
 //
@@ -21,6 +21,9 @@
 #include "CryptoNoteCore/CryptoNoteSerialization.h"
 #include "Serialization/BinaryInputStreamSerializer.h"
 #include "Serialization/BinaryOutputStreamSerializer.h"
+
+#include <algorithm>
+#include <stdexcept>
 
 using namespace Common;
 using namespace Crypto;
@@ -64,7 +67,7 @@ struct WalletTransactionDtoV2 {
   uint64_t unlockTime;
   std::string extra;
   bool isBase;
-  boost::optional<Crypto::SecretKey> secretKey;
+  boost::optional<Crypto::SecretKey> secretKey = CryptoNote::NULL_SECRET_KEY;
 };
 
 //DO NOT CHANGE IT
@@ -105,9 +108,8 @@ void serialize(WalletTransactionDtoV2& value, CryptoNote::ISerializer& serialize
   serializer(value.unlockTime, "unlockTime");
   serializer(value.extra, "extra");
   serializer(value.isBase, "isBase");
-  Crypto::SecretKey secretKey = boost::value_initialized<Crypto::SecretKey>();
-  if (value.secretKey)
-    secretKey = reinterpret_cast<const Crypto::SecretKey&>(value.secretKey.get());
+
+  Crypto::SecretKey secretKey = reinterpret_cast<const Crypto::SecretKey&>(value.secretKey.get());
   serializer(secretKey, "secret_key");
   value.secretKey = secretKey;
 }
@@ -126,6 +128,9 @@ WalletSerializerV2::WalletSerializerV2(
   ITransfersObserver& transfersObserver,
   Crypto::PublicKey& viewPublicKey,
   Crypto::SecretKey& viewSecretKey,
+  AddressGenerationMode& addressGenerationMode,
+  Crypto::SecretKey& deterministicSeed,
+  uint32_t& nextDeterministicIndex,
   uint64_t& actualBalance,
   uint64_t& pendingBalance,
   WalletsContainer& walletsContainer,
@@ -135,9 +140,13 @@ WalletSerializerV2::WalletSerializerV2(
   WalletTransfers& transfers,
   UncommitedTransactions& uncommitedTransactions,
   std::string& extra,
-  uint32_t transactionSoftLockTime
+  uint32_t transactionSoftLockTime,
+  std::string& pqState
 ) :
   m_transfersObserver(transfersObserver),
+  m_addressGenerationMode(addressGenerationMode),
+  m_deterministicSeed(deterministicSeed),
+  m_nextDeterministicIndex(nextDeterministicIndex),
   m_actualBalance(actualBalance),
   m_pendingBalance(pendingBalance),
   m_walletsContainer(walletsContainer),
@@ -147,7 +156,8 @@ WalletSerializerV2::WalletSerializerV2(
   m_transfers(transfers),
   m_uncommitedTransactions(uncommitedTransactions),
   m_extra(extra),
-  m_transactionSoftLockTime(transactionSoftLockTime)
+  m_transactionSoftLockTime(transactionSoftLockTime),
+  m_pqState(pqState)
 {
 }
 
@@ -158,7 +168,9 @@ void WalletSerializerV2::load(Common::IInputStream& source, uint8_t version) {
   s(saveLevelValue, "saveLevel");
   WalletSaveLevel saveLevel = static_cast<WalletSaveLevel>(saveLevelValue);
 
-  loadKeyListAndBalances(s, saveLevel == WalletSaveLevel::SAVE_ALL);
+  loadAddressGenerationState(s, version);
+  loadKeyListAndBalances(s, saveLevel == WalletSaveLevel::SAVE_ALL, version);
+  normalizeAddressGenerationState();
 
   if (saveLevel == WalletSaveLevel::SAVE_KEYS_AND_TRANSACTIONS || saveLevel == WalletSaveLevel::SAVE_ALL) {
     loadTransactions(s);
@@ -169,6 +181,7 @@ void WalletSerializerV2::load(Common::IInputStream& source, uint8_t version) {
     loadTransfersSynchronizer(s);
     loadUnlockTransactionsJobs(s);
     s(m_uncommitedTransactions, "uncommitedTransactions");
+    loadPqState(s);
   }
 
   s(m_extra, "extra");
@@ -180,7 +193,8 @@ void WalletSerializerV2::save(Common::IOutputStream& destination, WalletSaveLeve
   uint8_t saveLevelValue = static_cast<uint8_t>(saveLevel);
   s(saveLevelValue, "saveLevel");
 
-  saveKeyListAndBanalces(s, saveLevel == WalletSaveLevel::SAVE_ALL);
+  saveAddressGenerationState(s);
+  saveKeyListAndBalances(s, saveLevel == WalletSaveLevel::SAVE_ALL);
 
   if (saveLevel == WalletSaveLevel::SAVE_KEYS_AND_TRANSACTIONS || saveLevel == WalletSaveLevel::SAVE_ALL) {
     saveTransactions(s);
@@ -191,9 +205,20 @@ void WalletSerializerV2::save(Common::IOutputStream& destination, WalletSaveLeve
     saveTransfersSynchronizer(s);
     saveUnlockTransactionsJobs(s);
     s(m_uncommitedTransactions, "uncommitedTransactions");
+    savePqState(s);
   }
 
   s(m_extra, "extra");
+}
+
+void WalletSerializerV2::loadPqState(CryptoNote::ISerializer& serializer) {
+  // Optional field: pre-PQ wallet files omit it, leaving m_pqState as the empty
+  // blob WalletGreen initialised (which triggers a normal PQ rescan).
+  serializer(m_pqState, "pqState");
+}
+
+void WalletSerializerV2::savePqState(CryptoNote::ISerializer& serializer) {
+  serializer(m_pqState, "pqState");
 }
 
 std::unordered_set<Crypto::PublicKey>& WalletSerializerV2::addedKeys() {
@@ -204,7 +229,61 @@ std::unordered_set<Crypto::PublicKey>& WalletSerializerV2::deletedKeys() {
   return m_deletedKeys;
 }
 
-void WalletSerializerV2::loadKeyListAndBalances(CryptoNote::ISerializer& serializer, bool saveCache) {
+void WalletSerializerV2::loadAddressGenerationState(CryptoNote::ISerializer& serializer, uint8_t version) {
+  if (version < SERIALIZATION_VERSION) {
+    m_addressGenerationMode = AddressGenerationMode::INDEPENDENT_SPEND_KEYS;
+    m_deterministicSeed = NULL_SECRET_KEY;
+    m_nextDeterministicIndex = 0;
+    return;
+  }
+
+  uint8_t mode = 0;
+  serializer(mode, "addressGenerationMode");
+  serializer(m_deterministicSeed, "deterministicSeed");
+  serializer(m_nextDeterministicIndex, "nextDeterministicIndex");
+
+  if (mode > static_cast<uint8_t>(AddressGenerationMode::INDEPENDENT_SPEND_KEYS)) {
+    throw std::runtime_error("Invalid address generation mode in wallet cache");
+  }
+
+  m_addressGenerationMode = static_cast<AddressGenerationMode>(mode);
+  if (m_addressGenerationMode == AddressGenerationMode::INDEPENDENT_SPEND_KEYS) {
+    m_deterministicSeed = NULL_SECRET_KEY;
+    m_nextDeterministicIndex = 0;
+  } else if (m_deterministicSeed == NULL_SECRET_KEY) {
+    throw std::runtime_error("HD wallet cache has an empty deterministic seed");
+  }
+}
+
+void WalletSerializerV2::saveAddressGenerationState(CryptoNote::ISerializer& serializer) {
+  uint8_t mode = static_cast<uint8_t>(m_addressGenerationMode);
+  serializer(mode, "addressGenerationMode");
+  serializer(m_deterministicSeed, "deterministicSeed");
+  serializer(m_nextDeterministicIndex, "nextDeterministicIndex");
+}
+
+void WalletSerializerV2::normalizeAddressGenerationState() {
+  if (m_addressGenerationMode == AddressGenerationMode::INDEPENDENT_SPEND_KEYS) {
+    m_deterministicSeed = NULL_SECRET_KEY;
+    m_nextDeterministicIndex = 0;
+    return;
+  }
+
+  bool foundHdAddress = false;
+  uint32_t maxHdIndex = 0;
+  for (const auto& wallet : m_walletsContainer.get<RandomAccessIndex>()) {
+    if (wallet.hdIndex != WALLET_INVALID_HD_INDEX) {
+      foundHdAddress = true;
+      maxHdIndex = std::max(maxHdIndex, wallet.hdIndex);
+    }
+  }
+
+  if (foundHdAddress && m_nextDeterministicIndex <= maxHdIndex && maxHdIndex != WALLET_INVALID_HD_INDEX) {
+    m_nextDeterministicIndex = maxHdIndex + 1;
+  }
+}
+
+void WalletSerializerV2::loadKeyListAndBalances(CryptoNote::ISerializer& serializer, bool saveCache, uint8_t version) {
   size_t walletCount;
   serializer(walletCount, "walletCount");
 
@@ -218,7 +297,11 @@ void WalletSerializerV2::loadKeyListAndBalances(CryptoNote::ISerializer& seriali
     Crypto::PublicKey spendPublicKey;
     uint64_t actualBalance;
     uint64_t pendingBalance;
+    uint32_t hdIndex = WALLET_INVALID_HD_INDEX;
     serializer(spendPublicKey, "spendPublicKey");
+    if (version >= SERIALIZATION_VERSION) {
+      serializer(hdIndex, "hdIndex");
+    }
 
     if (saveCache) {
       serializer(actualBalance, "actualBalance");
@@ -230,13 +313,18 @@ void WalletSerializerV2::loadKeyListAndBalances(CryptoNote::ISerializer& seriali
     auto it = index.find(spendPublicKey);
     if (it == index.end()) {
       m_deletedKeys.emplace(std::move(spendPublicKey));
-    } else if (saveCache) {
-      m_actualBalance += actualBalance;
-      m_pendingBalance += pendingBalance;
+    } else {
+      if (saveCache) {
+        m_actualBalance += actualBalance;
+        m_pendingBalance += pendingBalance;
+      }
 
-      index.modify(it, [actualBalance, pendingBalance](WalletRecord& wallet) {
-        wallet.actualBalance = actualBalance;
-        wallet.pendingBalance = pendingBalance;
+      index.modify(it, [actualBalance, pendingBalance, hdIndex, saveCache](WalletRecord& wallet) {
+        if (saveCache) {
+          wallet.actualBalance = actualBalance;
+          wallet.pendingBalance = pendingBalance;
+        }
+        wallet.hdIndex = hdIndex;
       });
     }
   }
@@ -248,11 +336,12 @@ void WalletSerializerV2::loadKeyListAndBalances(CryptoNote::ISerializer& seriali
   }
 }
 
-void WalletSerializerV2::saveKeyListAndBanalces(CryptoNote::ISerializer& serializer, bool saveCache) {
+void WalletSerializerV2::saveKeyListAndBalances(CryptoNote::ISerializer& serializer, bool saveCache) {
   auto walletCount = m_walletsContainer.get<RandomAccessIndex>().size();
   serializer(walletCount, "walletCount");
   for (auto wallet : m_walletsContainer.get<RandomAccessIndex>()) {
     serializer(wallet.spendPublicKey, "spendPublicKey");
+    serializer(wallet.hdIndex, "hdIndex");
 
     if (saveCache) {
       serializer(wallet.actualBalance, "actualBalance");

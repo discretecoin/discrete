@@ -1,4 +1,4 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 //
 // This file is part of Karbo.
 //
@@ -16,7 +16,6 @@
 // along with Karbo.  If not, see <http://www.gnu.org/licenses/>.
 
 #include "gtest/gtest.h"
-#include <Logging/LoggerRef.h>
 
 #include "../IntegrationTestLib/BaseFunctionalTests.h"
 #include "../IntegrationTestLib/NodeObserver.h"
@@ -72,7 +71,7 @@ public:
 
   void makeWallets() {
     for (auto& n: inodes) {
-      std::unique_ptr<CryptoNote::IWalletLegacy> wallet(new CryptoNote::WalletLegacy(m_currency, *n));
+      std::unique_ptr<CryptoNote::IWalletLegacy> wallet(new CryptoNote::WalletLegacy(m_currency, *n, log));
       std::unique_ptr<WalletLegacyObserver> observer(new WalletLegacyObserver());
 
       wallet->initAndGenerate(walletPassword);
@@ -83,9 +82,9 @@ public:
     }
   }
 
-  void mineBlocksFor(size_t node, const std::string& address, size_t blockCount) {
+  void mineBlocksFor(size_t node, const CryptoNote::AccountKeys& minerKeys, size_t blockCount) {
     auto prevHeight = nodeDaemons[node]->getLocalHeight();
-    nodeDaemons[node]->startMining(1, address);
+    nodeDaemons[node]->startMining(1, minerKeys);
 
     do {
       std::this_thread::sleep_for(std::chrono::seconds(1));
@@ -108,7 +107,7 @@ public:
     auto& wallet = *wallets[walletNum];
     auto& node = *nodeDaemons[nodeNum];
 
-    node.startMining(1, wallet.getAddress());
+    node.startMining(1, Tests::accountKeysFromWallet(wallet));
     walletObservers[walletNum]->waitActualBalanceChange();
     node.stopMining();
 
@@ -161,7 +160,7 @@ public:
 
 
 TEST_F(IntegrationTest, Wallet2Wallet) {
-  //const uint64_t FEE = 1000000;
+  const uint64_t FEE = 1000000;
 
   launchTestnet(2);
 
@@ -215,7 +214,7 @@ TEST_F(IntegrationTest, BlockPropagationSpeed) {
 
     const size_t BLOCKS_COUNT = 10;
 
-    nodeDaemons.front()->startMining(1, wallet->getAddress());
+    nodeDaemons.front()->startMining(1, Tests::accountKeysFromWallet(*wallet));
 
     for (size_t blockNumber = 0; blockNumber < BLOCKS_COUNT; ++blockNumber) {
       uint32_t localHeight = localObserver.waitLastKnownBlockHeightUpdated();

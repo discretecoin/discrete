@@ -1,5 +1,4 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
-// Copyright (c) 2016-2019, The Karbo developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 //
 // This file is part of Karbo.
 //
@@ -18,24 +17,24 @@
 
 #pragma once
 
-#include <CryptoNoteProtocol/ICryptoNoteProtocolQuery.h>
-#include <CryptoNote.h>
-
-#include <vector>
-
 namespace CryptoNote
 {
   struct NOTIFY_NEW_BLOCK_request;
+  struct NOTIFY_NEW_TRANSACTIONS_request;
 
   /************************************************************************/
   /*                                                                      */
   /************************************************************************/
-  struct ICryptoNoteProtocol {
-    virtual void relayBlock(NOTIFY_NEW_BLOCK_request& arg) = 0;
-    virtual void relayTransactions(const std::vector<BinaryArray>& transactions) = 0;
-    virtual ~ICryptoNoteProtocol() {}
+  struct i_cryptonote_protocol {
+    virtual void relay_block(NOTIFY_NEW_BLOCK_request& arg) = 0;
+    virtual void relay_transactions(NOTIFY_NEW_TRANSACTIONS_request& arg) = 0;
   };
-  
-  struct ICryptoNoteProtocolHandler : ICryptoNoteProtocol, public ICryptoNoteProtocolQuery {
+
+  /************************************************************************/
+  /*                                                                      */
+  /************************************************************************/
+  struct cryptonote_protocol_stub: public i_cryptonote_protocol {
+    virtual void relay_block(NOTIFY_NEW_BLOCK_request& arg) override {}
+    virtual void relay_transactions(NOTIFY_NEW_TRANSACTIONS_request& arg) override {}
   };
 }

@@ -1,20 +1,23 @@
-![Build check](https://github.com/Karbovanets/karbo/workflows/Build%20check/badge.svg)
+![Build check](https://github.com/seredat/karbowanec/workflows/Build%20check/badge.svg)
 
-This is the alternative version of Karbo codebase, compatible on P2P layer, however Karbo 1 wallets are incompatible with Karbo 2 nodes (built from this repo) and vice versa. In other words don't use Karbo node v. 2.\*.\* in wallets v. 1.\*.\* and Karbo nodes v. 1.\*.\* in wallets v. 2.\*.\*.
+**HARDFORK AT HEIGHT 700000!!!** 
 
-The Karbo (Karbovanets) is cryptocurrency of Ukrainian origin, just like Bitcoin but more anonymous and privacy centric with opaque and more analysis resistant blockchain. It is people's electronic cash, not connected to government or officials.
+Karbo is people's electronic cash, a cryptocurrency, just like Bitcoin but Ukrainian and anonymous thanks to Cryptonote technology. The key principle of CryptoNote is adaptive parameters. Karbo already has adaptive block size limit and adaptive difficulty, which we improved, and which ensures it's stable emission rate and thus makes Karbo sound money.
+
+
 
 ## Building Karbo 
 
 ### On *nix
 
-Dependencies: GCC 4.7.3 or later, CMake 2.8.6 or later, and Boost 1.55 or later.
+Dependencies: GCC 4.7.3 or later, CMake 2.8.6 or later, and Boost 1.55 or later, OpenSSL.
 
 You may download them from:
 
-- http://gcc.gnu.org/
-- http://www.cmake.org/
-- http://www.boost.org/
+- https://gcc.gnu.org/
+- https://www.cmake.org/
+- https://www.boost.org/
+- https://www.openssl.org/
 
 Alternatively, it may be possible to install them using a package manager.
 
@@ -25,7 +28,7 @@ or
 Run these commands:
 ```
 cd ~
-sudo apt-get install build-essential git cmake libboost-all-dev
+sudo apt-get install build-essential git cmake libboost-all-dev libssl-dev
 git clone https://github.com/seredat/karbowanec.git
 cd karbowanec
 mkdir build
@@ -35,7 +38,7 @@ cd ..
 make
 ```
 
- The resulting executables can be found in `build/release/src`.
+The resulting executables can be found in `build/release/src`.
 
 **Advanced options:**
 
@@ -45,13 +48,15 @@ make
 * Building with Clang: it may be possible to use Clang instead of GCC, but this may not work everywhere. To build, run `export CC=clang CXX=clang++` before running `make`.
 
 ### On Windows
-Dependencies: MSVC 2013 or later, CMake 2.8.6 or later, and Boost 1.55. You may download them from:
 
-* http://www.microsoft.com/
-* http://www.cmake.org/
-* http://www.boost.org/
+Dependencies: MSVC 2013 or later, CMake 2.8.6 or later, Boost 1.55 or later, OpenSSL. You may download them from:
 
-To build, change to a directory where this file is located, and run theas commands: 
+* https://www.microsoft.com/
+* https://www.cmake.org/
+* https://www.boost.org/
+* https://slproweb.com/products/Win32OpenSSL.html
+
+To build, change to a directory where this file is located, and run these commands: 
 ```
 mkdir build
 cd build
@@ -110,3 +115,10 @@ cd build/release.android32
 CC=clang CXX=clang++ cmake -D BUILD_TESTS=OFF -D ARCH="armv7-a" -ldl -D STATIC=ON -D BUILD_64=OFF -D CMAKE_BUILD_TYPE=release -D ANDROID=true -D BUILD_TAG="android" -D BOOST_ROOT=/opt/android/boost_1_65_1 -D BOOST_LIBRARYDIR=/opt/android/boost_1_65_1/android32/lib -D CMAKE_POSITION_INDEPENDENT_CODE:BOOL=true -D BOOST_IGNORE_SYSTEM_PATHS_DEFAULT=ON ../..
 make SimpleWallet
 ```
+
+### Portable and optimized binaries
+
+By default it will compile portable binary, to build optimized for your CPU, run Cmake with flag `-DARCH=native`.
+
+
+

@@ -1,5 +1,5 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
-// Copyright (c) 2016-2019, The Karbo developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2016-2020, The Karbo developers
 //
 // This file is part of Karbo.
 //
@@ -30,7 +30,7 @@ class JsonInputValueSerializer : public ISerializer {
 public:
   JsonInputValueSerializer(const Common::JsonValue& value);
   JsonInputValueSerializer(Common::JsonValue&& value);
-  virtual ~JsonInputValueSerializer() override;
+  virtual ~JsonInputValueSerializer();
 
   SerializerType type() const override;
 

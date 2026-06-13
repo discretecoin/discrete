@@ -1,5 +1,4 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
-// Copyright (c) 2016-2019, The Karbo developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 //
 // This file is part of Karbo.
 //
@@ -23,9 +22,9 @@
 
 #include "crypto/hash.h"
 
-namespace CryptoNote {
+namespace CryptoNote
+{
+    typedef std::uint64_t Difficulty;
 
-typedef std::uint64_t Difficulty;
-bool check_hash(const Crypto::Hash &hash, Difficulty difficulty);
-
+    bool check_hash(const Crypto::Hash &hash, Difficulty difficulty);
 }

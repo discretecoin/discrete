@@ -1,6 +1,6 @@
 // Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 // Copyright(c) 2014 - 2017 XDN - project developers
-// Copyright (c) 2016-2019, The Karbo developers
+// Copyright(c) 2018 - 2026 The Karbo developers
 //
 // This file is part of Karbo.
 //
@@ -21,11 +21,14 @@
 
 #include <system_error>
 
-#include <System/Dispatcher.h>
-#include <System/Event.h>
+#include "System/Dispatcher.h"
+#include "System/Event.h"
+#include "System/RemoteContext.h"
 #include "Logging/ILogger.h"
 #include "Logging/LoggerRef.h"
-#include "Rpc/HttpServer.h"
+#include <HTTP/HttpServer.h>
+#include <HTTP/HttpRequest.h>
+#include <HTTP/HttpResponse.h>
 
 
 namespace CryptoNote {
@@ -43,16 +46,16 @@ class TcpConnection;
 
 namespace CryptoNote {
 
-class JsonRpcServer : HttpServer {
+class JsonRpcServer {
 public:
-  JsonRpcServer(System::Dispatcher& sys, System::Event& stopEvent, Logging::ILogger& loggerGroup);
+  JsonRpcServer(System::Dispatcher* sys, System::Event* stopEvent, Logging::ILogger& loggerGroup);
   JsonRpcServer(const JsonRpcServer&) = delete;
-  virtual ~JsonRpcServer() override {}
 
-  void setCerts(const std::string& chain_file, const std::string& key_file, const std::string& dh_file);
+  ~JsonRpcServer();
 
-  void start(const std::string& bindAddress, uint16_t bindPort, uint16_t bindPortSSL,
-             bool server_ssl_enable, const std::string& m_rpcUser, const std::string& m_rpcPassword);
+  void init(const std::string& chain_file, const std::string& key_file, bool server_ssl_enable = false);
+  void start(const std::string& bindAddress, uint16_t bindPort, uint16_t bindPortSSL, const std::string& user = "", const std::string& password = "");
+  void stop();
 
 protected:
   static void makeErrorResponse(const std::error_code& ec, Common::JsonValue& resp);
@@ -65,12 +68,19 @@ protected:
   virtual void processJsonRpcRequest(const Common::JsonValue& req, Common::JsonValue& resp) = 0;
 
 private:
-  // HttpServer
-  virtual void processRequest(const CryptoNote::HttpRequest& request, CryptoNote::HttpResponse& response) override;
+  void processRequest(const CryptoNote::HttpRequest& req, CryptoNote::HttpResponse& resp);
 
-  System::Dispatcher& system;
-  System::Event& stopEvent;
+  System::Dispatcher* m_dispatcher;
+  System::Event* stopEvent;
   Logging::LoggerRef logger;
+ 
+  std::unique_ptr<CryptoNote::HttpServer> m_httpServer;
+  std::unique_ptr<CryptoNote::HttpServer> m_httpsServer;
+
+  std::string m_chain_file;
+  std::string m_key_file;
+
+  bool m_enable_ssl;
 };
 
 } //namespace CryptoNote

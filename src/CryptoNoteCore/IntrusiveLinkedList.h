@@ -1,5 +1,4 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
-// Copyright (c) 2016-2019, The Karbo developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 //
 // This file is part of Karbo.
 //
@@ -18,8 +17,6 @@
 
 #pragma once
 
-#include <iterator>
-
 namespace CryptoNote {
 
 //Value must have public method IntrusiveLinkedList<Value>::hook& getHook()
@@ -36,7 +33,7 @@ public:
     bool used;
   };
 
-  class iterator : public std::iterator<std::bidirectional_iterator_tag, Value> {
+  class iterator {
   public:
     iterator(Value* value);
 

@@ -1,5 +1,4 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
-// Copyright (c) 2016-2019, The Karbo developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 //
 // This file is part of Karbo.
 //
@@ -32,7 +31,8 @@ enum NodeErrorCodes {
   NODE_BUSY,
   INTERNAL_NODE_ERROR,
   REQUEST_ERROR,
-  CONNECT_ERROR
+  CONNECT_ERROR,
+  TIMEOUT
 };
 
 // custom category:
@@ -40,11 +40,11 @@ class NodeErrorCategory : public std::error_category {
 public:
   static NodeErrorCategory INSTANCE;
 
-  virtual const char* name() const noexcept override {
+  virtual const char* name() const throw() override {
     return "NodeErrorCategory";
   }
 
-  virtual std::error_condition default_error_condition(int ev) const noexcept override {
+  virtual std::error_condition default_error_condition(int ev) const throw() override {
     return std::error_condition(ev, *this);
   }
 

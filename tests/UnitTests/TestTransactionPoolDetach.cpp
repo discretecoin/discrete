@@ -1,4 +1,4 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 //
 // This file is part of Karbo.
 //
@@ -35,6 +35,21 @@
 #include <algorithm>
 
 using namespace CryptoNote;
+
+/*
+class TransfersObserver : public ITransfersObserver {
+public:
+
+  virtual void onTransactionUpdated(ITransfersSubscription* object, const Hash& transactionHash,
+    uint64_t amountIn, uint64_t amountOut) override {
+    std::lock_guard<std::mutex> lk(m_mutex);
+    m_transfers.push_back(std::make_pair(transactionHash, amountIn - amountOut));
+  }
+
+  std::vector<std::pair<Hash, int64_t>> m_transfers;
+  std::mutex m_mutex;
+}; */
+
 
 class INodeStubWithPoolTx : public INodeTrivialRefreshStub {
 public:
@@ -352,8 +367,8 @@ TEST_F(DetachTest, testDetachWithWallet) {
   auto fee = m_currency.minimumFee();
 
   generator.generateEmptyBlocks(5);
-  WalletLegacy Alice(m_currency, m_node);
-  WalletLegacy Bob(m_currency, m_node);
+  WalletLegacy Alice(m_currency, m_node, m_logger);
+  WalletLegacy Bob(m_currency, m_node, m_logger);
 
   CompletionWalletObserver AliceCompleted, BobCompleted;
   AliceCompleted.syncCompleted = std::promise<std::error_code>();
@@ -420,7 +435,9 @@ TEST_F(DetachTest, testDetachWithWallet) {
   Bob.addObserver(&BobCompleted);
 
   auto expectedTransactionBlockHeight = m_node.getLastLocalBlockHeight();
-  generator.generateEmptyBlocks(1); //unlock bob's pending money
+  for (size_t i = 0; i < 10; ++i) {
+    generator.getBlockRewardForAddress(AliceKeys.address); // keep blocks non-empty so wallet height advances
+  }
 
   m_node.updateObservers();
 
@@ -443,7 +460,9 @@ TEST_F(DetachTest, testDetachWithWallet) {
   ASSERT_EQ(Bob.actualBalance(), tr.amount);
 
   m_node.startAlternativeChain(txInfo.blockHeight - 1);
-  generator.generateEmptyBlocks(2);
+  for (size_t i = 0; i < 2; ++i) {
+    generator.getBlockRewardForAddress(AliceKeys.address);
+  }
 
   //sync Bob
   AliceCompleted.syncCompleted = std::promise<std::error_code>();

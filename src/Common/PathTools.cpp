@@ -1,5 +1,4 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
-// Copyright (c) 2016-2019, The Karbo developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 //
 // This file is part of Karbo.
 //
@@ -18,6 +17,7 @@
 
 #include "PathTools.h"
 #include <algorithm>
+#include <boost/filesystem.hpp>
 
 namespace {
 
@@ -78,7 +78,7 @@ void SplitPath(const std::string& path, std::string& directory, std::string& fil
 }
 
 std::string CombinePath(const std::string& path1, const std::string& path2) {
-  return path1 + GENERIC_PATH_SEPARATOR + path2;
+  return path1.empty() ? path2 : path1 + GENERIC_PATH_SEPARATOR + path2;
 }
 
 std::string ReplaceExtenstion(const std::string& path, const std::string& extension) {
@@ -108,5 +108,21 @@ bool HasParentPath(const std::string& path) {
   return path.find(GENERIC_PATH_SEPARATOR) != std::string::npos;
 }
 
+bool validateCertPath(std::string& path) {
+  bool res = false;
+  boost::system::error_code ec;
+  boost::filesystem::path data_dir_path(boost::filesystem::current_path());
+  boost::filesystem::path cert_file_path(path);
+  if (!cert_file_path.has_parent_path()) cert_file_path = data_dir_path / cert_file_path;
+  if (boost::filesystem::exists(cert_file_path, ec)) {
+    path = boost::filesystem::canonical(cert_file_path).string();
+    res = true;
+  }
+  else {
+    path.clear();
+    res = false;
+  }
+  return res;
+}
 
 }

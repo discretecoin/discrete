@@ -1,6 +1,4 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
-// Copyright (c) 2018-2019, The TurtleCoin developers
-// Copyright (c) 2016-2020, The Karbo developers
+// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 //
 // This file is part of Karbo.
 //
@@ -48,23 +46,26 @@ using namespace CryptoNote;
 using namespace Common;
 
 size_t getSignaturesCount(const TransactionInput& input) {
-  struct txin_signature_size_visitor : public boost::static_visitor < size_t > {
-    size_t operator()(const BaseInput& txin) const { return 0; }
+  struct txin_signature_size_visitor : public boost::static_visitor<size_t> {
+    size_t operator()(const BaseInput&) const { return 0; }
+    // KeyInput is a stub — should never appear in Discrete transactions.
     size_t operator()(const KeyInput& txin) const { return txin.outputIndexes.size(); }
-    size_t operator()(const MultisignatureInput& txin) const { return txin.signatureCount; }
+    // PQ signatures live inside PqInput, not in Transaction.signatures.
+    size_t operator()(const PqInput&) const { return 0; }
   };
-
   return boost::apply_visitor(txin_signature_size_visitor(), input);
 }
 
 struct BinaryVariantTagGetter: boost::static_visitor<uint8_t> {
-  uint8_t operator()(const CryptoNote::BaseInput) { return  0xff; }
-  uint8_t operator()(const CryptoNote::KeyInput) { return  0x2; }
-  uint8_t operator()(const CryptoNote::MultisignatureInput) { return  0x3; }
-  uint8_t operator()(const CryptoNote::KeyOutput) { return  0x2; }
-  uint8_t operator()(const CryptoNote::MultisignatureOutput) { return  0x3; }
-  uint8_t operator()(const CryptoNote::Transaction) { return  0xcc; }
-  uint8_t operator()(const CryptoNote::BlockTemplate) { return  0xbb; }
+  uint8_t operator()(const CryptoNote::BaseInput&) { return  0xff; }
+  // KeyInput stub — should never be serialised on Discrete.
+  uint8_t operator()(const CryptoNote::KeyInput&) { throw std::runtime_error("KeyInput not allowed in Discrete"); }
+  uint8_t operator()(const CryptoNote::PqInput&) { return  0x10; }
+  // KeyOutput stub — should never be serialised on Discrete.
+  uint8_t operator()(const CryptoNote::KeyOutput&) { throw std::runtime_error("KeyOutput not allowed in Discrete"); }
+  uint8_t operator()(const CryptoNote::PqOutput&) { return  0x10; }
+  uint8_t operator()(const CryptoNote::Transaction&) { return  0xcc; }
+  uint8_t operator()(const CryptoNote::Block&) { return  0xbb; }
 };
 
 struct VariantSerializer : boost::static_visitor<> {
@@ -85,39 +86,33 @@ void getVariantValue(CryptoNote::ISerializer& serializer, uint8_t tag, CryptoNot
     in = v;
     break;
   }
-  case 0x2: {
-    CryptoNote::KeyInput v;
-    serializer(v, "value");
-    in = v;
-    break;
-  }
-  case 0x3: {
-    CryptoNote::MultisignatureInput v;
+  case 0x2:
+    // ECC KeyInput — rejected on Discrete.
+    throw std::runtime_error("KeyInput (ECC ring-sig) not allowed in Discrete transactions");
+  case 0x10: {
+    CryptoNote::PqInput v;
     serializer(v, "value");
     in = v;
     break;
   }
   default:
-    throw std::runtime_error("Unknown variant tag");
+    throw std::runtime_error("Unknown transaction input tag");
   }
 }
 
 void getVariantValue(CryptoNote::ISerializer& serializer, uint8_t tag, CryptoNote::TransactionOutputTarget& out) {
   switch(tag) {
-  case 0x2: {
-    CryptoNote::KeyOutput v;
-    serializer(v, "data");
-    out = v;
-    break;
-  }
-  case 0x3: {
-    CryptoNote::MultisignatureOutput v;
+  case 0x2:
+    // ECC KeyOutput — rejected on Discrete.
+    throw std::runtime_error("KeyOutput (ECC stealth) not allowed in Discrete transactions");
+  case 0x10: {
+    CryptoNote::PqOutput v;
     serializer(v, "data");
     out = v;
     break;
   }
   default:
-    throw std::runtime_error("Unknown variant tag");
+    throw std::runtime_error("Unknown transaction output tag");
   }
 }
 
@@ -187,75 +182,23 @@ namespace CryptoNote {
 void serialize(TransactionPrefix& txP, ISerializer& serializer) {
   serializer(txP.version, "version");
 
-  if (CURRENT_TRANSACTION_VERSION < txP.version && serializer.type() == ISerializer::INPUT) {
-    throw std::runtime_error("Wrong transaction version");
+  // Discrete only accepts the PQ transaction version; legacy ECC v1 is rejected.
+  if (txP.version != TRANSACTION_VERSION_PQ) {
+    throw std::runtime_error("Wrong transaction version — Discrete only accepts PQ transactions");
   }
 
+  serializer(txP.txType, "tx_type");
   serializer(txP.unlockTime, "unlock_time");
   serializer(txP.inputs, "vin");
   serializer(txP.outputs, "vout");
   serializeAsBinary(txP.extra, "extra", serializer);
 }
 
-void serialize(BaseTransaction& tx, ISerializer& serializer) {
-  serializer(tx.version, "version");
-  serializer(tx.unlockTime, "unlock_time");
-  serializer(tx.inputs, "vin");
-  serializer(tx.outputs, "vout");
-  serializeAsBinary(tx.extra, "extra", serializer);
-
-  if (tx.version >= TRANSACTION_VERSION_2) {
-    size_t ignored = 0;
-    serializer(ignored, "ignored");
-  }
-}
-
 void serialize(Transaction& tx, ISerializer& serializer) {
   serialize(static_cast<TransactionPrefix&>(tx), serializer);
-
-  size_t sigSize = tx.inputs.size();
-  //TODO: make arrays without sizes
-//  serializer.beginArray(sigSize, "signatures");
-
-  // ignore base transaction
-  if (serializer.type() == ISerializer::INPUT && !(sigSize == 1 && tx.inputs[0].type() == typeid(BaseInput))) {
-    tx.signatures.resize(sigSize);
-  }
-
-  bool signaturesNotExpected = tx.signatures.empty();
-  if (!signaturesNotExpected && tx.inputs.size() != tx.signatures.size()) {
-    throw std::runtime_error("Serialization error: unexpected signatures size");
-  }
-
-  for (size_t i = 0; i < tx.inputs.size(); ++i) {
-    size_t signatureSize = getSignaturesCount(tx.inputs[i]);
-    if (signaturesNotExpected) {
-      if (signatureSize == 0) {
-        continue;
-      } else {
-        throw std::runtime_error("Serialization error: signatures are not expected");
-      }
-    }
-
-    if (serializer.type() == ISerializer::OUTPUT) {
-      if (signatureSize != tx.signatures[i].size()) {
-        throw std::runtime_error("Serialization error: unexpected signatures size");
-      }
-
-      for (Crypto::Signature& sig : tx.signatures[i]) {
-        serializePod(sig, "", serializer);
-      }
-
-    } else {
-      std::vector<Crypto::Signature> signatures(signatureSize);
-      for (Crypto::Signature& sig : signatures) {
-        serializePod(sig, "", serializer);
-      }
-
-      tx.signatures[i] = std::move(signatures);
-    }
-  }
-//  serializer.endArray();
+  // Discrete: PQ signatures live inside PqInput — Transaction.signatures is always
+  // empty. No ring-signature vector is written or read.
+  tx.signatures.clear();
 }
 
 void serialize(TransactionInput& in, ISerializer& serializer) {
@@ -278,16 +221,29 @@ void serialize(BaseInput& gen, ISerializer& serializer) {
   serializer(gen.blockIndex, "height");
 }
 
-void serialize(KeyInput& key, ISerializer& serializer) {
-  serializer(key.amount, "amount");
-  serializeVarintVector(key.outputIndexes, serializer, "key_offsets");
-  serializer(key.keyImage, "k_image");
+void serialize(KeyInput& /*key*/, ISerializer& /*serializer*/) {
+  throw std::runtime_error("KeyInput serialization not supported in Discrete");
 }
 
-void serialize(MultisignatureInput& multisignature, ISerializer& serializer) {
-  serializer(multisignature.amount, "amount");
-  serializer(multisignature.signatureCount, "signatures");
-  serializer(multisignature.outputIndex, "outputIndex");
+// Fixed-length byte blob: exactly `expected` bytes, no length prefix. On read
+// the buffer is resized and exactly that many bytes are consumed; on write the
+// buffer must already be `expected` bytes (consensus well-formedness). This is
+// how the PQ field-length checks are enforced.
+static void serializePqBlob(std::vector<uint8_t>& v, size_t expected, Common::StringView name, ISerializer& serializer) {
+  if (serializer.type() == ISerializer::INPUT) {
+    v.resize(expected);
+  } else if (v.size() != expected) {
+    throw std::runtime_error("PQ wire field has wrong size");
+  }
+  serializer.binary(v.data(), expected, name);
+}
+
+void serialize(PqInput& key, ISerializer& serializer) {
+  serializer(key.prevTxid, "prev_txid");
+  serializer(key.prevOutIndex, "prev_out_index");
+  serializePqBlob(key.authPub,   PQ_AUTH_PUB_SIZE,   "auth_pub",   serializer);
+  serializePqBlob(key.rhoReveal, PQ_RHO_SIZE,        "rho_reveal", serializer);
+  serializePqBlob(key.signature, PQ_SIGNATURE_SIZE,  "signature",  serializer);
 }
 
 void serialize(TransactionInputs & inputs, ISerializer & serializer) {
@@ -301,27 +257,31 @@ void serialize(TransactionOutput& output, ISerializer& serializer) {
 
 void serialize(TransactionOutputTarget& output, ISerializer& serializer) {
   if (serializer.type() == ISerializer::OUTPUT) {
-    BinaryVariantTagGetter tagGetter;
-    uint8_t tag = boost::apply_visitor(tagGetter, output);
+    // Always write tag 0x10 (PqOutput). KeyOutput (0x2) is never written.
+    uint8_t tag = 0x10;
     serializer.binary(&tag, sizeof(tag), "type");
-
-    VariantSerializer visitor(serializer, "data");
-    boost::apply_visitor(visitor, output);
+    CryptoNote::PqOutput& pqOut = boost::get<CryptoNote::PqOutput>(output);
+    serializer(pqOut, "data");
   } else {
     uint8_t tag;
     serializer.binary(&tag, sizeof(tag), "type");
-
-    getVariantValue(serializer, tag, output);
+    if (tag != 0x10) {
+      throw std::runtime_error("KeyOutput (ECC) not allowed in Discrete — only PQ outputs (tag 0x10) accepted");
+    }
+    CryptoNote::PqOutput v;
+    serializer(v, "data");
+    output = v;
   }
 }
 
-void serialize(KeyOutput& key, ISerializer& serializer) {
-  serializer(key.key, "key");
+void serialize(KeyOutput& /*key*/, ISerializer& /*serializer*/) {
+  throw std::runtime_error("KeyOutput serialization not supported in Discrete");
 }
 
-void serialize(MultisignatureOutput& multisignature, ISerializer& serializer) {
-  serializer(multisignature.keys, "keys");
-  serializer(multisignature.requiredSignatureCount, "required_signatures");
+void serialize(PqOutput& output, ISerializer& serializer) {
+  serializePqBlob(output.kemCt,      PQ_KEM_CIPHERTEXT_SIZE, "kem_ct",      serializer);
+  serializePqBlob(output.encPayload, PQ_ENC_PAYLOAD_SIZE,    "enc_payload", serializer);
+  serializer(output.spendCommit, "spend_commit");
 }
 
 void serialize(ParentBlockSerializer& pbs, ISerializer& serializer) {
@@ -334,7 +294,7 @@ void serialize(ParentBlockSerializer& pbs, ISerializer& serializer) {
 
   if (pbs.m_hashingSerialization) {
     Crypto::Hash minerTxHash;
-    if (!getBaseTransactionHash(pbs.m_parentBlock.baseTransaction, minerTxHash)) {
+    if (!getObjectHash(pbs.m_parentBlock.baseTransaction, minerTxHash)) {
       throw std::runtime_error("Get transaction hash error");
     }
 
@@ -398,40 +358,26 @@ void serialize(ParentBlockSerializer& pbs, ISerializer& serializer) {
 
 void serializeBlockHeader(BlockHeader& header, ISerializer& serializer) {
   serializer(header.majorVersion, "major_version");
-  if (header.majorVersion > BLOCK_MAJOR_VERSION_5) {
-    throw std::runtime_error("Wrong major version");
+  // Discrete only accepts block major version 6 (PQ-only) and above.
+  if (header.majorVersion < BLOCK_MAJOR_VERSION_6 || header.majorVersion > BLOCK_MAJOR_VERSION_8) {
+    throw std::runtime_error("Wrong block major version — Discrete requires v6+");
   }
 
   serializer(header.minorVersion, "minor_version");
-  if (header.majorVersion == BLOCK_MAJOR_VERSION_2 || header.majorVersion == BLOCK_MAJOR_VERSION_3) {
-    serializer(header.previousBlockHash, "prev_id");
-  } else if (header.majorVersion == BLOCK_MAJOR_VERSION_1 || header.majorVersion >= BLOCK_MAJOR_VERSION_4) {
-    serializer(header.timestamp, "timestamp");
-    serializer(header.previousBlockHash, "prev_id");
-    serializer.binary(&header.nonce, sizeof(header.nonce), "nonce");
-  } else {
-    throw std::runtime_error("Wrong major version");
-  }
+  serializer(header.timestamp, "timestamp");
+  serializer(header.previousBlockHash, "prev_id");
+  serializer.binary(&header.nonce, sizeof(header.nonce), "nonce");
 }
 
 void serialize(BlockHeader& header, ISerializer& serializer) {
   serializeBlockHeader(header, serializer);
 }
 
-void serialize(BlockTemplate& block, ISerializer& serializer) {
+void serialize(Block& block, ISerializer& serializer) {
   serializeBlockHeader(block, serializer);
-
-  if (block.majorVersion >= BLOCK_MAJOR_VERSION_5) {
-    serializer(block.minerAddress, "miner_address");
-    serializer(block.rewardProof, "reward_proof");
-    serializer(block.signature, "signature");
-  }
-
-  if (block.majorVersion == BLOCK_MAJOR_VERSION_2 || block.majorVersion == BLOCK_MAJOR_VERSION_3) {
-    auto parentBlockSerializer = makeParentBlockSerializer(block, false, false);
-    serializer(parentBlockSerializer, "parent_block");
-  }
-
+  // All Discrete blocks are v6+ — ML-DSA-65 block signature always present,
+  // merge-mining parent block never present.
+  serializePqBlob(block.signature, CryptoNote::PQ_SIGNATURE_SIZE, "signature", serializer);
   serializer(block.baseTransaction, "miner_tx");
   serializer(block.transactionHashes, "tx_hashes");
 }
@@ -475,57 +421,5 @@ void serialize(KeyPair& keyPair, ISerializer& serializer) {
   serializer(keyPair.publicKey, "public_key");
 }
 
-// unpack to strings to maintain protocol compatibility with older versions
-void serialize(RawBlock& rawBlock, ISerializer& serializer) {
-  if (serializer.type() == ISerializer::INPUT) {
-    uint64_t blockSize;
-    serializer(blockSize, "block_size");
-    rawBlock.block.resize(static_cast<uint64_t>(blockSize));
-  } else {
-    uint64_t blockSize = rawBlock.block.size();
-    serializer(blockSize, "block_size");
-  }
 
-  serializer.binary(rawBlock.block.data(), rawBlock.block.size(), "block");
-
-  if (serializer.type() == ISerializer::INPUT) {
-    size_t txCount;
-    serializer(txCount, "tx_count");
-    rawBlock.transactions.resize(static_cast<uint64_t>(txCount));
-
-    serializer.beginArray(txCount, "transactions");
-
-    for (auto &txBlob : rawBlock.transactions) {
-      serializer.beginObject("transaction");
-      uint64_t txSize;
-      serializer(txSize, "tx_size");
-      txBlob.resize(txSize);
-      serializer.binary(txBlob.data(), txBlob.size(), "transaction");
-      serializer.endObject();
-    }
-
-    serializer.endArray();
-  } else {
-    size_t txCount = rawBlock.transactions.size();
-    serializer(txCount, "tx_count");
-
-    serializer.beginArray(txCount, "transactions");
-
-    for (auto &txBlob : rawBlock.transactions) {
-      serializer.beginObject("transaction");
-      uint64_t txSize = txBlob.size();
-      serializer(txSize, "tx_size");
-      serializer.binary(txBlob.data(), txBlob.size(), "transaction");
-      serializer.endObject();
-    }
-
-    serializer.endArray();
-  }
-}
-
-void serialize(RewardProof& rewardProof, ISerializer& serializer) {
-  serializer(rewardProof.rA, "rA");
-  serializer(rewardProof.sig, "sig");
-}
-
-} // namespace CryptoNote
+} //namespace CryptoNote
