@@ -106,9 +106,9 @@ public:
     }
   };
   size_t difficultyBlocksCount() const { return m_difficultyWindow + m_difficultyLag; }
-  size_t difficultyBlocksCount2() const { return CryptoNote::parameters::DIFFICULTY_WINDOW_V2; }
-  size_t difficultyBlocksCount3() const { return CryptoNote::parameters::DIFFICULTY_WINDOW_V3; }
-  size_t difficultyBlocksCount4() const { return CryptoNote::parameters::DIFFICULTY_WINDOW_V4; }
+  size_t difficultyBlocksCount2() const { return CryptoNote::parameters::DIFFICULTY_WINDOW; }
+  size_t difficultyBlocksCount3() const { return CryptoNote::parameters::DIFFICULTY_WINDOW; }
+  size_t difficultyBlocksCount4() const { return CryptoNote::parameters::DIFFICULTY_WINDOW; }
 
   size_t maxBlockSizeInitial() const { return m_maxBlockSizeInitial; }
   uint64_t maxBlockSizeGrowthSpeedNumerator() const { return m_maxBlockSizeGrowthSpeedNumerator; }
@@ -120,10 +120,6 @@ public:
   uint64_t mempoolTxLiveTime() const { return m_mempoolTxLiveTime; }
   uint64_t mempoolTxFromAltBlockLiveTime() const { return m_mempoolTxFromAltBlockLiveTime; }
   uint64_t numberOfPeriodsToForgetTxDeletedFromPool() const { return m_numberOfPeriodsToForgetTxDeletedFromPool; }
-
-  size_t fusionTxMaxSize() const { return m_fusionTxMaxSize; }
-  size_t fusionTxMinInputCount() const { return m_fusionTxMinInputCount; }
-  size_t fusionTxMinInOutCountRatio() const { return m_fusionTxMinInOutCountRatio; }
 
   uint32_t upgradeHeight(uint8_t majorVersion) const;
   unsigned int upgradeVotingThreshold() const { return m_upgradeVotingThreshold; }
@@ -171,15 +167,6 @@ public:
     Transaction& tx,
     const BinaryArray& extraNonce = BinaryArray()) const;
 
-  bool isFusionTransaction(const Transaction& transaction, uint32_t height) const;
-  bool isFusionTransaction(const Transaction& transaction) const {
-    return isFusionTransaction(transaction, 0);
-  }
-  bool isFusionTransaction(const Transaction& transaction, size_t size, uint32_t height) const;
-  bool isFusionTransaction(const std::vector<uint64_t>& inputsAmounts, const std::vector<uint64_t>& outputsAmounts, size_t size, uint32_t height) const;
-  bool isAmountApplicableInFusionTransactionInput(uint64_t amount, uint64_t threshold, uint32_t height) const;
-  bool isAmountApplicableInFusionTransactionInput(uint64_t amount, uint64_t threshold, uint8_t& amountPowerOfTen, uint32_t height) const;
-
   std::string accountAddressAsString(const AccountBase& account) const;
   std::string accountAddressAsString(const AccountPublicAddress& accountPublicAddress) const;
   bool parseAccountAddressString(const std::string& str, AccountPublicAddress& addr) const;
@@ -189,10 +176,6 @@ public:
   bool parseAmount(const std::string& str, uint64_t& amount) const;
 
   Difficulty nextDifficulty(uint32_t height, uint8_t blockMajorVersion, std::vector<uint64_t> timestamps, std::vector<Difficulty> Difficulties) const;
-  Difficulty nextDifficultyV1(std::vector<uint64_t> timestamps, std::vector<Difficulty> Difficulties) const;
-  Difficulty nextDifficultyV2(std::vector<uint64_t> timestamps, std::vector<Difficulty> Difficulties) const;
-  Difficulty nextDifficultyV3(std::vector<uint64_t> timestamps, std::vector<Difficulty> Difficulties) const;
-  Difficulty nextDifficultyV4(uint32_t height, uint8_t blockMajorVersion, std::vector<uint64_t> timestamps, std::vector<Difficulty> Difficulties) const;
   Difficulty nextDifficultyV5(uint32_t height, uint8_t blockMajorVersion, std::vector<uint64_t> timestamps, std::vector<Difficulty> Difficulties) const;
 
   bool checkProofOfWorkV1(Crypto::cn_context& context, const Block& block, Difficulty currentDiffic, Crypto::Hash& proofOfWork) const;
@@ -259,10 +242,6 @@ private:
   uint64_t m_mempoolTxLiveTime;
   uint64_t m_mempoolTxFromAltBlockLiveTime;
   uint64_t m_numberOfPeriodsToForgetTxDeletedFromPool;
-
-  size_t m_fusionTxMaxSize;
-  size_t m_fusionTxMinInputCount;
-  size_t m_fusionTxMinInOutCountRatio;
 
   uint32_t m_upgradeHeightV2;
   uint32_t m_upgradeHeightV3;
@@ -348,10 +327,6 @@ public:
   CurrencyBuilder& mempoolTxLiveTime(uint64_t val) { m_currency.m_mempoolTxLiveTime = val; return *this; }
   CurrencyBuilder& mempoolTxFromAltBlockLiveTime(uint64_t val) { m_currency.m_mempoolTxFromAltBlockLiveTime = val; return *this; }
   CurrencyBuilder& numberOfPeriodsToForgetTxDeletedFromPool(uint64_t val) { m_currency.m_numberOfPeriodsToForgetTxDeletedFromPool = val; return *this; }
-
-  CurrencyBuilder& fusionTxMaxSize(size_t val) { m_currency.m_fusionTxMaxSize = val; return *this; }
-  CurrencyBuilder& fusionTxMinInputCount(size_t val) { m_currency.m_fusionTxMinInputCount = val; return *this; }
-  CurrencyBuilder& fusionTxMinInOutCountRatio(size_t val) { m_currency.m_fusionTxMinInOutCountRatio = val; return *this; }
 
   CurrencyBuilder& upgradeHeightV2(uint64_t val) { m_currency.m_upgradeHeightV2 = static_cast<uint32_t>(val); return *this; }
   CurrencyBuilder& upgradeHeightV3(uint64_t val) { m_currency.m_upgradeHeightV3 = static_cast<uint32_t>(val); return *this; }

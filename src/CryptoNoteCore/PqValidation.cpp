@@ -160,21 +160,9 @@ bool checkPqTransactionSemantic(const Transaction& tx, std::string* error) {
 }
 
 bool checkBridgeTransactionSemantic(const Transaction& tx, std::string* error) {
-  if (tx.txType != TX_BRIDGE) {
-    return fail(error, "not a TX_BRIDGE subtype");
-  }
-  if (tx.inputs.empty() || tx.outputs.empty()) {
-    return fail(error, "TX_BRIDGE with empty inputs or outputs");
-  }
-  if (tx.unlockTime != 0) {
-    return fail(error, "bridge tx must have unlockTime == 0");
-  }
-  // One-way: classical inputs only.
-  for (const auto& in : tx.inputs) {
-    if (in.type() != typeid(KeyInput)) {
-      return fail(error, "TX_BRIDGE input is not a classical KeyInput");
-    }
-  }
+  // TX_BRIDGE (legacy→PQ migration) is not supported in Discrete.
+  (void)tx;
+  return fail(error, "TX_BRIDGE not supported in Discrete");
 
   size_t pqOutputCount = 0;
   bool hasPqOutput = false;

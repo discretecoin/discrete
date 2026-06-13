@@ -39,8 +39,7 @@ const uint64_t CRYPTONOTE_MAX_BLOCK_NUMBER                   = 500000000;
 const uint64_t CRYPTONOTE_MAX_UNLOCK_HEIGHT_V6               = UINT64_C(10000000);
 const size_t   CRYPTONOTE_MAX_BLOCK_BLOB_SIZE                = 500000000;
 const size_t   CRYPTONOTE_MAX_TX_SIZE                        = 1000000000;
-// No legacy (ECC) address prefix — Discrete has no KeyOutput addresses.
-const uint64_t CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX       = 0x8f; // legacy alias for PQ prefix
+const uint64_t CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX       = 0x8f; // same as PQ prefix
 const uint64_t CRYPTONOTE_PUBLIC_PQ_ADDRESS_BASE58_PREFIX    = 0x8f; // PQ addresses start with "Q"
 const uint64_t CRYPTONOTE_TX_PROOF_BASE58_PREFIX             = 3576968;
 const uint64_t CRYPTONOTE_RESERVE_PROOF_BASE58_PREFIX        = 44907175188;
@@ -68,19 +67,12 @@ const size_t   CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_CURRENT = CRYPTONOTE_BL
 const size_t   CRYPTONOTE_COINBASE_BLOB_RESERVED_SIZE        = 600;
 const size_t   CRYPTONOTE_DISPLAY_DECIMAL_POINT              = 12;
 
-// Single fee tier — no ECC-era ladder.
 const uint64_t MINIMUM_FEE                                   = UINT64_C(10000000000);
 const uint64_t MAXIMUM_FEE                                   = UINT64_C(100000000000);
-// Legacy fee tier aliases — all map to the single Discrete fee.
-const uint64_t MINIMUM_FEE_V1                                = MINIMUM_FEE;
-const uint64_t MINIMUM_FEE_V2                                = MINIMUM_FEE;
-const uint64_t MINIMUM_FEE_V3                                = MINIMUM_FEE;
 
 const uint64_t DEFAULT_DUST_THRESHOLD                        = UINT64_C(100000000);
-// No ring mixins in PQ; constants kept for compilation of legacy stubs.
 const uint64_t MIN_TX_MIXIN_SIZE                             = 0;
 const uint64_t MAX_TX_MIXIN_SIZE                             = 0;
-// All blocks are PQ blocks (v6+); only one extra-size cap applies.
 const uint64_t MAX_EXTRA_SIZE                                = 4096;
 const uint64_t MAX_EXTRA_SIZE_PQ                             = 4096;
 
@@ -106,13 +98,10 @@ const size_t   DANDELION_STEMS                               = 2;
 const size_t   DANDELION_STEM_EMBARGO                        = 173;
 const uint8_t  DANDELION_STEM_TX_PROPAGATION_PROBABILITY     = 90;
 
-// LWMA-1 (V5) is the only difficulty algorithm; legacy windows aliased.
-const size_t   DIFFICULTY_WINDOW                             = 60;  // LWMA-1 window (blocks)
-const size_t   DIFFICULTY_WINDOW_V2                          = 60;  // legacy alias
-const size_t   DIFFICULTY_WINDOW_V3                          = 60;  // legacy alias
-const size_t   DIFFICULTY_WINDOW_V4                          = 60;  // legacy alias (LWMA-1)
-const size_t   DIFFICULTY_CUT                                = 0;   // unused in LWMA-1
-const size_t   DIFFICULTY_LAG                                = 0;   // unused in LWMA-1
+// LWMA-1 is the only difficulty algorithm.
+const size_t   DIFFICULTY_WINDOW                             = 60;
+const size_t   DIFFICULTY_CUT                                = 0;
+const size_t   DIFFICULTY_LAG                                = 0;
 
 const size_t   MAX_BLOCK_SIZE_INITIAL                        = 1000000;
 const uint64_t MAX_BLOCK_SIZE_GROWTH_SPEED_NUMERATOR         = 100 * 1024;
@@ -125,24 +114,12 @@ const uint64_t CRYPTONOTE_MEMPOOL_TX_LIVETIME                = 60 * 60 * 24;    
 const uint64_t CRYPTONOTE_MEMPOOL_TX_FROM_ALT_BLOCK_LIVETIME = 60 * 60 * 24 * 7; //seconds, one week
 const uint64_t CRYPTONOTE_NUMBER_OF_PERIODS_TO_FORGET_TX_DELETED_FROM_POOL = 7;  // CRYPTONOTE_NUMBER_OF_PERIODS_TO_FORGET_TX_DELETED_FROM_POOL * CRYPTONOTE_MEMPOOL_TX_LIVETIME = time to forget tx
 
-// No fusion (mixin-coalesce) transactions in PQ; constants kept for stubs.
-const size_t   FUSION_TX_MAX_SIZE                            = 0;
-const size_t   FUSION_TX_MIN_INPUT_COUNT                     = 0;
-const size_t   FUSION_TX_MIN_IN_OUT_COUNT_RATIO              = 0;
-
-// Discrete starts at block major v6 (PQ-only) from genesis.
-// All legacy upgrade heights are 0 — the chain has never been at an older
-// block version. Code that checks height >= UPGRADE_HEIGHT_Vx will correctly
-// evaluate to true for every block, including the genesis block.
+// All upgrade heights are 0: every rule applies from genesis block 0.
 const uint32_t UPGRADE_HEIGHT_V2                             = 0;
 const uint32_t UPGRADE_HEIGHT_V3                             = 0;
-const uint32_t UPGRADE_HEIGHT_V3_1                           = 0;
 const uint32_t UPGRADE_HEIGHT_V4                             = 0;
-const uint32_t UPGRADE_HEIGHT_V4_1                           = 0;
-const uint32_t UPGRADE_HEIGHT_V4_2                           = 0;
-const uint32_t UPGRADE_HEIGHT_V4_3                           = 0;
 const uint32_t UPGRADE_HEIGHT_V5                             = 0;
-const uint32_t UPGRADE_HEIGHT_V6                             = 0; // PQ active from genesis
+const uint32_t UPGRADE_HEIGHT_V6                             = 0;
 const uint32_t UPGRADE_HEIGHT_V7                             = 4294967294; // reserved
 const uint32_t UPGRADE_HEIGHT_V8                             = 4294967294; // reserved
 
@@ -217,25 +194,21 @@ constexpr const char* const DNS_CHECKPOINT_SIGNERS[]         = {
 constexpr size_t DNS_CHECKPOINT_SIGNERS_COUNT                =
   (sizeof(DNS_CHECKPOINT_SIGNERS) / sizeof(DNS_CHECKPOINT_SIGNERS[0])) - 1;
 
-// Discrete has only one transaction version: PQ (plain amounts, ML-DSA + ML-KEM).
-// Legacy v1 (ECC ring-sig) transactions are not accepted on this chain.
+// Transaction versions. v1 = PQ. v2+ reserved for future upgrades.
 const uint8_t  TRANSACTION_VERSION_PQ                        =  1;
 const uint8_t  CURRENT_TRANSACTION_VERSION                   =  TRANSACTION_VERSION_PQ;
 
-// Discrete starts at block major version 6 from genesis.
-// Legacy block versions 1-5 never exist on this chain.
-// Aliases pointing to 6 so that code referencing old version constants compiles;
-// any runtime branch that checks v<6 will never fire (all blocks are v6+).
-const uint8_t  BLOCK_MAJOR_VERSION_1                         =  6;  // alias: genesis version
-const uint8_t  BLOCK_MAJOR_VERSION_2                         =  6;  // legacy alias
-const uint8_t  BLOCK_MAJOR_VERSION_3                         =  6;  // legacy alias
-const uint8_t  BLOCK_MAJOR_VERSION_4                         =  6;  // legacy alias
-const uint8_t  BLOCK_MAJOR_VERSION_5                         =  6;  // legacy alias
-const uint8_t  BLOCK_MAJOR_VERSION_6                         =  6;  // PQ-only (from genesis)
-const uint8_t  BLOCK_MAJOR_VERSION_7                         =  7;  // reserved: PQ confidential amounts
-const uint8_t  BLOCK_MAJOR_VERSION_8                         =  8;  // reserved: PQ unlinkable
+// Block major versions — all kept as natural values for future hard-fork use.
+// Discrete uses v1 from genesis (PQ-only). v2-v8 are reserved for future upgrades.
+const uint8_t  BLOCK_MAJOR_VERSION_1                         =  1;  // PQ genesis version
+const uint8_t  BLOCK_MAJOR_VERSION_2                         =  2;  // reserved
+const uint8_t  BLOCK_MAJOR_VERSION_3                         =  3;  // reserved
+const uint8_t  BLOCK_MAJOR_VERSION_4                         =  4;  // reserved
+const uint8_t  BLOCK_MAJOR_VERSION_5                         =  5;  // reserved
+const uint8_t  BLOCK_MAJOR_VERSION_6                         =  6;  // reserved
+const uint8_t  BLOCK_MAJOR_VERSION_7                         =  7;  // reserved
+const uint8_t  BLOCK_MAJOR_VERSION_8                         =  8;  // reserved
 
-// All blocks are v6+; extra size cap is always the PQ limit.
 inline uint64_t maxExtraSize(uint8_t /*blockMajorVersion*/) {
   return parameters::MAX_EXTRA_SIZE_PQ;
 }

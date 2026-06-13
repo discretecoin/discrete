@@ -358,9 +358,8 @@ void serialize(ParentBlockSerializer& pbs, ISerializer& serializer) {
 
 void serializeBlockHeader(BlockHeader& header, ISerializer& serializer) {
   serializer(header.majorVersion, "major_version");
-  // Discrete only accepts block major version 6 (PQ-only) and above.
-  if (header.majorVersion < BLOCK_MAJOR_VERSION_6 || header.majorVersion > BLOCK_MAJOR_VERSION_8) {
-    throw std::runtime_error("Wrong block major version — Discrete requires v6+");
+  if (header.majorVersion < BLOCK_MAJOR_VERSION_1 || header.majorVersion > BLOCK_MAJOR_VERSION_8) {
+    throw std::runtime_error("Wrong block major version");
   }
 
   serializer(header.minorVersion, "minor_version");

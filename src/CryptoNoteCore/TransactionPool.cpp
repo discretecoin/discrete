@@ -163,7 +163,6 @@ bool getPqAccountRegistrationId(const Transaction& tx, Crypto::Hash& accountId) 
     const bool pqOnlyInputs = tx.version >= TRANSACTION_VERSION_PQ && tx.txType == TX_PQ;
     const bool freeRegTransaction = tx.version >= TRANSACTION_VERSION_PQ && tx.txType == TX_FREE_REG;
     uint64_t fee = 0;
-    bool isFusionTransaction = false;
     if (!pqOnlyInputs) {
       uint64_t inputs_amount = 0;
       if (!get_inputs_money_amount(tx, inputs_amount)) {
@@ -181,11 +180,6 @@ bool getPqAccountRegistrationId(const Transaction& tx, Crypto::Hash& accountId) 
       }
 
       fee = inputs_amount - outputs_amount;
-      const uint32_t currentHeight = m_core.getCurrentBlockchainHeight();
-      isFusionTransaction =
-        fee == 0 &&
-        m_core.getBlockMajorVersionForHeight(currentHeight) < BLOCK_MAJOR_VERSION_6 &&
-        m_currency.isFusionTransaction(tx, blobSize, currentHeight);
     }
     //check key images for transaction if it is not kept by block
     if (!keptByBlock) {
@@ -269,7 +263,7 @@ bool getPqAccountRegistrationId(const Transaction& tx, Crypto::Hash& accountId) 
     }
 
     tvc.m_added_to_pool = true;
-    tvc.m_should_be_relayed = inputsValid && (fee > 0 || isFusionTransaction || (freeRegTransaction && fee == 0));
+    tvc.m_should_be_relayed = inputsValid && (fee > 0 || (freeRegTransaction && fee == 0));
     tvc.m_verification_failed = true;
 
     if (!addTransactionInputs(id, tx, keptByBlock))

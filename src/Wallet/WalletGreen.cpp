@@ -3398,11 +3398,6 @@ void WalletGreen::initPqConsumer(const Crypto::SecretKey& spendSecretKey,
   if (spendSecretKey == NULL_SECRET_KEY) {
     return;  // tracking wallet: no PQ identity
   }
-  // Gate on PQ activation being scheduled (v6 height != never-activate
-  // placeholder), so the extra consumer adds zero sync overhead pre-activation.
-  if (m_currency.upgradeHeight(BLOCK_MAJOR_VERSION_6) == CryptoNote::parameters::UPGRADE_HEIGHT_V6) {
-    return;
-  }
   PqWalletKeys pqKeys = derivePqWalletKeys(spendSecretKey);
   m_pqConsumer.reset(new PqConsumer(pqKeys, syncStart, m_logger.getLogger()));
   m_blockchainSynchronizer.addConsumer(m_pqConsumer.get());

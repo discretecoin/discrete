@@ -133,17 +133,14 @@ uint32_t get_block_height(const Block& b) {
 }
 
 bool check_inputs_types_supported(const TransactionPrefix& tx) {
-  // Input families: v1 and v2 TX_BRIDGE use classical KeyInput; only v2 TX_PQ
-  // uses PqInput. The family must be uniform within a tx (no mixing) — this
-  // branch enforces it.
   const bool pqInputs = tx.version >= TRANSACTION_VERSION_PQ && tx.txType == TX_PQ;
-  const std::type_info& allowed = pqInputs ? typeid(PqInput) : typeid(KeyInput);
   for (const auto& in : tx.inputs) {
-    if (in.type() != allowed) {
-      return false;
+    if (pqInputs) {
+      if (in.type() != typeid(PqInput)) return false;
+    } else {
+      if (in.type() != typeid(BaseInput)) return false;
     }
   }
-
   return true;
 }
 

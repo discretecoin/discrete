@@ -940,8 +940,7 @@ bool Blockchain::checkProofOfWork(Crypto::cn_context& context, const Block& bloc
 bool Blockchain::checkProofOfWork(Crypto::cn_context& context, const Block& block,
                                    Difficulty currentDiffic, Crypto::Hash& proofOfWork,
                                    const std::list<Crypto::Hash>& alt_chain, bool no_blobs) {
-  if (block.majorVersion < CryptoNote::BLOCK_MAJOR_VERSION_5)
-    return m_currency.checkProofOfWork(context, block, currentDiffic, proofOfWork);
+  // All Discrete blocks use yespower PoW via getBlockLongHash.
   if (!getBlockLongHash(context, block, proofOfWork, alt_chain, no_blobs))
     return false;
   if (!check_hash(proofOfWork, currentDiffic))
@@ -997,8 +996,8 @@ static inline uint32_t load_u32_le(const uint8_t* data, size_t offset) {
  */
 bool Blockchain::getBlockLongHash(Crypto::cn_context& context, const Block& b, Crypto::Hash& res,
                                    const std::list<Crypto::Hash>& alt_chain, bool no_blobs) {
-  if (b.majorVersion < CryptoNote::BLOCK_MAJOR_VERSION_5)
-    return get_block_longhash(context, b, res);
+  // All Discrete blocks (v1+) use yespower PoW.
+  (void)context;
 
   BinaryArray pot;
   // reserve space to reduce reallocations
@@ -1023,8 +1022,7 @@ bool Blockchain::getBlockLongHash(Crypto::cn_context& context, const Block& b, C
   for (uint32_t i = 0; i < ITER; i++) {
     cn_fast_hash(pot.data(), pot.size(), hash_1);
 
-    // initialize seq from the first iteration's hash (same data, avoids redundant hash)
-    if (b.majorVersion >= CryptoNote::BLOCK_MAJOR_VERSION_6 && i == 0) {
+    if (i == 0) {
       const uint8_t* d = hash_1.data;
       seq = load_u32_be(d, 0) ^ load_u32_be(d, 4) ^ load_u32_be(d, 8) ^ load_u32_be(d, 12);
     }
@@ -1034,22 +1032,16 @@ bool Blockchain::getBlockLongHash(Crypto::cn_context& context, const Block& b, C
       const uint8_t* d = hash_1.data;
       uint32_t n = load_u32_be(d, (j - 1) * 4);
 
-      uint32_t height_j;
-      if (b.majorVersion < CryptoNote::BLOCK_MAJOR_VERSION_6) {
-        height_j = n % maxHeight; // modulo bias is negligible and non-exploitable
-      }
-      else {
-        // sequential dependency
-        seq ^= n;
-        seq ^= seq >> 16;
-        seq *= 0x7feb352d;
-        seq ^= seq >> 15;
-        seq *= 0x846ca68b;
-        seq ^= seq >> 16;
+      // sequential dependency
+      seq ^= n;
+      seq ^= seq >> 16;
+      seq *= 0x7feb352d;
+      seq ^= seq >> 15;
+      seq *= 0x846ca68b;
+      seq ^= seq >> 16;
 
-        // bias-free mapping
-        height_j = (uint64_t(seq) * maxHeight) >> 32;
-      }
+      // bias-free mapping
+      uint32_t height_j = (uint64_t(seq) * maxHeight) >> 32;
 
       bool found_alt = false; // reset for each j
 
@@ -1062,10 +1054,7 @@ bool Blockchain::getBlockLongHash(Crypto::cn_context& context, const Block& b, C
           if (!get_block_hashing_blob(ab, ba)) return false;
           pot.insert(pot.end(), ba.begin(), ba.end());
           found_alt = true;
-          // v6: mix memory content into seq
-          if (b.majorVersion >= CryptoNote::BLOCK_MAJOR_VERSION_6 && ba.size() >= 4) {
-            seq ^= load_u32_le(ba.data(), 0);
-          }
+          if (ba.size() >= 4) seq ^= load_u32_le(ba.data(), 0);
           break;
         }
       }
@@ -1079,10 +1068,7 @@ bool Blockchain::getBlockLongHash(Crypto::cn_context& context, const Block& b, C
           BinaryArray ba;
           if (!get_block_hashing_blob(bj, ba)) return false;
           pot.insert(pot.end(), ba.begin(), ba.end());
-          // v6: mix memory content into seq
-          if (b.majorVersion >= CryptoNote::BLOCK_MAJOR_VERSION_6 && ba.size() >= 4) {
-            seq ^= load_u32_le(ba.data(), 0);
-          }
+          if (ba.size() >= 4) seq ^= load_u32_le(ba.data(), 0);
         } else {
           BinaryArray ba;
           {
@@ -1094,18 +1080,12 @@ bool Blockchain::getBlockLongHash(Crypto::cn_context& context, const Block& b, C
 
           if (!ba.empty()) {
             pot.insert(pot.end(), ba.begin(), ba.end());
-            // v6: mix memory content into seq
-            if (b.majorVersion >= CryptoNote::BLOCK_MAJOR_VERSION_6 && ba.size() >= 4) {
-              seq ^= load_u32_le(ba.data(), 0);
-            }
+            if (ba.size() >= 4) seq ^= load_u32_le(ba.data(), 0);
           } else {
             std::vector<uint8_t> blobData;
             if (!m_db.getHashingBlob(height_j, blobData)) return false;
             pot.insert(pot.end(), blobData.begin(), blobData.end());
-            // v6: mix memory content into seq
-            if (b.majorVersion >= CryptoNote::BLOCK_MAJOR_VERSION_6 && blobData.size() >= 4) {
-              seq ^= load_u32_le(blobData.data(), 0);
-            }
+            if (blobData.size() >= 4) seq ^= load_u32_le(blobData.data(), 0);
           }
         }
       }
@@ -1304,8 +1284,7 @@ bool Blockchain::prevalidate_miner_transaction(const Block& b, uint32_t height) 
   }
   uint64_t extraSize = (uint64_t)b.baseTransaction.extra.size();
   uint64_t maxExtra = CryptoNote::maxExtraSize(b.majorVersion);
-  if (height > CryptoNote::parameters::UPGRADE_HEIGHT_V4_2 &&
-      extraSize > maxExtra) {
+  if (extraSize > maxExtra) {
     logger(ERROR, BRIGHT_RED) << "The miner transaction extra is too large in block "
       << get_block_hash(b) << ". Allowed: " << maxExtra
       << ", actual: " << extraSize;

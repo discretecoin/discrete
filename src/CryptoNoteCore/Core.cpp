@@ -324,57 +324,19 @@ bool Core::check_tx_fee(const Transaction& tx, const Crypto::Hash& txHash, size_
   }
 
   const uint64_t fee = inputs_amount - outputs_amount;
-  if (isFreeRegTransaction && fee == 0 && blockMajorVersion >= BLOCK_MAJOR_VERSION_6) {
+  if (isFreeRegTransaction && fee == 0) {
     return true;
   }
 
-  bool isFusionTransaction = fee == 0 && blockMajorVersion < BLOCK_MAJOR_VERSION_6 && m_currency.isFusionTransaction(tx, blobSize, height);
-  if (!isFusionTransaction && !m_checkpoints.is_in_checkpoint_zone(height)) {
-    bool enough = true;
-
+  if (!m_checkpoints.is_in_checkpoint_zone(height)) {
     uint64_t min = getMinimalFee(height);
+    uint64_t extraSize = (uint64_t)tx.extra.size();
+    min += m_currency.getFeePerByte(extraSize, min);
 
-    if (height <= CryptoNote::parameters::UPGRADE_HEIGHT_V4 && fee < min) {
-      enough = false;
-    }
-    else if (height > CryptoNote::parameters::UPGRADE_HEIGHT_V4 && height < CryptoNote::parameters::UPGRADE_HEIGHT_V4_3) {
-      if (fee < (min - (min * 20 / 100))) {      
-        enough = false;
-      }
-      else {
-        if (height > CryptoNote::parameters::UPGRADE_HEIGHT_V4_2 && height < CryptoNote::parameters::UPGRADE_HEIGHT_V4_3) {
-          uint64_t extraSize = (uint64_t)tx.extra.size();
-          uint64_t feePerByte = m_currency.getFeePerByte(extraSize, min);
-          min += feePerByte;
-          if (fee < (min - min * 20 / 100)) {
-            logger(DEBUGGING) << "Transaction fee is insufficient due to additional data in extra";
-            enough = false;
-          }
-        }
-      }
-    }
-    else if (height >= CryptoNote::parameters::UPGRADE_HEIGHT_V4_3) {
-      if (fee < min) {
-        enough = false;
-      }
-      else {
-        uint64_t extraSize = (uint64_t)tx.extra.size();
-        uint64_t feePerByte = m_currency.getFeePerByte(extraSize, min);
-        min += feePerByte;
-
-        if (fee < min) {
-          logger(DEBUGGING) << "Transaction fee is insufficient due to additional data in extra";
-          enough = false;
-        }
-      }
-    }
-
-    if (!enough) {
+    if (fee < min) {
       tvc.m_verification_failed = true;
       tvc.m_tx_fee_too_small = true;
-      logger(DEBUGGING) << "The fee for transaction " 
-                        << Common::podToHex(txHash) 
-                        << " is insufficient and it is not a fusion transaction";
+      logger(DEBUGGING) << "Transaction fee too small for tx " << Common::podToHex(txHash);
       return false;
     }
   }
@@ -382,9 +344,9 @@ bool Core::check_tx_fee(const Transaction& tx, const Crypto::Hash& txHash, size_
   return true;
 }
 
-bool Core::check_tx_unmixable(const Transaction& tx, const Crypto::Hash& txHash, uint32_t height) {
+bool Core::check_tx_unmixable(const Transaction& tx, const Crypto::Hash& txHash, uint32_t /*height*/) {
   for (const auto& out : tx.outputs) {
-    if (height >= CryptoNote::parameters::UPGRADE_HEIGHT_V4_2 && !is_valid_decomposed_amount(out.amount)) {
+    if (!is_valid_decomposed_amount(out.amount)) {
       logger(ERROR) << "Invalid decomposed output amount " << out.amount << " for tx id= " << Common::podToHex(txHash);
       return false;
     }
@@ -533,8 +495,7 @@ bool Core::get_block_template(Block& b, const AccountKeys& acc, Difficulty& diff
       return false;
     }
 
-    // Discrete: always block major v6, no parent block, no merge mining.
-    b.majorVersion = BLOCK_MAJOR_VERSION_6;
+    b.majorVersion = BLOCK_MAJOR_VERSION_1;
     b.minorVersion = BLOCK_MINOR_VERSION_0;
 
     // Don't generate a block template with invalid timestamp
@@ -625,7 +586,7 @@ bool Core::get_block_template_pq(Block& b, const CryptoPQ::KemPublicKey& viewPub
     LockedBlockchainStorage blockchainLock(m_blockchain);
     height = m_blockchain.getCurrentBlockchainHeight();
     b = boost::value_initialized<Block>();
-    b.majorVersion = BLOCK_MAJOR_VERSION_6;  // Discrete: always v6
+    b.majorVersion = BLOCK_MAJOR_VERSION_1;
     b.minorVersion = BLOCK_MINOR_VERSION_0;
     b.previousBlockHash = get_tail_id();
     b.timestamp = time(nullptr);
@@ -1134,21 +1095,9 @@ bool Core::getBlockReward(uint8_t blockMajorVersion, size_t medianSize, size_t c
   return m_currency.getBlockReward(blockMajorVersion, medianSize, currentBlockSize, alreadyGeneratedCoins, fee, reward, emissionChange);
 }
 
-bool Core::scanOutputkeysForIndices(const KeyInput& txInToKey, std::list<std::pair<Crypto::Hash, size_t>>& outputReferences) {
-  struct outputs_visitor
-  {
-    std::list<std::pair<Crypto::Hash, size_t>>& m_resultsCollector;
-    outputs_visitor(std::list<std::pair<Crypto::Hash, size_t>>& resultsCollector):m_resultsCollector(resultsCollector){}
-    bool handle_output(const Transaction& tx, const TransactionOutput& out, size_t transactionOutputIndex)
-    {
-      m_resultsCollector.push_back(std::make_pair(getObjectHash(tx), transactionOutputIndex));
-      return true;
-    }
-  };
-    
-  outputs_visitor vi(outputReferences);
-    
-  return m_blockchain.scanOutputKeysForIndexes(txInToKey, vi);
+bool Core::scanOutputkeysForIndices(const KeyInput& /*txInToKey*/, std::list<std::pair<Crypto::Hash, size_t>>& /*outputReferences*/) {
+  // KeyInput not supported in Discrete.
+  return false;
 }
 
 bool Core::getBlockTimestamp(uint32_t height, uint64_t& timestamp) {
