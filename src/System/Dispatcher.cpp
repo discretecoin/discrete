@@ -9,11 +9,14 @@
 #include <utility>
 
 #include <boost/asio.hpp>
+#include <boost/coroutine/attributes.hpp>
 #include <boost/coroutine/symmetric_coroutine.hpp>
 
 namespace System {
 
   using coro_t = boost::coroutines::symmetric_coroutine<void>;
+
+  static constexpr std::size_t CRYPTO_COROUTINE_STACK_SIZE = 1024 * 1024;  // 1 MiB
 
   static inline uint64_t now_ms() {
     using namespace std::chrono;
@@ -365,7 +368,7 @@ namespace System {
       // Create a coroutine whose first action is to publish its NativeContext
       auto* pCoro = new coro_t::call_type([this](coro_t::yield_type& y) {
         this->contextProcedure(y);
-        });
+        }, boost::coroutines::attributes(CRYPTO_COROUTINE_STACK_SIZE));
 
       // Start it: it yields immediately after publishing NativeContext
       (*pCoro)();
