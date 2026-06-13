@@ -23,6 +23,7 @@
 #include "CryptoNoteCore/PqValidation.h"
 #include "Logging/ConsoleLogger.h"
 #include "System/Dispatcher.h"
+#include "System/Context.h"
 #include "TestGenerator/TestGenerator.h"
 
 #include "PqTxType.h"
@@ -372,9 +373,45 @@ bool runFunded() {
   return ok;
 }
 
+// Regression guard for the daemon crash on incoming PQ transactions: ML-DSA-65
+// verification (checkPqTransactionInputs -> CryptoPQ::dsa_verify) runs on a
+// System::Dispatcher coroutine, whose Boost default stack is only 64 KB. A
+// single ML-DSA-65 sign/verify frame needs far more than that, so on the
+// default stack this overflowed and crashed the node with an access violation
+// on ANY incoming PQ tx (a remote DoS). Run the heaviest PQ crypto on a
+// coroutine here; on an undersized stack this aborts the process, so reaching
+// the assertions at all proves the dispatcher stack is large enough.
+bool runCoroutineStack() {
+  using namespace CryptoNote;
+  System::Dispatcher dispatcher;
+
+  bool finished = false;
+  bool verified = false;
+  System::Context<> ctx(dispatcher, [&]() {
+    CryptoPQ::DsaKeypairSeed seed{};
+    for (std::size_t i = 0; i < seed.size(); ++i) seed[i] = static_cast<uint8_t>(i * 7 + 1);
+    auto kp = CryptoPQ::dsa_keygen_from_seed(seed);
+
+    const std::array<uint8_t, 32> msg{};
+    CryptoPQ::DsaSignature sig = CryptoPQ::dsa_sign(kp.second, msg.data(), msg.size());
+    verified = CryptoPQ::dsa_verify(kp.first, msg.data(), msg.size(), sig);
+    finished = true;
+  });
+  dispatcher.yield();
+
+  bool ok = true;
+  ok &= expect(finished, "PQ crypto ran to completion on a dispatcher coroutine");
+  ok &= expect(verified, "ML-DSA-65 sign+verify succeeded on a coroutine stack");
+  return ok;
+}
+
 }  // namespace
 
 int main() {
+  if (!runCoroutineStack()) {
+    std::cerr << "[FAIL] PQ dispatcher-coroutine stack test" << std::endl;
+    return 1;
+  }
   if (!run()) {
     std::cerr << "[FAIL] PQ chain integration test" << std::endl;
     return 1;
