@@ -168,10 +168,6 @@ bool serialize(EllipticCurvePoint& ecPoint, Common::StringView name, CryptoNote:
 
 namespace CryptoNote {
 
-// Forward declaration (defined below after TransactionInput serialization).
-static void serializePqBlob(std::vector<uint8_t>& v, size_t expected,
-                            Common::StringView name, ISerializer& serializer);
-
 void serialize(TransactionPrefix& txP, ISerializer& serializer) {
   serializer(txP.version, "version");
 
@@ -196,11 +192,11 @@ void serialize(Transaction& tx, ISerializer& serializer) {
     if (in.type() == typeid(PqInput)) ++pqCount;
   if (serializer.type() == ISerializer::OUTPUT) {
     for (auto& sig : tx.pqSignatures)
-      serializePqBlob(sig, PQ_SIGNATURE_SIZE, "pq_sig", serializer);
+      serializer.binary(sig.data(), PQ_SIGNATURE_SIZE, "pq_sig");
   } else {
     tx.pqSignatures.resize(pqCount);
     for (auto& sig : tx.pqSignatures)
-      serializePqBlob(sig, PQ_SIGNATURE_SIZE, "pq_sig", serializer);
+      serializer.binary(sig.data(), PQ_SIGNATURE_SIZE, "pq_sig");
   }
 }
 

@@ -139,11 +139,6 @@ bool checkPqTransactionSemantic(const Transaction& tx, std::string* error) {
   if (tx.pqSignatures.size() != tx.inputs.size()) {
     return fail(error, "pqSignatures count must equal input count");
   }
-  for (const auto& sig : tx.pqSignatures) {
-    if (sig.size() != PQ_SIGNATURE_SIZE) {
-      return fail(error, "pqSignature has wrong size");
-    }
-  }
   for (const auto& out : tx.outputs) {
     if (out.target.type() != typeid(PqOutput)) {
       return fail(error, "TX_PQ output is not a PqOutput");

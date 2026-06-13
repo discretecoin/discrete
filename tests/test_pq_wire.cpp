@@ -13,6 +13,7 @@
 #include "PqTxType.h"
 #include "CryptoNoteCore/CryptoNoteSerialization.h"
 #include "CryptoNoteCore/CryptoNoteTools.h"
+#include "CryptoNoteCore/PqValidation.h"
 
 #include <cstdint>
 #include <vector>
@@ -60,8 +61,10 @@ Transaction makePqTx() {
     tx.unlockTime = 0;
     tx.inputs.push_back(makePqInput());
     tx.outputs.push_back(makePqOutput());
-    // One ML-DSA-65 signature per PqInput, stored outside the prefix.
-    tx.pqSignatures.assign(1, blob(PQ_SIGNATURE_SIZE, 7, 2));
+    // One ML-DSA-65 signature per PqInput; size fixed at compile time.
+    std::array<uint8_t, PQ_SIGNATURE_SIZE> sig;
+    for (size_t i = 0; i < PQ_SIGNATURE_SIZE; ++i) sig[i] = static_cast<uint8_t>(i * 7 + 2);
+    tx.pqSignatures.push_back(sig);
     return tx;
 }
 
@@ -118,11 +121,13 @@ TEST(PqWire, TxTypeIsCoveredByHash) {
     EXPECT_NE(getObjectHash(a), getObjectHash(b));
 }
 
-TEST(PqWire, WrongBlobSizeRejectedOnSerialize) {
+TEST(PqWire, SigCountMismatchRejectedBySemantic) {
+    // pqSignatures is std::array — size is compile-time fixed, so wrong-size blobs
+    // cannot be constructed. Wrong COUNT (sigs != inputs) is the remaining failure mode.
     Transaction tx = makePqTx();
-    tx.pqSignatures[0].resize(PQ_SIGNATURE_SIZE - 1);  // malformed
-    BinaryArray ba;
-    EXPECT_FALSE(toBinaryArray(tx, ba));  // serializer throws -> wrapper returns false
+    tx.pqSignatures.clear();  // 0 sigs for 1 PqInput
+    std::string err;
+    EXPECT_FALSE(CryptoNote::checkPqTransactionSemantic(tx, &err));
 }
 
 TEST(PqWire, TamperedByteChangesContent) {

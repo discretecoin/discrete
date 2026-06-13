@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <vector>
@@ -99,10 +100,10 @@ struct TransactionPrefix {
 };
 
 struct Transaction : public TransactionPrefix {
-  // ML-DSA-65 signatures: one blob (PQ_SIGNATURE_SIZE bytes) per PqInput,
-  // in the same order as tx.inputs. Analogous to CN's ring-sig vector.
+  // ML-DSA-65 signatures: one fixed-size array per PqInput, in input order.
+  // Analogous to CN's ring-sig vector; size enforced at compile time.
   // Empty for coinbase (BaseInput only) and TX_FREE_REG (no inputs).
-  std::vector<std::vector<uint8_t>> pqSignatures;
+  std::vector<std::array<uint8_t, PQ_SIGNATURE_SIZE>> pqSignatures;
 };
 
 constexpr size_t PQ_VIEW_PUB_SIZE = 1184;  // ML-KEM-768 encapsulation key

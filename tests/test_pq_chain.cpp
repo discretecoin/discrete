@@ -160,7 +160,7 @@ CryptoNote::Transaction makeUnfundedPqTx() {
   uint64_t fee = 0;
   CryptoPQ::Hash256 d = pqSigningDigest(tx, fee);
   CryptoPQ::DsaSignature sig = CryptoPQ::dsa_sign(spend.second, d.data(), d.size());
-  tx.pqSignatures.assign(1, toVec(sig));
+  tx.pqSignatures.assign(1, sig);
   return tx;
 }
 

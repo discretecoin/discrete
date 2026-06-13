@@ -117,7 +117,7 @@ BuiltTx buildSignedTx(uint64_t amountIn, uint64_t amountOut) {
     CryptoPQ::Hash256 digest = pqSigningDigest(b.tx, fee);
     CryptoPQ::DsaSignature sig =
         CryptoPQ::dsa_sign(b.spendSk, digest.data(), digest.size());
-    b.tx.pqSignatures.assign(1, toVec(sig));
+    b.tx.pqSignatures.assign(1, sig);
 
     return b;
 }
@@ -129,7 +129,7 @@ void resign(BuiltTx& b) {
     for (auto& o : b.tx.outputs) sumOut += o.amount;
     CryptoPQ::Hash256 d = pqSigningDigest(b.tx, sumIn - sumOut);
     CryptoPQ::DsaSignature sig = CryptoPQ::dsa_sign(b.spendSk, d.data(), d.size());
-    b.tx.pqSignatures.assign(b.tx.inputs.size(), toVec(sig));
+    b.tx.pqSignatures.assign(b.tx.inputs.size(), sig);
 }
 
 const uint64_t kMinFee = 0;  // disable fee-floor except where tested

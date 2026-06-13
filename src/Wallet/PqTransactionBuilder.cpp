@@ -134,10 +134,8 @@ Transaction buildPqTransaction(const std::vector<PqSpendInput>& inputs,
   // Sign every input over the canonical digest; sigs go to Transaction.pqSignatures.
   CryptoPQ::Hash256 digest = pqSigningDigest(tx, fee);
   tx.pqSignatures.resize(tx.inputs.size());
-  for (size_t i = 0; i < tx.inputs.size(); ++i) {
-    CryptoPQ::DsaSignature sig = CryptoPQ::dsa_sign(spendSk, digest.data(), digest.size());
-    tx.pqSignatures[i].assign(sig.begin(), sig.end());
-  }
+  for (size_t i = 0; i < tx.inputs.size(); ++i)
+    tx.pqSignatures[i] = CryptoPQ::dsa_sign(spendSk, digest.data(), digest.size());
 
   return tx;
 }
