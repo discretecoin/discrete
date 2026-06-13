@@ -283,15 +283,9 @@ bool BlockchainExplorerDataBuilder::fillTransactionDetails(const Transaction& tr
     transactionDetails.hasPaymentId = false;
   }
   fillTxExtra(transaction.extra, transactionDetails.extra);
-  transactionDetails.signatures.reserve(transaction.signatures.size());
-  for (const std::vector<Crypto::Signature>& signatures : transaction.signatures) {
-    std::vector<Crypto::Signature> signaturesDetails;
-    signaturesDetails.reserve(signatures.size());
-    for (const Crypto::Signature& signature : signatures) {
-      signaturesDetails.push_back(std::move(signature));
-    }
-    transactionDetails.signatures.push_back(std::move(signaturesDetails));
-  }
+  // Discrete: no ECC ring signatures; pqSignatures are stored in Transaction.pqSignatures
+  // but are not reflected in this explorer detail struct (always empty).
+  transactionDetails.signatures.clear();
 
   transactionDetails.inputs.reserve(transaction.inputs.size());
   for (const TransactionInput& txIn : transaction.inputs) {

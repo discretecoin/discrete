@@ -45,17 +45,6 @@ namespace {
 using namespace CryptoNote;
 using namespace Common;
 
-size_t getSignaturesCount(const TransactionInput& input) {
-  struct txin_signature_size_visitor : public boost::static_visitor<size_t> {
-    size_t operator()(const BaseInput&) const { return 0; }
-    // KeyInput is a stub — should never appear in Discrete transactions.
-    size_t operator()(const KeyInput& txin) const { return txin.outputIndexes.size(); }
-    // PQ signatures live inside PqInput, not in Transaction.signatures.
-    size_t operator()(const PqInput&) const { return 0; }
-  };
-  return boost::apply_visitor(txin_signature_size_visitor(), input);
-}
-
 struct BinaryVariantTagGetter: boost::static_visitor<uint8_t> {
   uint8_t operator()(const CryptoNote::BaseInput&) { return  0xff; }
   // KeyInput stub — should never be serialised on Discrete.
@@ -179,6 +168,10 @@ bool serialize(EllipticCurvePoint& ecPoint, Common::StringView name, CryptoNote:
 
 namespace CryptoNote {
 
+// Forward declaration (defined below after TransactionInput serialization).
+static void serializePqBlob(std::vector<uint8_t>& v, size_t expected,
+                            Common::StringView name, ISerializer& serializer);
+
 void serialize(TransactionPrefix& txP, ISerializer& serializer) {
   serializer(txP.version, "version");
 
@@ -196,9 +189,19 @@ void serialize(TransactionPrefix& txP, ISerializer& serializer) {
 
 void serialize(Transaction& tx, ISerializer& serializer) {
   serialize(static_cast<TransactionPrefix&>(tx), serializer);
-  // Discrete: PQ signatures live inside PqInput — Transaction.signatures is always
-  // empty. No ring-signature vector is written or read.
-  tx.signatures.clear();
+  // Count PqInputs: each gets one ML-DSA-65 signature blob after the prefix
+  // (analogous to CN's per-input ring-sig vectors).
+  size_t pqCount = 0;
+  for (const auto& in : tx.inputs)
+    if (in.type() == typeid(PqInput)) ++pqCount;
+  if (serializer.type() == ISerializer::OUTPUT) {
+    for (auto& sig : tx.pqSignatures)
+      serializePqBlob(sig, PQ_SIGNATURE_SIZE, "pq_sig", serializer);
+  } else {
+    tx.pqSignatures.resize(pqCount);
+    for (auto& sig : tx.pqSignatures)
+      serializePqBlob(sig, PQ_SIGNATURE_SIZE, "pq_sig", serializer);
+  }
 }
 
 void serialize(TransactionInput& in, ISerializer& serializer) {
@@ -241,9 +244,9 @@ static void serializePqBlob(std::vector<uint8_t>& v, size_t expected, Common::St
 void serialize(PqInput& key, ISerializer& serializer) {
   serializer(key.prevTxid, "prev_txid");
   serializer(key.prevOutIndex, "prev_out_index");
-  serializePqBlob(key.authPub,   PQ_AUTH_PUB_SIZE,   "auth_pub",   serializer);
-  serializePqBlob(key.rhoReveal, PQ_RHO_SIZE,        "rho_reveal", serializer);
-  serializePqBlob(key.signature, PQ_SIGNATURE_SIZE,  "signature",  serializer);
+  serializePqBlob(key.authPub,   PQ_AUTH_PUB_SIZE, "auth_pub",   serializer);
+  serializePqBlob(key.rhoReveal, PQ_RHO_SIZE,      "rho_reveal", serializer);
+  // Signature not here — it lives in Transaction.pqSignatures after the prefix.
 }
 
 void serialize(TransactionInputs & inputs, ISerializer & serializer) {

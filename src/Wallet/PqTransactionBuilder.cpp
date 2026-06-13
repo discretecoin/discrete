@@ -76,7 +76,6 @@ Transaction buildPqTransaction(const std::vector<PqSpendInput>& inputs,
   tx.txType = TX_PQ;
   tx.unlockTime = unlockTime;
   tx.extra.clear();
-  tx.signatures.clear();  // PQ inputs carry their own ML-DSA sig, not this vector.
 
   // Inputs (unsigned for now): reveal the spender's long-term spend pubkey and
   // the per-output rho. spend_commit(spendPub, rho) must match the referenced
@@ -90,7 +89,6 @@ Transaction buildPqTransaction(const std::vector<PqSpendInput>& inputs,
     in.prevOutIndex = si.prevOutIndex;
     in.authPub.assign(spendPub.begin(), spendPub.end());
     in.rhoReveal.assign(si.rho.begin(), si.rho.end());
-    in.signature.assign(PQ_SIGNATURE_SIZE, 0);  // filled after digest
     tx.inputs.push_back(std::move(in));
     if (sumIn + si.amount < sumIn) {
       throw std::runtime_error("buildPqTransaction: input amount overflow");
@@ -133,12 +131,12 @@ Transaction buildPqTransaction(const std::vector<PqSpendInput>& inputs,
   }
   const uint64_t fee = sumIn - sumOut;
 
-  // Sign every input over the canonical digest (excludes the signature field).
+  // Sign every input over the canonical digest; sigs go to Transaction.pqSignatures.
   CryptoPQ::Hash256 digest = pqSigningDigest(tx, fee);
-  for (auto& input : tx.inputs) {
-    PqInput& in = boost::get<PqInput>(input);
+  tx.pqSignatures.resize(tx.inputs.size());
+  for (size_t i = 0; i < tx.inputs.size(); ++i) {
     CryptoPQ::DsaSignature sig = CryptoPQ::dsa_sign(spendSk, digest.data(), digest.size());
-    in.signature.assign(sig.begin(), sig.end());
+    tx.pqSignatures[i].assign(sig.begin(), sig.end());
   }
 
   return tx;

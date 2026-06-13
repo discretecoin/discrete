@@ -39,7 +39,6 @@ PqInput makePqInput() {
     in.prevOutIndex = 3;
     in.authPub   = blob(PQ_AUTH_PUB_SIZE, 5, 1);
     in.rhoReveal = blob(PQ_RHO_SIZE, 3, 9);
-    in.signature = blob(PQ_SIGNATURE_SIZE, 7, 2);
     return in;
 }
 
@@ -56,12 +55,13 @@ TransactionOutput makePqOutput() {
 
 Transaction makePqTx() {
     Transaction tx;
-    tx.version = TRANSACTION_VERSION_PQ;  // 2
+    tx.version = TRANSACTION_VERSION_PQ;
     tx.txType = TX_PQ;
     tx.unlockTime = 0;
     tx.inputs.push_back(makePqInput());
     tx.outputs.push_back(makePqOutput());
-    // PQ signatures live inside the inputs; the legacy vector stays empty.
+    // One ML-DSA-65 signature per PqInput, stored outside the prefix.
+    tx.pqSignatures.assign(1, blob(PQ_SIGNATURE_SIZE, 7, 2));
     return tx;
 }
 
@@ -88,7 +88,8 @@ TEST(PqWire, RoundTrip) {
     EXPECT_EQ(in.prevOutIndex, in0.prevOutIndex);
     EXPECT_EQ(in.authPub, in0.authPub);
     EXPECT_EQ(in.rhoReveal, in0.rhoReveal);
-    EXPECT_EQ(in.signature, in0.signature);
+    ASSERT_EQ(tx2.pqSignatures.size(), 1u);
+    EXPECT_EQ(tx2.pqSignatures[0], tx.pqSignatures[0]);
 
     EXPECT_EQ(tx2.outputs[0].amount, 1000000u);
     ASSERT_EQ(tx2.outputs[0].target.type(), typeid(PqOutput));
@@ -119,8 +120,7 @@ TEST(PqWire, TxTypeIsCoveredByHash) {
 
 TEST(PqWire, WrongBlobSizeRejectedOnSerialize) {
     Transaction tx = makePqTx();
-    PqInput& in = boost::get<PqInput>(tx.inputs[0]);
-    in.signature.resize(PQ_SIGNATURE_SIZE - 1);  // malformed
+    tx.pqSignatures[0].resize(PQ_SIGNATURE_SIZE - 1);  // malformed
     BinaryArray ba;
     EXPECT_FALSE(toBinaryArray(tx, ba));  // serializer throws -> wrapper returns false
 }

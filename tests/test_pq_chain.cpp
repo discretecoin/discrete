@@ -136,7 +136,6 @@ CryptoNote::Transaction makeUnfundedPqTx() {
   in.prevOutIndex = 0;
   in.authPub = toVec(spend.first);
   in.rhoReveal = toVec(pat<32>(3, 9));
-  in.signature.assign(PQ_SIGNATURE_SIZE, 0);
 
   std::vector<CryptoPQ::InputRef> refs(1);
   std::memcpy(refs[0].prevTxid.data(), in.prevTxid.data, 32);
@@ -157,12 +156,11 @@ CryptoNote::Transaction makeUnfundedPqTx() {
   tx.inputs.push_back(in);
   tx.outputs.push_back(out);
 
-  // Sign with the spender's ML-DSA key (digest fee = in - out; here arbitrary
-  // since the tx is rejected before/at input resolution, but make it consistent).
-  uint64_t fee = 0;  // sum(in)=sum(out) would be ideal but input is unresolved
+  // Sign: fee = 0 (input is unresolved, but digest must still be consistent).
+  uint64_t fee = 0;
   CryptoPQ::Hash256 d = pqSigningDigest(tx, fee);
   CryptoPQ::DsaSignature sig = CryptoPQ::dsa_sign(spend.second, d.data(), d.size());
-  boost::get<PqInput>(tx.inputs[0]).signature = toVec(sig);
+  tx.pqSignatures.assign(1, toVec(sig));
   return tx;
 }
 

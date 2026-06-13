@@ -78,7 +78,6 @@ BuiltTx buildSignedTx(uint64_t amountIn, uint64_t amountOut) {
     in.prevOutIndex = prevOutIndex;
     in.authPub = toVec(spenderSpend.first);   // long-term spend pubkey
     in.rhoReveal = toVec(rhoIn);
-    in.signature.assign(PQ_SIGNATURE_SIZE, 0);  // filled after digest
     b.tx.inputs.push_back(in);
 
     // Resolved referenced output: its spend_commit binds the spender's spend key.
@@ -118,19 +117,19 @@ BuiltTx buildSignedTx(uint64_t amountIn, uint64_t amountOut) {
     CryptoPQ::Hash256 digest = pqSigningDigest(b.tx, fee);
     CryptoPQ::DsaSignature sig =
         CryptoPQ::dsa_sign(b.spendSk, digest.data(), digest.size());
-    boost::get<PqInput>(b.tx.inputs[0]).signature = toVec(sig);
+    b.tx.pqSignatures.assign(1, toVec(sig));
 
     return b;
 }
 
-// Re-sign after a mutation that changes the digest (amount/fee/etc.).
+// Re-sign after a mutation that changes the digest (amount/fee/etc. or input count).
 void resign(BuiltTx& b) {
     uint64_t sumIn = 0, sumOut = 0;
     for (auto& r : b.resolved) sumIn += r.amount;
     for (auto& o : b.tx.outputs) sumOut += o.amount;
     CryptoPQ::Hash256 d = pqSigningDigest(b.tx, sumIn - sumOut);
     CryptoPQ::DsaSignature sig = CryptoPQ::dsa_sign(b.spendSk, d.data(), d.size());
-    boost::get<PqInput>(b.tx.inputs[0]).signature = toVec(sig);
+    b.tx.pqSignatures.assign(b.tx.inputs.size(), toVec(sig));
 }
 
 const uint64_t kMinFee = 0;  // disable fee-floor except where tested
@@ -148,7 +147,7 @@ TEST(PqValidation, AcceptsValidTx) {
 
 TEST(PqValidation, RejectsTamperedSignature) {
     BuiltTx b = buildSignedTx(1000000, 900000);
-    boost::get<PqInput>(b.tx.inputs[0]).signature[10] ^= 0xFF;
+    b.tx.pqSignatures[0][10] ^= 0xFF;
     std::string err;
     EXPECT_FALSE(checkPqTransactionInputs(b.tx, b.resolved, kMinFee, nullptr, &err));
 }
@@ -236,9 +235,10 @@ TEST(PqValidation, SemanticRejectsUnlockTime) {
     EXPECT_FALSE(checkPqTransactionSemantic(b.tx, &err));
 }
 
-TEST(PqValidation, SemanticRejectsLegacySignatures) {
+TEST(PqValidation, SemanticRejectsWrongSigCount) {
     BuiltTx b = buildSignedTx(1000000, 900000);
-    b.tx.signatures.resize(1);
+    // Extra signature blob for a tx with only one input.
+    b.tx.pqSignatures.resize(2, b.tx.pqSignatures[0]);
     std::string err;
     EXPECT_FALSE(checkPqTransactionSemantic(b.tx, &err));
 }

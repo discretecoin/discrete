@@ -686,7 +686,7 @@ bool BuiltinExplorer::on_get_explorer_tx_by_hash(const COMMAND_EXPLORER_GET_TRAN
         body += "    <a href=\"/explorer/tx/" + Common::podToHex(p.output.transactionHash) + "\">";
         body += "output No " + std::to_string(p.output.number) + "</a>";
         body += "<br/>auth_pub bytes: " + std::to_string(p.input.authPub.size());
-        body += "<br/>signature bytes: " + std::to_string(p.input.signature.size());
+        body += "<br/>signature bytes: " + std::to_string(CryptoNote::PQ_SIGNATURE_SIZE);
         body += "    </td>\n";
       }
       body += "  </tr>\n";

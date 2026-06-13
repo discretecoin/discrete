@@ -1262,8 +1262,8 @@ bool Blockchain::prevalidate_miner_transaction(const Block& b, uint32_t height) 
     logger(ERROR, BRIGHT_RED) << "Coinbase transaction must have a PqOutput";
     return false;
   }
-  if (!(b.baseTransaction.signatures.empty())) {
-    logger(ERROR, BRIGHT_RED) << "Coinbase transaction must not have legacy ring signatures";
+  if (!(b.baseTransaction.pqSignatures.empty())) {
+    logger(ERROR, BRIGHT_RED) << "Coinbase transaction must not have pqSignatures";
     return false;
   }
   if (!(b.baseTransaction.inputs[0].type() == typeid(BaseInput))) {

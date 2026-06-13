@@ -49,13 +49,12 @@ constexpr size_t PQ_AUTH_PUB_SIZE       = 1952;  // ML-DSA-65 public spend key
 constexpr size_t PQ_RHO_SIZE            = 32;
 constexpr size_t PQ_SIGNATURE_SIZE      = 3309;  // ML-DSA-65 signature
 
-// One PQ input. The ML-DSA signature is embedded here (not in Transaction.signatures).
+// One PQ input (no embedded signature — ML-DSA signatures live in Transaction.pqSignatures).
 struct PqInput {
   Crypto::Hash         prevTxid;
   uint32_t             prevOutIndex;
   std::vector<uint8_t> authPub;     // PQ_AUTH_PUB_SIZE bytes
   std::vector<uint8_t> rhoReveal;   // PQ_RHO_SIZE bytes
-  std::vector<uint8_t> signature;   // PQ_SIGNATURE_SIZE bytes
 };
 
 // One PQ output target. Amount is plain (in TransactionOutput.amount).
@@ -100,10 +99,10 @@ struct TransactionPrefix {
 };
 
 struct Transaction : public TransactionPrefix {
-  // No legacy ring-signature vector. PQ signatures live inside PqInput.
-  // The field is kept (always empty) for ABI compat with serialization paths
-  // that still reference Transaction::signatures.
-  std::vector<std::vector<Crypto::Signature>> signatures;
+  // ML-DSA-65 signatures: one blob (PQ_SIGNATURE_SIZE bytes) per PqInput,
+  // in the same order as tx.inputs. Analogous to CN's ring-sig vector.
+  // Empty for coinbase (BaseInput only) and TX_FREE_REG (no inputs).
+  std::vector<std::vector<uint8_t>> pqSignatures;
 };
 
 constexpr size_t PQ_VIEW_PUB_SIZE = 1184;  // ML-KEM-768 encapsulation key

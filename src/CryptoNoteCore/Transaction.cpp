@@ -129,7 +129,7 @@ namespace CryptoNote {
     }
 
     void checkIfSigning() const {
-      if (!transaction.signatures.empty()) {
+      if (!transaction.pqSignatures.empty()) {
         throw std::runtime_error("Cannot perform requested operation, since it will invalidate transaction signatures");
       }
     }
@@ -301,17 +301,9 @@ namespace CryptoNote {
     // ECC ring-sig signing not supported in Discrete — no-op stub.
   }
 
-  std::vector<Signature>& TransactionImpl::getSignatures(size_t input) {
-    // update signatures container size if needed
-    if (transaction.signatures.size() < transaction.inputs.size()) {
-      transaction.signatures.resize(transaction.inputs.size());
-    }
-    // check range
-    if (input >= transaction.signatures.size()) {
-      throw std::runtime_error("Invalid input index");
-    }
-
-    return transaction.signatures[input];
+  std::vector<Signature>& TransactionImpl::getSignatures(size_t /*input*/) {
+    // ECC ring-sig signing not supported in Discrete.
+    throw std::runtime_error("getSignatures: ECC ring signatures not supported in Discrete");
   }
 
   BinaryArray TransactionImpl::getTransactionData() const {
@@ -430,16 +422,10 @@ namespace CryptoNote {
   }
 
   bool TransactionImpl::validateSignatures() const {
-    if (transaction.signatures.size() < transaction.inputs.size()) {
-      return false;
-    }
-
-    for (size_t i = 0; i < transaction.inputs.size(); ++i) {
-      if (getRequiredSignaturesCount(i) > transaction.signatures[i].size()) {
-        return false;
-      }
-    }
-
-    return true;
+    // Discrete: pqSignatures must have one entry per PqInput (zero for coinbase/free-reg).
+    size_t pqCount = 0;
+    for (const auto& in : transaction.inputs)
+      if (in.type() == typeid(PqInput)) ++pqCount;
+    return transaction.pqSignatures.size() == pqCount;
   }
 }

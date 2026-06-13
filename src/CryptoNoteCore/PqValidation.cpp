@@ -36,8 +36,7 @@ namespace {
 
 bool pqInputFieldsValid(const PqInput& in) {
   return in.authPub.size() == PQ_AUTH_PUB_SIZE &&
-         in.rhoReveal.size() == PQ_RHO_SIZE &&
-         in.signature.size() == PQ_SIGNATURE_SIZE;
+         in.rhoReveal.size() == PQ_RHO_SIZE;
 }
 
 bool pqOutputFieldsValid(const PqOutput& o) {
@@ -129,16 +128,20 @@ bool checkPqTransactionSemantic(const Transaction& tx, std::string* error) {
   if (tx.unlockTime != 0) {
     return fail(error, "PQ tx must have unlockTime == 0");
   }
-  if (!tx.signatures.empty()) {
-    return fail(error, "PQ tx must not use the legacy signatures vector");
-  }
-
   for (const auto& in : tx.inputs) {
     if (in.type() != typeid(PqInput)) {
       return fail(error, "TX_PQ input is not a PqInput");
     }
     if (!pqInputFieldsValid(boost::get<PqInput>(in))) {
       return fail(error, "PqInput field has wrong length");
+    }
+  }
+  if (tx.pqSignatures.size() != tx.inputs.size()) {
+    return fail(error, "pqSignatures count must equal input count");
+  }
+  for (const auto& sig : tx.pqSignatures) {
+    if (sig.size() != PQ_SIGNATURE_SIZE) {
+      return fail(error, "pqSignature has wrong size");
     }
   }
   for (const auto& out : tx.outputs) {
@@ -232,8 +235,8 @@ bool checkFreeRegTransactionSemantic(const Transaction& tx, std::string* error) 
   if (!tx.inputs.empty() || !tx.outputs.empty()) {
     return fail(error, "TX_FREE_REG must have no inputs or outputs");
   }
-  if (!tx.signatures.empty()) {
-    return fail(error, "TX_FREE_REG must not carry signatures");
+  if (!tx.pqSignatures.empty()) {
+    return fail(error, "TX_FREE_REG must not carry pqSignatures");
   }
   if (tx.unlockTime != 0) {
     return fail(error, "TX_FREE_REG must have unlockTime == 0");
@@ -352,11 +355,11 @@ bool checkPqTransactionInputs(const Transaction& tx,
 
   // ML-DSA signature verification over the recomputed digest.
   CryptoPQ::Hash256 digest = pqSigningDigest(tx, fee);
-  for (const auto& input : tx.inputs) {
-    const PqInput& in = boost::get<PqInput>(input);
+  for (size_t i = 0; i < tx.inputs.size(); ++i) {
+    const PqInput& in = boost::get<PqInput>(tx.inputs[i]);
     CryptoPQ::DsaPublicKey pub = toDsaPub(in.authPub);
     CryptoPQ::DsaSignature sig;
-    std::memcpy(sig.data(), in.signature.data(), sig.size());
+    std::memcpy(sig.data(), tx.pqSignatures[i].data(), sig.size());
     if (!CryptoPQ::dsa_verify(pub, digest.data(), digest.size(), sig)) {
       return fail(error, "ML-DSA signature verification failed");
     }

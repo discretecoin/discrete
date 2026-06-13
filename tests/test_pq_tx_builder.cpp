@@ -85,7 +85,7 @@ TEST(PqTxBuilder, FundedSpendPassesConsensus) {
 
     EXPECT_EQ(tx.version, TRANSACTION_VERSION_PQ);
     EXPECT_EQ(tx.txType, TX_PQ);
-    EXPECT_TRUE(tx.signatures.empty());
+    EXPECT_EQ(tx.pqSignatures.size(), 1u);
 
     std::string err;
     ASSERT_TRUE(checkPqTransactionSemantic(tx, &err)) << err;
@@ -161,8 +161,7 @@ TEST(PqTxBuilder, TamperedSignatureRejected) {
     PqSendOutput out{recip.viewPub, recip.spendPub, 900000};
 
     Transaction tx = buildPqTransaction({in}, {out}, sender.spendPub, sender.spendSk);
-    PqInput& pin = boost::get<PqInput>(tx.inputs[0]);
-    pin.signature[0] ^= 0xFF;
+    tx.pqSignatures[0][0] ^= 0xFF;
 
     std::string err;
     std::vector<Crypto::Hash> nf;
@@ -226,7 +225,7 @@ TEST(PqFreeReg, BuildsValidRegistration) {
     EXPECT_EQ(tx.txType, TX_FREE_REG);
     EXPECT_TRUE(tx.inputs.empty());
     EXPECT_TRUE(tx.outputs.empty());
-    EXPECT_TRUE(tx.signatures.empty());
+    EXPECT_TRUE(tx.pqSignatures.empty());
 
     std::string err;
     EXPECT_TRUE(checkFreeRegTransactionSemantic(tx, &err)) << err;

@@ -250,7 +250,7 @@ namespace CryptoNote {
     tx.inputs.clear();
     tx.outputs.clear();
     tx.extra.clear();
-    tx.signatures.clear();
+    tx.pqSignatures.clear();
 
     tx.version   = TRANSACTION_VERSION_PQ;
     tx.txType    = TX_COINBASE;
