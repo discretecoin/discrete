@@ -1007,11 +1007,16 @@ bool Blockchain::getBlockLongHash(Crypto::cn_context& context, const Block& b, C
     return false;
 
   Crypto::Hash hash_1, hash_2;
-  // currentHeight - 1 - unlockWindow is always <= getCurrentBlockchainHeight() - 1
-  // Avoid the redundant lock acquisition on every hash iteration by computing maxHeight 
-  // directly from the block template instead of getCurrentBlockchainHeight().
   const uint32_t currentHeight = boost::get<BaseInput>(b.baseTransaction.inputs[0]).blockIndex;
   const uint32_t unlockWindow = static_cast<uint32_t>(m_currency.minedMoneyUnlockWindow());
+
+  // Early blocks (< unlockWindow + 2) don't have enough prior chain for mixing.
+  // Skip the 128-round sampling and hash the signed blob directly with yespower.
+  if (currentHeight <= unlockWindow + 1) {
+    return Crypto::y_slow_hash(pot.data(), pot.size(), hash_1, hash_2)
+             ? (res = hash_2, true) : false;
+  }
+
   const uint32_t maxHeight = currentHeight - 1 - unlockWindow;
 
 #define ITER 128
@@ -1328,7 +1333,10 @@ bool Blockchain::validate_miner_transaction(const Block& b, uint32_t height,
 }
 
 bool Blockchain::validate_block_signature(const Block& b, const Crypto::Hash& id, uint32_t height) {
-  // All Discrete blocks are v6+ with ML-DSA-65 block signature.
+  // Genesis block is trusted by definition — no signature required.
+  if (height == 0) return true;
+
+  // All Discrete blocks carry an ML-DSA-65 block signature.
   if (b.signature.size() != CryptoNote::PQ_SIGNATURE_SIZE) {
     logger(ERROR, BRIGHT_RED) << "Block " << id << " at height " << height
                                << " has wrong signature size " << b.signature.size();
@@ -2144,12 +2152,18 @@ bool Blockchain::checkPqInputs(const Transaction& tx, uint32_t* pmax_used_block_
         if (in.prevOutIndex < te.tx.outputs.size()) {
           const TransactionOutput& o = te.tx.outputs[in.prevOutIndex];
           if (o.target.type() == typeid(PqOutput)) {
-            r.exists = true;
-            r.isPqOutput = true;
-            r.isCoinbase = (slot == 0);  // coinbase is always tx slot 0
-            r.amount = o.amount;
-            r.spendCommit = boost::get<PqOutput>(o.target).spendCommit;
-            if (block > maxRefHeight) maxRefHeight = block;
+            // Maturity: a coinbase PqOutput (or any output with a non-zero
+            // unlockTime) can only be spent once its lock has elapsed. Mirrors
+            // the legacy check_tx_input path. Unmatured → treat as unresolved so
+            // checkPqTransactionInputs rejects with "referenced output does not exist".
+            if (is_tx_spendtime_unlocked(te.tx.unlockTime)) {
+              r.exists = true;
+              r.isPqOutput = true;
+              r.isCoinbase = (slot == 0);  // coinbase is always tx slot 0
+              r.amount = o.amount;
+              r.spendCommit = boost::get<PqOutput>(o.target).spendCommit;
+              if (block > maxRefHeight) maxRefHeight = block;
+            }
           }
         }
       } catch (const std::exception&) {

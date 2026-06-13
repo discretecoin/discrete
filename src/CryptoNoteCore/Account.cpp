@@ -18,6 +18,8 @@
 #include "Account.h"
 #include "CryptoNoteSerialization.h"
 #include "crypto/crypto.h"
+#include "crypto_pq/PqDsa.h"
+#include "crypto_pq/PqKem.h"
 extern "C"
 {
 #include "crypto/keccak.h"
@@ -34,12 +36,17 @@ void AccountBase::setNull() {
 }
 //-----------------------------------------------------------------
 void AccountBase::generate() {
-
   Crypto::generate_keys(m_keys.address.spendPublicKey, m_keys.spendSecretKey);
   Crypto::generate_keys(m_keys.address.viewPublicKey, m_keys.viewSecretKey);
 
-  m_creation_timestamp = time(NULL);
+  auto [dPk, dSk] = CryptoPQ::dsa_keygen();
+  m_pqSpendPk = dPk;
+  m_pqSpendSk = dSk;
+  auto [kPk, kSk] = CryptoPQ::kem_keygen();
+  m_pqViewPk = kPk;
+  m_pqViewSk = kSk;
 
+  m_creation_timestamp = time(NULL);
 }
 
 //-----------------------------------------------------------------
@@ -51,6 +58,13 @@ void AccountBase::generateDeterministic() {
   keccak((uint8_t *)&m_keys.spendSecretKey, sizeof(Crypto::SecretKey),
          (uint8_t *)&viewKeySeed, sizeof(viewKeySeed));
   Crypto::generate_deterministic_keys(m_keys.address.viewPublicKey, m_keys.viewSecretKey, viewKeySeed);
+
+  auto [dPk, dSk] = CryptoPQ::dsa_keygen();
+  m_pqSpendPk = dPk;
+  m_pqSpendSk = dSk;
+  auto [kPk, kSk] = CryptoPQ::kem_keygen();
+  m_pqViewPk = kPk;
+  m_pqViewSk = kSk;
 
   m_creation_timestamp = time(NULL);
 }

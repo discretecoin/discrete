@@ -34,6 +34,8 @@
 #include "UpgradeDetector.h"
 #include "crypto_pq/PqOutputBuilder.h"
 #include "crypto_pq/PqHash.h"
+#include "crypto_pq/PqDsa.h"
+#include "crypto_pq/PqKem.h"
 #include "PqTxType.h"
 
 #undef ERROR
@@ -108,7 +110,6 @@ namespace CryptoNote {
   bool Currency::generateGenesisBlock() {
     m_genesisBlock = boost::value_initialized<Block>();
 
-    // Hard code coinbase tx in genesis block, because "tru" generating tx use random, but genesis should be always the same
     std::string genesisCoinbaseTxHex = GENESIS_COINBASE_TX_HEX;
     BinaryArray minerTxBlob;
 
@@ -117,8 +118,18 @@ namespace CryptoNote {
       fromBinaryArray(m_genesisBlock.baseTransaction, minerTxBlob);
 
     if (!r) {
-      logger(ERROR, BRIGHT_RED) << "failed to parse coinbase tx from hard coded blob";
-      return false;
+      // No valid hex — generate a PQ genesis coinbase from a deterministic zero seed.
+      // The genesis block signature is skipped at height 0 (validate_block_signature).
+      CryptoPQ::DsaKeypairSeed dsaSeed{};
+      CryptoPQ::KemKeypairSeed kemSeed{};
+      auto [dPk, dSk] = CryptoPQ::dsa_keygen_from_seed(dsaSeed);
+      auto [kPk, kSk] = CryptoPQ::kem_keygen_from_seed(kemSeed);
+      (void)dSk; (void)kSk;
+      if (!constructMinerTxPq(BLOCK_MAJOR_VERSION_1, 0, 0, 0, 0, 0, kPk, dPk,
+                               m_genesisBlock.baseTransaction)) {
+        logger(ERROR, BRIGHT_RED) << "Failed to create PQ genesis coinbase";
+        return false;
+      }
     }
 
     m_genesisBlock.majorVersion = BLOCK_MAJOR_VERSION_1;
@@ -128,7 +139,11 @@ namespace CryptoNote {
     if (m_testnet) {
       ++m_genesisBlock.nonce;
     }
-    //miner::find_nonce_for_given_block(bl, 1, 0);
+    // Genesis signature validation is skipped (height 0), but the wire format
+    // requires exactly PQ_SIGNATURE_SIZE bytes. Fill with zeros.
+    if (m_genesisBlock.signature.empty()) {
+      m_genesisBlock.signature.assign(PQ_SIGNATURE_SIZE, 0);
+    }
 
     return true;
   }

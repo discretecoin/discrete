@@ -117,13 +117,19 @@ private:
 };
 
 inline CryptoNote::Difficulty getTestDifficulty() { return 1; }
-// V1–V4 PoW search via standalone get_block_longhash. For V5+ use the overload.
+// PoW search (difficulty=1 shortcut — no signing needed for single-attempt fills).
 void fillNonce(CryptoNote::Block& blk, const CryptoNote::Difficulty& diffic);
 
-// PoW search that handles V5+ blocks by delegating to Blockchain::getBlockLongHash
-// (yespower). `blockchain` may be null — then V5+ blocks fail to mine (logged once).
+// PoW search delegating to Blockchain::getBlockLongHash (yespower).
+// `blockchain` may be null — blocks fail to mine (logged once).
 void fillNonce(CryptoNote::Block& blk, const CryptoNote::Difficulty& diffic,
                CryptoNote::Blockchain* blockchain);
+
+// PoW search with ML-DSA re-signing on every nonce attempt (required for Discrete
+// because the PoW input commits to SHA3(signature)).
+void fillNonce(CryptoNote::Block& blk, const CryptoNote::Difficulty& diffic,
+               CryptoNote::Blockchain* blockchain,
+               const CryptoNote::AccountBase& minerAcc);
 
 bool constructMinerTxManually(const CryptoNote::Currency& currency, uint8_t blockMajorVersion, uint32_t height, uint64_t alreadyGeneratedCoins,
   const CryptoNote::AccountPublicAddress& minerAddress, CryptoNote::Transaction& tx, uint64_t fee, CryptoNote::KeyPair* pTxKey = 0);

@@ -299,9 +299,11 @@ bool checkPqTransactionInputs(const Transaction& tx,
     if (!r.isPqOutput) {
       return fail(error, "referenced output is not a PqOutput");
     }
-    if (r.isCoinbase) {
-      return fail(error, "PQ input spends a coinbase output");
-    }
+    // NOTE: coinbase PqOutputs ARE spendable in Discrete (they are the sole
+    // funds source — there is no legacy chain or bridge). Coinbase maturity
+    // (minedMoneyUnlockWindow) is height-dependent, so it is enforced in the
+    // chain-context layer (Blockchain::checkPqInputs via is_tx_spendtime_unlocked),
+    // not here in the context-free shape/balance check.
 
     // Ownership / authorization binding.
     Crypto::Hash sc = toHash(CryptoPQ::spendCommit(toDsaPub(in.authPub), toRho(in.rhoReveal)));

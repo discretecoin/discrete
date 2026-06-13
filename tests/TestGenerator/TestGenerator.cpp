@@ -24,6 +24,7 @@
 #include "CryptoNoteCore/CryptoNoteTools.h"
 #include "CryptoNoteCore/CryptoNoteFormatUtils.h"
 #include "CryptoNoteCore/Difficulty.h"
+#include "crypto_pq/PqDsa.h"
 
 #include <iostream>
 
@@ -32,51 +33,30 @@ using namespace CryptoNote;
 
 namespace {
 
-// Dispatch PoW longhash by block version. The standalone get_block_longhash
-// returns false for V5+ (production V5+ PoW lives on
-// Blockchain::getBlockLongHash, yespower over a memory-mixed PoT). We reproduce
-// that dispatch so the test generator's PoW search matches the daemon.
-//
-// `blockchain` may be null. If a V5+ block is requested without a sink we warn
-// once and return false — the caller's loop then spins (a hung test), surfacing
-// the misconfiguration rather than silently producing a daemon-rejected block.
-// v5+ blocks carry a miner signature over cn_fast_hash(get_block_hashing_blob)
-// using the coinbase output's ephemeral secret key. The PoW (getBlockLongHash)
-// hashes the SIGNED blob, so the block must be signed before each long-hash
-// attempt. Mirrors Miner.cpp step 1.
-static void signTestBlockV5(CryptoNote::Block& blk, const CryptoNote::AccountKeys& minerKeys) {
-  if (blk.majorVersion < CryptoNote::BLOCK_MAJOR_VERSION_5) {
-    return;
-  }
+// Sign a Discrete block with the miner's ML-DSA-65 spend key.
+// The PoW hash commits to SHA3(signature) via get_signed_block_hashing_blob,
+// so this must be called before each getBlockLongHash attempt.
+static void signTestBlock(CryptoNote::Block& blk, const CryptoNote::AccountBase& minerAcc) {
   CryptoNote::BinaryArray ba;
   if (!CryptoNote::get_block_hashing_blob(blk, ba)) {
     return;
   }
   Crypto::Hash h = Crypto::cn_fast_hash(ba.data(), ba.size());
-  Crypto::PublicKey txPub = CryptoNote::getTransactionPublicKeyFromExtra(blk.baseTransaction.extra);
-  Crypto::KeyDerivation derivation;
-  if (!Crypto::generate_key_derivation(txPub, minerKeys.viewSecretKey, derivation)) {
-    return;
-  }
-  Crypto::SecretKey ephSec;
-  Crypto::derive_secret_key(derivation, 0, minerKeys.spendSecretKey, ephSec);
-  Crypto::PublicKey ephPub = boost::get<CryptoNote::KeyOutput>(blk.baseTransaction.outputs[0].target).key;
-  Crypto::generate_signature(h, ephPub, ephSec, blk.signature);
+  CryptoPQ::DsaSignature sig = CryptoPQ::dsa_sign(minerAcc.pqSpendSk(), h.data, sizeof(h.data));
+  blk.signature.assign(sig.begin(), sig.end());
 }
 
+// All Discrete blocks use yespower PoW via Blockchain::getBlockLongHash.
+// `blockchain` must be non-null — if absent, warn once and return false.
 bool computeBlockLongHashForTest(Crypto::cn_context& context,
                                  const CryptoNote::Block& blk,
                                  Crypto::Hash& res,
                                  CryptoNote::Blockchain* blockchain) {
-  if (blk.majorVersion < CryptoNote::BLOCK_MAJOR_VERSION_5) {
-    return get_block_longhash(context, blk, res);
-  }
   if (blockchain == nullptr) {
     static bool warned = false;
     if (!warned) {
-      std::cerr << "[test_generator] V5+ PoW search requested but no Blockchain "
-                   "sink was wired — call test_generator::setBlockchain(&core."
-                   "get_blockchain_storage()) before constructing V5+ blocks.\n";
+      std::cerr << "[test_generator] yespower PoW requested but no Blockchain sink wired — "
+                   "call test_generator::setBlockchain(&core.get_blockchain_storage()).\n";
       warned = true;
     }
     return false;
@@ -163,15 +143,15 @@ bool test_generator::constructBlock(CryptoNote::Block& blk, uint32_t height, con
     txsSize += getObjectBinarySize(tx);
   }
 
+  // Discrete serializer rejects version!=TRANSACTION_VERSION_PQ, so a zero-initialized
+  // Transaction produces SIZE_MAX from getObjectBinarySize. Start with a minimal
+  // properly-versioned transaction so the initial target size is valid.
   blk.baseTransaction = boost::value_initialized<Transaction>();
+  blk.baseTransaction.version = TRANSACTION_VERSION_PQ;
   size_t targetBlockSize = txsSize + getObjectBinarySize(blk.baseTransaction);
   while (true) {
-    Crypto::SecretKey minerTxKey;
-    // v5+ consensus allows exactly one coinbase output; earlier versions permit
-    // the decomposed (multi-output) coinbase.
-    size_t minerMaxOuts = blk.majorVersion >= CryptoNote::BLOCK_MAJOR_VERSION_5 ? 1 : 10;
-    if (!m_currency.constructMinerTx(blk.majorVersion, height, Common::medianValue(blockSizes), alreadyGeneratedCoins, targetBlockSize,
-      totalFee, minerAcc.getAccountKeys().address, blk.baseTransaction, minerTxKey, BinaryArray(), minerMaxOuts)) {
+    if (!m_currency.constructMinerTxPq(blk.majorVersion, height, Common::medianValue(blockSizes), alreadyGeneratedCoins, targetBlockSize,
+      totalFee, minerAcc.pqViewPk(), minerAcc.pqSpendPk(), blk.baseTransaction)) {
       return false;
     }
 
@@ -221,16 +201,16 @@ bool test_generator::constructBlock(CryptoNote::Block& blk, uint32_t height, con
     }
   }
 
-  // Nonce search. For V5+ blocks this delegates to Blockchain::getBlockLongHash
-  // (yespower); for V1–V4 it uses the standalone get_block_longhash. A V5+ block
-  // without a Blockchain sink will spin — call setBlockchain() first.
+  // Nonce search. All Discrete blocks use yespower via Blockchain::getBlockLongHash.
+  // The PoW input commits to SHA3(signature), so the block is re-signed each iteration.
   blk.nonce = 0;
   Crypto::cn_context context;
   while (true) {
     Crypto::Hash h;
-    signTestBlockV5(blk, minerAcc.getAccountKeys());  // no-op for < v5; PoW hashes the signed blob
-    if (computeBlockLongHashForTest(context, blk, h, m_blockchain) &&
-        check_hash(h, getTestDifficulty()))
+    signTestBlock(blk, minerAcc);
+    if (!computeBlockLongHashForTest(context, blk, h, m_blockchain))
+      return false;
+    if (check_hash(h, getTestDifficulty()))
       break;
     blk.nonce++;
     if (blk.nonce == 0) blk.timestamp++;
@@ -285,11 +265,10 @@ bool test_generator::constructBlockManually(Block& blk, const Block& prevBlock, 
     blk.baseTransaction = baseTransaction;
   } else {
     blk.baseTransaction = boost::value_initialized<Transaction>();
+    blk.baseTransaction.version = TRANSACTION_VERSION_PQ;
     size_t currentBlockSize = txsSizes + getObjectBinarySize(blk.baseTransaction);
-    // TODO: This will work, until size of constructed block is less then m_currency.blockGrantedFullRewardZone()
-    Crypto::SecretKey minerTxKey2;
-    if (!m_currency.constructMinerTx(blk.majorVersion, height, Common::medianValue(blockSizes), alreadyGeneratedCoins, currentBlockSize, 0,
-        minerAcc.getAccountKeys().address, blk.baseTransaction, minerTxKey2, BinaryArray(), 1)) {
+    if (!m_currency.constructMinerTxPq(blk.majorVersion, height, Common::medianValue(blockSizes), alreadyGeneratedCoins, currentBlockSize, 0,
+        minerAcc.pqViewPk(), minerAcc.pqSpendPk(), blk.baseTransaction)) {
       return false;
     }
   }
@@ -313,8 +292,9 @@ bool test_generator::constructBlockManually(Block& blk, const Block& prevBlock, 
 
   Difficulty aDiffic = actualParams & bf_diffic ? diffic : getTestDifficulty();
   if (1 < aDiffic) {
-    // Version-aware: V5+ uses yespower if a Blockchain sink is wired in.
-    fillNonce(blk, aDiffic, m_blockchain);
+    fillNonce(blk, aDiffic, m_blockchain, minerAcc);
+  } else {
+    signTestBlock(blk, minerAcc);
   }
 
   addBlock(blk, txsSizes, fee, blockSizes, alreadyGeneratedCoins);
@@ -365,8 +345,6 @@ bool test_generator::constructMaxSizeBlock(CryptoNote::Block& blk, const CryptoN
 }
 
 void fillNonce(CryptoNote::Block& blk, const Difficulty& diffic) {
-  // Compatibility overload — V1–V4 PoW only. V5+ callers must use the
-  // Blockchain-aware overload below.
   fillNonce(blk, diffic, /*blockchain=*/nullptr);
 }
 
@@ -376,6 +354,22 @@ void fillNonce(CryptoNote::Block& blk, const Difficulty& diffic,
   Crypto::cn_context context;
   while (true) {
     Crypto::Hash h;
+    if (computeBlockLongHashForTest(context, blk, h, blockchain) &&
+        check_hash(h, diffic))
+      break;
+    blk.nonce++;
+    if (blk.nonce == 0) blk.timestamp++;
+  }
+}
+
+void fillNonce(CryptoNote::Block& blk, const Difficulty& diffic,
+               CryptoNote::Blockchain* blockchain,
+               const CryptoNote::AccountBase& minerAcc) {
+  blk.nonce = 0;
+  Crypto::cn_context context;
+  while (true) {
+    Crypto::Hash h;
+    signTestBlock(blk, minerAcc);
     if (computeBlockLongHashForTest(context, blk, h, blockchain) &&
         check_hash(h, diffic))
       break;

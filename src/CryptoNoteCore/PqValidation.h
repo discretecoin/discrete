@@ -93,8 +93,9 @@ bool checkFreeRegPow(const std::array<uint8_t, 1184>& viewPub,
 // against the on-disk pq_nullifiers set.
 //
 // Checks, in order (fail fast on the cheap ones):
-//  - resolved.size() == inputs.size(); every referenced output exists, is a
-//    PqOutput, and is not coinbase
+//  - resolved.size() == inputs.size(); every referenced output exists and is a
+//    PqOutput (coinbase PqOutputs are spendable; their maturity is enforced by
+//    the chain-context caller, not here)
 //  - spend_commit(authPub, rhoReveal) == referenced spendCommit
 //  - intra-tx nullifier uniqueness
 //  - balance: sum(referenced amounts) == sum(output amounts) + fee, fee >= 0

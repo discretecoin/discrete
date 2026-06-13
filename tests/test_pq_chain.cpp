@@ -31,6 +31,7 @@
 #include "Wallet/PqTransactionBuilder.h"
 #include "Wallet/PqWalletState.h"
 #include "crypto_pq/PqOutputBuilder.h"
+#include "crypto_pq/PqScan.h"
 #include "crypto_pq/PqSeed.h"
 #include "crypto_pq/PqDerive.h"
 #include "crypto_pq/PqDsa.h"
@@ -80,8 +81,9 @@ bool mineBlock(CryptoNote::Core& core, const CryptoNote::Currency& currency,
 
   CryptoNote::Difficulty diff = core.getNextBlockDifficulty();
   if (diff > 1) {
-    // Version-aware PoW search (yespower for v5+).
-    fillNonce(blk, diff, &core.get_blockchain_storage());
+    // Discrete PoW commits to SHA3(ML-DSA signature), so the block must be
+    // re-signed after every nonce change. Use the signing fillNonce overload.
+    fillNonce(blk, diff, &core.get_blockchain_storage(), miner);
   }
   gen.addBlock(blk, 0, 0, sizes, generated);
 
@@ -109,7 +111,7 @@ bool mineBlockWithTxs(CryptoNote::Core& core, const CryptoNote::Currency& curren
 
   CryptoNote::Difficulty diff = core.getNextBlockDifficulty();
   if (diff > 1) {
-    fillNonce(blk, diff, &core.get_blockchain_storage());
+    fillNonce(blk, diff, &core.get_blockchain_storage(), miner);
   }
   gen.addBlock(blk, 0, 0, sizes, generated);
 
@@ -240,15 +242,16 @@ CryptoNote::PqWalletKeys pqKeysFromPattern(uint8_t a, uint8_t b) {
 }
 
 // Funded happy-path lifecycle through the LIVE Core:
-//   coinbase --TX_BRIDGE--> PQ output (mined) --scan--> PQ balance
-//   --TX_PQ--> accepted by consensus; a second spend of the same output (same
-//   nullifier) is rejected.
+//   mine PQ coinbase -> mature -> scan with miner PQ keys -> spend via TX_PQ
+//   (accepted by consensus); a second spend of the same output (same nullifier)
+//   is rejected. Discrete has no legacy chain or bridge, so the coinbase PqOutput
+//   is the sole funds source (spendable once matured).
 bool runFunded() {
   using namespace CryptoNote;
   Logging::ConsoleLogger logger(Logging::ERROR);
-  // v5/v6 must sit at height >= 12 (see run() — getBlockLongHash sampling needs
-  // height - 1 - unlockWindow(10) >= 1). Default unlock window (10) is kept, so
-  // the block-1 coinbase matures at height 11.
+  // getBlockLongHash sampling needs height - 1 - unlockWindow(10) >= 1, so v5/v6
+  // sit at height >= 12. Default unlock window (10) is kept, so the block-1
+  // coinbase matures at height 11.
   const Currency currency = CurrencyBuilder(logger)
       .testnet(true)
       .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
@@ -278,8 +281,8 @@ bool runFunded() {
 
   uint64_t ts = static_cast<uint64_t>(std::time(nullptr)) - 24 * 60 * 60;
   const uint64_t step = currency.difficultyTarget() * 10;  // hold difficulty at floor
-  // Mine to height 13 (v6 active at 13); the bridge block then lands at height 14
-  // (v6, valid getBlockLongHash sampling). The block-1 coinbase matured at 11.
+  // Mine to height 13 (v6 active). The block-1 coinbase matured at height 11, so
+  // by the tip (height 14) it is spendable.
   for (int i = 0; i < 13; ++i) {
     if (!expect(mineBlock(core, currency, gen, miner, ts), "funded: mine " + std::to_string(i + 1))) {
       core.deinit(); std::filesystem::remove_all(dataDir, ec); return false;
@@ -289,106 +292,80 @@ bool runFunded() {
 
   bool ok = true;
 
-  // Pull block-1's coinbase and pick its largest output to bridge.
+  // Pull block-1's coinbase: a single PqOutput addressed to the miner's PQ keys.
   Block blk1;
   ok &= expect(core.getBlockByHash(core.getBlockIdByHeight(1), blk1), "funded: load block 1");
   const Transaction& cb = blk1.baseTransaction;
   Crypto::Hash cbHash = getObjectHash(cb);
-  std::vector<uint32_t> gidx;
-  ok &= expect(core.get_tx_outputs_gindexs(cbHash, gidx), "funded: coinbase gindexs");
-  ok &= expect(gidx.size() == cb.outputs.size(), "funded: gindex count matches outputs");
+  ok &= expect(cb.outputs.size() == 1, "funded: coinbase has one PQ output");
+  ok &= expect(cb.outputs[0].target.type() == typeid(PqOutput), "funded: coinbase output is PqOutput");
   if (!ok) { core.deinit(); std::filesystem::remove_all(dataDir, ec); return false; }
 
-  size_t best = 0;
-  for (size_t i = 1; i < cb.outputs.size(); ++i) {
-    if (cb.outputs[i].amount > cb.outputs[best].amount) best = i;
-  }
-  uint64_t inAmount = cb.outputs[best].amount;
-  Crypto::PublicKey oneTimeKey = boost::get<KeyOutput>(cb.outputs[best].target).key;
-  Crypto::PublicKey cbTxPub = getTransactionPublicKeyFromExtra(cb.extra);
+  uint64_t inAmount = cb.outputs[0].amount;
+  const PqOutput& cbOut = boost::get<PqOutput>(cb.outputs[0].target);
 
-  // Bridge that coinbase output to a PQ recipient (ring size 0).
-  PqWalletKeys recip = pqKeysFromPattern(7, 3);
-  std::vector<BridgeLegacyInput> bins(1);
-  bins[0].senderKeys = miner.getAccountKeys();
-  bins[0].keyInfo.amount = inAmount;
-  bins[0].keyInfo.outputs.push_back(TransactionTypes::GlobalOutput{oneTimeKey, gidx[best]});
-  bins[0].keyInfo.realOutput.transactionPublicKey = cbTxPub;
-  bins[0].keyInfo.realOutput.transactionIndex = 0;
-  bins[0].keyInfo.realOutput.outputInTransaction = best;
+  // Scan the coinbase with the miner's PQ scan keys (viewSk decapsulates, spendPub
+  // recomputes the ownership commitment). inputsHash is zeros for a coinbase.
+  CryptoPQ::PqScanKeys scan{miner.pqViewSk(), miner.pqSpendPk()};
+  CryptoPQ::Hash256 cbIh = pqTransactionInputsHash(cb);
+  CryptoPQ::PqScanOutput so;
+  so.outputIndex = 0;
+  so.amount = inAmount;
+  std::memcpy(so.kemCt.data(), cbOut.kemCt.data(), so.kemCt.size());
+  so.encPayload = cbOut.encPayload;
+  std::memcpy(so.spendCommit.data(), cbOut.spendCommit.data, 32);
+  auto owned = CryptoPQ::scanPqOutput(scan, cbIh, so);
+  ok &= expect(static_cast<bool>(owned), "funded: miner scans its own coinbase PQ output");
+  ok &= expect(owned && owned->amount == inAmount, "funded: scanned amount matches coinbase reward");
+  if (!ok) { core.deinit(); std::filesystem::remove_all(dataDir, ec); return false; }
 
-  // Bridge has classical inputs, so it must clear the legacy minimum fee
-  // (getMinimalFee), not the tiny PQ feerate.
-  uint64_t bridgeFee = currency.getMinimalFee(core.getCurrentBlockchainHeight()) * 2 + 1000000;
-  uint64_t bridgeOut = inAmount - bridgeFee;
-  Transaction bridgeTx = buildBridgeTransaction(
-      bins, {PqSendOutput{recip.viewPub, recip.spendPub, bridgeOut}});
+  // Build the spendable input descriptor from the scanned record.
+  std::vector<PqSpendInput> spendIns(1);
+  spendIns[0].prevTxid = cbHash;
+  spendIns[0].prevOutIndex = 0;
+  spendIns[0].amount = inAmount;
+  spendIns[0].rho = owned->rho;
 
-  ok &= expect(checkBridgeTransactionSemantic(bridgeTx, nullptr), "funded: bridge shape valid");
+  // Spend the matured coinbase PQ output via TX_PQ through the live consensus
+  // dispatch. The spender is the miner (its long-term ML-DSA spend keypair).
+  PqWalletKeys recip2 = pqKeysFromPattern(9, 2);
+  uint64_t pqFee = 1000000;
+  Transaction spend = buildPqTransaction(
+      spendIns, {PqSendOutput{recip2.viewPub, recip2.spendPub, inAmount - pqFee}},
+      miner.pqSpendPk(), miner.pqSpendSk());
 
-  // Relay the bridge into the mempool first: a block carries only tx hashes, so
-  // the node validates the block by pulling the tx body from the pool.
-  Crypto::Hash bridgeHash = getObjectHash(bridgeTx);
-  {
-    BinaryArray blob = toBinaryArray(bridgeTx);
-    tx_verification_context btvc{};
-    core.handleIncomingTransaction(bridgeTx, bridgeHash, blob.size(), btvc, false,
-                                   core.getCurrentBlockchainHeight());
-    ok &= expect(btvc.m_added_to_pool && !btvc.m_verification_failed,
-                 "funded: bridge accepted to mempool");
-  }
-  ok &= expect(mineBlockWithTxs(core, currency, gen, miner, ts, {bridgeTx}),
-               "funded: bridge tx mined into a block");
-  ts += currency.difficultyTarget();
+  Crypto::Hash spendHash = getObjectHash(spend);
+  BinaryArray spendBlob = toBinaryArray(spend);
+  tx_verification_context tvc{};
+  core.handleIncomingTransaction(spend, spendHash, spendBlob.size(), tvc, false,
+                                 core.getCurrentBlockchainHeight());
+  ok &= expect(tvc.m_added_to_pool && !tvc.m_verification_failed,
+               "funded: TX_PQ spending the matured coinbase accepted by consensus");
+  ok &= expect(tvc.m_should_be_relayed, "funded: TX_PQ marked for relay");
 
-  // Scan the bridged output -> PQ balance credited.
-  PqWalletState st(recip);
-  bool credited = st.processTransaction(bridgeTx, bridgeHash, core.getCurrentBlockchainHeight() - 1);
-  ok &= expect(credited && st.balance() == bridgeOut, "funded: PQ balance credited from bridge");
-
-  // Spend the bridged PQ output via TX_PQ through the live consensus dispatch.
-  std::vector<PqSpendInput> spendIns = st.spendableInputs();
-  ok &= expect(spendIns.size() == 1, "funded: one spendable PQ input");
-  if (ok) {
-    PqWalletKeys recip2 = pqKeysFromPattern(9, 2);
-    uint64_t pqFee = 1000000;
-    Transaction spend = buildPqTransaction(
-        spendIns, {PqSendOutput{recip2.viewPub, recip2.spendPub, bridgeOut - pqFee}},
-        recip.spendPub, recip.spendSk);
-
-    Crypto::Hash spendHash = getObjectHash(spend);
-    BinaryArray spendBlob = toBinaryArray(spend);
-    tx_verification_context tvc{};
-    core.handleIncomingTransaction(spend, spendHash, spendBlob.size(), tvc, false,
-                                   core.getCurrentBlockchainHeight());
-    ok &= expect(tvc.m_added_to_pool && !tvc.m_verification_failed,
-                 "funded: TX_PQ spending the bridged output accepted by consensus");
-    ok &= expect(tvc.m_should_be_relayed, "funded: TX_PQ marked for relay");
-
-    bool foundSpendInPool = false;
-    uint64_t storedPqFee = 0;
-    for (const auto& txd : core.getMemoryPool()) {
-      if (std::memcmp(txd.id.data, spendHash.data, sizeof(spendHash.data)) == 0) {
-        foundSpendInPool = true;
-        storedPqFee = txd.fee;
-        break;
-      }
+  bool foundSpendInPool = false;
+  uint64_t storedPqFee = 0;
+  for (const auto& txd : core.getMemoryPool()) {
+    if (std::memcmp(txd.id.data, spendHash.data, sizeof(spendHash.data)) == 0) {
+      foundSpendInPool = true;
+      storedPqFee = txd.fee;
+      break;
     }
-    ok &= expect(foundSpendInPool && storedPqFee == pqFee,
-                 "funded: TX_PQ stored in mempool with actual fee");
-
-    // Double-spend: a second TX_PQ over the same output (same nullifier) rejected.
-    PqWalletKeys recip3 = pqKeysFromPattern(4, 4);
-    Transaction spend2 = buildPqTransaction(
-        spendIns, {PqSendOutput{recip3.viewPub, recip3.spendPub, bridgeOut - pqFee}},
-        recip.spendPub, recip.spendSk);
-    Crypto::Hash spend2Hash = getObjectHash(spend2);
-    BinaryArray spend2Blob = toBinaryArray(spend2);
-    tx_verification_context tvc2{};
-    core.handleIncomingTransaction(spend2, spend2Hash, spend2Blob.size(), tvc2, false,
-                                   core.getCurrentBlockchainHeight());
-    ok &= expect(!tvc2.m_added_to_pool, "funded: double-spend of PQ output rejected");
   }
+  ok &= expect(foundSpendInPool && storedPqFee == pqFee,
+               "funded: TX_PQ stored in mempool with actual fee");
+
+  // Double-spend: a second TX_PQ over the same output (same nullifier) rejected.
+  PqWalletKeys recip3 = pqKeysFromPattern(4, 4);
+  Transaction spend2 = buildPqTransaction(
+      spendIns, {PqSendOutput{recip3.viewPub, recip3.spendPub, inAmount - pqFee}},
+      miner.pqSpendPk(), miner.pqSpendSk());
+  Crypto::Hash spend2Hash = getObjectHash(spend2);
+  BinaryArray spend2Blob = toBinaryArray(spend2);
+  tx_verification_context tvc2{};
+  core.handleIncomingTransaction(spend2, spend2Hash, spend2Blob.size(), tvc2, false,
+                                 core.getCurrentBlockchainHeight());
+  ok &= expect(!tvc2.m_added_to_pool, "funded: double-spend of PQ output rejected");
 
   core.deinit();
   std::filesystem::remove_all(dataDir, ec);

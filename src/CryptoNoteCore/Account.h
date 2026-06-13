@@ -19,6 +19,8 @@
 
 #include "CryptoNoteCore/CryptoNoteBasic.h"
 #include "crypto/crypto.h"
+#include "crypto_pq/PqDsa.h"
+#include "crypto_pq/PqKem.h"
 
 namespace CryptoNote {
 
@@ -42,6 +44,12 @@ namespace CryptoNote {
     void set_createtime(uint64_t val) { m_creation_timestamp = val; }
     void serialize(ISerializer& s);
 
+    // PQ keypair — native Discrete keys used for block signing and coinbase outputs.
+    const CryptoPQ::DsaPublicKey& pqSpendPk() const { return m_pqSpendPk; }
+    const CryptoPQ::DsaSecretKey& pqSpendSk() const { return m_pqSpendSk; }
+    const CryptoPQ::KemPublicKey& pqViewPk()  const { return m_pqViewPk;  }
+    const CryptoPQ::KemSecretKey& pqViewSk()  const { return m_pqViewSk;  }
+
     template <class t_archive>
     inline void serialize(t_archive &a, const unsigned int /*ver*/) {
       a & m_keys;
@@ -52,5 +60,9 @@ namespace CryptoNote {
     void setNull();
     AccountKeys m_keys;
     uint64_t m_creation_timestamp;
+    CryptoPQ::DsaPublicKey m_pqSpendPk{};
+    CryptoPQ::DsaSecretKey m_pqSpendSk{};
+    CryptoPQ::KemPublicKey m_pqViewPk{};
+    CryptoPQ::KemSecretKey m_pqViewSk{};
   };
 }

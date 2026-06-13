@@ -35,15 +35,20 @@ CryptoPQ::Hash256 pqTransactionInputsHash(const TransactionPrefix& tx) {
   std::vector<CryptoPQ::InputRef> refs;
   refs.reserve(tx.inputs.size());
   for (const auto& input : tx.inputs) {
-    CryptoPQ::InputRef ref{};
     if (input.type() == typeid(PqInput)) {
       const PqInput& in = boost::get<PqInput>(input);
+      CryptoPQ::InputRef ref{};
       std::memcpy(ref.prevTxid.data(), in.prevTxid.data, 32);
       ref.prevOutIndex = in.prevOutIndex;
+      refs.push_back(ref);
+    } else if (input.type() == typeid(BaseInput)) {
+      // Coinbase: no prior outpoints — inputsHash is zeros, matching constructMinerTxPq.
     } else {
       throw std::runtime_error("pqTransactionInputsHash: unsupported input type");
     }
-    refs.push_back(ref);
+  }
+  if (refs.empty()) {
+    return CryptoPQ::Hash256{};  // coinbase convention: zeros
   }
   return CryptoPQ::inputsHash(refs);
 }

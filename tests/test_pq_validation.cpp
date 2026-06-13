@@ -167,11 +167,15 @@ TEST(PqValidation, RejectsMissingReferencedOutput) {
     EXPECT_FALSE(checkPqTransactionInputs(b.tx, b.resolved, kMinFee, nullptr, &err));
 }
 
-TEST(PqValidation, RejectsCoinbaseReference) {
+TEST(PqValidation, AcceptsCoinbaseReference) {
+    // Discrete: coinbase PqOutputs ARE spendable (sole funds source — no legacy
+    // chain or bridge). The context-free check accepts a coinbase reference;
+    // coinbase maturity (minedMoneyUnlockWindow) is enforced by the chain-context
+    // caller (Blockchain::checkPqInputs), exercised end-to-end by PqChainTests.
     BuiltTx b = buildSignedTx(1000000, 900000);
     b.resolved[0].isCoinbase = true;
     std::string err;
-    EXPECT_FALSE(checkPqTransactionInputs(b.tx, b.resolved, kMinFee, nullptr, &err));
+    EXPECT_TRUE(checkPqTransactionInputs(b.tx, b.resolved, kMinFee, nullptr, &err)) << err;
 }
 
 TEST(PqValidation, RejectsOutputsExceedInputs) {
@@ -241,8 +245,8 @@ TEST(PqValidation, SemanticRejectsLegacySignatures) {
 
 TEST(PqValidation, SemanticRejectsMixedFamilyInput) {
     BuiltTx b = buildSignedTx(1000000, 900000);
-    KeyInput ki; ki.amount = 1; ki.keyImage = Crypto::KeyImage{};
-    b.tx.inputs.push_back(ki);
+    BaseInput bi; bi.blockIndex = 1;  // any non-PqInput in a TX_PQ is rejected
+    b.tx.inputs.push_back(bi);
     std::string err;
     EXPECT_FALSE(checkPqTransactionSemantic(b.tx, &err));
 }
@@ -263,108 +267,14 @@ TEST(PqValidation, SemanticRejectsWrongFieldSize) {
 
 // --- TX_BRIDGE semantic (classical inputs -> PQ outputs) -------------------
 
-namespace {
-
-PqOutput makeBridgePqOutput(uint64_t amount) {
-    CryptoPQ::SeedMaster mr = pat<32>(4, 1);
-    auto v = CryptoPQ::deriveViewKeys(mr);
-    auto s = CryptoPQ::deriveSpendKeys(mr);
-    CryptoPQ::Hash256 ih = pat<32>(1, 1);
-    CryptoPQ::PqBuiltOutput built =
-        CryptoPQ::buildPqOutput(v.first, s.first, ih, 0, amount);
-    PqOutput po;
-    po.kemCt = toVec(built.kemCt);
-    po.encPayload = built.encPayload;
-    std::memcpy(po.spendCommit.data, built.spendCommit.data(), 32);
-    return po;
-}
-
-KeyOutput makeBridgeKeyOutput() {
-    KeyOutput out;
-    Crypto::SecretKey sk;
-    Crypto::generate_keys(out.key, sk);
-    return out;
-}
-
-Transaction makeBridgeTx() {
+// TX_BRIDGE (legacy→PQ migration) does not exist in Discrete — there is no
+// legacy chain to migrate from. The subtype constant survives for wire
+// compatibility, but checkBridgeTransactionSemantic rejects every such tx.
+TEST(PqValidation, BridgeAlwaysRejectedInDiscrete) {
     Transaction tx;
     tx.version = TRANSACTION_VERSION_PQ;
     tx.txType = TX_BRIDGE;
     tx.unlockTime = 0;
-    KeyInput ki; ki.amount = 1000000; ki.outputIndexes = {0, 1};
-    ki.keyImage = Crypto::KeyImage{};
-    tx.inputs.push_back(ki);
-    TransactionOutput out; out.amount = 900000; out.target = makeBridgePqOutput(900000);
-    tx.outputs.push_back(out);
-    // Bridge keeps the classical ring-signature vector (validated downstream).
-    tx.signatures.resize(1);
-    return tx;
-}
-
-}  // namespace
-
-TEST(PqValidation, BridgeAcceptsValidShape) {
-    Transaction tx = makeBridgeTx();
-    std::string err;
-    EXPECT_TRUE(checkBridgeTransactionSemantic(tx, &err)) << err;
-}
-
-TEST(PqValidation, BridgeAcceptsClassicalChangeOutput) {
-    Transaction tx = makeBridgeTx();
-    TransactionOutput out; out.amount = 100000; out.target = makeBridgeKeyOutput();
-    tx.outputs.push_back(out);
-    std::string err;
-    EXPECT_TRUE(checkBridgeTransactionSemantic(tx, &err)) << err;
-}
-
-TEST(PqValidation, BridgeRejectsWrongSubtype) {
-    Transaction tx = makeBridgeTx();
-    tx.txType = TX_PQ;
-    std::string err;
-    EXPECT_FALSE(checkBridgeTransactionSemantic(tx, &err));
-}
-
-TEST(PqValidation, BridgeRejectsPqInput) {
-    Transaction tx = makeBridgeTx();
-    PqInput in;
-    in.prevTxid = hashPat(1, 0); in.prevOutIndex = 0;
-    in.authPub.assign(PQ_AUTH_PUB_SIZE, 0);
-    in.rhoReveal.assign(PQ_RHO_SIZE, 0);
-    in.signature.assign(PQ_SIGNATURE_SIZE, 0);
-    tx.inputs.push_back(in);  // mixing a PQ input into a bridge
-    std::string err;
-    EXPECT_FALSE(checkBridgeTransactionSemantic(tx, &err));
-}
-
-TEST(PqValidation, BridgeRejectsOnlyClassicalOutput) {
-    Transaction tx = makeBridgeTx();
-    tx.outputs.clear();
-    TransactionOutput out; out.amount = 1; out.target = makeBridgeKeyOutput();
-    tx.outputs.push_back(out);
-    std::string err;
-    EXPECT_FALSE(checkBridgeTransactionSemantic(tx, &err));
-}
-
-TEST(PqValidation, BridgeRejectsInvalidClassicalOutput) {
-    Transaction tx = makeBridgeTx();
-    KeyOutput badKey;
-    std::memset(badKey.key.data, 0xFF, sizeof(badKey.key.data));
-    TransactionOutput out; out.amount = 1; out.target = badKey;
-    tx.outputs.push_back(out);
-    std::string err;
-    EXPECT_FALSE(checkBridgeTransactionSemantic(tx, &err));
-}
-
-TEST(PqValidation, BridgeRejectsUnlockTime) {
-    Transaction tx = makeBridgeTx();
-    tx.unlockTime = 1;
-    std::string err;
-    EXPECT_FALSE(checkBridgeTransactionSemantic(tx, &err));
-}
-
-TEST(PqValidation, BridgeRejectsZeroAmountOutput) {
-    Transaction tx = makeBridgeTx();
-    tx.outputs[0].amount = 0;
     std::string err;
     EXPECT_FALSE(checkBridgeTransactionSemantic(tx, &err));
 }
@@ -417,8 +327,8 @@ TEST(PqValidation, FreeRegRejectsWrongSubtype) {
 
 TEST(PqValidation, FreeRegRejectsNonEmptyInputs) {
     Transaction tx = makeFreeRegTx();
-    KeyInput ki; ki.amount = 1; ki.keyImage = Crypto::KeyImage{};
-    tx.inputs.push_back(ki);
+    BaseInput bi; bi.blockIndex = 1;  // any input at all is disallowed for TX_FREE_REG
+    tx.inputs.push_back(bi);
     std::string err;
     EXPECT_FALSE(checkFreeRegTransactionSemantic(tx, &err));
 }

@@ -134,23 +134,27 @@ TEST(PqWire, TamperedByteChangesContent) {
     EXPECT_NE(toBinaryArray(tx2), toBinaryArray(tx));  // but content differs
 }
 
-TEST(PqWire, LegacyV1HasNoTxTypeByte) {
-    // A v1 transaction must serialize without a txType byte (backward compat):
-    // its prefix is unchanged from before the PQ fork.
+TEST(PqWire, SingleVersionAlwaysCarriesTxTypeByte) {
+    // Discrete has no legacy dual-version wire format: version 1 IS the PQ
+    // version, so every transaction carries a txType byte on the wire and it
+    // round-trips. (Coinbase shape: BaseInput + a single PqOutput.)
     Transaction tx;
-    tx.version = 1;
+    tx.version = TRANSACTION_VERSION_PQ;  // == 1
+    tx.txType = TX_PQ;
     tx.unlockTime = 0;
     BaseInput bi; bi.blockIndex = 5;
     tx.inputs.push_back(bi);
-    KeyOutput ko{};
-    TransactionOutput out; out.amount = 50; out.target = ko;
+    PqOutput po;
+    po.kemCt.assign(PQ_KEM_CIPHERTEXT_SIZE, 0);
+    po.encPayload.assign(PQ_ENC_PAYLOAD_SIZE, 0);
+    TransactionOutput out; out.amount = 50; out.target = po;
     tx.outputs.push_back(out);
 
     BinaryArray ba = toBinaryArray(tx);
     Transaction tx2;
     ASSERT_TRUE(fromBinaryArray(tx2, ba));
-    EXPECT_EQ(tx2.version, 1);
-    EXPECT_EQ(tx2.txType, 0);  // defaulted, not read from wire
+    EXPECT_EQ(tx2.version, TRANSACTION_VERSION_PQ);
+    EXPECT_EQ(tx2.txType, TX_PQ);  // read back from wire, not defaulted
 }
 
 int main(int argc, char** argv) {

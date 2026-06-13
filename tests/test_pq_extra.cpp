@@ -21,21 +21,20 @@
 
 using namespace CryptoNote;
 
-TEST(PqTaxonomy, TransactionVersionAndBlockMajor) {
-    EXPECT_EQ(2, TRANSACTION_VERSION_PQ);
-    EXPECT_EQ(6, BLOCK_MAJOR_VERSION_6);  // PQ activation slot
+TEST(PqTaxonomy, TransactionVersion) {
+    // Discrete has a single transaction version: PQ is active from genesis, so
+    // TRANSACTION_VERSION_PQ is the one and only (and current) version.
+    EXPECT_EQ(1, TRANSACTION_VERSION_PQ);
+    EXPECT_EQ(TRANSACTION_VERSION_PQ, CURRENT_TRANSACTION_VERSION);
 }
 
-TEST(PqTaxonomy, MaxExtraSizeIsVersionGated) {
-    // Behaviour-preserving for all pre-PQ (< v6) blocks.
-    EXPECT_EQ(parameters::MAX_EXTRA_SIZE, maxExtraSize(1));
-    EXPECT_EQ(parameters::MAX_EXTRA_SIZE, maxExtraSize(5));
-    // Raised from the PQ fork onward.
+TEST(PqTaxonomy, MaxExtraSizeIsPqSizeForAllVersions) {
+    // Discrete is PQ from genesis — the extra-size cap is NOT version-gated; it
+    // is always the PQ cap, large enough to hold a 1184-byte view key.
+    EXPECT_EQ(parameters::MAX_EXTRA_SIZE_PQ, maxExtraSize(1));
     EXPECT_EQ(parameters::MAX_EXTRA_SIZE_PQ, maxExtraSize(6));
     EXPECT_EQ(parameters::MAX_EXTRA_SIZE_PQ, maxExtraSize(7));
-    // A 1184-byte view key must fit only after the bump.
-    EXPECT_GT(maxExtraSize(6), TX_EXTRA_PQ_VIEW_PUBKEY_SIZE + 1);
-    EXPECT_LT(maxExtraSize(5), TX_EXTRA_PQ_VIEW_PUBKEY_SIZE + 1);
+    EXPECT_GT(maxExtraSize(1), TX_EXTRA_PQ_VIEW_PUBKEY_SIZE + 1);
 }
 
 TEST(PqTaxonomy, SubtypeEnumValues) {
