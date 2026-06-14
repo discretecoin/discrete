@@ -251,6 +251,8 @@ void serialize(TransactionInputs & inputs, ISerializer & serializer) {
 
 void serialize(TransactionOutput& output, ISerializer& serializer) {
   serializer(output.amount, "amount");
+  // Per-output spend lock (consensus). See TransactionOutput in CryptoNote.h.
+  serializer(output.unlockHeight, "unlock_height");
   serializer(output.target, "target");
 }
 

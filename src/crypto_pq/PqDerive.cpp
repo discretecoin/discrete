@@ -118,6 +118,7 @@ Hash256 txSigningDigest(const UnsignedTx& tx) noexcept {
   for (const auto& out : tx.outputs) {
     buf.push_back(out.type);
     appendLe64(buf, out.amount);
+    appendLe64(buf, out.unlockHeight);
     appendBytes(buf, out.kemCt.data(), out.kemCt.size());
     appendBytes(buf, out.encPayload.data(), out.encPayload.size());
     appendBytes(buf, out.spendCommit.data(), out.spendCommit.size());

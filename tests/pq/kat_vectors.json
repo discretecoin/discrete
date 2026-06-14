@@ -80,7 +80,7 @@
       "output": "93722da8561f4e172bdfc97d8abbde3ce29b09dc29c86fcb9edb550870c20869"
     },
     "tx_signing_digest": {
-      "_note": "Amended §8.1: binds version || txType || LE64(unlockHeight) || inputs || outputs || LE32(extra_len)||extra || LE64(fee). txType/unlockHeight/extra added to close a malleability gap (txid covers them).",
+      "_note": "Amended §8.1: binds version || txType || LE64(unlockHeight) || inputs || outputs || LE32(extra_len)||extra || LE64(fee). Each output binds type || LE64(amount) || LE64(unlockHeight) || kemCt || encPayload || spendCommit. txType/tx-unlockHeight/extra and the per-output unlockHeight are bound to close malleability gaps (txid covers them).",
       "version": 2,
       "txType": 1,
       "unlockHeight": 0,
@@ -97,13 +97,14 @@
         {
           "type": 16,
           "amount": 1000000,
+          "unlockHeight": 0,
           "kem_ct": "pat(1088,7,3)",
           "enc_payload": "pat(48,2,1)",
           "spend_commit": "<spend_commit above>"
         }
       ],
       "fee": 12345,
-      "output": "c875c53291a7b0b0acdd8888780e680af7ff9f21087390dce1eb9ad85d78b732"
+      "output": "edbbbf3f1ad8217f704a7abd253ea134c64347f75c30ce682ea91519e2d48057"
     }
   }
 }

@@ -50,6 +50,7 @@ TransactionOutput makePqOutput() {
     o.spendCommit = hashPat(4, 5);
     TransactionOutput out;
     out.amount = 1000000;
+    out.unlockHeight = 80000;  // per-output spend lock; must round-trip on the wire
     out.target = o;
     return out;
 }
@@ -95,6 +96,7 @@ TEST(PqWire, RoundTrip) {
     EXPECT_EQ(tx2.pqSignatures[0], tx.pqSignatures[0]);
 
     EXPECT_EQ(tx2.outputs[0].amount, 1000000u);
+    EXPECT_EQ(tx2.outputs[0].unlockHeight, 80000u);
     ASSERT_EQ(tx2.outputs[0].target.type(), typeid(PqOutput));
     const PqOutput& o = boost::get<PqOutput>(tx2.outputs[0].target);
     const PqOutput& o0 = boost::get<PqOutput>(tx.outputs[0].target);

@@ -121,6 +121,7 @@ txSigningDigest = SHA3-256(
     for each output:
         type (1 byte = 0x10)   ||
         LE64(amount)           ||
+        LE64(unlockHeight)     ||   // added per-output spend lock
         kemCt (1088)           ||
         encPayload (56)        ||
         spendCommit (32)       ||
@@ -132,4 +133,26 @@ txSigningDigest = SHA3-256(
 
 ---
 
-*Last updated: 2026-06-13 (Step 0.1 + Step 0.2 of Phase 0 wire freeze)*
+## 7. On-chain TransactionOutput layout
+
+Each `TransactionOutput` (`vout` entry) serializes as:
+
+```
+LE64(amount)                  ||
+LE64(unlockHeight)            ||   // added per-output spend lock
+type (1 byte = 0x10)          ||   // PqOutput variant tag
+kemCt (1088) || encPayload (56) || spendCommit (32)
+```
+
+`unlockHeight` is a consensus field: the output is unspendable until the chain
+reaches that block height (`0` = no lock). It is per-output — distinct from the
+per-tx `TransactionPrefix.unlockHeight` — so one transaction can time-lock some
+outputs (a vesting payment, a genesis premine tranche) while leaving others
+(change) spendable. It is bound into `txSigningDigest` (§6) and the txid, so it is
+not malleable. It is **not** part of `outContext` or the AEAD AAD (key derivation
+and ownership are independent of the lock).
+
+---
+
+*Last updated: 2026-06-14 (per-output unlockHeight added to the wire and
+signing digest;*

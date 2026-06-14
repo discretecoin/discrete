@@ -117,6 +117,7 @@ Transaction buildPqTransaction(const std::vector<PqSpendInput>& inputs,
 
     TransactionOutput out;
     out.amount = so.amount;
+    out.unlockHeight = so.unlockHeight;  // per-output spend lock (0 for change)
     out.target = std::move(po);
     tx.outputs.push_back(std::move(out));
 

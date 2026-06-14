@@ -11,6 +11,9 @@ CMakeSettings.json
 out/
 *.bak
 
+# Genesis preallocation recipient SECRETS (mnemonics). Never commit — keep offline.
+/genesis/
+
 # Transient test artifacts (PqChainTests data dirs + captured stdio)
 pq_*_test_data/
 test_out.txt

@@ -30,6 +30,7 @@
 #include "CryptoNoteBasicImpl.h"
 #include "CryptoNoteFormatUtils.h"
 #include "CryptoNoteTools.h"
+#include "GenesisPremine.h"
 #include "TransactionExtra.h"
 #include "UpgradeDetector.h"
 #include "crypto_pq/PqOutputBuilder.h"
@@ -118,16 +119,14 @@ namespace CryptoNote {
       fromBinaryArray(m_genesisBlock.baseTransaction, minerTxBlob);
 
     if (!r) {
-      // No valid hex — generate a PQ genesis coinbase from a deterministic zero seed.
-      // The genesis block signature is skipped at height 0 (validate_block_signature).
-      CryptoPQ::DsaKeypairSeed dsaSeed{};
-      CryptoPQ::KemKeypairSeed kemSeed{};
-      auto [dPk, dSk] = CryptoPQ::dsa_keygen_from_seed(dsaSeed);
-      auto [kPk, kSk] = CryptoPQ::kem_keygen_from_seed(kemSeed);
-      (void)dSk; (void)kSk;
-      if (!constructMinerTxPq(BLOCK_MAJOR_VERSION_1, 0, 0, 0, 0, 0, kPk, dPk,
-                               m_genesisBlock.baseTransaction)) {
-        logger(ERROR, BRIGHT_RED) << "Failed to create PQ genesis coinbase";
+      // No frozen hex yet — regenerate the deterministic premine coinbase. This
+      // is byte-identical to the hex once GENESIS_COINBASE_TX_HEX is frozen, so a
+      // node with the hex and a node regenerating agree. The genesis block
+      // signature is skipped at height 0 (validate_block_signature).
+      try {
+        m_genesisBlock.baseTransaction = buildGenesisPremineCoinbase();
+      } catch (const std::exception& e) {
+        logger(ERROR, BRIGHT_RED) << "Failed to create PQ genesis coinbase: " << e.what();
         return false;
       }
     }
@@ -282,6 +281,9 @@ namespace CryptoNote {
 
     TransactionOutput out;
     out.amount = blockReward;
+    // Per-output coinbase maturity lock (mirrors the per-tx unlockHeight set
+    // above). Spend gating in checkPqInputs reads the output's unlockHeight.
+    out.unlockHeight = tx.unlockHeight;
     out.target = std::move(po);
     tx.outputs.push_back(std::move(out));
 
@@ -367,8 +369,15 @@ namespace CryptoNote {
       Mainnet: keep original V5 reset behavior for consensus compatibility.
       Testnet: skip this reset. On low-height testnet this can produce bad/zero
       difficulty or interact badly with the small available window.
+
+      Discrete: LWMA (V5) is active from genesis (UPGRADE_HEIGHT_V5 == 0), so there
+      is no prior epoch to reset from. The `height != 0` guard skips the reset for
+      the first block after genesis — without it `cumulativeDifficulties[0] / height`
+      divides by zero (height is 0 here after the decrement above). For any network
+      with a non-zero V5 activation, height == upgradeHeightV5 implies height > 0, so
+      this guard preserves the original behavior.
     */
-    if (!isTestnet() && height == upgradeHeightV5) {
+    if (!isTestnet() && height != 0 && height == upgradeHeightV5) {
       Difficulty resetDifficulty =
         cumulativeDifficulties[0] / height / RESET_WORK_FACTOR_V5;
 
@@ -646,11 +655,10 @@ namespace CryptoNote {
   }
 
   Transaction CurrencyBuilder::generateGenesisTransaction() {
-    CryptoNote::Transaction tx;
-    Crypto::SecretKey txKey;
-    CryptoNote::AccountPublicAddress ac = boost::value_initialized<CryptoNote::AccountPublicAddress>();
-    m_currency.constructMinerTx(1, 0, 0, 0, 0, 0, ac, tx, txKey); // zero fee in genesis
-    return tx;
+    // Deterministic premine coinbase. Used by `discreted --print-genesis-tx` to
+    // emit GENESIS_COINBASE_TX_HEX. (The legacy ECC constructMinerTx path is dead
+    // in Discrete.)
+    return buildGenesisPremineCoinbase();
   }
   CurrencyBuilder& CurrencyBuilder::emissionSpeedFactor(unsigned int val) {
     if (val <= 0 || val > 8 * sizeof(uint64_t)) {

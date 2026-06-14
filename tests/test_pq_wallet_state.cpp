@@ -167,6 +167,44 @@ TEST(PqWalletState, SpendableInputsCarryRho) {
     EXPECT_TRUE(nonZero);
 }
 
+TEST(PqWalletState, RespectsPerOutputUnlockHeight) {
+    PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
+    PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
+
+    // `them` pays `me` 800000, with the output locked until height 1000.
+    std::vector<CryptoPQ::InputRef> refs(1);
+    for (auto& b : refs[0].prevTxid) b = 0xAB;
+    refs[0].prevOutIndex = 1;
+    CryptoPQ::Hash256 fih = CryptoPQ::inputsHash(refs);
+    CryptoPQ::PqBuiltOutput src =
+        CryptoPQ::buildPqOutput(them.viewPub, them.spendPub, fih, 0, 1000000);
+    PqSpendInput in;
+    for (std::size_t i = 0; i < 32; ++i) in.prevTxid.data[i] = static_cast<uint8_t>(0xAB + i);
+    in.prevOutIndex = 0;
+    in.amount = 1000000;
+    in.rho = src.rho;
+    PqSendOutput out{me.viewPub, me.spendPub, 800000};
+    out.unlockHeight = 1000;
+    Transaction tx = buildPqTransaction({in}, {out}, them.spendPub, them.spendSk);
+    Crypto::Hash txid = getObjectHash(tx);
+
+    PqWalletState st(me);
+    ASSERT_TRUE(st.processTransaction(tx, txid, 100));
+    ASSERT_EQ(st.outputs().size(), 1u);
+    EXPECT_EQ(st.outputs()[0].unlockHeight, 1000u);  // per-output lock recovered on scan
+    EXPECT_EQ(st.balance(), 800000u);                // owned regardless of lock
+
+    // Tip below the unlock height: the wallet must NOT offer it (consensus would
+    // reject the spend).
+    st.setLastScannedHeight(999);
+    EXPECT_TRUE(st.spendableInputs().empty());
+
+    // Tip at/after the unlock height: now spendable.
+    st.setLastScannedHeight(1000);
+    ASSERT_EQ(st.spendableInputs().size(), 1u);
+    EXPECT_EQ(st.spendableInputs()[0].amount, 800000u);
+}
+
 TEST(PqWalletState, SaveLoadRoundTrip) {
     PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
     PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));

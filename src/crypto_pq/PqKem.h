@@ -56,6 +56,18 @@ std::pair<KemPublicKey, KemSecretKey> kem_keygen_from_seed(const KemKeypairSeed&
 // the shared_secret is the IKM for per-output HKDFs.
 std::pair<KemCiphertext, KemShared> kem_encaps(const KemPublicKey& pub);
 
+// Deterministic encapsulation — reproducible from `seed`. The ML-KEM message m
+// (the only randomness Encaps consumes) is drawn from a seed-derived stream, so
+// a fixed (seed, pub) always yields the same (ciphertext, shared_secret). The
+// result is a real encapsulation the recipient can still decapsulate normally.
+//
+// Used to build a byte-identical genesis coinbase (so `--print-genesis-tx` is
+// reproducible). NOT thread-safe: it temporarily swaps the process-global OQS
+// RNG to a deterministic stream and restores the system RNG afterwards. Call
+// only from single-threaded genesis/tooling code, never on a hot path.
+std::pair<KemCiphertext, KemShared> kem_encaps_derand(const KemPublicKey& pub,
+                                                      const std::array<uint8_t, 32>& seed);
+
 // Decapsulate. Per FIPS 203, this NEVER returns an error: a malformed
 // ciphertext yields a deterministic pseudorandom shared secret rather than
 // signalling failure. The PQ output-scan path (spec §7) uses the AEAD tag

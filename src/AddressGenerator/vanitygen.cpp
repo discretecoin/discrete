@@ -21,10 +21,13 @@
 #endif
 
 #include <boost/program_options.hpp>
+#include <algorithm>
 #include <chrono>
 #include <fstream>
 #include <mutex>
 #include <random>
+#include <string>
+#include <vector>
 
 #include "Common/int-util.h"
 #include "Common/Base58.h"
@@ -42,6 +45,12 @@ extern "C"
 #include "CryptoNoteCore/Account.h"
 #include "CryptoNoteCore/Currency.h"
 #include "CryptoNoteCore/CryptoNoteBasicImpl.h"
+#include "CryptoNoteCore/GenesisPremine.h"
+#include "PqAddress.h"
+#include "crypto_pq/PqHash.h"
+#include "crypto_pq/PqSeed.h"
+#include "crypto_pq/PqKem.h"
+#include "crypto_pq/PqDsa.h"
 #include "Logging/LoggerGroup.h"
 #include "Logging/ConsoleLogger.h"
 #include "Logging/LoggerRef.h"
@@ -69,6 +78,9 @@ namespace command_line
   const command_line::arg_descriptor<int> arg_threads = {"threads", "Specify the number of threads to use", 1};
   const command_line::arg_descriptor<std::string> arg_file = {"file", "Specify the file name to save generated keys to file, "
     "by default found keys are just shown in console. If the file exists, new keys are appended"};
+  const command_line::arg_descriptor<int> arg_premine = {"premine-accounts",
+    "Generate N independent PQ accounts for the genesis premine: writes <file>.txt "
+    "(mnemonics/secrets) and <file>.inc (GenesisPremineKeys.inc with the public keys)", 0};
 }
 
 void seedFormater(std::string& seed) {
@@ -235,6 +247,91 @@ bool find_prefix(const po::variables_map& vm, Currency& currency, System::Dispat
     return found != 0;
 }
 
+// Generate N independent PQ accounts for the genesis premine. Each account is a
+// fresh classical keypair (with its 25-word electrum mnemonic) whose PQ identity
+// is derived EXACTLY as CryptoNote::derivePqWalletKeys does — so the same
+// mnemonic loaded into simplewallet recovers the premine. Public keys go into a
+// committed GenesisPremineKeys.inc; secrets go to a separate (gitignored) file.
+bool generate_premine_accounts(const po::variables_map& vm, Currency& currency) {
+    int count = command_line::get_arg(vm, command_line::arg_premine);
+    std::string filePrefix = command_line::get_arg(vm, command_line::arg_file);
+    if (filePrefix.empty()) filePrefix = "premine-accounts";
+
+    // CEMENTED wallet-layer seed domain (must match PqWallet.h kPqWalletSeedDomain).
+    static const char kSeedDomain[] = "karbo-pq-wallet-seed-v1";
+
+    std::ofstream secrets(filePrefix + ".txt", std::ofstream::out | std::ofstream::trunc);
+    if (!secrets) {
+        std::cerr << WarningMsg("Cannot open secrets file " + filePrefix + ".txt") << std::endl;
+        return false;
+    }
+    secrets << "# Discrete genesis premine recipient accounts — SECRET, keep offline.\n";
+    secrets << "# " << count << " independent accounts. Each mnemonic recovers its tranche in simplewallet.\n\n";
+
+    std::vector<std::string> viewHex, spendHex;
+    for (int i = 0; i < count; ++i) {
+        AccountKeys keys;
+        Crypto::SecretKey second;
+        Crypto::generate_keys(keys.address.spendPublicKey, keys.spendSecretKey);
+        keccak((uint8_t*)&keys.spendSecretKey, sizeof(Crypto::SecretKey), (uint8_t*)&second, sizeof(Crypto::SecretKey));
+        Crypto::generate_deterministic_keys(keys.address.viewPublicKey, keys.viewSecretKey, second);
+
+        std::string mnemonic, lang = "English";
+        Crypto::ElectrumWords::bytes_to_words(keys.spendSecretKey, mnemonic, lang);
+        std::string classicalAddr = currency.accountAddressAsString(keys.address);
+
+        // PQ identity = derivePqWalletKeys(spendSecretKey): seed_master = HKDF(
+        // spendSecret, domain), then ML-KEM view + ML-DSA spend keygen.
+        CryptoPQ::Hash256 okm = CryptoPQ::hkdf_sha3_256(
+            keys.spendSecretKey.data, sizeof(keys.spendSecretKey.data),
+            kSeedDomain, sizeof(kSeedDomain) - 1);
+        CryptoPQ::SeedMaster sm{};
+        std::copy(okm.begin(), okm.end(), sm.begin());
+        auto view = CryptoPQ::deriveViewKeys(sm);
+        auto spend = CryptoPQ::deriveSpendKeys(sm);
+
+        CryptoNote::PqAddress addr =
+            CryptoNote::makePqAddress(currency.publicAddressBase58Prefix(), view.first, spend.first);
+        std::string pqAddr = CryptoNote::encodePqAddress(addr, CryptoNote::PqAddressEncoding::Base58);
+
+        std::string vh = Common::toHex(view.first.data(), view.first.size());
+        std::string sh = Common::toHex(spend.first.data(), spend.first.size());
+        viewHex.push_back(vh);
+        spendHex.push_back(sh);
+
+        secrets << "## Tranche " << i << "\n";
+        secrets << "mnemonic:          " << mnemonic << "\n";
+        secrets << "classical_address: " << classicalAddr << "\n";
+        secrets << "pq_address:        " << pqAddr << "\n";
+        secrets << "spend_secret_hex:  " << Common::podToHex(keys.spendSecretKey) << "\n";
+        secrets << "view_pub_hex:      " << vh << "\n";
+        secrets << "spend_pub_hex:     " << sh << "\n\n";
+    }
+    secrets.close();
+
+    std::ofstream inc(filePrefix + ".inc", std::ofstream::out | std::ofstream::trunc);
+    if (!inc) {
+        std::cerr << WarningMsg("Cannot open include file " + filePrefix + ".inc") << std::endl;
+        return false;
+    }
+    inc << "// AUTO-GENERATED by `vanitygen --premine-accounts` — DO NOT EDIT BY HAND.\n";
+    inc << "//\n";
+    inc << "// Recipient PUBLIC keys for the genesis premine, one entry per tranche.\n";
+    inc << "// The matching mnemonics/secrets are NOT in the repo — see docs/GENESIS.md.\n\n";
+    inc << "static const char* const kGenesisPremineViewPubHex[CryptoNote::GENESIS_PREMINE_TRANCHES] = {\n";
+    for (const auto& h : viewHex) inc << "  \"" << h << "\",\n";
+    inc << "};\n\n";
+    inc << "static const char* const kGenesisPremineSpendPubHex[CryptoNote::GENESIS_PREMINE_TRANCHES] = {\n";
+    for (const auto& h : spendHex) inc << "  \"" << h << "\",\n";
+    inc << "};\n";
+    inc.close();
+
+    std::cout << SuccessMsg("\nGenerated " + std::to_string(count) + " premine accounts.\n");
+    std::cout << "  secrets: " << filePrefix << ".txt  (KEEP OFFLINE, do not commit)\n";
+    std::cout << "  keys:    " << filePrefix << ".inc  (copy to src/CryptoNoteCore/GenesisPremineKeys.inc)\n";
+    return true;
+}
+
 int main(int argc, char** argv) {
     LoggerManager logManager;
     LoggerRef logger(logManager, "vanitygen");
@@ -254,6 +351,7 @@ int main(int argc, char** argv) {
         command_line::add_arg(desc_cmd_only, command_line::arg_count);
         command_line::add_arg(desc_cmd_only, command_line::arg_threads);
         command_line::add_arg(desc_cmd_only, command_line::arg_file);
+        command_line::add_arg(desc_cmd_only, command_line::arg_premine);
 
         command_line::add_arg(desc_cmd_only, command_line::arg_help);
 
@@ -261,6 +359,10 @@ int main(int argc, char** argv) {
         {
             po::variables_map vm;
             po::store(po::parse_command_line(argc, argv, desc_cmd_only), vm);
+
+            if (command_line::get_arg(vm, command_line::arg_premine) > 0) {
+                return generate_premine_accounts(vm, currency);
+            }
 
             if (!command_line::get_arg(vm, command_line::arg_prefix).empty()) {
                 return find_prefix(vm, currency, dispatcher);

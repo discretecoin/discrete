@@ -281,7 +281,10 @@ namespace CryptoNote {
 
     KeyOutput outKey;
     derivePublicKey(to, txSecretKey(), transaction.outputs.size(), outKey.key);
-    TransactionOutput out = { amount, outKey };
+    TransactionOutput out;
+    out.amount = amount;
+    out.unlockHeight = 0;
+    out.target = outKey;
     transaction.outputs.emplace_back(out);
     invalidateHash();
 
@@ -291,7 +294,10 @@ namespace CryptoNote {
   size_t TransactionImpl::addOutput(uint64_t amount, const KeyOutput& out) {
     checkIfSigning();
     size_t outputIndex = transaction.outputs.size();
-    TransactionOutput realOut = { amount, out };
+    TransactionOutput realOut;
+    realOut.amount = amount;
+    realOut.unlockHeight = 0;
+    realOut.target = out;
     transaction.outputs.emplace_back(realOut);
     invalidateHash();
     return outputIndex;

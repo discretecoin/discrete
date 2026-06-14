@@ -24,12 +24,9 @@
 
 namespace CryptoNote
 {
-  namespace
-  {
-    boost::uuids::uuid name;
-    boost::uuids::name_generator gen(name);
-    boost::uuids::uuid u = gen(GENESIS_COINBASE_TX_HEX);
-  }
-  const static boost::uuids::uuid CRYPTONOTE_NETWORK = u;
+  // Discrete network id.
+  const static boost::uuids::uuid CRYPTONOTE_NETWORK =
+    { { 0xf5, 0x35, 0x66, 0xd4, 0x4d, 0x36, 0x35, 0x0e,
+        0x52, 0x51, 0x04, 0xc3, 0x38, 0xfa, 0xd8, 0x23 } };
 }
 

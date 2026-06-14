@@ -73,8 +73,8 @@ bool decodePqAddress(const std::string& str,
                      PqAddress& out,
                      PqAddressEncoding encoding = PqAddressEncoding::Base58);
 
-// For bech32m: the human-readable part. PQ mainnet/testnet prefix is an open
-// item; "karbopq" is a placeholder until the network byte is finalized.
-constexpr char kPqBech32Hrp[] = "karbopq";
+// For bech32m: the human-readable part. Discrete uses "disc". (Base58 remains
+// the default encoding; bech32m is opt-in for QR density.)
+constexpr char kPqBech32Hrp[] = "disc";
 
 }  // namespace CryptoNote

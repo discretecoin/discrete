@@ -138,7 +138,7 @@ TEST(PqDerive, TxSigningDigest) {
     tx.outputs.push_back(out);
 
     EXPECT_EQ(to_hex(txSigningDigest(tx)),
-              "3dc9fd8f06145dbe1b9752a166d20f94e23cce29d51888e2ac0e20a315f6cdf4");
+              "edbbbf3f1ad8217f704a7abd253ea134c64347f75c30ce682ea91519e2d48057");
 }
 
 TEST(PqDerive, TxSigningDigestIsTamperSensitive) {
@@ -177,6 +177,11 @@ TEST(PqDerive, TxSigningDigestIsTamperSensitive) {
 
     UnsignedTx t6 = tx; t6.extra = {0x01, 0x02, 0x03};
     EXPECT_NE(base, txSigningDigest(t6));
+
+    // Per-output unlockHeight is consensus and must be bound too — otherwise a
+    // relayer could change an output's spend lock without invalidating the sig.
+    UnsignedTx t7 = tx; t7.outputs[0].unlockHeight = 1;
+    EXPECT_NE(base, txSigningDigest(t7));
 }
 
 // ===========================================================================

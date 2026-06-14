@@ -52,6 +52,8 @@ struct PqWalletOutput {
   CryptoPQ::Rho rho{};
   Crypto::Hash  nullifier{};      // SHA3(spendPub || rho) — watched to detect spends
   uint32_t      height = 0;       // block height the output was received at
+  uint64_t      unlockHeight = 0; // per-output spend lock (0 = none); consensus
+                                  // rejects spends before this height
   bool          spent = false;
   uint32_t      spentHeight = 0;  // height the spend was seen at (when spent)
 };

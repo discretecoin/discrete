@@ -45,7 +45,9 @@ void readPod(std::istream& is, T& v) {
   is.read(reinterpret_cast<char*>(&v), sizeof(T));
 }
 
-constexpr uint8_t kPqStateFormatVersion = 1;
+// v2 added PqWalletOutput::unlockHeight. v1 blobs load with unlockHeight = 0
+// (the value for every pre-Phase-2 output anyway).
+constexpr uint8_t kPqStateFormatVersion = 2;
 
 }  // namespace
 
@@ -127,6 +129,7 @@ bool PqWalletState::processTransaction(const TransactionPrefix& tx, const Crypto
     rec.rho = owned->rho;
     rec.nullifier = nf;
     rec.height = height;
+    rec.unlockHeight = out.unlockHeight;  // per-output spend lock
     rec.spent = false;
     m_byNullifier.emplace(nf, m_outputs.size());
     m_outputs.push_back(rec);
@@ -150,6 +153,13 @@ std::vector<PqSpendInput> PqWalletState::spendableInputs() const {
   std::vector<PqSpendInput> out;
   for (const auto& o : m_outputs) {
     if (o.spent) {
+      continue;
+    }
+    // Per-output spend lock: do not offer an output the network would reject as
+    // still locked. m_lastScannedHeight approximates the chain tip; an output
+    // unlocks once the tip reaches its unlockHeight (0 = no lock). Conservative
+    // by design — better to wait than to build a tx that fails consensus.
+    if (o.unlockHeight != 0 && o.unlockHeight > m_lastScannedHeight) {
       continue;
     }
     PqSpendInput si;
@@ -211,6 +221,7 @@ void PqWalletState::save(std::ostream& os) const {
     os.write(reinterpret_cast<const char*>(o.rho.data()), 32);
     os.write(reinterpret_cast<const char*>(o.nullifier.data), 32);
     writePod(os, o.height);
+    writePod(os, o.unlockHeight);
     uint8_t spent = o.spent ? 1 : 0;
     writePod(os, spent);
     writePod(os, o.spentHeight);
@@ -242,6 +253,7 @@ void PqWalletState::load(std::istream& is) {
     is.read(reinterpret_cast<char*>(o.rho.data()), 32);
     is.read(reinterpret_cast<char*>(o.nullifier.data), 32);
     readPod(is, o.height);
+    readPod(is, o.unlockHeight);
     uint8_t spent = 0;
     readPod(is, spent);
     o.spent = spent != 0;

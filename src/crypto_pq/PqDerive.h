@@ -49,7 +49,7 @@ constexpr char kDomainSpendCommit[] = "karbo-pq-spend-commit-v1";
 constexpr char kDomainNullifier[]   = "karbo-pq-nullifier-v1";
 constexpr char kDomainTxSign[]      = "karbo-pq-tx-sign-v1";
 
-// RESERVED for Phase 2 (KDSK-CT) — MUST NOT be used by any v4-plain code.
+// RESERVED for Phase 2 (KDSK-CT) — MUST NOT be used by any v1-plain code.
 // A unit test asserts none of the tags above collides with this string.
 constexpr char kReservedCtMask[]    = "karbo-pq-ct-mask-v1";
 
@@ -79,6 +79,7 @@ struct DigestInput {
 struct DigestOutput {
   uint8_t                 type;
   uint64_t                amount;
+  uint64_t                unlockHeight = 0; // per-output spend lock (consensus)
   KemCiphertext           kemCt;       // 1088 bytes
   std::array<uint8_t, 56> encPayload;  // ChaCha20-Poly1305 ct||tag
   Hash256                 spendCommit; // 32 bytes

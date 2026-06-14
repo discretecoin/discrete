@@ -17,13 +17,43 @@
 
 #include "PqKem.h"
 
+#include <cstring>
 #include <stdexcept>
+
+#include "PqHash.h"
 
 extern "C" {
 #include <oqs/kem_ml_kem.h>
+#include <oqs/rand.h>
 }
 
 namespace CryptoPQ {
+
+namespace {
+
+// Deterministic RNG used only while building the genesis coinbase. The OQS
+// custom-RNG hook is a context-free function pointer, so the seed/counter live
+// in thread-local state. Stream = SHA3-256(seed || LE64(counter)) blocks.
+thread_local std::array<uint8_t, 32> g_derandSeed{};
+thread_local uint64_t                g_derandCounter = 0;
+
+void derandRng(uint8_t* out, size_t n) {
+  size_t off = 0;
+  while (off < n) {
+    uint8_t in[40];
+    std::memcpy(in, g_derandSeed.data(), 32);
+    for (int i = 0; i < 8; ++i) {
+      in[32 + i] = static_cast<uint8_t>((g_derandCounter >> (8 * i)) & 0xFF);
+    }
+    Hash256 block = sha3_256(in, sizeof(in));
+    size_t take = (n - off) < 32 ? (n - off) : 32;
+    std::memcpy(out + off, block.data(), take);
+    off += take;
+    ++g_derandCounter;
+  }
+}
+
+}  // namespace
 
 static_assert(kKemPublicKeyBytes  == OQS_KEM_ml_kem_768_length_public_key,    "ML-KEM-768 pubkey size mismatch");
 static_assert(kKemSecretKeyBytes  == OQS_KEM_ml_kem_768_length_secret_key,    "ML-KEM-768 secret key size mismatch");
@@ -57,6 +87,23 @@ std::pair<KemCiphertext, KemShared> kem_encaps(const KemPublicKey& pub) {
     OQS_STATUS rc = OQS_KEM_ml_kem_768_encaps(ct.data(), ss.data(), pub.data());
     if (rc != OQS_SUCCESS) {
         throw std::runtime_error("OQS_KEM_ml_kem_768_encaps failed");
+    }
+    return {ct, ss};
+}
+
+std::pair<KemCiphertext, KemShared> kem_encaps_derand(const KemPublicKey& pub,
+                                                      const std::array<uint8_t, 32>& seed) {
+    KemCiphertext ct;
+    KemShared     ss;
+    g_derandSeed = seed;
+    g_derandCounter = 0;
+    OQS_randombytes_custom_algorithm(&derandRng);
+    OQS_STATUS rc = OQS_KEM_ml_kem_768_encaps(ct.data(), ss.data(), pub.data());
+    // Always restore the secure system RNG, even on failure — otherwise later
+    // randomized OQS calls (e.g. kem_keygen) would inherit the deterministic RNG.
+    OQS_randombytes_switch_algorithm(OQS_RAND_alg_system);
+    if (rc != OQS_SUCCESS) {
+        throw std::runtime_error("OQS_KEM_ml_kem_768_encaps (derand) failed");
     }
     return {ct, ss};
 }

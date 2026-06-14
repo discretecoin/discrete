@@ -90,6 +90,7 @@ CryptoPQ::Hash256 pqSigningDigest(const Transaction& tx, uint64_t fee) {
     CryptoPQ::DigestOutput dou;
     dou.type = 0x10;  // PQ output variant tag
     dou.amount = out.amount;
+    dou.unlockHeight = out.unlockHeight;
     std::memcpy(dou.kemCt.data(), po.kemCt.data(), dou.kemCt.size());
     std::memcpy(dou.encPayload.data(), po.encPayload.data(), dou.encPayload.size());
     std::memcpy(dou.spendCommit.data(), po.spendCommit.data, 32);

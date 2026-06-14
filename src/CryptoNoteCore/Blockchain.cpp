@@ -1253,14 +1253,23 @@ bool Blockchain::prevalidate_miner_transaction(const Block& b, uint32_t height) 
     logger(ERROR, BRIGHT_RED) << "Coinbase transaction in the block has no inputs";
     return false;
   }
-  // Discrete: coinbase is a PQ transaction with one PqOutput.
-  if (!(b.baseTransaction.outputs.size() == 1)) {
+  // Discrete: coinbase is a PQ transaction. Normal blocks carry exactly one
+  // PqOutput; the genesis block (height 0) carries the premine allocation as
+  // multiple staggered per-output-unlock PqOutputs in the coinbase.
+  if (height == 0) {
+    if (b.baseTransaction.outputs.empty()) {
+      logger(ERROR, BRIGHT_RED) << "Genesis coinbase transaction must have at least one output";
+      return false;
+    }
+  } else if (!(b.baseTransaction.outputs.size() == 1)) {
     logger(ERROR, BRIGHT_RED) << "Only 1 output in coinbase transaction allowed";
     return false;
   }
-  if (!(b.baseTransaction.outputs[0].target.type() == typeid(PqOutput))) {
-    logger(ERROR, BRIGHT_RED) << "Coinbase transaction must have a PqOutput";
-    return false;
+  for (const auto& o : b.baseTransaction.outputs) {
+    if (!(o.target.type() == typeid(PqOutput))) {
+      logger(ERROR, BRIGHT_RED) << "Coinbase transaction must have PqOutputs only";
+      return false;
+    }
   }
   if (!(b.baseTransaction.pqSignatures.empty())) {
     logger(ERROR, BRIGHT_RED) << "Coinbase transaction must not have pqSignatures";
@@ -1276,7 +1285,10 @@ bool Blockchain::prevalidate_miner_transaction(const Block& b, uint32_t height) 
       << ", expected: " << height;
     return false;
   }
-  if (!(b.baseTransaction.unlockHeight == height + m_currency.minedMoneyUnlockWindow())) {
+  // Genesis (height 0) uses per-output unlockHeights for the premine tranches,
+  // so the per-tx unlockHeight equality does not apply there.
+  if (height != 0 &&
+      !(b.baseTransaction.unlockHeight == height + m_currency.minedMoneyUnlockWindow())) {
     logger(ERROR, BRIGHT_RED) << "Coinbase transaction has wrong unlock time="
       << b.baseTransaction.unlockHeight
       << ", expected " << (height + m_currency.minedMoneyUnlockWindow());
@@ -1307,6 +1319,18 @@ bool Blockchain::validate_miner_transaction(const Block& b, uint32_t height,
   for (auto& o : b.baseTransaction.outputs) {
     minerReward += o.amount;
   }
+
+  // Genesis (height 0) carries the premine allocation in its coinbase. There is
+  // no emission-curve "block reward" for it; the whole coinbase value is the
+  // premine and becomes alreadyGeneratedCoins for the next block. Accept the
+  // coinbase sum as-is (it is fixed forever by GENESIS_COINBASE_TX_HEX) and
+  // report it as the emission change.
+  if (height == 0) {
+    reward = minerReward;
+    emissionChange = static_cast<int64_t>(minerReward);
+    return true;
+  }
+
   std::vector<size_t> lastBlocksSizes;
   get_last_n_blocks_sizes(lastBlocksSizes, m_currency.rewardBlocksWindow());
   size_t blocksSizeMedian = Common::medianValue(lastBlocksSizes);
@@ -2152,11 +2176,14 @@ bool Blockchain::checkPqInputs(const Transaction& tx, uint32_t* pmax_used_block_
         if (in.prevOutIndex < te.tx.outputs.size()) {
           const TransactionOutput& o = te.tx.outputs[in.prevOutIndex];
           if (o.target.type() == typeid(PqOutput)) {
-            // Maturity: a coinbase PqOutput (or any output with a non-zero
-            // unlockHeight) can only be spent once its lock has elapsed. Mirrors
-            // the legacy check_tx_input path. Unmatured → treat as unresolved so
-            // checkPqTransactionInputs rejects with "referenced output does not exist".
-            if (is_tx_spendheight_unlocked(te.tx.unlockHeight)) {
+            // Maturity: a PqOutput (coinbase reward, a genesis premine tranche,
+            // or any output with a non-zero unlockHeight) can only be spent once
+            // its PER-OUTPUT lock has elapsed. Gating is on the referenced
+            // output's unlockHeight, not the producing tx's, so one tx can lock
+            // some outputs while leaving others (e.g. change) spendable.
+            // Unmatured → treat as unresolved so checkPqTransactionInputs rejects
+            // with "referenced output does not exist".
+            if (is_tx_spendheight_unlocked(o.unlockHeight)) {
               r.exists = true;
               r.isPqOutput = true;
               r.isCoinbase = (slot == 0);  // coinbase is always tx slot 0
