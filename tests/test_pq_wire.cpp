@@ -58,7 +58,7 @@ Transaction makePqTx() {
     Transaction tx;
     tx.version = TRANSACTION_VERSION_1;
     tx.txType = TX_PQ;
-    tx.unlockTime = 0;
+    tx.unlockHeight = 0;
     tx.inputs.push_back(makePqInput());
     tx.outputs.push_back(makePqOutput());
     // One ML-DSA-65 signature per PqInput; size fixed at compile time.
@@ -80,7 +80,7 @@ TEST(PqWire, RoundTrip) {
 
     EXPECT_EQ(tx2.version, TRANSACTION_VERSION_1);
     EXPECT_EQ(tx2.txType, TX_PQ);
-    EXPECT_EQ(tx2.unlockTime, 0u);
+    EXPECT_EQ(tx2.unlockHeight, 0u);
     ASSERT_EQ(tx2.inputs.size(), 1u);
     ASSERT_EQ(tx2.outputs.size(), 1u);
 
@@ -146,7 +146,7 @@ TEST(PqWire, SingleVersionAlwaysCarriesTxTypeByte) {
     Transaction tx;
     tx.version = TRANSACTION_VERSION_1;  // == 1
     tx.txType = TX_PQ;
-    tx.unlockTime = 0;
+    tx.unlockHeight = 0;
     BaseInput bi; bi.blockIndex = 5;
     tx.inputs.push_back(bi);
     PqOutput po;

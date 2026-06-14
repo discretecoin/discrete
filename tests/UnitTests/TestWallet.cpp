@@ -58,7 +58,7 @@ namespace CryptoNote {
       o << "WalletTransaction{state=" << tx.state << ", timestamp=" << tx.timestamp
         << ", blockHeight=" << tx.blockHeight << ", hash=" << tx.hash
         << ", totalAmount=" << tx.totalAmount << ", fee=" << tx.fee
-        << ", creationTime=" << tx.creationTime << ", unlockTime=" << tx.unlockTime
+        << ", creationTime=" << tx.creationTime << ", unlockHeight=" << tx.unlockHeight
         << ", extra=" << tx.extra  << ", isBase=" << tx.isBase << "}";
       return o;
     }
@@ -92,7 +92,7 @@ namespace CryptoNote {
         return false;
       }
 
-      if (lhs.unlockTime != rhs.unlockTime) {
+      if (lhs.unlockHeight != rhs.unlockHeight) {
         return false;
       }
 
@@ -195,17 +195,17 @@ protected:
   size_t sendMoneyToRandomAddressFrom(const std::string& address, const std::string& changeDestination);
 
   static size_t sendMoney(CryptoNote::WalletGreen& wallet, const std::vector<std::string>& sourceAdresses, const std::string& to,
-    uint64_t amount, uint64_t fee, uint64_t mixIn = 0, const std::string& extra = "", uint64_t unlockTimestamp = 0);
+    uint64_t amount, uint64_t fee, uint64_t mixIn = 0, const std::string& extra = "", uint64_t unlockHeightstamp = 0);
   static size_t sendMoney(CryptoNote::WalletGreen& wallet, const std::string& to, uint64_t amount, uint64_t fee,
-    uint64_t mixIn = 0, const std::string& extra = "", uint64_t unlockTimestamp = 0);
-  size_t sendMoney(const std::string& to, uint64_t amount, uint64_t fee, uint64_t mixIn = 0, const std::string& extra = "", uint64_t unlockTimestamp = 0);
+    uint64_t mixIn = 0, const std::string& extra = "", uint64_t unlockHeightstamp = 0);
+  size_t sendMoney(const std::string& to, uint64_t amount, uint64_t fee, uint64_t mixIn = 0, const std::string& extra = "", uint64_t unlockHeightstamp = 0);
   size_t sendMoneyWithDonation(const std::string& to, uint64_t amount, uint64_t fee,
-    const std::string& donationAddress, uint64_t donationAmount, uint64_t mixIn = 0, const std::string& extra = "", uint64_t unlockTimestamp = 0);
+    const std::string& donationAddress, uint64_t donationAmount, uint64_t mixIn = 0, const std::string& extra = "", uint64_t unlockHeightstamp = 0);
 
-  size_t makeTransaction(const std::vector<std::string>& sourceAdresses, const std::string& to, uint64_t amount, uint64_t fee, uint64_t mixIn = 0, const std::string& extra = "", uint64_t unlockTimestamp = 0);
-  size_t makeTransaction(CryptoNote::WalletGreen& wallet, const std::vector<std::string>& sourceAdresses, const std::string& to, uint64_t amount, uint64_t fee, uint64_t mixIn = 0, const std::string& extra = "", uint64_t unlockTimestamp = 0);
-  size_t makeTransaction(const std::vector<std::string>& sourceAdresses, const std::vector<CryptoNote::WalletOrder>& orders, uint64_t fee, uint64_t mixIn = 0, const std::string& extra = "", uint64_t unlockTimestamp = 0);
-  size_t makeTransaction(CryptoNote::WalletGreen& wallet, const std::vector<std::string>& sourceAdresses, const std::vector<CryptoNote::WalletOrder>& orders, uint64_t fee, uint64_t mixIn = 0, const std::string& extra = "", uint64_t unlockTimestamp = 0);
+  size_t makeTransaction(const std::vector<std::string>& sourceAdresses, const std::string& to, uint64_t amount, uint64_t fee, uint64_t mixIn = 0, const std::string& extra = "", uint64_t unlockHeightstamp = 0);
+  size_t makeTransaction(CryptoNote::WalletGreen& wallet, const std::vector<std::string>& sourceAdresses, const std::string& to, uint64_t amount, uint64_t fee, uint64_t mixIn = 0, const std::string& extra = "", uint64_t unlockHeightstamp = 0);
+  size_t makeTransaction(const std::vector<std::string>& sourceAdresses, const std::vector<CryptoNote::WalletOrder>& orders, uint64_t fee, uint64_t mixIn = 0, const std::string& extra = "", uint64_t unlockHeightstamp = 0);
+  size_t makeTransaction(CryptoNote::WalletGreen& wallet, const std::vector<std::string>& sourceAdresses, const std::vector<CryptoNote::WalletOrder>& orders, uint64_t fee, uint64_t mixIn = 0, const std::string& extra = "", uint64_t unlockHeightstamp = 0);
 
   void fillWalletWithDetailsCache();
 
@@ -460,7 +460,7 @@ void WalletApi::fillWalletWithDetailsCache() {
 }
 
 size_t WalletApi::sendMoney(CryptoNote::WalletGreen& wallet, const std::vector<std::string>& sourceAdresses, const std::string& to,
-  uint64_t amount, uint64_t fee, uint64_t mixIn, const std::string& extra, uint64_t unlockTimestamp) {
+  uint64_t amount, uint64_t fee, uint64_t mixIn, const std::string& extra, uint64_t unlockHeightstamp) {
 
   CryptoNote::WalletOrder order;
   order.address = to;
@@ -472,22 +472,22 @@ size_t WalletApi::sendMoney(CryptoNote::WalletGreen& wallet, const std::vector<s
   params.fee = fee;
   params.mixIn = mixIn;
   params.extra = extra;
-  params.unlockTimestamp = unlockTimestamp;
+  params.unlockHeightstamp = unlockHeightstamp;
   params.changeDestination = wallet.getAddress(0);
 
   return wallet.transfer(params);
 }
 
-size_t WalletApi::sendMoney(CryptoNote::WalletGreen& wallet, const std::string& to, uint64_t amount, uint64_t fee, uint64_t mixIn, const std::string& extra, uint64_t unlockTimestamp) {
-  return sendMoney(wallet, {}, to, amount, fee, mixIn, extra, unlockTimestamp);
+size_t WalletApi::sendMoney(CryptoNote::WalletGreen& wallet, const std::string& to, uint64_t amount, uint64_t fee, uint64_t mixIn, const std::string& extra, uint64_t unlockHeightstamp) {
+  return sendMoney(wallet, {}, to, amount, fee, mixIn, extra, unlockHeightstamp);
 }
 
-size_t WalletApi::sendMoney(const std::string& to, uint64_t amount, uint64_t fee, uint64_t mixIn, const std::string& extra, uint64_t unlockTimestamp) {
-  return sendMoney(alice, to, amount, fee, mixIn, extra, unlockTimestamp);
+size_t WalletApi::sendMoney(const std::string& to, uint64_t amount, uint64_t fee, uint64_t mixIn, const std::string& extra, uint64_t unlockHeightstamp) {
+  return sendMoney(alice, to, amount, fee, mixIn, extra, unlockHeightstamp);
 }
 
 size_t WalletApi::sendMoneyWithDonation(const std::string& to, uint64_t amount, uint64_t fee,
-  const std::string& donationAddress, uint64_t donationAmount, uint64_t mixIn, const std::string& extra, uint64_t unlockTimestamp) {
+  const std::string& donationAddress, uint64_t donationAmount, uint64_t mixIn, const std::string& extra, uint64_t unlockHeightstamp) {
 
   TransactionParameters params;
   params.destinations.push_back({to, amount});
@@ -496,7 +496,7 @@ size_t WalletApi::sendMoneyWithDonation(const std::string& to, uint64_t amount, 
   params.donation.threshold = donationAmount;
   params.mixIn = mixIn;
   params.extra = extra;
-  params.unlockTimestamp = unlockTimestamp;
+  params.unlockHeightstamp = unlockHeightstamp;
 
   return alice.transfer(params);
 }
@@ -508,9 +508,9 @@ size_t WalletApi::makeTransaction(
   uint64_t fee,
   uint64_t mixIn,
   const std::string& extra,
-  uint64_t unlockTimestamp) {
+  uint64_t unlockHeightstamp) {
 
-  return makeTransaction(alice, sourceAdresses, to, amount, fee, mixIn, extra, unlockTimestamp);
+  return makeTransaction(alice, sourceAdresses, to, amount, fee, mixIn, extra, unlockHeightstamp);
 }
 
 size_t WalletApi::makeTransaction(
@@ -521,7 +521,7 @@ size_t WalletApi::makeTransaction(
   uint64_t fee,
   uint64_t mixIn,
   const std::string& extra,
-  uint64_t unlockTimestamp) {
+  uint64_t unlockHeightstamp) {
 
   CryptoNote::TransactionParameters params;
   params.destinations = { {to, amount} };
@@ -529,7 +529,7 @@ size_t WalletApi::makeTransaction(
   params.fee = fee;
   params.mixIn = mixIn;
   params.extra = extra;
-  params.unlockTimestamp = unlockTimestamp;
+  params.unlockHeightstamp = unlockHeightstamp;
 
   return wallet.makeTransaction(params);
 }
@@ -540,9 +540,9 @@ size_t WalletApi::makeTransaction(
   uint64_t fee,
   uint64_t mixIn,
   const std::string& extra,
-  uint64_t unlockTimestamp) {
+  uint64_t unlockHeightstamp) {
 
-  return makeTransaction(alice, sourceAdresses, orders, fee, mixIn, extra, unlockTimestamp);
+  return makeTransaction(alice, sourceAdresses, orders, fee, mixIn, extra, unlockHeightstamp);
 }
 
 size_t WalletApi::makeTransaction(
@@ -552,7 +552,7 @@ size_t WalletApi::makeTransaction(
   uint64_t fee,
   uint64_t mixIn,
   const std::string& extra,
-  uint64_t unlockTimestamp) {
+  uint64_t unlockHeightstamp) {
 
   CryptoNote::TransactionParameters params;
   params.destinations = orders;
@@ -560,7 +560,7 @@ size_t WalletApi::makeTransaction(
   params.fee = fee;
   params.mixIn = mixIn;
   params.extra = extra;
-  params.unlockTimestamp = unlockTimestamp;
+  params.unlockHeightstamp = unlockHeightstamp;
 
   return wallet.makeTransaction(params);
 }
@@ -1275,7 +1275,7 @@ void WalletApi::testIWalletDataCompatibility(bool details, const std::string& ca
         txtrs.push_back(trs[i]);
       }
     }
-    auto txId = iWalletCache.addNewTransaction(tx.totalAmount, tx.fee, tx.extra, txtrs, tx.unlockTime);
+    auto txId = iWalletCache.addNewTransaction(tx.totalAmount, tx.fee, tx.extra, txtrs, tx.unlockHeight);
     iWalletCache.updateTransactionSendingState(txId, std::error_code());
   }
 
@@ -1310,7 +1310,7 @@ void WalletApi::testIWalletDataCompatibility(bool details, const std::string& ca
       EXPECT_EQ(txs[i].fee, tx.fee);
       EXPECT_EQ(WalletTransactionState::SUCCEEDED, tx.state);
       EXPECT_EQ(-txs[i].totalAmount, tx.totalAmount);
-      EXPECT_EQ(txs[i].unlockTime, tx.unlockTime);
+      EXPECT_EQ(txs[i].unlockHeight, tx.unlockHeight);
 
       size_t trsCount = wallet.getTransactionTransferCount(i);
       ASSERT_EQ(txs[i].transferCount, trsCount);
@@ -1343,7 +1343,7 @@ void WalletApi::testIWalletDataCompatibility(bool details, const std::string& ca
 
       EXPECT_EQ(inTx.transactionHash, tx.hash);
       EXPECT_EQ(WalletTransactionState::SUCCEEDED, tx.state);
-      EXPECT_EQ(inTx.unlockTime, tx.unlockTime);
+      EXPECT_EQ(inTx.unlockHeight, tx.unlockHeight);
     }
   } else {
     EXPECT_EQ(0, wallet.getTransactionCount());
@@ -1374,7 +1374,7 @@ TEST_F(WalletApi, IWalletDataCompatibilityDetails) {
   WalletLegacyTransaction tx1;
   tx1.firstTransferId = 0;
   tx1.transferCount = 2;
-  tx1.unlockTime = 12;
+  tx1.unlockHeight = 12;
   tx1.totalAmount = 1234567890;
   tx1.timestamp = (uint64_t) 8899007711;
   tx1.extra = "jsjeokvsnxcvkhdoifjaslkcvnvuergeonlsdnlaksmdclkasowehunkjn";
@@ -1404,7 +1404,7 @@ TEST_F(WalletApi, IWalletDataCompatibilityDetails) {
   iTx1.extra = {1,2,3,4,5,6,7,8,9,1,2,3,4,5,6,7,8,9};
   std::iota(iTx1.publicKey.data, iTx1.publicKey.data+32, 15);
   iTx1.totalAmountOut = 948578;
-  iTx1.unlockTime = 17;
+  iTx1.unlockHeight = 17;
   incomingTxs.push_back(std::make_pair(iTx1, 99874442));
 
   TransactionInformation iTx2;
@@ -1415,7 +1415,7 @@ TEST_F(WalletApi, IWalletDataCompatibilityDetails) {
   iTx2.extra = {11,22,33,44,55,66,77,88,99,12,13,14,15,16};
   std::iota(iTx2.publicKey.data, iTx2.publicKey.data+32, 5);
   iTx2.totalAmountOut = 99874442;
-  iTx2.unlockTime = 12;
+  iTx2.unlockHeight = 12;
   incomingTxs.push_back(std::make_pair(iTx2, 99874442));
 
   std::string cache(1024, 'c');
@@ -1472,7 +1472,7 @@ TEST_F(WalletApi, checkSentTransaction) {
   ASSERT_EQ(CryptoNote::WALLET_LEGACY_UNCONFIRMED_TRANSACTION_HEIGHT, tx.blockHeight);
   ASSERT_EQ(-static_cast<int64_t>(SENT + FEE), tx.totalAmount);
   ASSERT_EQ(FEE, tx.fee);
-  ASSERT_EQ(0, tx.unlockTime);
+  ASSERT_EQ(0, tx.unlockHeight);
   ASSERT_FALSE(tx.isBase);
   ASSERT_EQ(TX_PUB_KEY_EXTRA_SIZE, tx.extra.size()); //Transaction public key only
 }
@@ -1510,7 +1510,7 @@ TEST_F(WalletApi, checkSentTransactionWithExtra) {
   ASSERT_EQ(CryptoNote::WALLET_LEGACY_UNCONFIRMED_TRANSACTION_HEIGHT, tx.blockHeight);
   ASSERT_EQ(-static_cast<int64_t>(SENT + FEE), tx.totalAmount);
   ASSERT_EQ(FEE, tx.fee);
-  ASSERT_EQ(0, tx.unlockTime);
+  ASSERT_EQ(0, tx.unlockHeight);
   ASSERT_FALSE(tx.isBase);
   ASSERT_EQ(extra, removeTxPublicKey(tx.extra));
 }
@@ -1565,7 +1565,7 @@ TEST_F(WalletApi, checkIncomingTransaction) {
   ASSERT_EQ(generator.getBlockchain().size() - 1, tx.blockHeight);
   ASSERT_EQ(SENT, tx.totalAmount);
   ASSERT_EQ(FEE, tx.fee);
-  ASSERT_EQ(11, tx.unlockTime);
+  ASSERT_EQ(11, tx.unlockHeight);
   ASSERT_EQ(extra, removeTxPublicKey(tx.extra));
 }
 
@@ -2059,7 +2059,7 @@ TEST_F(WalletApi, trackingAddressReceivesMoney) {
   ASSERT_EQ(expectedTransactionHeight, transaction.blockHeight);
   ASSERT_EQ(SENT, transaction.totalAmount);
   ASSERT_EQ(FEE, transaction.fee);
-  ASSERT_EQ(0, transaction.unlockTime);
+  ASSERT_EQ(0, transaction.unlockHeight);
 
   bob.shutdown();
 }
@@ -2382,9 +2382,9 @@ TEST_F(WalletApi_makeTransaction, createdTransactionCanBeReceivedByGetTransactio
   unlockMoney();
 
   std::string extra = "some extra";
-  uint64_t unlockTimestamp = 7823673;
+  uint64_t unlockHeightstamp = 7823673;
 
-  auto txId = makeTransaction({alice.getAddress(0)}, { CryptoNote::WalletOrder{ RANDOM_ADDRESS, SENT } }, FEE, 0, extra, unlockTimestamp);
+  auto txId = makeTransaction({alice.getAddress(0)}, { CryptoNote::WalletOrder{ RANDOM_ADDRESS, SENT } }, FEE, 0, extra, unlockHeightstamp);
 
   waitForTransactionUpdated(alice, txId);
 
@@ -2396,7 +2396,7 @@ TEST_F(WalletApi_makeTransaction, createdTransactionCanBeReceivedByGetTransactio
   ASSERT_EQ(-static_cast<int64_t>(SENT + FEE), tx.totalAmount);
   ASSERT_EQ(FEE, tx.fee);
   ASSERT_NE(0, tx.creationTime);
-  ASSERT_EQ(unlockTimestamp, tx.unlockTime);
+  ASSERT_EQ(unlockHeightstamp, tx.unlockHeight);
   ASSERT_NE(std::string::npos, tx.extra.find(extra));
   ASSERT_FALSE(tx.isBase);
 
@@ -2807,7 +2807,7 @@ TEST_F(WalletApi, getTransactionReturnsCorrectTransaction) {
   EXPECT_EQ(CryptoNote::WALLET_UNCONFIRMED_TRANSACTION_HEIGHT, transaction.blockHeight);
   EXPECT_EQ(FEE, transaction.fee);
   EXPECT_FALSE(transaction.isBase);
-  EXPECT_EQ(0, transaction.unlockTime);
+  EXPECT_EQ(0, transaction.unlockHeight);
 
   ASSERT_EQ(-static_cast<int64_t>(SENT * 2 + FEE * 2), tx.transaction.totalAmount);
 

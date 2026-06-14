@@ -53,7 +53,7 @@ public:
     return base_class::init();
   }
 
-  void generate(const AccountPublicAddress& address, Transaction& tx, uint64_t unlockTime = 0)
+  void generate(const AccountPublicAddress& address, Transaction& tx, uint64_t unlockHeight = 0)
   {
     std::vector<CryptoNote::TxBuildOutput> destinations;
 
@@ -64,7 +64,7 @@ public:
     Crypto::SecretKey txkey;
     try {
       auto itx = CryptoNote::buildTransaction(this->m_sources, destinations,
-          this->m_miners[this->real_source_idx].getAccountKeys().viewSecretKey, "", unlockTime, 0, txkey);
+          this->m_miners[this->real_source_idx].getAccountKeys().viewSecretKey, "", unlockHeight, 0, txkey);
       CryptoNote::fromBinaryArray(tx, itx->getTransactionData());
     } catch (...) {}
   }

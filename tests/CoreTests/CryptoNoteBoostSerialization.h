@@ -99,7 +99,7 @@ namespace boost
   inline void serialize(Archive &a, CryptoNote::Transaction &x, const boost::serialization::version_type ver)
   {
     a & x.version;
-    a & x.unlockTime;
+    a & x.unlockHeight;
     a & x.inputs;
     a & x.outputs;
     a & x.extra;

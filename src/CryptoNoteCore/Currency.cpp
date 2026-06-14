@@ -254,7 +254,7 @@ namespace CryptoNote {
 
     tx.version   = TRANSACTION_VERSION_1;
     tx.txType    = TX_COINBASE;
-    tx.unlockTime = height + minedMoneyUnlockWindow();
+    tx.unlockHeight = height + minedMoneyUnlockWindow();
 
     // Coinbase input: block height.
     BaseInput in;
@@ -589,7 +589,7 @@ namespace CryptoNote {
     blockFutureTimeLimit(parameters::CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT);
     blockFutureTimeLimit_v1(parameters::CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT_V1);
 
-    moneySupply(parameters::MONEY_SUPPLY);
+    moneySupply(parameters::EMISSION_CURVE_TARGET);
     emissionSpeedFactor(parameters::EMISSION_SPEED_FACTOR);
     cryptonoteCoinVersion(parameters::CRYPTONOTE_COIN_VERSION);
 
@@ -638,6 +638,9 @@ namespace CryptoNote {
     blockIndexesFileName(parameters::CRYPTONOTE_BLOCKINDEXES_FILENAME);
     blockchainIndicesFileName(parameters::CRYPTONOTE_BLOCKCHAIN_INDICES_FILENAME);
     txPoolFileName(parameters::CRYPTONOTE_POOLDATA_FILENAME);
+
+    freeRegPerBlock(parameters::FREE_REG_PER_BLOCK);
+    freeRegPowTarget(parameters::FREE_REG_POW_TARGET);
 
     testnet(false);
   }

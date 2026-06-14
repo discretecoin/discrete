@@ -128,17 +128,14 @@ public:
   uint32_t minNumberVotingBlocks() const { return (m_upgradeVotingWindow * m_upgradeVotingThreshold + 99) / 100; }
   uint32_t maxUpgradeDistance() const { return 7 * m_upgradeWindow; }
   uint32_t calculateUpgradeHeight(uint32_t voteCompleteHeight) const { return voteCompleteHeight + m_upgradeWindow; }
-  // Block major v6+ replaces the legacy dual height/timestamp unlock_time
-  // interpretation with a height-only rule capped at
-  // CRYPTONOTE_MAX_UNLOCK_HEIGHT_V6, both for accepting new txs and for
-  // deciding whether referenced outputs from old txs are spendable.
-  bool isUnlockTimeCappedAt(uint32_t height) const { return height >= m_upgradeHeightV6; }
-
   const std::string& blocksFileName() const { return m_blocksFileName; }
   const std::string& blocksCacheFileName() const { return m_blocksCacheFileName; }
   const std::string& blockIndexesFileName() const { return m_blockIndexesFileName; }
   const std::string& blockchainIndicesFileName() const { return m_blockchainIndicesFileName; }
   const std::string& txPoolFileName() const { return m_txPoolFileName; }
+
+  size_t freeRegPerBlock() const { return m_freeRegPerBlock; }
+  uint64_t freeRegPowTarget() const { return m_freeRegPowTarget; }
 
   bool isTestnet() const { return m_testnet; }
 
@@ -260,6 +257,9 @@ private:
   std::string m_blockchainIndicesFileName;
   std::string m_txPoolFileName;
 
+  size_t m_freeRegPerBlock;
+  uint64_t m_freeRegPowTarget;
+
   bool m_testnet;
 
   Block m_genesisBlock;
@@ -345,6 +345,9 @@ public:
   CurrencyBuilder& blockchainIndicesFileName(const std::string& val) { m_currency.m_blockchainIndicesFileName = val; return *this; }
   CurrencyBuilder& txPoolFileName(const std::string& val) { m_currency.m_txPoolFileName = val; return *this; }
   
+  CurrencyBuilder& freeRegPerBlock(size_t val) { m_currency.m_freeRegPerBlock = val; return *this; }
+  CurrencyBuilder& freeRegPowTarget(uint64_t val) { m_currency.m_freeRegPowTarget = val; return *this; }
+
   CurrencyBuilder& testnet(bool val) { m_currency.m_testnet = val; return *this; }
 
 private:

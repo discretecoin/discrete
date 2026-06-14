@@ -234,7 +234,7 @@ bool BlockchainExplorerDataBuilder::fillTransactionDetails(const Transaction& tr
     }
   }
   transactionDetails.size = getObjectBinarySize(transaction);
-  transactionDetails.unlockTime = transaction.unlockTime;
+  transactionDetails.unlockHeight = transaction.unlockHeight;
   transactionDetails.totalOutputsAmount = get_outs_money_amount(transaction);
 
   const bool pqOnlyInputs = transaction.version >= TRANSACTION_VERSION_1 && transaction.txType == TX_PQ;

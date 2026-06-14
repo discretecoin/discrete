@@ -29,7 +29,7 @@ public:
   typedef std::vector<Crypto::Signature> SignatureVector;
   typedef std::vector<SignatureVector> SignatureMultivector;
 
-  TransactionBuilder(const CryptoNote::Currency& currency, uint64_t unlockTime = 0);
+  TransactionBuilder(const CryptoNote::Currency& currency, uint64_t unlockHeight = 0);
 
   // regenerate transaction keys
   TransactionBuilder& newTxKeys();
@@ -56,7 +56,7 @@ private:
   CryptoNote::AccountKeys m_senderKeys;
 
   size_t m_version;
-  uint64_t m_unlockTime;
+  uint64_t m_unlockHeight;
   CryptoNote::KeyPair m_txKey;
   const CryptoNote::Currency& m_currency;
 };

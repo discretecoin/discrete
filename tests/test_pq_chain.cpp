@@ -121,6 +121,29 @@ bool mineBlockWithTxs(CryptoNote::Core& core, const CryptoNote::Currency& curren
   return bvc.m_added_to_main_chain && !bvc.m_verification_failed;
 }
 
+// Build a TX_FREE_REG with trivial PoW (nonce=0 passes any UINT64_MAX target).
+// Different `seed` values produce different viewPub/spendPub so registrations
+// are distinct and do not trigger the first-reg-wins duplicate check.
+CryptoNote::Transaction makeFastFreeRegTx(const Crypto::Hash& refBlockHash, uint8_t seed) {
+  using namespace CryptoNote;
+  Transaction tx;
+  tx.version = TRANSACTION_VERSION_1;
+  tx.txType = TX_FREE_REG;
+  tx.unlockHeight = 0;
+
+  std::array<uint8_t, TX_EXTRA_PQ_VIEW_PUBKEY_SIZE> vp;
+  for (size_t i = 0; i < vp.size(); ++i) vp[i] = static_cast<uint8_t>(i * seed + 1);
+  std::array<uint8_t, TX_EXTRA_PQ_SPEND_PUBKEY_SIZE> sp;
+  for (size_t i = 0; i < sp.size(); ++i) sp[i] = static_cast<uint8_t>(i * seed + 2);
+
+  addPqAccountRegistrationToExtra(tx.extra, vp, sp);
+  TransactionExtraPow pow{};
+  pow.refBlockHash = refBlockHash;
+  pow.nonce = 0;  // trivially passes with UINT64_MAX powTarget in the test currency
+  appendPowTagToExtra(tx.extra, pow);
+  return tx;
+}
+
 // An unfunded, well-formed, ML-DSA-signed TX_PQ that references a non-existent
 // output (so it must be rejected at input resolution, not at shape).
 CryptoNote::Transaction makeUnfundedPqTx() {
@@ -152,7 +175,7 @@ CryptoNote::Transaction makeUnfundedPqTx() {
   Transaction tx;
   tx.version = TRANSACTION_VERSION_1;
   tx.txType = TX_PQ;
-  tx.unlockTime = 0;
+  tx.unlockHeight = 0;
   tx.inputs.push_back(in);
   tx.outputs.push_back(out);
 
@@ -328,7 +351,9 @@ bool runFunded() {
   // Spend the matured coinbase PQ output via TX_PQ through the live consensus
   // dispatch. The spender is the miner (its long-term ML-DSA spend keypair).
   PqWalletKeys recip2 = pqKeysFromPattern(9, 2);
-  uint64_t pqFee = 1000000;
+  // Fee must sit above the per-1000-bytes floor (~7 atoms for a ~6.5 KB 1-in/1-out
+  // TX_PQ) yet well below the coinbase reward.
+  uint64_t pqFee = 50;
   Transaction spend = buildPqTransaction(
       spendIns, {PqSendOutput{recip2.viewPub, recip2.spendPub, inAmount - pqFee}},
       miner.pqSpendPk(), miner.pqSpendSk());
@@ -380,26 +405,272 @@ bool runFunded() {
 // coroutine here; on an undersized stack this aborts the process, so reaching
 // the assertions at all proves the dispatcher stack is large enough.
 bool runCoroutineStack() {
-  using namespace CryptoNote;
-  System::Dispatcher dispatcher;
-
+  bool ok = true;
   bool finished = false;
   bool verified = false;
-  System::Context<> ctx(dispatcher, [&]() {
-    CryptoPQ::DsaKeypairSeed seed{};
-    for (std::size_t i = 0; i < seed.size(); ++i) seed[i] = static_cast<uint8_t>(i * 7 + 1);
-    auto kp = CryptoPQ::dsa_keygen_from_seed(seed);
 
-    const std::array<uint8_t, 32> msg{};
-    CryptoPQ::DsaSignature sig = CryptoPQ::dsa_sign(kp.second, msg.data(), msg.size());
-    verified = CryptoPQ::dsa_verify(kp.first, msg.data(), msg.size(), sig);
-    finished = true;
-  });
-  dispatcher.yield();
+  System::Dispatcher dispatcher;
+  {
+    // Run a full ML-DSA-65 keygen + sign + verify ON the dispatcher coroutine.
+    // This is the heaviest single PQ-crypto frame the daemon executes off the
+    // main thread; on Boost's 64 KB default coroutine stack it overflowed and
+    // crashed the node, so reaching the assertions proves the stack is sized.
+    System::Context<> ctx(dispatcher, [&finished, &verified]() {
+      auto kp = CryptoPQ::dsa_keygen();
+      std::array<uint8_t, 32> msg = pat<32>(7, 1);
+      CryptoPQ::DsaSignature sig = CryptoPQ::dsa_sign(kp.second, msg.data(), msg.size());
+      verified = CryptoPQ::dsa_verify(kp.first, msg.data(), msg.size(), sig);
+      finished = true;
+    });
+    dispatcher.yield();
+  }
+  ok &= expect(finished, "coroutine ML-DSA: ran to completion on the dispatcher stack");
+  ok &= expect(verified, "coroutine ML-DSA: signature verified");
+  return ok;
+}
+
+// Free-reg per-block cap: verifies that a block is rejected when it carries more
+// than freeRegPerBlock(2) TX_FREE_REG transactions.
+bool runFreeRegCap() {
+  using namespace CryptoNote;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+
+  // Two key overrides: cap = 2 (vs production 100) and trivial PoW target so
+  // nonce=0 always passes — no cn_slow_hash grinding needed.
+  const Currency currency = CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(11).upgradeHeightV6(12)
+      .freeRegPerBlock(2)
+      .freeRegPowTarget(UINT64_MAX)
+      .currency();
+
+  std::filesystem::path dataDir("pq_freereg_cap_test_data");
+  std::error_code ec;
+  std::filesystem::remove_all(dataDir, ec);
+  std::filesystem::create_directories(dataDir, ec);
+
+  System::Dispatcher dispatcher;
+  Core core(currency, nullptr, logger, dispatcher, 0, false);
+  CoreConfig coreConfig; coreConfig.configFolder = dataDir.string();
+  MinerConfig minerConfig;
+  if (!expect(core.init(coreConfig, minerConfig, false), "cap: core.init")) return false;
+
+  test_generator gen(currency);
+  gen.setBlockchain(&core.get_blockchain_storage());
+  AccountBase miner; miner.generate();
+
+  Crypto::Hash genesisHash = core.getBlockIdByHeight(0);
+  Block genesis;
+  if (!expect(core.getBlockByHash(genesisHash, genesis), "cap: load genesis")) {
+    core.deinit(); return false;
+  }
+  std::vector<size_t> emptySizes;
+  gen.addBlock(genesis, 0, 0, emptySizes, 0);
+
+  uint64_t ts = static_cast<uint64_t>(std::time(nullptr)) - 24 * 60 * 60;
+  const uint64_t step = currency.difficultyTarget() * 10;
+  for (int i = 0; i < 13; ++i) {
+    if (!expect(mineBlock(core, currency, gen, miner, ts), "cap: mine " + std::to_string(i + 1))) {
+      core.deinit(); std::filesystem::remove_all(dataDir, ec); return false;
+    }
+    ts += step;
+  }
 
   bool ok = true;
-  ok &= expect(finished, "PQ crypto ran to completion on a dispatcher coroutine");
-  ok &= expect(verified, "ML-DSA-65 sign+verify succeeded on a coroutine stack");
+  ok &= expect(core.getBlockMajorVersionForHeight(core.getCurrentBlockchainHeight() - 1) ==
+               BLOCK_MAJOR_VERSION_6, "cap: v6 active");
+
+  // Use the current tip as refBlockHash: on the main chain, within FREE_REG_REF_WINDOW.
+  Crypto::Hash refHash = core.get_tail_id();
+
+  // Build 3 distinct free-reg txs. Each gets a different seed → distinct identity
+  // so first-reg-wins doesn't eliminate any of them.
+  Transaction tx1 = makeFastFreeRegTx(refHash, 11);
+  Transaction tx2 = makeFastFreeRegTx(refHash, 22);
+  Transaction tx3 = makeFastFreeRegTx(refHash, 33);
+
+  // Submit all 3 to the pool. The pool's static cap is FREE_REG_PER_BLOCK=100
+  // (not the currency override), so all 3 should be accepted.
+  auto submitFreeReg = [&](const Transaction& tx, const std::string& lbl) -> bool {
+    Crypto::Hash txHash = getObjectHash(tx);
+    BinaryArray blob = toBinaryArray(tx);
+    tx_verification_context tvc{};
+    core.handleIncomingTransaction(tx, txHash, blob.size(), tvc, false,
+                                   core.getCurrentBlockchainHeight());
+    return expect(tvc.m_added_to_pool && !tvc.m_verification_failed,
+                  "cap: " + lbl + " pool-accepted");
+  };
+  ok &= submitFreeReg(tx1, "tx1");
+  ok &= submitFreeReg(tx2, "tx2");
+  ok &= submitFreeReg(tx3, "tx3");
+  if (!ok) { core.deinit(); std::filesystem::remove_all(dataDir, ec); return false; }
+
+  // A block carrying all 3 must be rejected: freeRegCount=3 > freeRegPerBlock()=2.
+  std::list<Transaction> all3 = {tx1, tx2, tx3};
+  bool rejectedAll3 = !mineBlockWithTxs(core, currency, gen, miner, ts, all3);
+  ok &= expect(rejectedAll3, "cap: block with 3 free-reg txs rejected");
+  ts += step;  // advance timestamp even for the failed block
+
+  // A block carrying 2 is accepted.
+  std::list<Transaction> first2 = {tx1, tx2};
+  ok &= expect(mineBlockWithTxs(core, currency, gen, miner, ts, first2),
+               "cap: block with 2 free-reg txs accepted");
+  ts += step;
+
+  // A subsequent block carrying the remaining 1 is also accepted.
+  std::list<Transaction> third = {tx3};
+  ok &= expect(mineBlockWithTxs(core, currency, gen, miner, ts, third),
+               "cap: block with 3rd free-reg tx accepted alone");
+
+  core.deinit();
+  std::filesystem::remove_all(dataDir, ec);
+  return ok;
+}
+
+// Emission curve sanity check + coinbase maturity boundary.
+// Uses minedMoneyUnlockWindow=3 so the first PQ coinbase (block 6) matures at
+// height 9, while v6 activates at height 6. This lets us confirm a spend is
+// rejected at height 8 and accepted at height 9.
+bool runEmission() {
+  using namespace CryptoNote;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+
+  // minedMoneyUnlockWindow=3: getBlockLongHash look-back = 3, so v5 is safe at
+  // height 5 (samples block at index 5-1-3=1 which exists).
+  const Currency currency = CurrencyBuilder(logger)
+      .testnet(true)
+      .minedMoneyUnlockWindow(3)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(5).upgradeHeightV6(6)
+      .currency();
+
+  std::filesystem::path dataDir("pq_emission_test_data");
+  std::error_code ec;
+  std::filesystem::remove_all(dataDir, ec);
+  std::filesystem::create_directories(dataDir, ec);
+
+  System::Dispatcher dispatcher;
+  Core core(currency, nullptr, logger, dispatcher, 0, false);
+  CoreConfig coreConfig; coreConfig.configFolder = dataDir.string();
+  MinerConfig minerConfig;
+  if (!expect(core.init(coreConfig, minerConfig, false), "emission: core.init")) return false;
+
+  test_generator gen(currency);
+  gen.setBlockchain(&core.get_blockchain_storage());
+  AccountBase miner; miner.generate();
+
+  Crypto::Hash genesisHash = core.getBlockIdByHeight(0);
+  Block genesis;
+  if (!expect(core.getBlockByHash(genesisHash, genesis), "emission: load genesis")) {
+    core.deinit(); return false;
+  }
+  std::vector<size_t> emptySizes;
+  gen.addBlock(genesis, 0, 0, emptySizes, 0);
+
+  bool ok = true;
+  uint64_t ts = static_cast<uint64_t>(std::time(nullptr)) - 24 * 60 * 60;
+  const uint64_t step = currency.difficultyTarget() * 10;
+
+  // Mine 7 blocks (heights 1-5 legacy, heights 6-7 v6) and verify the reward for
+  // each matches currency.calculateReward(alreadyGeneratedBefore).
+  for (int i = 0; i < 7; ++i) {
+    uint64_t genBefore = 0;
+    core.getAlreadyGeneratedCoins(core.get_tail_id(), genBefore);
+
+    if (!expect(mineBlock(core, currency, gen, miner, ts),
+                "emission: mine block " + std::to_string(i + 1))) {
+      core.deinit(); std::filesystem::remove_all(dataDir, ec); return false;
+    }
+    ts += step;
+
+    uint64_t genAfter = 0;
+    core.getAlreadyGeneratedCoins(core.get_tail_id(), genAfter);
+    uint64_t actualReward = genAfter - genBefore;
+    uint64_t expectedReward = currency.calculateReward(genBefore);
+    ok &= expect(actualReward == expectedReward,
+                 "emission: block " + std::to_string(i + 1) +
+                 " reward " + std::to_string(actualReward) +
+                 " == expected " + std::to_string(expectedReward));
+  }
+  // After 7 blocks: getCurrentBlockchainHeight() == 8.
+
+  // Scan block-6's PQ coinbase (height 6, unlockHeight = 6+3 = 9).
+  Block blk6;
+  ok &= expect(core.getBlockByHash(core.getBlockIdByHeight(6), blk6), "emission: load block 6");
+  const Transaction& cb6 = blk6.baseTransaction;
+  Crypto::Hash cb6Hash = getObjectHash(cb6);
+  ok &= expect(!cb6.outputs.empty() && cb6.outputs[0].target.type() == typeid(PqOutput),
+               "emission: block-6 coinbase has PqOutput");
+  if (!ok) { core.deinit(); std::filesystem::remove_all(dataDir, ec); return false; }
+
+  uint64_t inAmount = cb6.outputs[0].amount;
+  const PqOutput& cbOut = boost::get<PqOutput>(cb6.outputs[0].target);
+
+  CryptoPQ::PqScanKeys scan{miner.pqViewSk(), miner.pqSpendPk()};
+  CryptoPQ::Hash256 cbIh = pqTransactionInputsHash(cb6);
+  CryptoPQ::PqScanOutput so;
+  so.outputIndex = 0; so.amount = inAmount;
+  std::memcpy(so.kemCt.data(), cbOut.kemCt.data(), so.kemCt.size());
+  so.encPayload = cbOut.encPayload;
+  std::memcpy(so.spendCommit.data(), cbOut.spendCommit.data, 32);
+  auto owned = CryptoPQ::scanPqOutput(scan, cbIh, so);
+  ok &= expect(static_cast<bool>(owned), "emission: miner scans block-6 coinbase");
+  if (!ok) { core.deinit(); std::filesystem::remove_all(dataDir, ec); return false; }
+
+  std::vector<PqSpendInput> spendIns(1);
+  spendIns[0].prevTxid = cb6Hash;
+  spendIns[0].prevOutIndex = 0;
+  spendIns[0].amount = inAmount;
+  spendIns[0].rho = owned->rho;
+
+  PqWalletKeys recip = pqKeysFromPattern(7, 3);
+  const uint64_t pqFee = 50;  // well above the per-1000-bytes floor
+  Transaction spend = buildPqTransaction(
+      spendIns, {PqSendOutput{recip.viewPub, recip.spendPub, inAmount - pqFee}},
+      miner.pqSpendPk(), miner.pqSpendSk());
+
+  // Maturity boundary is exercised through the pool path. Mining a TX_PQ into a
+  // block isn't supported by the test harness: TestGenerator::constructBlock
+  // prices each tx via get_tx_fee, which can't value PqInputs (they carry no
+  // inline amount, unlike legacy KeyInputs). The pool path resolves the
+  // referenced coinbase and applies the same maturity gate
+  // (is_tx_spendheight_unlocked, currentHeight >= unlockHeight given
+  // lockedTxAllowedDeltaBlocks == 1).
+  auto submitSpend = [&](const Transaction& tx) -> tx_verification_context {
+    Crypto::Hash h = getObjectHash(tx);
+    BinaryArray b = toBinaryArray(tx);
+    tx_verification_context v{};
+    core.handleIncomingTransaction(tx, h, b.size(), v, false, core.getCurrentBlockchainHeight());
+    return v;
+  };
+
+  // Height 8: unlockHeight=9, currentHeight=8 → 8 >= 9 false → immature → rejected.
+  ok &= expect(core.getCurrentBlockchainHeight() == 8, "emission: height is 8 before maturity test");
+  tx_verification_context tvcImmature = submitSpend(spend);
+  ok &= expect(!tvcImmature.m_added_to_pool,
+               "emission: spend of immature coinbase rejected at height 8");
+
+  // Mine an empty block so currentHeight advances to 9.
+  ok &= expect(mineBlock(core, currency, gen, miner, ts), "emission: mine empty block to height 9");
+  ts += step;
+  ok &= expect(core.getCurrentBlockchainHeight() == 9, "emission: height is 9 at maturity");
+
+  // Height 9: unlockHeight=9, currentHeight=9 → 9 >= 9 → matured → accepted.
+  tx_verification_context tvcMature = submitSpend(spend);
+  ok &= expect(tvcMature.m_added_to_pool && !tvcMature.m_verification_failed,
+               "emission: spend of matured coinbase accepted at height 9");
+
+  // Double-spend: a second TX_PQ over the same output (same nullifier) rejected.
+  PqWalletKeys recip2 = pqKeysFromPattern(8, 4);
+  Transaction spend2 = buildPqTransaction(
+      spendIns, {PqSendOutput{recip2.viewPub, recip2.spendPub, inAmount - pqFee}},
+      miner.pqSpendPk(), miner.pqSpendSk());
+  tx_verification_context tvc2 = submitSpend(spend2);
+  ok &= expect(!tvc2.m_added_to_pool, "emission: double-spend of matured coinbase rejected");
+
+  core.deinit();
+  std::filesystem::remove_all(dataDir, ec);
   return ok;
 }
 
@@ -416,6 +687,14 @@ int main() {
   }
   if (!runFunded()) {
     std::cerr << "[FAIL] PQ funded lifecycle test" << std::endl;
+    return 1;
+  }
+  if (!runFreeRegCap()) {
+    std::cerr << "[FAIL] PQ free-reg per-block cap test" << std::endl;
+    return 1;
+  }
+  if (!runEmission()) {
+    std::cerr << "[FAIL] PQ emission curve and maturity test" << std::endl;
     return 1;
   }
   std::cout << "[PASS] PQ chain integration test" << std::endl;

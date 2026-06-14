@@ -78,7 +78,7 @@ struct TransactionOutputInformationIn : public TransactionOutputInformation {
 };
 
 struct TransactionOutputInformationEx : public TransactionOutputInformationIn {
-  uint64_t unlockTime;
+  uint64_t unlockHeight;
   uint32_t blockHeight;
   uint32_t transactionIndex;
   bool visible;
@@ -93,7 +93,7 @@ struct TransactionOutputInformationEx : public TransactionOutputInformationIn {
     s(outputInTransaction, "");
     s(transactionPublicKey, "");
     s(keyImage, "");
-    s(unlockTime, "");
+    s(unlockHeight, "");
     serializeBlockHeight(s, blockHeight, "");
     s(transactionIndex, "");
     s(transactionHash, "");
@@ -265,7 +265,7 @@ private:
                              const std::vector<TransactionOutputInformationIn>& transfers);
   bool addTransactionInputs(const TransactionBlockInfo& block, const ITransactionReader& tx, bool isOutgoing = false);
   void deleteTransactionTransfers(const Crypto::Hash& transactionHash);
-  bool isSpendTimeUnlocked(uint64_t unlockTime) const;
+  bool isSpendTimeUnlocked(uint64_t unlockHeight) const;
   bool isIncluded(const TransactionOutputInformationEx& info, uint32_t flags) const;
   static bool isIncluded(TransactionTypes::OutputType type, uint32_t state, uint32_t flags);
   void updateTransfersVisibility(const Crypto::KeyImage& keyImage);

@@ -253,8 +253,8 @@ namespace CryptoNote {
     bool have_tx_keyimg_as_spent(const Crypto::KeyImage& key_im);
     bool checkIfSpent(const Crypto::KeyImage& keyImage, uint32_t blockIndex);
     bool checkIfSpent(const Crypto::KeyImage& keyImage);
-    bool is_tx_spendtime_unlocked(uint64_t unlock_time);
-    bool is_tx_spendtime_unlocked(uint64_t unlock_time, uint32_t height);
+    bool is_tx_spendheight_unlocked(uint64_t unlock_height);
+    bool is_tx_spendheight_unlocked(uint64_t unlock_height, uint32_t height);
 
     bool checkProofOfWork(Crypto::cn_context& context, const Block& block,
                            Difficulty currentDiffic, Crypto::Hash& proofOfWork);

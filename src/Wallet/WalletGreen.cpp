@@ -1712,7 +1712,7 @@ size_t WalletGreen::transfer(const TransactionParameters& transactionParameters,
     ", change address '" << transactionParameters.changeDestination << '\'' <<
     ", fee " << m_currency.formatAmount(transactionParameters.fee) <<
     ", mixin " << transactionParameters.mixIn <<
-    ", unlockTimestamp " << transactionParameters.unlockTimestamp;
+    ", unlockHeightstamp " << transactionParameters.unlockHeightstamp;
 
   id = doTransfer(transactionParameters, txSecretKey);
   return id;
@@ -1742,7 +1742,7 @@ void WalletGreen::prepareTransaction(std::vector<WalletOuts>&& wallets,
   uint64_t fee,
   uint64_t mixIn,
   const std::string& extra,
-  uint64_t unlockTimestamp,
+  uint64_t unlockHeightstamp,
   const DonationSettings& donation,
   const CryptoNote::AccountPublicAddress& changeDestination,
   PreparedTransaction& preparedTransaction,
@@ -1785,7 +1785,7 @@ void WalletGreen::prepareTransaction(std::vector<WalletOuts>&& wallets,
     decomposedOutputs.emplace_back(std::move(splittedChange));
   }
 
-  preparedTransaction.transaction = makeTransaction(decomposedOutputs, keysInfo, extra, unlockTimestamp, txSecretKey);
+  preparedTransaction.transaction = makeTransaction(decomposedOutputs, keysInfo, extra, unlockHeightstamp, txSecretKey);
 }
 
 void WalletGreen::validateSourceAddresses(const std::vector<std::string>& sourceAddresses) const {
@@ -1989,7 +1989,7 @@ size_t WalletGreen::doTransfer(const TransactionParameters& transactionParameter
     transactionParameters.fee,
     transactionParameters.mixIn,
     transactionParameters.extra,
-    transactionParameters.unlockTimestamp,
+    transactionParameters.unlockHeightstamp,
     transactionParameters.donation,
     changeDestination,
     preparedTransaction,
@@ -2026,7 +2026,7 @@ size_t WalletGreen::makeTransaction(const TransactionParameters& sendingTransact
     ", change address '" << sendingTransaction.changeDestination << '\'' <<
     ", fee " << m_currency.formatAmount(sendingTransaction.fee) <<
     ", mixin " << sendingTransaction.mixIn <<
-    ", unlockTimestamp " << sendingTransaction.unlockTimestamp;
+    ", unlockHeightstamp " << sendingTransaction.unlockHeightstamp;
 
   validateTransactionParameters(sendingTransaction);
   CryptoNote::AccountPublicAddress changeDestination = getChangeDestination(sendingTransaction.changeDestination, sendingTransaction.sourceAddresses);
@@ -2047,7 +2047,7 @@ size_t WalletGreen::makeTransaction(const TransactionParameters& sendingTransact
     sendingTransaction.fee,
     sendingTransaction.mixIn,
     sendingTransaction.extra,
-    sendingTransaction.unlockTimestamp,
+    sendingTransaction.unlockHeightstamp,
     sendingTransaction.donation,
     changeDestination,
     preparedTransaction,
@@ -2143,11 +2143,11 @@ void WalletGreen::pushBackOutgoingTransfers(size_t txId, const std::vector<Walle
   }
 }
 
-size_t WalletGreen::insertOutgoingTransactionAndPushEvent(const Hash& transactionHash, uint64_t fee, const BinaryArray& extra, uint64_t unlockTimestamp, Crypto::SecretKey& txSecretKey) {
+size_t WalletGreen::insertOutgoingTransactionAndPushEvent(const Hash& transactionHash, uint64_t fee, const BinaryArray& extra, uint64_t unlockHeightstamp, Crypto::SecretKey& txSecretKey) {
   WalletTransaction insertTx;
   insertTx.state = WalletTransactionState::CREATED;
   insertTx.creationTime = static_cast<uint64_t>(time(nullptr));
-  insertTx.unlockTime = unlockTimestamp;
+  insertTx.unlockHeight = unlockHeightstamp;
   insertTx.blockHeight = CryptoNote::WALLET_UNCONFIRMED_TRANSACTION_HEIGHT;
   insertTx.extra.assign(reinterpret_cast<const char*>(extra.data()), extra.size());
   insertTx.fee = fee;
@@ -2250,7 +2250,7 @@ size_t WalletGreen::insertBlockchainTransaction(const TransactionInformation& in
     tx.fee = info.totalAmountIn - info.totalAmountOut;
   }
 
-  tx.unlockTime = info.unlockTime;
+  tx.unlockHeight = info.unlockHeight;
   tx.extra.assign(reinterpret_cast<const char*>(info.extra.data()), info.extra.size());
   tx.totalAmount = txBalance;
   tx.creationTime = info.timestamp;
@@ -2463,7 +2463,7 @@ bool WalletGreen::eraseForeignTransfers(size_t transactionId, size_t firstTransf
 }
 
 std::unique_ptr<CryptoNote::ITransaction> WalletGreen::makeTransaction(const std::vector<ReceiverAmounts>& decomposedOutputs,
-  std::vector<InputInfo>& keysInfo, const std::string& extra, uint64_t unlockTimestamp, Crypto::SecretKey& txSecretKey) {
+  std::vector<InputInfo>& keysInfo, const std::string& extra, uint64_t unlockHeightstamp, Crypto::SecretKey& txSecretKey) {
 
   std::vector<TxBuildInput> inputs;
   for (auto& input: keysInfo) {
@@ -2481,7 +2481,7 @@ std::unique_ptr<CryptoNote::ITransaction> WalletGreen::makeTransaction(const std
   }
 
   // Use viewSecretKey for deterministic tx key: r = Hs(viewSecretKey || inputsHash).
-  auto tx = buildTransaction(inputs, outputs, m_viewSecretKey, extra, unlockTimestamp, 0, txSecretKey);
+  auto tx = buildTransaction(inputs, outputs, m_viewSecretKey, extra, unlockHeightstamp, 0, txSecretKey);
 
   // copy ephKeys back so callers still have them if needed
   for (size_t i = 0; i < keysInfo.size(); ++i) {
@@ -3283,7 +3283,7 @@ void WalletGreen::transactionUpdated(const TransactionInformation& transactionIn
     updateBalance(containerAmounts.container);
 
     if (transactionInfo.blockHeight != CryptoNote::WALLET_UNCONFIRMED_TRANSACTION_HEIGHT) {
-      uint32_t unlockHeight = std::max(transactionInfo.blockHeight + m_transactionSoftLockTime, static_cast<uint32_t>(transactionInfo.unlockTime));
+      uint32_t unlockHeight = std::max(transactionInfo.blockHeight + m_transactionSoftLockTime, static_cast<uint32_t>(transactionInfo.unlockHeight));
       insertUnlockTransactionJob(transactionInfo.transactionHash, unlockHeight, containerAmounts.container);
     }
   }
@@ -4001,7 +4001,7 @@ size_t WalletGreen::getTxSize(const TransactionParameters &sendingTransaction)
     sendingTransaction.fee,
     sendingTransaction.mixIn,
     sendingTransaction.extra,
-    sendingTransaction.unlockTimestamp,
+    sendingTransaction.unlockHeightstamp,
     sendingTransaction.donation,
     changeDestination,
     preparedTransaction,

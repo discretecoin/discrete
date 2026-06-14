@@ -80,10 +80,10 @@
       "output": "93722da8561f4e172bdfc97d8abbde3ce29b09dc29c86fcb9edb550870c20869"
     },
     "tx_signing_digest": {
-      "_note": "Amended §8.1: binds version || txType || LE64(unlockTime) || inputs || outputs || LE32(extra_len)||extra || LE64(fee). txType/unlockTime/extra added to close a malleability gap (txid covers them).",
+      "_note": "Amended §8.1: binds version || txType || LE64(unlockHeight) || inputs || outputs || LE32(extra_len)||extra || LE64(fee). txType/unlockHeight/extra added to close a malleability gap (txid covers them).",
       "version": 2,
       "txType": 1,
-      "unlockTime": 0,
+      "unlockHeight": 0,
       "extra": "",
       "inputs": [
         {

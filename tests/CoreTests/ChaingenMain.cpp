@@ -109,10 +109,10 @@ int main(int argc, char* argv[])
     GENERATE_AND_PLAY_EX_2VER(gen_block_invalid_prev_id);
     GENERATE_AND_PLAY_EX_2VER(gen_block_invalid_nonce);
     GENERATE_AND_PLAY_EX_2VER(gen_block_no_miner_tx);
-    GENERATE_AND_PLAY_EX_2VER(gen_block_unlock_time_is_low);
-    GENERATE_AND_PLAY_EX_2VER(gen_block_unlock_time_is_high);
-    GENERATE_AND_PLAY_EX_2VER(gen_block_unlock_time_is_timestamp_in_past);
-    GENERATE_AND_PLAY_EX_2VER(gen_block_unlock_time_is_timestamp_in_future);
+    GENERATE_AND_PLAY_EX_2VER(gen_block_unlock_height_is_low);
+    GENERATE_AND_PLAY_EX_2VER(gen_block_unlock_height_is_high);
+    GENERATE_AND_PLAY_EX_2VER(gen_block_unlock_height_is_timestamp_in_past);
+    GENERATE_AND_PLAY_EX_2VER(gen_block_unlock_height_is_timestamp_in_future);
     GENERATE_AND_PLAY_EX_2VER(gen_block_height_is_low);
     GENERATE_AND_PLAY_EX_2VER(gen_block_height_is_high);
     GENERATE_AND_PLAY_EX_2VER(gen_block_miner_tx_has_2_tx_gen_in);
@@ -135,7 +135,7 @@ int main(int argc, char* argv[])
 
     // Transaction verification tests
     GENERATE_AND_PLAY(gen_tx_big_version);
-    GENERATE_AND_PLAY(gen_tx_unlock_time);
+    GENERATE_AND_PLAY(gen_tx_unlock_height);
     GENERATE_AND_PLAY(gen_tx_no_inputs_no_outputs);
     GENERATE_AND_PLAY(gen_tx_no_inputs_has_outputs);
     GENERATE_AND_PLAY(gen_tx_has_inputs_no_outputs);
@@ -146,7 +146,7 @@ int main(int argc, char* argv[])
     GENERATE_AND_PLAY(gen_tx_mixed_key_offest_not_exist);
     GENERATE_AND_PLAY(gen_tx_key_image_not_derive_from_tx_key);
     GENERATE_AND_PLAY(gen_tx_key_image_is_invalid);
-    GENERATE_AND_PLAY(gen_tx_check_input_unlock_time);
+    GENERATE_AND_PLAY(gen_tx_check_input_unlock_height);
     GENERATE_AND_PLAY(gen_tx_txout_to_key_has_invalid_key);
     GENERATE_AND_PLAY(gen_tx_output_with_zero_amount);
     GENERATE_AND_PLAY(gen_tx_signatures_are_invalid);

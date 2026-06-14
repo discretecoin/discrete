@@ -98,7 +98,7 @@ Transaction buildPqTransaction(const std::vector<PqSpendInput>& inputs,
                                const std::vector<PqSendOutput>& outputs,
                                const CryptoPQ::DsaPublicKey& spendPub,
                                const CryptoPQ::DsaSecretKey& spendSk,
-                               uint64_t unlockTime = 0);
+                               uint64_t unlockHeight = 0);
 
 // Build and sign a TX_BRIDGE (one-way legacy -> PQ migration). Classical inputs
 // are ring-signed exactly as a v1 transaction (the signature covers the prefix,
@@ -110,11 +110,11 @@ Transaction buildPqTransaction(const std::vector<PqSpendInput>& inputs,
 Transaction buildBridgeTransaction(std::vector<BridgeLegacyInput>& inputs,
                                    const std::vector<PqSendOutput>& pqOutputs,
                                    const std::vector<BridgeKeyOutput>& keyOutputs,
-                                   uint64_t unlockTime = 0);
+                                   uint64_t unlockHeight = 0);
 
 Transaction buildBridgeTransaction(std::vector<BridgeLegacyInput>& inputs,
                                    const std::vector<PqSendOutput>& outputs,
-                                   uint64_t unlockTime = 0);
+                                   uint64_t unlockHeight = 0);
 
 // Assemble a TX_FREE_REG (zero-fee account-number registration) given a PoW
 // solution: an empty-input/output v2 tx whose tx_extra is exactly the PQ

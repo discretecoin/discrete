@@ -149,7 +149,7 @@ TEST_F(PaymentGateTest, DISABLED_sendTransaction) {
     req.transfers.push_back(WalletRpcOrder{ TEST_AMOUNT, recvAddress });
     req.fee = currency.minimumFee();
     req.anonymity = 1;
-    req.unlockTime = 0;
+    req.unlockHeight = 0;
     req.paymentId = paymentIdStr;
 
     ASSERT_TRUE(!service->sendTransaction(req, res.transactionHash));
@@ -237,7 +237,7 @@ TEST_F(PaymentGateTest, DISABLED_sendTransaction) {
     req.destinations.push_back(TransferDestination{ TEST_AMOUNT/2, recvAddress });
     req.fee = currency.minimumFee();
     req.mixin = 1;
-    req.unlockTime = 0;
+    req.unlockHeight = 0;
     req.paymentId = paymentIdStr;
 
     ASSERT_TRUE(!serviceRecv->sendTransaction(req, res));

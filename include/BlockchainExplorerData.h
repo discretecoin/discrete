@@ -122,7 +122,7 @@ struct TransactionDetails {
   uint64_t totalInputsAmount = 0;
   uint64_t totalOutputsAmount = 0;
   uint64_t mixin = 0;
-  uint64_t unlockTime = 0;
+  uint64_t unlockHeight = 0;
   uint64_t timestamp = 0;
   uint8_t version = 0;
   uint8_t txType = 0;

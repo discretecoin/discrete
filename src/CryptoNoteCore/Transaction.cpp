@@ -96,7 +96,7 @@ namespace CryptoNote {
 
     // ITransactionWriter
 
-    virtual void setUnlockTime(uint64_t unlockTime) override;
+    virtual void setUnlockTime(uint64_t unlockHeight) override;
     virtual void setPaymentId(const Hash& hash) override;
     virtual void setExtraNonce(const BinaryArray& nonce) override;
     virtual void appendExtra(const BinaryArray& extraData) override;
@@ -164,7 +164,7 @@ namespace CryptoNote {
     extra.set(pk);
 
     transaction.version = CURRENT_TRANSACTION_VERSION;
-    transaction.unlockTime = 0;
+    transaction.unlockHeight = 0;
     transaction.extra = extra.serialize();
 
     secretKey = txKeys.secretKey;
@@ -212,12 +212,12 @@ namespace CryptoNote {
   }
 
   uint64_t TransactionImpl::getUnlockTime() const {
-    return transaction.unlockTime;
+    return transaction.unlockHeight;
   }
 
-  void TransactionImpl::setUnlockTime(uint64_t unlockTime) {
+  void TransactionImpl::setUnlockTime(uint64_t unlockHeight) {
     checkIfSigning();
-    transaction.unlockTime = unlockTime;
+    transaction.unlockHeight = unlockHeight;
     invalidateHash();
   }
 

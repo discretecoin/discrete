@@ -95,7 +95,7 @@ void WalletTransactionSender::validateTransfersAddresses(const std::vector<Walle
 }
 
 std::shared_ptr<WalletRequest> WalletTransactionSender::makeSendRequest(TransactionId& transactionId, std::deque<std::shared_ptr<WalletLegacyEvent>>& events,
-    const std::vector<WalletLegacyTransfer>& transfers, const std::list<TransactionOutputInformation>& selectedOuts, uint64_t fee, const std::string& extra, uint64_t mixIn, uint64_t unlockTimestamp) {
+    const std::vector<WalletLegacyTransfer>& transfers, const std::list<TransactionOutputInformation>& selectedOuts, uint64_t fee, const std::string& extra, uint64_t mixIn, uint64_t unlockHeightstamp) {
 
   using namespace CryptoNote;
 
@@ -117,7 +117,7 @@ std::shared_ptr<WalletRequest> WalletTransactionSender::makeSendRequest(Transact
 
   throwIf(context->foundMoney < neededMoney, error::WRONG_AMOUNT);
 
-  transactionId = m_transactionsCache.addNewTransaction(neededMoney, fee, extra, transfers, unlockTimestamp);
+  transactionId = m_transactionsCache.addNewTransaction(neededMoney, fee, extra, transfers, unlockHeightstamp);
   context->transactionId = transactionId;
   context->mixIn = mixIn;
 
@@ -131,7 +131,7 @@ std::shared_ptr<WalletRequest> WalletTransactionSender::makeSendRequest(Transact
 
 std::string WalletTransactionSender::makeRawTransaction(TransactionId& transactionId, std::deque<std::shared_ptr<WalletLegacyEvent>>& events,
   const std::vector<WalletLegacyTransfer>& transfers, const std::list<CryptoNote::TransactionOutputInformation>& selectedOuts,
-  uint64_t fee, const std::string& extra, uint64_t mixIn, uint64_t unlockTimestamp)
+  uint64_t fee, const std::string& extra, uint64_t mixIn, uint64_t unlockHeightstamp)
 {
 
   std::string raw_tx;
@@ -157,7 +157,7 @@ std::string WalletTransactionSender::makeRawTransaction(TransactionId& transacti
   throwIf(context->foundMoney < neededMoney, error::WRONG_AMOUNT);
 
   // add tx to wallet cache to prevent reuse of outputs used in this tx
-  transactionId = m_transactionsCache.addNewTransaction(neededMoney, fee, extra, transfers, unlockTimestamp);
+  transactionId = m_transactionsCache.addNewTransaction(neededMoney, fee, extra, transfers, unlockHeightstamp);
   context->transactionId = transactionId;
   context->mixIn = mixIn;
 
@@ -269,7 +269,7 @@ Transaction WalletTransactionSender::buildTransactionFromContext(std::shared_ptr
   splitDestinations(transaction.firstTransferId, transaction.transferCount, changeDts, context->dustPolicy, splittedDests);
 
   auto itx = buildTransaction(inputs, splittedDests, m_keys.viewSecretKey,
-      transaction.extra, transaction.unlockTime, m_upperTransactionSizeLimit, context->tx_key);
+      transaction.extra, transaction.unlockHeight, m_upperTransactionSizeLimit, context->tx_key);
   Transaction tx;
   if (!fromBinaryArray(tx, itx->getTransactionData()))
     throw std::system_error(make_error_code(error::INTERNAL_WALLET_ERROR));

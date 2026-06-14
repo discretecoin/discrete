@@ -57,7 +57,7 @@ Transaction buildPqTransaction(const std::vector<PqSpendInput>& inputs,
                                const std::vector<PqSendOutput>& outputs,
                                const CryptoPQ::DsaPublicKey& spendPub,
                                const CryptoPQ::DsaSecretKey& spendSk,
-                               uint64_t unlockTime) {
+                               uint64_t unlockHeight) {
   if (inputs.empty()) {
     throw std::runtime_error("buildPqTransaction: no inputs");
   }
@@ -74,7 +74,7 @@ Transaction buildPqTransaction(const std::vector<PqSpendInput>& inputs,
   Transaction tx;
   tx.version = TRANSACTION_VERSION_1;
   tx.txType = TX_PQ;
-  tx.unlockTime = unlockTime;
+  tx.unlockHeight = unlockHeight;
   tx.extra.clear();
 
   // Inputs (unsigned for now): reveal the spender's long-term spend pubkey and
@@ -143,16 +143,16 @@ Transaction buildPqTransaction(const std::vector<PqSpendInput>& inputs,
 Transaction buildBridgeTransaction(std::vector<BridgeLegacyInput>& /*inputs*/,
                                    const std::vector<PqSendOutput>& /*pqOutputs*/,
                                    const std::vector<BridgeKeyOutput>& /*keyOutputs*/,
-                                   uint64_t /*unlockTime*/) {
+                                   uint64_t /*unlockHeight*/) {
   // Bridge transactions do not exist in Discrete (no legacy chain to migrate from).
   throw std::runtime_error("Bridge transactions not supported in Discrete");
 }
 
 Transaction buildBridgeTransaction(std::vector<BridgeLegacyInput>& inputs,
                                    const std::vector<PqSendOutput>& outputs,
-                                   uint64_t unlockTime) {
+                                   uint64_t unlockHeight) {
   const std::vector<BridgeKeyOutput> keyOutputs;
-  return buildBridgeTransaction(inputs, outputs, keyOutputs, unlockTime);
+  return buildBridgeTransaction(inputs, outputs, keyOutputs, unlockHeight);
 }
 
 Transaction buildFreeRegTransaction(const CryptoPQ::KemPublicKey& viewPub,
@@ -162,7 +162,7 @@ Transaction buildFreeRegTransaction(const CryptoPQ::KemPublicKey& viewPub,
   Transaction tx;
   tx.version = TRANSACTION_VERSION_1;
   tx.txType = TX_FREE_REG;
-  tx.unlockTime = 0;
+  tx.unlockHeight = 0;
   tx.extra.clear();
   // tx_extra = PQ account-registration tag (view + spend pubkeys), then the PoW
   // tag LAST (so its nonce occupies the final 8 bytes — required by consensus and

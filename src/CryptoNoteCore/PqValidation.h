@@ -24,6 +24,7 @@
 
 #include "CryptoNote.h"
 #include "CryptoTypes.h"
+#include "../CryptoNoteConfig.h"
 #include "crypto_pq/PqHash.h"
 
 // Consensus validation for PQ Phase 1 transactions (TRANSACTION_VERSION_1,
@@ -51,7 +52,7 @@ struct PqResolvedInput {
 //  - serialized size <= MAX_PQ_TX_SIZE
 //  - every PQ blob field has the exact consensus length
 //  - every output amount != 0
-//  - unlockTime == 0; legacy signatures vector empty
+//  - unlockHeight == 0; legacy signatures vector empty
 bool checkPqTransactionSemantic(const Transaction& tx, std::string* error);
 
 // Context-free shape checks for one v2 TX_BRIDGE transaction (one-way legacy ->
@@ -64,7 +65,7 @@ bool checkPqTransactionSemantic(const Transaction& tx, std::string* error);
 //    classical CN change back to the sender
 //  - PQ outputs <= MAX_PQ_OUTPUTS_PER_TX; PqOutput field lengths exact; every
 //    output amount != 0; KeyOutput keys must be valid and unique
-//  - unlockTime == 0; serialized size <= MAX_PQ_TX_SIZE
+//  - unlockHeight == 0; serialized size <= MAX_PQ_TX_SIZE
 // Balance, ring signatures, key-image double-spend and fee floor are enforced by
 // the classical pipeline (check_tx_semantic / checkTransactionInputs).
 bool checkBridgeTransactionSemantic(const Transaction& tx, std::string* error);
@@ -72,7 +73,7 @@ bool checkBridgeTransactionSemantic(const Transaction& tx, std::string* error);
 // Context-free checks for one v2 TX_FREE_REG transaction (zero-fee account
 // registration, spec §11.1):
 //  - subtype == TX_FREE_REG; inputs & outputs empty; no legacy signatures;
-//    unlockTime == 0
+//    unlockHeight == 0
 //  - tx_extra carries EXACTLY one PQ account-registration tag (0x05) and EXACTLY
 //    one PoW tag (0x06), and nothing else
 //  - the PoW tag is the last field (so the nonce is the final 8 bytes)
@@ -80,12 +81,16 @@ bool checkBridgeTransactionSemantic(const Transaction& tx, std::string* error);
 //    FREE_REG_POW_TARGET
 // Chain-context rules (refBlockHash recency + main-chain, first-reg-wins,
 // per-block count) are enforced by the Blockchain layer.
-bool checkFreeRegTransactionSemantic(const Transaction& tx, std::string* error);
+// powTarget defaults to parameters::FREE_REG_POW_TARGET; pass a custom value
+// (e.g. UINT64_MAX) in tests to bypass PoW grinding.
+bool checkFreeRegTransactionSemantic(const Transaction& tx, std::string* error,
+                                     uint64_t powTarget = parameters::FREE_REG_POW_TARGET);
 
-// The free-reg anti-spam PoW predicate. Reused by wallet nonce grinding. The
-// FREE_REG_POW_TARGET threshold must still be calibrated before activation.
+// The free-reg anti-spam PoW predicate. Reused by wallet nonce grinding.
+// target defaults to parameters::FREE_REG_POW_TARGET.
 bool checkFreeRegPow(const std::array<uint8_t, 1184>& viewPub,
-                     const Crypto::Hash& refBlockHash, uint64_t nonce);
+                     const Crypto::Hash& refBlockHash, uint64_t nonce,
+                     uint64_t target = parameters::FREE_REG_POW_TARGET);
 
 // Context-free input/balance/signature checks given resolved referenced outputs
 // (resolved[i] corresponds to tx.inputs[i]). On success, *outNullifiers (if not
@@ -99,11 +104,11 @@ bool checkFreeRegPow(const std::array<uint8_t, 1184>& viewPub,
 //  - spend_commit(authPub, rhoReveal) == referenced spendCommit
 //  - intra-tx nullifier uniqueness
 //  - balance: sum(referenced amounts) == sum(output amounts) + fee, fee >= 0
-//  - fee >= minFeePerByte * serialized_size
+//  - fee >= ceil(minFeePer1000Bytes * serialized_size / 1000)
 //  - ML-DSA verify each input over the recomputed txSigningDigest
 bool checkPqTransactionInputs(const Transaction& tx,
                              const std::vector<PqResolvedInput>& resolved,
-                             uint64_t minFeePerByte,
+                             uint64_t minFeePer1000Bytes,
                              std::vector<Crypto::Hash>* outNullifiers,
                              std::string* error);
 

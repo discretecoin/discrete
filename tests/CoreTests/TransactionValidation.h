@@ -66,7 +66,7 @@ struct gen_tx_big_version : public get_tx_validation_base
   bool generate(std::vector<test_event_entry>& events) const;
 };
 
-struct gen_tx_unlock_time : public get_tx_validation_base
+struct gen_tx_unlock_height : public get_tx_validation_base
 {
   bool generate(std::vector<test_event_entry>& events) const;
 };
@@ -121,7 +121,7 @@ struct gen_tx_key_image_is_invalid : public get_tx_validation_base
   bool generate(std::vector<test_event_entry>& events) const;
 };
 
-struct gen_tx_check_input_unlock_time : public get_tx_validation_base
+struct gen_tx_check_input_unlock_height : public get_tx_validation_base
 {
   bool generate(std::vector<test_event_entry>& events) const;
 };

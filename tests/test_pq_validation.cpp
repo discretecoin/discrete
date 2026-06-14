@@ -109,7 +109,7 @@ BuiltTx buildSignedTx(uint64_t amountIn, uint64_t amountOut) {
 
     b.tx.version = TRANSACTION_VERSION_1;
     b.tx.txType = TX_PQ;
-    b.tx.unlockTime = 0;
+    b.tx.unlockHeight = 0;
     b.tx.outputs.push_back(out);
 
     // Sign: digest over (tx, fee), ML-DSA with the spender's spend secret.
@@ -194,10 +194,18 @@ TEST(PqValidation, RejectsAmountTamperWithoutResign) {
 }
 
 TEST(PqValidation, RejectsFeeBelowFloor) {
-    BuiltTx b = buildSignedTx(1000000, 999999);  // fee = 1
+    BuiltTx b = buildSignedTx(1000000, 999999);  // fee = 1 atom
     std::string err;
-    // With a per-byte floor, a 1-atomic fee on a multi-KB tx is far too low.
-    EXPECT_FALSE(checkPqTransactionInputs(b.tx, b.resolved, parameters::MIN_PQ_FEE_PER_BYTE, nullptr, &err));
+    // A 1-atom fee on a multi-KB TX_PQ is below the per-1000-bytes floor.
+    EXPECT_FALSE(checkPqTransactionInputs(b.tx, b.resolved, parameters::MIN_PQ_FEE_PER_1000_BYTES, nullptr, &err));
+}
+
+TEST(PqValidation, AcceptsFeeMeetsFloor) {
+    // fee=100 atoms comfortably exceeds the floor for any valid tx (≤48 KB → floor ≤49).
+    BuiltTx b = buildSignedTx(1000000, 999900);  // fee = 100 atoms
+    std::string err;
+    EXPECT_TRUE(checkPqTransactionInputs(b.tx, b.resolved,
+        parameters::MIN_PQ_FEE_PER_1000_BYTES, nullptr, &err)) << err;
 }
 
 TEST(PqValidation, RejectsExtraTamper) {
@@ -230,7 +238,7 @@ TEST(PqValidation, SemanticRejectsWrongSubtype) {
 
 TEST(PqValidation, SemanticRejectsUnlockTime) {
     BuiltTx b = buildSignedTx(1000000, 900000);
-    b.tx.unlockTime = 5;
+    b.tx.unlockHeight = 5;
     std::string err;
     EXPECT_FALSE(checkPqTransactionSemantic(b.tx, &err));
 }
@@ -274,7 +282,7 @@ TEST(PqValidation, BridgeAlwaysRejectedInDiscrete) {
     Transaction tx;
     tx.version = TRANSACTION_VERSION_1;
     tx.txType = TX_BRIDGE;
-    tx.unlockTime = 0;
+    tx.unlockHeight = 0;
     std::string err;
     EXPECT_FALSE(checkBridgeTransactionSemantic(tx, &err));
 }
@@ -298,7 +306,7 @@ Transaction makeFreeRegTx() {
     Transaction tx;
     tx.version = TRANSACTION_VERSION_1;
     tx.txType = TX_FREE_REG;
-    tx.unlockTime = 0;
+    tx.unlockHeight = 0;
     // no inputs / outputs / signatures
     addPqAccountRegistrationToExtra(tx.extra, freeRegViewPub(), freeRegSpendPub());
     TransactionExtraPow pow{};
@@ -338,7 +346,7 @@ TEST(PqValidation, FreeRegRejectsExtraField) {
     Transaction tx;
     tx.version = TRANSACTION_VERSION_1;
     tx.txType = TX_FREE_REG;
-    tx.unlockTime = 0;
+    tx.unlockHeight = 0;
     addPqAccountRegistrationToExtra(tx.extra, freeRegViewPub(), freeRegSpendPub());
     Crypto::PublicKey pk{};
     addTransactionPublicKeyToExtra(tx.extra, pk);  // disallowed extra field
@@ -353,7 +361,7 @@ TEST(PqValidation, FreeRegRejectsPowNotLast) {
     Transaction tx;
     tx.version = TRANSACTION_VERSION_1;
     tx.txType = TX_FREE_REG;
-    tx.unlockTime = 0;
+    tx.unlockHeight = 0;
     TransactionExtraPow pow{}; pow.nonce = 1;
     appendPowTagToExtra(tx.extra, pow);
     addPqAccountRegistrationToExtra(tx.extra, freeRegViewPub(), freeRegSpendPub());
@@ -365,10 +373,25 @@ TEST(PqValidation, FreeRegRejectsMissingPow) {
     Transaction tx;
     tx.version = TRANSACTION_VERSION_1;
     tx.txType = TX_FREE_REG;
-    tx.unlockTime = 0;
+    tx.unlockHeight = 0;
     addPqAccountRegistrationToExtra(tx.extra, freeRegViewPub(), freeRegSpendPub());  // no PoW tag
     std::string err;
     EXPECT_FALSE(checkFreeRegTransactionSemantic(tx, &err));
+}
+
+TEST(PqValidation, FreeRegRejectsBadPow) {
+    // Find the first nonce that does NOT satisfy the production target.
+    // With target=0x0FFF… (1/16 per trial), a non-passing nonce is found in
+    // O(1) expected iterations.
+    std::array<uint8_t, TX_EXTRA_PQ_VIEW_PUBKEY_SIZE> vp = freeRegViewPub();
+    Crypto::Hash ref = hashPat(1, 1);
+    uint64_t badNonce = 0;
+    while (checkFreeRegPow(vp, ref, badNonce, parameters::FREE_REG_POW_TARGET)) {
+        ++badNonce;
+    }
+    EXPECT_FALSE(checkFreeRegPow(vp, ref, badNonce, parameters::FREE_REG_POW_TARGET));
+    // Same nonce trivially passes with UINT64_MAX target (any hash qualifies).
+    EXPECT_TRUE(checkFreeRegPow(vp, ref, badNonce, UINT64_MAX));
 }
 
 int main(int argc, char** argv) {

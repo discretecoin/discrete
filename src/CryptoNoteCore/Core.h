@@ -203,8 +203,8 @@ namespace CryptoNote {
 
      bool is_key_image_spent(const Crypto::KeyImage& key_im);
      bool is_key_image_spent(const Crypto::KeyImage& key_im, uint32_t height);
-     bool is_tx_spendtime_unlocked(uint64_t unlock_time);
-     bool is_tx_spendtime_unlocked(uint64_t unlock_time, uint32_t height);
+     bool is_tx_spendheight_unlocked(uint64_t unlock_height);
+     bool is_tx_spendheight_unlocked(uint64_t unlock_height, uint32_t height);
 
    private:
      bool add_new_tx(const Transaction& tx, const Crypto::Hash& tx_hash, size_t blob_size, tx_verification_context& tvc, bool keeped_by_block);

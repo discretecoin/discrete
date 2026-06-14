@@ -662,9 +662,9 @@ TEST_F(TransfersConsumerTest, onNewBlocks_checkTransactionInformation) {
   addTestInput(*tx, 10000);
   addTestKeyOutput(*tx, 1000, 2, m_accountKeys);
   Hash paymentId = Crypto::rand<Hash>();
-  uint64_t unlockTime = 10;
+  uint64_t unlockHeight = 10;
   tx->setPaymentId(paymentId);
-  tx->setUnlockTime(unlockTime);
+  tx->setUnlockTime(unlockHeight);
 
   CompleteBlock blocks[2];
   blocks[0].block = CryptoNote::Block();
@@ -684,7 +684,7 @@ TEST_F(TransfersConsumerTest, onNewBlocks_checkTransactionInformation) {
   ASSERT_EQ(tx->getTransactionPublicKey(), info.publicKey);
   ASSERT_EQ(1, info.blockHeight);
   ASSERT_EQ(11, info.timestamp);
-  ASSERT_EQ(unlockTime, info.unlockTime);
+  ASSERT_EQ(unlockHeight, info.unlockHeight);
   ASSERT_EQ(10000, info.totalAmountIn);
   ASSERT_EQ(1000, info.totalAmountOut);
   ASSERT_EQ(paymentId, info.paymentId);

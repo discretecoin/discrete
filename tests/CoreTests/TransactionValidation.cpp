@@ -26,14 +26,14 @@ namespace
 {
   struct tx_builder
   {
-    void step1_init(size_t version = CURRENT_TRANSACTION_VERSION, uint64_t unlock_time = 0)
+    void step1_init(size_t version = CURRENT_TRANSACTION_VERSION, uint64_t unlock_height = 0)
     {
       m_tx.inputs.clear();
       m_tx.outputs.clear();
       m_tx.signatures.clear();
 
       m_tx.version = static_cast<uint8_t>(version);
-      m_tx.unlockTime = unlock_time;
+      m_tx.unlockHeight = unlock_height;
 
       m_tx_key = generateKeyPair();
       addTransactionPublicKeyToExtra(m_tx.extra, m_tx_key.publicKey);
@@ -115,16 +115,16 @@ namespace
     Crypto::Hash m_tx_prefix_hash;
   };
 
-  Transaction make_simple_tx_with_unlock_time(const std::vector<test_event_entry>& events,
+  Transaction make_simple_tx_with_unlock_height(const std::vector<test_event_entry>& events,
     const CryptoNote::Block& blk_head, const CryptoNote::AccountBase& from, const CryptoNote::AccountBase& to,
-    uint64_t amount, uint64_t fee, uint64_t unlock_time)
+    uint64_t amount, uint64_t fee, uint64_t unlock_height)
   {
     std::vector<TxBuildInput> sources;
     std::vector<TxBuildOutput> destinations;
     fill_tx_sources_and_destinations(events, blk_head, from, to, amount, fee, 0, sources, destinations);
 
     tx_builder builder;
-    builder.step1_init(CURRENT_TRANSACTION_VERSION, unlock_time);
+    builder.step1_init(CURRENT_TRANSACTION_VERSION, unlock_height);
     builder.step2_fill_inputs(from.getAccountKeys(), sources);
     builder.step3_fill_outputs(destinations);
     builder.step4_calc_hash();
@@ -177,7 +177,7 @@ bool gen_tx_big_version::generate(std::vector<test_event_entry>& events) const
   return true;
 }
 
-bool gen_tx_unlock_time::generate(std::vector<test_event_entry>& events) const
+bool gen_tx_unlock_height::generate(std::vector<test_event_entry>& events) const
 {
   uint64_t ts_start = 1338224400;
 
@@ -186,33 +186,33 @@ bool gen_tx_unlock_time::generate(std::vector<test_event_entry>& events) const
   REWIND_BLOCKS_N(events, blk_1, blk_0, miner_account, 10);
   REWIND_BLOCKS(events, blk_1r, blk_1, miner_account);
 
-  auto make_tx_with_unlock_time = [&](uint64_t unlock_time) -> Transaction
+  auto make_tx_with_unlock_height = [&](uint64_t unlock_height) -> Transaction
   {
-    return make_simple_tx_with_unlock_time(events, blk_1, miner_account, miner_account, MK_COINS(1),
-      m_currency.minimumFee(), unlock_time);
+    return make_simple_tx_with_unlock_height(events, blk_1, miner_account, miner_account, MK_COINS(1),
+      m_currency.minimumFee(), unlock_height);
   };
 
   std::list<Transaction> txs_0;
 
-  txs_0.push_back(make_tx_with_unlock_time(0));
+  txs_0.push_back(make_tx_with_unlock_height(0));
   events.push_back(txs_0.back());
 
-  txs_0.push_back(make_tx_with_unlock_time(get_block_height(blk_1r) - 1));
+  txs_0.push_back(make_tx_with_unlock_height(get_block_height(blk_1r) - 1));
   events.push_back(txs_0.back());
 
-  txs_0.push_back(make_tx_with_unlock_time(get_block_height(blk_1r)));
+  txs_0.push_back(make_tx_with_unlock_height(get_block_height(blk_1r)));
   events.push_back(txs_0.back());
 
-  txs_0.push_back(make_tx_with_unlock_time(get_block_height(blk_1r) + 1));
+  txs_0.push_back(make_tx_with_unlock_height(get_block_height(blk_1r) + 1));
   events.push_back(txs_0.back());
 
-  txs_0.push_back(make_tx_with_unlock_time(get_block_height(blk_1r) + 2));
+  txs_0.push_back(make_tx_with_unlock_height(get_block_height(blk_1r) + 2));
   events.push_back(txs_0.back());
 
-  txs_0.push_back(make_tx_with_unlock_time(ts_start - 1));
+  txs_0.push_back(make_tx_with_unlock_height(ts_start - 1));
   events.push_back(txs_0.back());
 
-  txs_0.push_back(make_tx_with_unlock_time(time(0) + 60 * 60));
+  txs_0.push_back(make_tx_with_unlock_height(time(0) + 60 * 60));
   events.push_back(txs_0.back());
 
   MAKE_NEXT_BLOCK_TX_LIST(events, blk_2, blk_1r, miner_account, txs_0);
@@ -507,7 +507,7 @@ bool gen_tx_key_image_is_invalid::generate(std::vector<test_event_entry>& events
   return true;
 }
 
-bool gen_tx_check_input_unlock_time::generate(std::vector<test_event_entry>& events) const
+bool gen_tx_check_input_unlock_height::generate(std::vector<test_event_entry>& events) const
 {
   static const size_t tests_count = 6;
 
@@ -526,10 +526,10 @@ bool gen_tx_check_input_unlock_time::generate(std::vector<test_event_entry>& eve
   }
 
   std::list<Transaction> txs_0;
-  auto make_tx_to_acc = [&](size_t acc_idx, uint64_t unlock_time)
+  auto make_tx_to_acc = [&](size_t acc_idx, uint64_t unlock_height)
   {
-    txs_0.push_back(make_simple_tx_with_unlock_time(events, blk_1, miner_account, accounts[acc_idx],
-      MK_COINS(1) + m_currency.minimumFee(), m_currency.minimumFee(), unlock_time));
+    txs_0.push_back(make_simple_tx_with_unlock_height(events, blk_1, miner_account, accounts[acc_idx],
+      MK_COINS(1) + m_currency.minimumFee(), m_currency.minimumFee(), unlock_height));
     events.push_back(txs_0.back());
   };
 
@@ -545,7 +545,7 @@ bool gen_tx_check_input_unlock_time::generate(std::vector<test_event_entry>& eve
   std::list<Transaction> txs_1;
   auto make_tx_from_acc = [&](size_t acc_idx, bool invalid)
   {
-    Transaction tx = make_simple_tx_with_unlock_time(events, blk_2, accounts[acc_idx], miner_account, MK_COINS(1),
+    Transaction tx = make_simple_tx_with_unlock_height(events, blk_2, accounts[acc_idx], miner_account, MK_COINS(1),
       m_currency.minimumFee(), 0);
     if (invalid)
     {

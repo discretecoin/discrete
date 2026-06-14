@@ -412,7 +412,7 @@ bool wallet_rpc_server::on_transfer(const wallet_rpc::COMMAND_RPC_TRANSFER::requ
     CryptoNote::WalletHelper::SendCompleteResultObserver sent;
     WalletHelper::IWalletRemoveObserverGuard removeGuard(m_wallet, sent);
 
-    CryptoNote::TransactionId tx = m_wallet.sendTransaction(transfers, req.fee == 0 ? m_currency.minimumFee() : req.fee, extraString, req.mixin, req.unlock_time);
+    CryptoNote::TransactionId tx = m_wallet.sendTransaction(transfers, req.fee == 0 ? m_currency.minimumFee() : req.fee, extraString, req.mixin, req.unlock_height);
     if (tx == WALLET_LEGACY_INVALID_TRANSACTION_ID)
       throw std::runtime_error("Couldn't send transaction");
 
@@ -486,7 +486,7 @@ bool wallet_rpc_server::on_get_payments(const wallet_rpc::COMMAND_RPC_GET_PAYMEN
       rpc_payment.tx_hash      = Common::podToHex(txInfo.hash);
       rpc_payment.amount       = txInfo.totalAmount;
       rpc_payment.block_height = txInfo.blockHeight;
-      rpc_payment.unlock_time  = txInfo.unlockTime;
+      rpc_payment.unlock_height  = txInfo.unlockHeight;
       res.payments.push_back(rpc_payment);
     }
   }
@@ -530,7 +530,7 @@ bool wallet_rpc_server::on_get_transfers(const wallet_rpc::COMMAND_RPC_GET_TRANS
     transfer.fee             = txInfo.fee;
     transfer.address         = address;
     transfer.blockIndex      = txInfo.blockHeight;
-    transfer.unlockTime      = txInfo.unlockTime;
+    transfer.unlockHeight      = txInfo.unlockHeight;
     transfer.confirmations   = (txInfo.blockHeight != UNCONFIRMED_TRANSACTION_GLOBAL_OUTPUT_INDEX ? bc_height - txInfo.blockHeight : 0);
 
     std::vector<uint8_t> extraVec;
@@ -584,7 +584,7 @@ bool wallet_rpc_server::on_get_last_transfers(const wallet_rpc::COMMAND_RPC_GET_
     transfer.fee             = txInfo.fee;
     transfer.address         = address;
     transfer.blockIndex      = txInfo.blockHeight;
-    transfer.unlockTime      = txInfo.unlockTime;
+    transfer.unlockHeight      = txInfo.unlockHeight;
     transfer.confirmations   = (txInfo.blockHeight != UNCONFIRMED_TRANSACTION_GLOBAL_OUTPUT_INDEX ? bc_height - txInfo.blockHeight : 0);
 
     std::vector<uint8_t> extraVec;
@@ -639,7 +639,7 @@ bool wallet_rpc_server::on_get_transaction(const wallet_rpc::COMMAND_RPC_GET_TRA
       transfer.fee             = txInfo.fee;
       transfer.address         = address;
       transfer.blockIndex      = txInfo.blockHeight;
-      transfer.unlockTime      = txInfo.unlockTime;
+      transfer.unlockHeight      = txInfo.unlockHeight;
       transfer.confirmations   = (txInfo.blockHeight != UNCONFIRMED_TRANSACTION_GLOBAL_OUTPUT_INDEX ? bc_height - txInfo.blockHeight : 0);
       
       std::vector<uint8_t> extraVec;

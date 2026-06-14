@@ -73,7 +73,7 @@ CryptoPQ::Hash256 pqSigningDigest(const Transaction& tx, uint64_t fee) {
   CryptoPQ::UnsignedTx u;
   u.version = tx.version;
   u.txType = tx.txType;
-  u.unlockTime = tx.unlockTime;
+  u.unlockHeight = tx.unlockHeight;
   u.extra = tx.extra;
   u.fee = fee;
   for (const auto& in : tx.inputs) {
@@ -125,8 +125,8 @@ bool checkPqTransactionSemantic(const Transaction& tx, std::string* error) {
   if (tx.outputs.size() > parameters::MAX_PQ_OUTPUTS_PER_TX) {
     return fail(error, "too many PQ outputs");
   }
-  if (tx.unlockTime != 0) {
-    return fail(error, "PQ tx must have unlockTime == 0");
+  if (tx.unlockHeight != 0) {
+    return fail(error, "PQ tx must have unlockHeight == 0");
   }
   for (const auto& in : tx.inputs) {
     if (in.type() != typeid(PqInput)) {
@@ -205,7 +205,8 @@ bool checkBridgeTransactionSemantic(const Transaction& tx, std::string* error) {
 }
 
 bool checkFreeRegPow(const std::array<uint8_t, 1184>& viewPub,
-                     const Crypto::Hash& refBlockHash, uint64_t nonce) {
+                     const Crypto::Hash& refBlockHash, uint64_t nonce,
+                     uint64_t target) {
   // PoW preimage: viewPub(1184) || refBlockHash(32) || LE64(nonce).
   std::vector<uint8_t> buf;
   buf.reserve(1184 + 32 + 8);
@@ -220,10 +221,10 @@ bool checkFreeRegPow(const std::array<uint8_t, 1184>& viewPub,
   // Target semantics: leading 8 bytes (big-endian) <= target.
   uint64_t lead = 0;
   for (int i = 0; i < 8; ++i) lead = (lead << 8) | static_cast<uint8_t>(h.data[i]);
-  return lead <= parameters::FREE_REG_POW_TARGET;
+  return lead <= target;
 }
 
-bool checkFreeRegTransactionSemantic(const Transaction& tx, std::string* error) {
+bool checkFreeRegTransactionSemantic(const Transaction& tx, std::string* error, uint64_t powTarget) {
   if (tx.txType != TX_FREE_REG) {
     return fail(error, "not a TX_FREE_REG subtype");
   }
@@ -233,8 +234,8 @@ bool checkFreeRegTransactionSemantic(const Transaction& tx, std::string* error) 
   if (!tx.pqSignatures.empty()) {
     return fail(error, "TX_FREE_REG must not carry pqSignatures");
   }
-  if (tx.unlockTime != 0) {
-    return fail(error, "TX_FREE_REG must have unlockTime == 0");
+  if (tx.unlockHeight != 0) {
+    return fail(error, "TX_FREE_REG must have unlockHeight == 0");
   }
 
   // tx_extra must contain EXACTLY one PQ registration tag + one PoW tag, nothing else.
@@ -261,7 +262,7 @@ bool checkFreeRegTransactionSemantic(const Transaction& tx, std::string* error) 
   getPqAccountRegistrationFromExtra(tx.extra, reg);
   getPowTagFromExtra(tx.extra, pow);
 
-  if (!checkFreeRegPow(reg.viewPub, pow.refBlockHash, pow.nonce)) {
+  if (!checkFreeRegPow(reg.viewPub, pow.refBlockHash, pow.nonce, powTarget)) {
     return fail(error, "TX_FREE_REG: anti-spam PoW not satisfied");
   }
   return true;
@@ -269,7 +270,7 @@ bool checkFreeRegTransactionSemantic(const Transaction& tx, std::string* error) 
 
 bool checkPqTransactionInputs(const Transaction& tx,
                              const std::vector<PqResolvedInput>& resolved,
-                             uint64_t minFeePerByte,
+                             uint64_t minFeePer1000Bytes,
                              std::vector<Crypto::Hash>* outNullifiers,
                              std::string* error) {
   if (resolved.size() != tx.inputs.size()) {
@@ -300,7 +301,7 @@ bool checkPqTransactionInputs(const Transaction& tx,
     // NOTE: coinbase PqOutputs ARE spendable in Discrete (they are the sole
     // funds source — there is no legacy chain or bridge). Coinbase maturity
     // (minedMoneyUnlockWindow) is height-dependent, so it is enforced in the
-    // chain-context layer (Blockchain::checkPqInputs via is_tx_spendtime_unlocked),
+    // chain-context layer (Blockchain::checkPqInputs via is_tx_spendheight_unlocked),
     // not here in the context-free shape/balance check.
 
     // Ownership / authorization binding.
@@ -336,13 +337,13 @@ bool checkPqTransactionInputs(const Transaction& tx,
   }
   uint64_t fee = sumIn - sumOut;
 
-  // Fee floor: fee >= minFeePerByte * size (overflow-safe).
+  // Fee floor: fee >= ceil(minFeePer1000Bytes * size / 1000).
   uint64_t size = toBinaryArray(tx).size();
-  if (minFeePerByte != 0 && size != 0) {
-    if (size > UINT64_MAX / minFeePerByte) {
+  if (minFeePer1000Bytes != 0 && size != 0) {
+    if (size > (UINT64_MAX - 999) / minFeePer1000Bytes) {
       return fail(error, "fee floor overflow");  // implausibly large tx
     }
-    uint64_t floor = minFeePerByte * size;
+    uint64_t floor = (minFeePer1000Bytes * size + 999) / 1000;
     if (fee < floor) {
       return fail(error, "fee below minimum");
     }

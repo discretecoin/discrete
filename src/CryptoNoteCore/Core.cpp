@@ -373,7 +373,7 @@ bool Core::check_tx_semantic(const Transaction& tx, const Crypto::Hash& txHash, 
       }
       // fall through to classical checks (classical inputs + ring signatures)
     } else if (tx.txType == TX_FREE_REG) {
-      if (!checkFreeRegTransactionSemantic(tx, &pqErr)) {
+      if (!checkFreeRegTransactionSemantic(tx, &pqErr, m_currency.freeRegPowTarget())) {
         logger(ERROR) << "free-reg tx semantic check failed (" << pqErr << ") for tx id= " << Common::podToHex(txHash);
         return false;
       }
@@ -1273,7 +1273,7 @@ bool Core::handleIncomingTransaction(const Transaction& tx, const Crypto::Hash& 
     }
   
     // Legacy fee/mixin accounting reads classical KeyInput amounts and ring
-    // sizes. TX_PQ has neither — its fee floor (MIN_PQ_FEE_PER_BYTE) and the
+    // sizes. TX_PQ has neither — its fee floor (MIN_PQ_FEE_PER_1000_BYTES) and the
     // value balance are enforced in checkPqTransactionInputs. TX_BRIDGE keeps
     // classical inputs, so these still apply to it.
     const bool pqOnlyInputs = tx.version >= TRANSACTION_VERSION_1 && tx.txType == TX_PQ;
@@ -1302,15 +1302,10 @@ bool Core::handleIncomingTransaction(const Transaction& tx, const Crypto::Hash& 
       }
     }
 
-    // v6+: drop the legacy dual height/timestamp unlock_time interpretation.
-    // New txs must use a height <= CRYPTONOTE_MAX_UNLOCK_HEIGHT_V6, or 0.
-    // CT txs already require unlock_time == 0 (enforced in check_tx_semantic);
-    // this also constrains v1 plain txs that remain valid post-fork.
-    if (m_currency.isUnlockTimeCappedAt(height) &&
-        tx.unlockTime > CryptoNote::parameters::CRYPTONOTE_MAX_UNLOCK_HEIGHT_V6) {
-      logger(ERROR) << "Transaction verification failed: unlock_time " << tx.unlockTime
-                    << " exceeds v6 cap " << CryptoNote::parameters::CRYPTONOTE_MAX_UNLOCK_HEIGHT_V6
-                    << " for transaction " << txHash << ", rejected";
+    // Discrete: unlock_height is height-only. Timestamps are not accepted.
+    if (tx.unlockHeight > m_currency.maxBlockHeight()) {
+      logger(ERROR) << "Transaction verification failed: unlock_height " << tx.unlockHeight
+                    << " exceeds max block height for transaction " << txHash << ", rejected";
       tvc.m_verification_failed = true;
       return false;
     }
@@ -1404,12 +1399,12 @@ bool Core::is_key_image_spent(const Crypto::KeyImage& key_im, uint32_t height) {
   return m_blockchain.checkIfSpent(key_im, height);
 }
 
-bool Core::is_tx_spendtime_unlocked(uint64_t unlock_time) {
-  return m_blockchain.is_tx_spendtime_unlocked(unlock_time);
+bool Core::is_tx_spendheight_unlocked(uint64_t unlock_height) {
+  return m_blockchain.is_tx_spendheight_unlocked(unlock_height);
 }
 
-bool Core::is_tx_spendtime_unlocked(uint64_t unlock_time, uint32_t height) {
-  return m_blockchain.is_tx_spendtime_unlocked(unlock_time, height);
+bool Core::is_tx_spendheight_unlocked(uint64_t unlock_height, uint32_t height) {
+  return m_blockchain.is_tx_spendheight_unlocked(unlock_height, height);
 }
 
 bool Core::isInCheckpointZone(uint32_t height) const {

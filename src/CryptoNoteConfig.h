@@ -25,36 +25,26 @@
 namespace CryptoNote {
 namespace parameters {
 
-const uint64_t DIFFICULTY_TARGET                             = 60; // seconds
+const uint64_t DIFFICULTY_TARGET                             = 90; // seconds
 const uint64_t EXPECTED_NUMBER_OF_BLOCKS_PER_DAY             = 24 * 60 * 60 / DIFFICULTY_TARGET;
 const uint64_t CRYPTONOTE_MAX_BLOCK_NUMBER                   = 500000000;
-// Maximum unlock_time accepted at block major v6+. Plain txs at v6+ must use
-// height interpretation only and stay at or below this cap; the timestamp
-// branch is removed. Pre-v6 outputs whose tx carries an unlock_time exceeding
-// this cap (e.g. accidental Unix timestamps in seconds) are treated as
-// unlocked when referenced from a v6+ tip, recovering funds that were
-// effectively frozen by user error under the dual height/timestamp scheme.
-// 10,000,000 blocks is about 76 years from genesis at 240s/block - well beyond any
-// legitimate lock; clearly bogus for everything above it.
-const uint64_t CRYPTONOTE_MAX_UNLOCK_HEIGHT_V6               = UINT64_C(10000000);
 const size_t   CRYPTONOTE_MAX_BLOCK_BLOB_SIZE                = 500000000;
 const size_t   CRYPTONOTE_MAX_TX_SIZE                        = 1000000000;
-const uint64_t CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX       = 0x8f; // same as PQ prefix
-const uint64_t CRYPTONOTE_PUBLIC_PQ_ADDRESS_BASE58_PREFIX    = 0x8f; // PQ addresses start with "Q"
+const uint64_t CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX       = 0x3445db; // disc
 const uint64_t CRYPTONOTE_TX_PROOF_BASE58_PREFIX             = 3576968;
 const uint64_t CRYPTONOTE_RESERVE_PROOF_BASE58_PREFIX        = 44907175188;
 const uint64_t CRYPTONOTE_KEYS_SIGNATURE_BASE58_PREFIX       = 176103705;
 const size_t   CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW          = 10;
-const size_t   CRYPTONOTE_TX_SPENDABLE_AGE                   = 6;
+const size_t   CRYPTONOTE_TX_SPENDABLE_AGE                   = 3;
 const uint64_t CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT            = DIFFICULTY_TARGET * 7;
 const uint64_t CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT_V1         = DIFFICULTY_TARGET * 3;
 const size_t   BLOCKCHAIN_TIMESTAMP_CHECK_WINDOW             = 60;
 const size_t   BLOCKCHAIN_TIMESTAMP_CHECK_WINDOW_V1          = 11;
 
-// MONEY_SUPPLY - total number coins to be generated
-const uint64_t MONEY_SUPPLY                                  = UINT64_C(10000000000000000000);
-const uint64_t COIN                                          = UINT64_C(1000000000000);
-const uint64_t TAIL_EMISSION_REWARD                          = UINT64_C(1000000000000);
+// EMISSION_CURVE_TARGET - asymptotic supply ceiling; emission approaches but never reaches this
+const uint64_t EMISSION_CURVE_TARGET                         = UINT64_C(2100000000); // 21,000,000.00 XDS
+const uint64_t COIN                                          = UINT64_C(100);
+const uint64_t TAIL_EMISSION_REWARD                          = UINT64_C(100);
 const size_t CRYPTONOTE_COIN_VERSION                         = 1;
 const unsigned EMISSION_SPEED_FACTOR                         = 18;
 static_assert(EMISSION_SPEED_FACTOR <= 8 * sizeof(uint64_t), "Bad EMISSION_SPEED_FACTOR");
@@ -65,12 +55,12 @@ const size_t   CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V2  = 1000000;
 const size_t   CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V1  = 100000;
 const size_t   CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_CURRENT = CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE;
 const size_t   CRYPTONOTE_COINBASE_BLOB_RESERVED_SIZE        = 600;
-const size_t   CRYPTONOTE_DISPLAY_DECIMAL_POINT              = 12;
+const size_t   CRYPTONOTE_DISPLAY_DECIMAL_POINT              = 2;
 
-const uint64_t MINIMUM_FEE                                   = UINT64_C(10000000000);
-const uint64_t MAXIMUM_FEE                                   = UINT64_C(100000000000);
+const uint64_t MINIMUM_FEE                                   = UINT64_C(1);
+const uint64_t MAXIMUM_FEE                                   = UINT64_C(100);
 
-const uint64_t DEFAULT_DUST_THRESHOLD                        = UINT64_C(100000000);
+const uint64_t DEFAULT_DUST_THRESHOLD                        = UINT64_C(1);
 const uint64_t MIN_TX_MIXIN_SIZE                             = 0;
 const uint64_t MAX_TX_MIXIN_SIZE                             = 0;
 const uint64_t MAX_EXTRA_SIZE                                = 4096;
@@ -80,16 +70,16 @@ const uint64_t MAX_EXTRA_SIZE_PQ                             = 4096;
 const uint64_t MAX_PQ_INPUTS_PER_TX                          = 8;
 const uint64_t MAX_PQ_OUTPUTS_PER_TX                         = 16;
 const uint64_t MAX_PQ_TX_SIZE                                = 48 * 1024;
-// Minimum PQ fee per serialized byte (consensus floor). Placeholder — calibrate
-// with the fork parameters before mainnet activation.
-const uint64_t MIN_PQ_FEE_PER_BYTE                           = 1;
+// Minimum PQ fee per 1000 serialized bytes (consensus floor). A typical 1-in/2-out
+// TX_PQ is ~7.7 KB; rate=1 gives floor = 8 atoms (0.08 XDS). The largest valid tx
+// (MAX_PQ_TX_SIZE = 48 KB) gives 49 atoms (0.49 XDS). Wallet pads with +1 atom margin.
+const uint64_t MIN_PQ_FEE_PER_1000_BYTES                    = 1;
 
-// Free-fee account registration (spec §11). FREE_REG_POW_TARGET is a
-// initial low difficulty (~1/256 trials); calibrate on target mobile hardware
-// before any production fork-height commitment.
+// Free-fee account registration (spec §11). FREE_REG_POW_TARGET is 1/16 expected
+// trials (~16 cn_slow_hash calls, ~30 s on a modest mobile device).
 const uint64_t FREE_REG_REF_WINDOW                          = 60;
 const uint64_t FREE_REG_PER_BLOCK                           = 100;
-const uint64_t FREE_REG_POW_TARGET                          = UINT64_C(0x00FFFFFFFFFFFFFF);
+const uint64_t FREE_REG_POW_TARGET                          = UINT64_C(0x0FFFFFFFFFFFFFFF);
 
 const uint64_t MAX_TRANSACTION_SIZE_LIMIT                    = CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_CURRENT / 4 - CRYPTONOTE_COINBASE_BLOB_RESERVED_SIZE;
 
@@ -138,8 +128,8 @@ const char     P2P_NET_DATA_FILENAME[]                       = "p2pstate.bin";
 const char     MINER_CONFIG_FILE_NAME[]                      = "miner_conf.json";
 } // parameters
 
-const char     CRYPTONOTE_NAME[]                             = "discrete";
-const char     CRYPTONOTE_TICKER[]                           = "DISC";
+const char     CRYPTONOTE_NAME[]                             = "Discrete";
+const char     CRYPTONOTE_TICKER[]                           = "XDS";
 // TODO: regenerate genesis coinbase using PQ coinbase constructor once
 // PQ address generation tooling is ready. This hex is a placeholder that
 // will be replaced before mainnet launch.
@@ -239,7 +229,7 @@ const uint8_t  P2P_VERSION_1                                 = 1;
 const uint8_t  P2P_VERSION_2                                 = 2;
 const uint8_t  P2P_VERSION_3                                 = 3;
 const uint8_t  P2P_VERSION_4                                 = 4;
-const uint8_t  P2P_CURRENT_VERSION                           = P2P_VERSION_4;
+const uint8_t  P2P_CURRENT_VERSION                           = P2P_VERSION_1;
 const uint8_t  P2P_MINIMUM_VERSION                           = 1;
 
 // This defines the number of versions ahead we must see peers before
@@ -270,8 +260,8 @@ const char     P2P_STAT_TRUSTED_PUB_KEY[]                    = "8f80f9a5a434a9f1
 
 // TODO: replace with Discrete seed nodes.
 const char* const SEED_NODES[] = {
-  "seed1.discrete.network:41747",
-  "seed2.discrete.network:41747",
+  "seed1.discrete.cash:41747",
+  "seed2.discrete.cash:41747",
 };
 
 } // CryptoNote

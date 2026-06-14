@@ -1276,9 +1276,9 @@ bool Blockchain::prevalidate_miner_transaction(const Block& b, uint32_t height) 
       << ", expected: " << height;
     return false;
   }
-  if (!(b.baseTransaction.unlockTime == height + m_currency.minedMoneyUnlockWindow())) {
+  if (!(b.baseTransaction.unlockHeight == height + m_currency.minedMoneyUnlockWindow())) {
     logger(ERROR, BRIGHT_RED) << "Coinbase transaction has wrong unlock time="
-      << b.baseTransaction.unlockTime
+      << b.baseTransaction.unlockHeight
       << ", expected " << (height + m_currency.minedMoneyUnlockWindow());
     return false;
   }
@@ -1853,7 +1853,7 @@ bool Blockchain::add_out_to_get_random_outs(uint64_t amount, size_t globalIdx,
     logger(ERROR, BRIGHT_RED) << "unknown tx out type";
     return false;
   }
-  if (!is_tx_spendtime_unlocked(te.tx.unlockTime)) {
+  if (!is_tx_spendheight_unlocked(te.tx.unlockHeight)) {
     return false;
   }
 
@@ -2153,10 +2153,10 @@ bool Blockchain::checkPqInputs(const Transaction& tx, uint32_t* pmax_used_block_
           const TransactionOutput& o = te.tx.outputs[in.prevOutIndex];
           if (o.target.type() == typeid(PqOutput)) {
             // Maturity: a coinbase PqOutput (or any output with a non-zero
-            // unlockTime) can only be spent once its lock has elapsed. Mirrors
+            // unlockHeight) can only be spent once its lock has elapsed. Mirrors
             // the legacy check_tx_input path. Unmatured → treat as unresolved so
             // checkPqTransactionInputs rejects with "referenced output does not exist".
-            if (is_tx_spendtime_unlocked(te.tx.unlockTime)) {
+            if (is_tx_spendheight_unlocked(te.tx.unlockHeight)) {
               r.exists = true;
               r.isPqOutput = true;
               r.isCoinbase = (slot == 0);  // coinbase is always tx slot 0
@@ -2175,7 +2175,7 @@ bool Blockchain::checkPqInputs(const Transaction& tx, uint32_t* pmax_used_block_
 
   std::vector<Crypto::Hash> nullifiers;
   std::string err;
-  if (!checkPqTransactionInputs(tx, resolved, parameters::MIN_PQ_FEE_PER_BYTE, &nullifiers, &err)) {
+  if (!checkPqTransactionInputs(tx, resolved, parameters::MIN_PQ_FEE_PER_1000_BYTES, &nullifiers, &err)) {
     logger(INFO, BRIGHT_WHITE) << "PQ input check failed (" << err << ") for tx " << getObjectHash(tx);
     return false;
   }
@@ -2263,43 +2263,17 @@ bool Blockchain::checkFreeRegInputs(const Transaction& tx, uint32_t* pmax_used_b
   return true;
 }
 
-bool Blockchain::is_tx_spendtime_unlocked(uint64_t unlock_time) {
+bool Blockchain::is_tx_spendheight_unlocked(uint64_t unlock_height) {
+  if (unlock_height == 0) return true;
+  if (unlock_height > m_currency.maxBlockHeight()) return false;
   const uint32_t currentHeight = getCurrentBlockchainHeight();
-  if (m_currency.isUnlockTimeCappedAt(currentHeight)) {
-    // v6+ consensus: height-only, capped. Any unlock_time above the cap was
-    // set under the legacy dual-interpretation rules (e.g. a Unix timestamp
-    // mistakenly placed in unlock_time) and is treated as unlocked here so
-    // the underlying output becomes spendable again.
-    if (unlock_time == 0) return true;
-    if (unlock_time > CryptoNote::parameters::CRYPTONOTE_MAX_UNLOCK_HEIGHT_V6) return true;
-    return currentHeight - 1 + m_currency.lockedTxAllowedDeltaBlocks() >= unlock_time;
-  }
-  if (unlock_time < m_currency.maxBlockHeight()) {
-    if (currentHeight - 1 + m_currency.lockedTxAllowedDeltaBlocks() >= unlock_time)
-      return true;
-    else
-      return false;
-  } else {
-    const uint64_t lastBlockTimestamp = getBlockTimestamp(currentHeight - 1);
-    if (lastBlockTimestamp + m_currency.lockedTxAllowedDeltaSeconds() >= unlock_time)
-      return true;
-    else
-      return false;
-  }
-  return false;
+  return currentHeight - 1 + m_currency.lockedTxAllowedDeltaBlocks() >= unlock_height;
 }
 
-bool Blockchain::is_tx_spendtime_unlocked(uint64_t unlock_time, uint32_t height) {
-  if (m_currency.isUnlockTimeCappedAt(height)) {
-    if (unlock_time == 0) return true;
-    if (unlock_time > CryptoNote::parameters::CRYPTONOTE_MAX_UNLOCK_HEIGHT_V6) return true;
-    return height - 1 + m_currency.lockedTxAllowedDeltaBlocks() >= unlock_time;
-  }
-  if (unlock_time < m_currency.maxBlockHeight()) {
-    if (height - 1 + m_currency.lockedTxAllowedDeltaBlocks() >= unlock_time)
-      return true;
-  }
-  return false;
+bool Blockchain::is_tx_spendheight_unlocked(uint64_t unlock_height, uint32_t height) {
+  if (unlock_height == 0) return true;
+  if (unlock_height > m_currency.maxBlockHeight()) return false;
+  return height - 1 + m_currency.lockedTxAllowedDeltaBlocks() >= unlock_height;
 }
 
 bool Blockchain::check_tx_input(const KeyInput& txin, const Crypto::Hash& tx_prefix_hash,
@@ -2324,9 +2298,9 @@ bool Blockchain::check_tx_input(const KeyInput& txin, const Crypto::Hash& tx_pre
 
     bool handle_output(const Transaction& tx, const TransactionOutput& out,
                        size_t transactionOutputIndex) {
-      if (!m_bch.is_tx_spendtime_unlocked(tx.unlockTime)) {
-        logger(INFO, BRIGHT_WHITE) << "One of outputs for one of inputs have wrong tx.unlockTime = "
-          << tx.unlockTime;
+      if (!m_bch.is_tx_spendheight_unlocked(tx.unlockHeight)) {
+        logger(INFO, BRIGHT_WHITE) << "One of outputs for one of inputs have wrong tx.unlockHeight = "
+          << tx.unlockHeight;
         return false;
       }
       if (out.target.type() != typeid(KeyOutput)) {
@@ -2654,7 +2628,7 @@ bool Blockchain::pushBlock(const Block& blockData, const std::vector<Transaction
       size_t blob_size = toBinaryArray(curTx).size();
       if (curTx.version >= TRANSACTION_VERSION_1 && curTx.txType == TX_FREE_REG) {
         ++freeRegCount;
-        if (freeRegCount > parameters::FREE_REG_PER_BLOCK) {
+        if (freeRegCount > m_currency.freeRegPerBlock()) {
           logger(INFO, BRIGHT_WHITE) << "Block " << blockHash
             << " exceeds the free PQ registration limit";
           bvc.m_verification_failed = true;

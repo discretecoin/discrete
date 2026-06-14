@@ -108,7 +108,7 @@ public:
   virtual ~ITransactionWriter() { }
 
   // transaction parameters
-  virtual void setUnlockTime(uint64_t unlockTime) = 0;
+  virtual void setUnlockTime(uint64_t unlockHeight) = 0;
 
   // extra
   virtual void setPaymentId(const Crypto::Hash& paymentId) = 0;

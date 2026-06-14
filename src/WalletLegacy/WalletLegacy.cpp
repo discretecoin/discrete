@@ -873,15 +873,15 @@ std::vector<TransactionSpentOutputInformation> WalletLegacy::getSpentOutputs() {
   return m_transferDetails->getSpentOutputs();
 }
 
-TransactionId WalletLegacy::sendTransaction(const WalletLegacyTransfer& transfer, uint64_t fee, const std::string& extra, uint64_t mixIn, uint64_t unlockTimestamp) {
+TransactionId WalletLegacy::sendTransaction(const WalletLegacyTransfer& transfer, uint64_t fee, const std::string& extra, uint64_t mixIn, uint64_t unlockHeightstamp) {
   std::vector<WalletLegacyTransfer> transfers;
   transfers.push_back(transfer);
   throwIfNotInitialised();
 
-  return sendTransaction(transfers, fee, extra, mixIn, unlockTimestamp);
+  return sendTransaction(transfers, fee, extra, mixIn, unlockHeightstamp);
 }
 
-TransactionId WalletLegacy::sendTransaction(const std::vector<WalletLegacyTransfer>& transfers, uint64_t fee, const std::string& extra, uint64_t mixIn, uint64_t unlockTimestamp) {
+TransactionId WalletLegacy::sendTransaction(const std::vector<WalletLegacyTransfer>& transfers, uint64_t fee, const std::string& extra, uint64_t mixIn, uint64_t unlockHeightstamp) {
   TransactionId txId = 0;
   std::shared_ptr<WalletRequest> request;
   std::deque<std::shared_ptr<WalletLegacyEvent>> events;
@@ -891,7 +891,7 @@ TransactionId WalletLegacy::sendTransaction(const std::vector<WalletLegacyTransf
 
   {
     std::unique_lock<std::mutex> lock(m_cacheMutex);
-    request = m_sender->makeSendRequest(txId, events, transfers, _selectedOuts, fee, extra, mixIn, unlockTimestamp);
+    request = m_sender->makeSendRequest(txId, events, transfers, _selectedOuts, fee, extra, mixIn, unlockHeightstamp);
   }
 
   notifyClients(events);
@@ -904,7 +904,7 @@ TransactionId WalletLegacy::sendTransaction(const std::vector<WalletLegacyTransf
   return txId;
 }
 
-TransactionId WalletLegacy::sendTransaction(const std::vector<WalletLegacyTransfer>& transfers, const std::list<TransactionOutputInformation>& selectedOuts, uint64_t fee, const std::string& extra, uint64_t mixIn, uint64_t unlockTimestamp) {
+TransactionId WalletLegacy::sendTransaction(const std::vector<WalletLegacyTransfer>& transfers, const std::list<TransactionOutputInformation>& selectedOuts, uint64_t fee, const std::string& extra, uint64_t mixIn, uint64_t unlockHeightstamp) {
   TransactionId txId = 0;
   std::shared_ptr<WalletRequest> request;
   std::deque<std::shared_ptr<WalletLegacyEvent>> events;
@@ -912,7 +912,7 @@ TransactionId WalletLegacy::sendTransaction(const std::vector<WalletLegacyTransf
 
   {
     std::unique_lock<std::mutex> lock(m_cacheMutex);
-    request = m_sender->makeSendRequest(txId, events, transfers, selectedOuts, fee, extra, mixIn, unlockTimestamp);
+    request = m_sender->makeSendRequest(txId, events, transfers, selectedOuts, fee, extra, mixIn, unlockHeightstamp);
   }
 
   notifyClients(events);
@@ -925,7 +925,7 @@ TransactionId WalletLegacy::sendTransaction(const std::vector<WalletLegacyTransf
   return txId;
 }
 
-std::string WalletLegacy::prepareRawTransaction(TransactionId& transactionId, const std::vector<WalletLegacyTransfer>& transfers, uint64_t fee, const std::string& extra, uint64_t mixIn, uint64_t unlockTimestamp) {
+std::string WalletLegacy::prepareRawTransaction(TransactionId& transactionId, const std::vector<WalletLegacyTransfer>& transfers, uint64_t fee, const std::string& extra, uint64_t mixIn, uint64_t unlockHeightstamp) {
   std::deque<std::shared_ptr<WalletLegacyEvent>> events;
   throwIfNotInitialised();
 
@@ -935,7 +935,7 @@ std::string WalletLegacy::prepareRawTransaction(TransactionId& transactionId, co
 
   {
     std::unique_lock<std::mutex> lock(m_cacheMutex);
-    tx_as_hex = m_sender->makeRawTransaction(transactionId, events, transfers, _selectedOuts, fee, extra, mixIn, unlockTimestamp);
+    tx_as_hex = m_sender->makeRawTransaction(transactionId, events, transfers, _selectedOuts, fee, extra, mixIn, unlockHeightstamp);
   }
 
   notifyClients(events);
@@ -943,7 +943,7 @@ std::string WalletLegacy::prepareRawTransaction(TransactionId& transactionId, co
   return tx_as_hex;
 }
 
-std::string WalletLegacy::prepareRawTransaction(TransactionId& transactionId, const std::vector<WalletLegacyTransfer>& transfers, const std::list<CryptoNote::TransactionOutputInformation>& selectedOuts, uint64_t fee, const std::string& extra, uint64_t mixIn, uint64_t unlockTimestamp) {
+std::string WalletLegacy::prepareRawTransaction(TransactionId& transactionId, const std::vector<WalletLegacyTransfer>& transfers, const std::list<CryptoNote::TransactionOutputInformation>& selectedOuts, uint64_t fee, const std::string& extra, uint64_t mixIn, uint64_t unlockHeightstamp) {
   std::deque<std::shared_ptr<WalletLegacyEvent>> events;
   throwIfNotInitialised();
 
@@ -951,7 +951,7 @@ std::string WalletLegacy::prepareRawTransaction(TransactionId& transactionId, co
 
   {
     std::unique_lock<std::mutex> lock(m_cacheMutex);
-    tx_as_hex = m_sender->makeRawTransaction(transactionId, events, transfers, selectedOuts, fee, extra, mixIn, unlockTimestamp);
+    tx_as_hex = m_sender->makeRawTransaction(transactionId, events, transfers, selectedOuts, fee, extra, mixIn, unlockHeightstamp);
   }
 
   notifyClients(events);
@@ -959,12 +959,12 @@ std::string WalletLegacy::prepareRawTransaction(TransactionId& transactionId, co
   return tx_as_hex;
 }
 
-std::string WalletLegacy::prepareRawTransaction(TransactionId& transactionId, const WalletLegacyTransfer& transfer, uint64_t fee, const std::string& extra, uint64_t mixIn, uint64_t unlockTimestamp) {
+std::string WalletLegacy::prepareRawTransaction(TransactionId& transactionId, const WalletLegacyTransfer& transfer, uint64_t fee, const std::string& extra, uint64_t mixIn, uint64_t unlockHeightstamp) {
   std::vector<WalletLegacyTransfer> transfers;
   transfers.push_back(transfer);
   throwIfNotInitialised();
 
-  return prepareRawTransaction(transactionId, transfers, fee, extra, mixIn, unlockTimestamp);
+  return prepareRawTransaction(transactionId, transfers, fee, extra, mixIn, unlockHeightstamp);
 }
 
 void WalletLegacy::sendTransactionCallback(WalletRequest::Callback callback, std::error_code ec) {

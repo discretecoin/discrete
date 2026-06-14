@@ -34,14 +34,14 @@ std::unique_ptr<ITransaction> buildTransaction(
     std::vector<TxBuildOutput>& outputs,
     const Crypto::SecretKey& viewSecretKey,
     const std::string& extra,
-    uint64_t unlockTimestamp,
+    uint64_t unlockHeightstamp,
     uint64_t sizeLimit,
     Crypto::SecretKey& txSecretKey) {
 
   std::unique_ptr<ITransaction> tx = createTransaction();
 
   // 1. Set unlock time
-  tx->setUnlockTime(unlockTimestamp);
+  tx->setUnlockTime(unlockHeightstamp);
 
   // 2. Add inputs — this generates key images and populates inputs[i].ephKeys
   for (auto& input : inputs) {

@@ -89,7 +89,7 @@ struct WalletTransaction {
   int64_t totalAmount;
   uint64_t fee;
   uint64_t creationTime;
-  uint64_t unlockTime;
+  uint64_t unlockHeight;
   std::string extra;
   bool isBase;
 };
@@ -122,7 +122,7 @@ struct TransactionParameters {
   uint64_t fee = 0;
   uint64_t mixIn = 0;
   std::string extra;
-  uint64_t unlockTimestamp = 0;
+  uint64_t unlockHeightstamp = 0;
   DonationSettings donation;
   std::string changeDestination;
 };

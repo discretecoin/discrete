@@ -93,7 +93,7 @@ using TransactionInputs = std::vector<TransactionInput>;
 struct TransactionPrefix {
   uint8_t  version;
   uint8_t  txType = 0;   // PQ sub-type (TX_PQ / TX_FREE_REG); 0 for coinbase
-  uint64_t unlockTime;
+  uint64_t unlockHeight;
   TransactionInputs inputs;
   std::vector<TransactionOutput> outputs;
   std::vector<uint8_t> extra;

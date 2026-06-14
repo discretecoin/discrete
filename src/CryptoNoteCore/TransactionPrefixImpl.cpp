@@ -111,7 +111,7 @@ PublicKey TransactionPrefixImpl::getTransactionPublicKey() const {
 }
 
 uint64_t TransactionPrefixImpl::getUnlockTime() const {
-  return m_txPrefix.unlockTime;
+  return m_txPrefix.unlockHeight;
 }
 
 bool TransactionPrefixImpl::getPaymentId(Hash& hash) const {

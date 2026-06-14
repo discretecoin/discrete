@@ -155,7 +155,7 @@
 //
 //void fillTransaction(CryptoNote::Transaction& tx) {
 //  tx.version = 1;
-//  tx.unlockTime = 0x7f1234560089ABCD;
+//  tx.unlockHeight = 0x7f1234560089ABCD;
 //
 //  CryptoNote::TransactionInputGenerate gen;
 //  gen.height = 0xABCDEF12;

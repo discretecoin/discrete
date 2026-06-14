@@ -63,7 +63,7 @@ struct WalletLegacyTransaction {
   int64_t          totalAmount;
   uint64_t         fee;
   uint64_t         sentTime;
-  uint64_t         unlockTime;
+  uint64_t         unlockHeight;
   Crypto::Hash     hash;
   boost::optional<Crypto::SecretKey> secretKey = CryptoNote::NULL_SECRET_KEY;
   bool             isCoinbase;
@@ -144,12 +144,12 @@ public:
   virtual std::vector<TransactionOutputInformation> getUnlockedOutputs() = 0;
   virtual std::vector<TransactionSpentOutputInformation> getSpentOutputs() = 0;
 
-  virtual TransactionId sendTransaction(const WalletLegacyTransfer& transfer, uint64_t fee, const std::string& extra = "", uint64_t mixIn = 0, uint64_t unlockTimestamp = 0) = 0;
-  virtual TransactionId sendTransaction(const std::vector<WalletLegacyTransfer>& transfers, uint64_t fee, const std::string& extra = "", uint64_t mixIn = 0, uint64_t unlockTimestamp = 0) = 0;
-  virtual TransactionId sendTransaction(const std::vector<WalletLegacyTransfer>& transfers, const std::list<TransactionOutputInformation>& selectedOuts, uint64_t fee, const std::string& extra = "", uint64_t mixIn = 0, uint64_t unlockTimestamp = 0) = 0;
-  virtual std::string prepareRawTransaction(TransactionId& transactionId, const std::vector<WalletLegacyTransfer>& transfers, uint64_t fee, const std::string& extra, uint64_t mixIn, uint64_t unlockTimestamp) = 0;
-  virtual std::string prepareRawTransaction(TransactionId& transactionId, const std::vector<WalletLegacyTransfer>& transfers, const std::list<TransactionOutputInformation>& selectedOuts, uint64_t fee, const std::string& extra, uint64_t mixIn, uint64_t unlockTimestamp) = 0;
-  virtual std::string prepareRawTransaction(TransactionId& transactionId, const WalletLegacyTransfer& transfer, uint64_t fee, const std::string& extra, uint64_t mixIn, uint64_t unlockTimestamp) = 0;
+  virtual TransactionId sendTransaction(const WalletLegacyTransfer& transfer, uint64_t fee, const std::string& extra = "", uint64_t mixIn = 0, uint64_t unlockHeightstamp = 0) = 0;
+  virtual TransactionId sendTransaction(const std::vector<WalletLegacyTransfer>& transfers, uint64_t fee, const std::string& extra = "", uint64_t mixIn = 0, uint64_t unlockHeightstamp = 0) = 0;
+  virtual TransactionId sendTransaction(const std::vector<WalletLegacyTransfer>& transfers, const std::list<TransactionOutputInformation>& selectedOuts, uint64_t fee, const std::string& extra = "", uint64_t mixIn = 0, uint64_t unlockHeightstamp = 0) = 0;
+  virtual std::string prepareRawTransaction(TransactionId& transactionId, const std::vector<WalletLegacyTransfer>& transfers, uint64_t fee, const std::string& extra, uint64_t mixIn, uint64_t unlockHeightstamp) = 0;
+  virtual std::string prepareRawTransaction(TransactionId& transactionId, const std::vector<WalletLegacyTransfer>& transfers, const std::list<TransactionOutputInformation>& selectedOuts, uint64_t fee, const std::string& extra, uint64_t mixIn, uint64_t unlockHeightstamp) = 0;
+  virtual std::string prepareRawTransaction(TransactionId& transactionId, const WalletLegacyTransfer& transfer, uint64_t fee, const std::string& extra, uint64_t mixIn, uint64_t unlockHeightstamp) = 0;
   virtual std::error_code cancelTransaction(size_t transferId) = 0;
 
   virtual bool getTransactionInformation(const Crypto::Hash& transactionHash, TransactionInformation& info,

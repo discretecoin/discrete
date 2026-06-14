@@ -37,7 +37,7 @@ void serialize(TransactionInformation& ti, CryptoNote::ISerializer& s) {
   s(ti.publicKey, "");
   serializeBlockHeight(s, ti.blockHeight, "");
   s(ti.timestamp, "");
-  s(ti.unlockTime, "");
+  s(ti.unlockHeight, "");
   s(ti.totalAmountIn, "");
   s(ti.totalAmountOut, "");
   s(ti.extra, "");
@@ -212,7 +212,7 @@ void TransfersContainer::addTransaction(const TransactionBlockInfo& block, const
   txInfo.blockHeight = block.height;
   txInfo.timestamp = block.timestamp;
   txInfo.transactionHash = txHash;
-  txInfo.unlockTime = tx.getUnlockTime();
+  txInfo.unlockHeight = tx.getUnlockTime();
   txInfo.publicKey = tx.getTransactionPublicKey();
   txInfo.totalAmountIn = tx.getInputTotalAmount();
   txInfo.totalAmountOut = tx.getOutputTotalAmount();
@@ -252,7 +252,7 @@ bool TransfersContainer::addTransactionOutputs(const TransactionBlockInfo& block
     static_cast<TransactionOutputInformationIn&>(info) = transfer;
     info.blockHeight = block.height;
     info.transactionIndex = block.transactionIndex;
-    info.unlockTime = tx.getUnlockTime();
+    info.unlockHeight = tx.getUnlockTime();
     info.transactionHash = txHash;
     info.visible = true;
 
@@ -1028,30 +1028,15 @@ void TransfersContainer::repair() {
   }
 }
 
-bool TransfersContainer::isSpendTimeUnlocked(uint64_t unlockTime) const {
-  if (m_currency.isUnlockTimeCappedAt(m_currentHeight)) {
-    // Mirror v6+ consensus (see Blockchain::is_tx_spendtime_unlocked): absurd
-    // unlock_time values from old txs are treated as unlocked so previously
-    // frozen outputs are now displayed as spendable.
-    if (unlockTime == 0) return true;
-    if (unlockTime > CryptoNote::parameters::CRYPTONOTE_MAX_UNLOCK_HEIGHT_V6) return true;
-    return m_currentHeight + m_currency.lockedTxAllowedDeltaBlocks() >= unlockTime;
-  }
-  if (unlockTime < m_currency.maxBlockHeight()) {
-    // interpret as block index
-    return m_currentHeight + m_currency.lockedTxAllowedDeltaBlocks() >= unlockTime;
-  } else {
-    //interpret as time
-    uint64_t current_time = static_cast<uint64_t>(time(NULL));
-    return current_time + m_currency.lockedTxAllowedDeltaSeconds() >= unlockTime;
-  }
-
-  return false;
+bool TransfersContainer::isSpendTimeUnlocked(uint64_t unlockHeight) const {
+  if (unlockHeight == 0) return true;
+  if (unlockHeight > m_currency.maxBlockHeight()) return false;
+  return m_currentHeight + m_currency.lockedTxAllowedDeltaBlocks() >= unlockHeight;
 }
 
 bool TransfersContainer::isIncluded(const TransactionOutputInformationEx& info, uint32_t flags) const {
   uint32_t state;
-  if (info.blockHeight == WALLET_LEGACY_UNCONFIRMED_TRANSACTION_HEIGHT || !isSpendTimeUnlocked(info.unlockTime)) {
+  if (info.blockHeight == WALLET_LEGACY_UNCONFIRMED_TRANSACTION_HEIGHT || !isSpendTimeUnlocked(info.unlockHeight)) {
     state = IncludeStateLocked;
   } else if (m_currentHeight < info.blockHeight + m_transactionSpendableAge) {
     state = IncludeStateSoftLocked;

@@ -180,33 +180,33 @@ struct gen_block_no_miner_tx : public CheckBlockPurged
   bool generate(std::vector<test_event_entry>& events) const;
 };
 
-struct gen_block_unlock_time_is_low : public CheckBlockPurged
+struct gen_block_unlock_height_is_low : public CheckBlockPurged
 {
-  gen_block_unlock_time_is_low(uint8_t blockMajorVersion)
+  gen_block_unlock_height_is_low(uint8_t blockMajorVersion)
     : CheckBlockPurged(1, blockMajorVersion) {}
 
   bool generate(std::vector<test_event_entry>& events) const;
 };
 
-struct gen_block_unlock_time_is_high : public CheckBlockPurged
+struct gen_block_unlock_height_is_high : public CheckBlockPurged
 {
-  gen_block_unlock_time_is_high(uint8_t blockMajorVersion)
+  gen_block_unlock_height_is_high(uint8_t blockMajorVersion)
     : CheckBlockPurged(1, blockMajorVersion) {}
 
   bool generate(std::vector<test_event_entry>& events) const;
 };
 
-struct gen_block_unlock_time_is_timestamp_in_past : public CheckBlockPurged
+struct gen_block_unlock_height_is_timestamp_in_past : public CheckBlockPurged
 {
-  gen_block_unlock_time_is_timestamp_in_past(uint8_t blockMajorVersion)
+  gen_block_unlock_height_is_timestamp_in_past(uint8_t blockMajorVersion)
     : CheckBlockPurged(1, blockMajorVersion) {}
 
   bool generate(std::vector<test_event_entry>& events) const;
 };
 
-struct gen_block_unlock_time_is_timestamp_in_future : public CheckBlockPurged
+struct gen_block_unlock_height_is_timestamp_in_future : public CheckBlockPurged
 {
-  gen_block_unlock_time_is_timestamp_in_future(uint8_t blockMajorVersion)
+  gen_block_unlock_height_is_timestamp_in_future(uint8_t blockMajorVersion)
     : CheckBlockPurged(1, blockMajorVersion) {}
 
   bool generate(std::vector<test_event_entry>& events) const;

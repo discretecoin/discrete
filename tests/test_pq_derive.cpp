@@ -167,12 +167,12 @@ TEST(PqDerive, TxSigningDigestIsTamperSensitive) {
     EXPECT_NE(base, txSigningDigest(t3));
 
     // The digest must also bind the prefix fields that the txid covers but the
-    // draft §8.1 omitted: txType, unlockTime, and extra. Otherwise a relayer
+    // draft §8.1 omitted: txType, unlockHeight, and extra. Otherwise a relayer
     // could mutate them without invalidating the signature.
     UnsignedTx t4 = tx; t4.txType = 2;  // TX_BRIDGE
     EXPECT_NE(base, txSigningDigest(t4));
 
-    UnsignedTx t5 = tx; t5.unlockTime = 1;
+    UnsignedTx t5 = tx; t5.unlockHeight = 1;
     EXPECT_NE(base, txSigningDigest(t5));
 
     UnsignedTx t6 = tx; t6.extra = {0x01, 0x02, 0x03};

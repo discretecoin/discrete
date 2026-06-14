@@ -106,7 +106,7 @@ Hash256 txSigningDigest(const UnsignedTx& tx) noexcept {
   appendDomain(buf, kDomainTxSign);
   buf.push_back(tx.version);
   buf.push_back(tx.txType);
-  appendLe64(buf, tx.unlockTime);
+  appendLe64(buf, tx.unlockHeight);
   appendLe32(buf, static_cast<uint32_t>(tx.inputs.size()));
   for (const auto& in : tx.inputs) {
     appendBytes(buf, in.prevTxid.data(), in.prevTxid.size());

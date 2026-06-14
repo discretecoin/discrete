@@ -63,7 +63,7 @@ std::unique_ptr<ITransaction> buildTransaction(
     std::vector<TxBuildOutput>& outputs,
     const Crypto::SecretKey& viewSecretKey,
     const std::string& extra,
-    uint64_t unlockTimestamp,
+    uint64_t unlockHeightstamp,
     uint64_t sizeLimit,
     Crypto::SecretKey& txSecretKey);
 

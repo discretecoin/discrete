@@ -71,7 +71,7 @@ membership proofs are the **supply-integrity centerpiece** and the audit focus.
 2. **Bind `valueCommitRoot` into the ML-DSA signing digest** (and
    `spendCommit = H(spendPub ‖ rho ‖ valueCommitRoot)`), so a relayer cannot
    swap commitments/proofs under a still-valid signature — the same malleability
-   lesson applied to the v2 digest (txType/unlockTime/extra binding).
+   lesson applied to the v2 digest (txType/unlockHeight/extra binding).
 3. **AEAD-bind the encrypted payload** (`rho` + denomination indexes + openings)
    to `out_context ‖ valueCommitRoot`, so a tampered commitment fails at the
    recipient (mirrors today's amount-binding aad).

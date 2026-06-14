@@ -110,7 +110,7 @@ txSigningDigest = SHA3-256(
     kDomainTxSign              ||   // "karbo-pq-tx-sign-v1", 19 bytes
     version (1 byte)           ||   // TRANSACTION_VERSION_1 = 1
     txType  (1 byte)           ||
-    LE64(unlockTime)           ||
+    LE64(unlockHeight)           ||
     LE32(#inputs)              ||
     for each input:
         prevTxid (32)          ||

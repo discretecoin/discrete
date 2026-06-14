@@ -1277,7 +1277,7 @@ void pqTransfer(std::shared_ptr<WalletInfo> walletInfo, CryptoNote::INode &node)
     {
         CryptoNote::Transaction draft = buildWith(sumIn - amount);
         uint64_t size = CryptoNote::toBinaryArray(draft).size();
-        uint64_t fee = size * CryptoNote::parameters::MIN_PQ_FEE_PER_BYTE + 1000;
+        uint64_t fee = (size * CryptoNote::parameters::MIN_PQ_FEE_PER_1000_BYTES + 999) / 1000 + 1;
         if (sumIn < amount + fee)
         {
             std::cout << WarningMsg("Insufficient PQ balance to cover the fee.") << std::endl;

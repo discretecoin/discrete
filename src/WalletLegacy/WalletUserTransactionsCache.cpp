@@ -114,7 +114,7 @@ size_t WalletUserTransactionsCache::getTransferCount() const {
 }
 
 TransactionId WalletUserTransactionsCache::addNewTransaction(
-  uint64_t amount, uint64_t fee, const std::string& extra, const std::vector<WalletLegacyTransfer>& transfers, uint64_t unlockTime) {
+  uint64_t amount, uint64_t fee, const std::string& extra, const std::vector<WalletLegacyTransfer>& transfers, uint64_t unlockHeight) {
   
   WalletLegacyTransaction transaction;
 
@@ -128,7 +128,7 @@ TransactionId WalletUserTransactionsCache::addNewTransaction(
   transaction.extra = extra;
   transaction.blockHeight = WALLET_LEGACY_UNCONFIRMED_TRANSACTION_HEIGHT;
   transaction.state = WalletLegacyTransactionState::Sending;
-  transaction.unlockTime = unlockTime;
+  transaction.unlockHeight = unlockHeight;
   transaction.secretKey = NULL_SECRET_KEY;
 
   return insertTransaction(std::move(transaction));
@@ -179,7 +179,7 @@ std::shared_ptr<WalletLegacyEvent> WalletUserTransactionsCache::onTransactionUpd
     transaction.timestamp = txInfo.timestamp;
     transaction.extra.assign(txInfo.extra.begin(), txInfo.extra.end());
     transaction.state = WalletLegacyTransactionState::Active;
-    transaction.unlockTime = txInfo.unlockTime;
+    transaction.unlockHeight = txInfo.unlockHeight;
     transaction.secretKey = NULL_SECRET_KEY;
 
     id = insertTransaction(std::move(transaction));

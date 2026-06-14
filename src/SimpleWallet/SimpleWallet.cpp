@@ -588,7 +588,7 @@ void printListTransfersItem(LoggerRef& logger, const WalletLegacyTransaction& tx
     << "  " << std::setw(TOTAL_AMOUNT_MAX_WIDTH) << currency.formatAmount(txInfo.totalAmount)
     << "  " << std::setw(FEE_MAX_WIDTH) << currency.formatAmount(txInfo.fee)
     << "  " << std::setw(BLOCK_MAX_WIDTH) << txInfo.blockHeight
-    << "  " << std::setw(UNLOCK_TIME_MAX_WIDTH) << txInfo.unlockTime;
+    << "  " << std::setw(UNLOCK_TIME_MAX_WIDTH) << txInfo.unlockHeight;
 
   if (!paymentIdStr.empty()) {
     logger(INFO, rowColor) << "payment ID: " << paymentIdStr;
@@ -2568,7 +2568,7 @@ bool simple_wallet::pq_address(const std::vector<std::string> &args) {
   // The PQ identity is derived from the same spend secret the 25-word mnemonic
   // backs up, so no extra seed to store. Network prefix follows the classical
   // one (mainnet/testnet) until the dedicated PQ network byte is finalized.
-  const uint64_t networkPrefix = CryptoNote::parameters::CRYPTONOTE_PUBLIC_PQ_ADDRESS_BASE58_PREFIX;
+  const uint64_t networkPrefix = CryptoNote::parameters::CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX;
   CryptoNote::PqAddress addr = CryptoNote::pqWalletAddress(keys.spendSecretKey, networkPrefix);
 
   bool bech32 = !args.empty() &&
@@ -2658,7 +2658,7 @@ bool simple_wallet::pq_transfer(const std::vector<std::string> &args) {
   }
 
   // Two-pass fee: PQ output/input sizes are fixed, so the draft size equals the
-  // final size whenever a change output is present; fee = size * MIN_PQ_FEE_PER_BYTE.
+  // final size whenever a change output is present.
   auto buildWith = [&](uint64_t change) {
     std::vector<CryptoNote::PqSendOutput> outs;
     outs.push_back(CryptoNote::PqSendOutput{destView, destSpend, amount});
@@ -2671,7 +2671,7 @@ bool simple_wallet::pq_transfer(const std::vector<std::string> &args) {
   try {
     CryptoNote::Transaction draft = buildWith(sumIn - amount);
     uint64_t size = CryptoNote::toBinaryArray(draft).size();
-    uint64_t fee = size * CryptoNote::parameters::MIN_PQ_FEE_PER_BYTE + 1000;  // small margin over floor
+    uint64_t fee = (size * CryptoNote::parameters::MIN_PQ_FEE_PER_1000_BYTES + 999) / 1000 + 1;
     if (sumIn < amount + fee) {
       fail_msg_writer() << "Insufficient PQ balance to cover the " << m_currency.formatAmount(fee)
                         << " fee.";

@@ -118,7 +118,7 @@ namespace {
 
   void clearTransaction(CryptoNote::Transaction& tx) {
     tx.version = 0;
-    tx.unlockTime = 0;
+    tx.unlockHeight = 0;
     tx.inputs.clear();
     tx.outputs.clear();
     tx.extra.clear();
@@ -297,12 +297,12 @@ bool gen_block_no_miner_tx::generate(std::vector<test_event_entry>& events) cons
   return true;
 }
 
-bool gen_block_unlock_time_is_low::generate(std::vector<test_event_entry>& events) const
+bool gen_block_unlock_height_is_low::generate(std::vector<test_event_entry>& events) const
 {
   BLOCK_VALIDATION_INIT_GENERATE();
 
   MAKE_MINER_TX_MANUALLY(miner_tx, blk_0);
-  --miner_tx.unlockTime;
+  --miner_tx.unlockHeight;
 
   Block blk_1;
   generator.constructBlockManually(blk_1, blk_0, miner_account, 
@@ -314,12 +314,12 @@ bool gen_block_unlock_time_is_low::generate(std::vector<test_event_entry>& event
   return true;
 }
 
-bool gen_block_unlock_time_is_high::generate(std::vector<test_event_entry>& events) const
+bool gen_block_unlock_height_is_high::generate(std::vector<test_event_entry>& events) const
 {
   BLOCK_VALIDATION_INIT_GENERATE();
 
   MAKE_MINER_TX_MANUALLY(miner_tx, blk_0);
-  ++miner_tx.unlockTime;
+  ++miner_tx.unlockHeight;
 
   Block blk_1;
   generator.constructBlockManually(blk_1, blk_0, miner_account, 
@@ -331,12 +331,12 @@ bool gen_block_unlock_time_is_high::generate(std::vector<test_event_entry>& even
   return true;
 }
 
-bool gen_block_unlock_time_is_timestamp_in_past::generate(std::vector<test_event_entry>& events) const
+bool gen_block_unlock_height_is_timestamp_in_past::generate(std::vector<test_event_entry>& events) const
 {
   BLOCK_VALIDATION_INIT_GENERATE();
 
   MAKE_MINER_TX_MANUALLY(miner_tx, blk_0);
-  miner_tx.unlockTime = blk_0.timestamp - 10 * 60;
+  miner_tx.unlockHeight = blk_0.timestamp - 10 * 60;
 
   Block blk_1;
   generator.constructBlockManually(blk_1, blk_0, miner_account, 
@@ -348,12 +348,12 @@ bool gen_block_unlock_time_is_timestamp_in_past::generate(std::vector<test_event
   return true;
 }
 
-bool gen_block_unlock_time_is_timestamp_in_future::generate(std::vector<test_event_entry>& events) const
+bool gen_block_unlock_height_is_timestamp_in_future::generate(std::vector<test_event_entry>& events) const
 {
   BLOCK_VALIDATION_INIT_GENERATE();
 
   MAKE_MINER_TX_MANUALLY(miner_tx, blk_0);
-  miner_tx.unlockTime = blk_0.timestamp + 3 * m_currency.minedMoneyUnlockWindow() * m_currency.difficultyTarget();
+  miner_tx.unlockHeight = blk_0.timestamp + 3 * m_currency.minedMoneyUnlockWindow() * m_currency.difficultyTarget();
 
   Block blk_1;
   generator.constructBlockManually(blk_1, blk_0, miner_account, 

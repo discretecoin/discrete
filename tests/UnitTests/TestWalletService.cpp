@@ -488,8 +488,8 @@ public:
     return *this;
   }
 
-  WalletTransactionBuilder& unlockTime(uint64_t unlock) {
-    transaction.unlockTime = unlock;
+  WalletTransactionBuilder& unlockHeight(uint64_t unlock) {
+    transaction.unlockHeight = unlock;
     return *this;
   }
 
@@ -725,7 +725,7 @@ TEST_F(WalletServiceTest_getTransaction, returnsCorrectFields) {
         .isBase(false)
         .timestamp(929293847)
         .totalAmount(-200000)
-        .unlockTime(23456)
+        .unlockHeight(23456)
         .build()
     ).addTransfer("address1", 231).addTransfer("address2", 883).build();
 
@@ -743,7 +743,7 @@ TEST_F(WalletServiceTest_getTransaction, returnsCorrectFields) {
   ASSERT_EQ(wallet.transaction.transaction.isBase, transaction.isBase);
   ASSERT_EQ(wallet.transaction.transaction.timestamp, transaction.timestamp);
   ASSERT_EQ(Common::podToHex(wallet.transaction.transaction.hash), transaction.transactionHash);
-  ASSERT_EQ(wallet.transaction.transaction.unlockTime, transaction.unlockTime);
+  ASSERT_EQ(wallet.transaction.transaction.unlockHeight, transaction.unlockHeight);
 
   ASSERT_EQ(wallet.transaction.transfers.size(), transaction.transfers.size());
 
@@ -786,7 +786,7 @@ void WalletServiceTest_sendTransaction::SetUp() {
   request.transfers.push_back(WalletRpcOrder {RANDOM_ADDRESS3, 11111});
   request.fee = 2021;
   request.anonymity = currency.minMixin();
-  request.unlockTime = 848309;
+  request.unlockHeight = 848309;
 }
 
 struct WalletTransferStub : public IWalletBaseStub {
@@ -823,9 +823,9 @@ bool isEquivalent(const SendTransaction::Request& request, const TransactionPara
     orders.push_back( WalletOrder{order.address, order.amount});
   });
 
-  return std::make_tuple(request.sourceAddresses, orders, request.fee, request.anonymity, extra, request.unlockTime)
+  return std::make_tuple(request.sourceAddresses, orders, request.fee, request.anonymity, extra, request.unlockHeight)
       ==
-      std::make_tuple(params.sourceAddresses, params.destinations, params.fee, params.mixIn, Common::toHex(Common::asBinaryArray(params.extra)), params.unlockTimestamp);
+      std::make_tuple(params.sourceAddresses, params.destinations, params.fee, params.mixIn, Common::toHex(Common::asBinaryArray(params.extra)), params.unlockHeightstamp);
 }
 
 TEST_F(WalletServiceTest_sendTransaction, passesCorrectParameters) {
@@ -873,7 +873,7 @@ void WalletServiceTest_createDelayedTransaction::SetUp() {
   request.transfers.push_back(WalletRpcOrder {RANDOM_ADDRESS3, 11111});
   request.fee = 2021;
   request.anonymity = currency.minMixin();
-  request.unlockTime = 848309;
+  request.unlockHeight = 848309;
 }
 
 struct WalletMakeTransactionStub : public IWalletBaseStub {
@@ -910,9 +910,9 @@ bool isEquivalent(const CreateDelayedTransaction::Request& request, const Transa
     orders.push_back( WalletOrder{order.address, order.amount});
   });
 
-  return std::make_tuple(request.addresses, orders, request.fee, request.anonymity, extra, request.unlockTime)
+  return std::make_tuple(request.addresses, orders, request.fee, request.anonymity, extra, request.unlockHeight)
       ==
-      std::make_tuple(params.sourceAddresses, params.destinations, params.fee, params.mixIn, Common::toHex(Common::asBinaryArray(params.extra)), params.unlockTimestamp);
+      std::make_tuple(params.sourceAddresses, params.destinations, params.fee, params.mixIn, Common::toHex(Common::asBinaryArray(params.extra)), params.unlockHeightstamp);
 }
 
 TEST_F(WalletServiceTest_createDelayedTransaction, passesCorrectParameters) {

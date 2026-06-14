@@ -187,7 +187,7 @@ bool test_generator::constructBlock(CryptoNote::Block& blk, uint32_t height, con
     blk.parentBlock.minorVersion = BLOCK_MINOR_VERSION_0;
     blk.parentBlock.transactionCount = 1;
     blk.parentBlock.baseTransaction.version = 0;
-    blk.parentBlock.baseTransaction.unlockTime = 0;
+    blk.parentBlock.baseTransaction.unlockHeight = 0;
 
     CryptoNote::TransactionExtraMergeMiningTag mmTag;
     mmTag.depth = 0;
@@ -255,7 +255,7 @@ bool test_generator::constructBlockManually(Block& blk, const Block& prevBlock, 
   blk.transactionHashes     = actualParams & bf_tx_hashes ? transactionHashes  : std::vector<Crypto::Hash>();
   
   blk.parentBlock.baseTransaction.version = 0;
-  blk.parentBlock.baseTransaction.unlockTime = 0;
+  blk.parentBlock.baseTransaction.unlockHeight = 0;
 
   uint32_t height = get_block_height(prevBlock) + 1;
   uint64_t alreadyGeneratedCoins = getAlreadyGeneratedCoins(prevBlock);
@@ -410,7 +410,7 @@ bool constructMinerTxManually(const CryptoNote::Currency& currency, uint8_t bloc
   tx.outputs.push_back(out);
 
   tx.version = CURRENT_TRANSACTION_VERSION;
-  tx.unlockTime = height + currency.minedMoneyUnlockWindow();
+  tx.unlockHeight = height + currency.minedMoneyUnlockWindow();
 
   return true;
 }

@@ -299,7 +299,7 @@ struct TransactionRpcInfo {
   uint32_t confirmations;
   uint64_t timestamp;
   bool isBase;
-  uint64_t unlockTime;
+  uint64_t unlockHeight;
   int64_t amount;
   uint64_t fee;
   std::vector<TransferRpcInfo> transfers;
@@ -456,7 +456,7 @@ struct SendTransaction {
     uint32_t anonymity = DEFAULT_ANONYMITY_LEVEL;
     std::string extra;
     std::string paymentId;
-    uint64_t unlockTime = 0;
+    uint64_t unlockHeight = 0;
 
     void serialize(CryptoNote::ISerializer& serializer);
   };
@@ -478,7 +478,7 @@ struct CreateDelayedTransaction {
     uint32_t anonymity = DEFAULT_ANONYMITY_LEVEL;
     std::string extra;
     std::string paymentId;
-    uint64_t unlockTime = 0;
+    uint64_t unlockHeight = 0;
 
     void serialize(CryptoNote::ISerializer& serializer);
   };

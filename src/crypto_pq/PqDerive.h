@@ -86,14 +86,14 @@ struct DigestOutput {
 
 // An unsigned PQ transaction body, the input to the ML-DSA signing digest.
 // The digest binds the ENTIRE transaction prefix except the per-input
-// signatures: version, txType, unlockTime, every input's outpoint+auth_pub+rho,
+// signatures: version, txType, unlockHeight, every input's outpoint+auth_pub+rho,
 // every output, the tx_extra blob, and the fee. Omitting any prefix field that
-// the txid covers (txType / unlockTime / extra) would let a relayer mutate it
+// the txid covers (txType / unlockHeight / extra) would let a relayer mutate it
 // without invalidating the signature — a malleability hole. (Amends draft §8.1.)
 struct UnsignedTx {
   uint8_t                   version = 1;  // TRANSACTION_VERSION_1
   uint8_t                   txType = 1;   // TX_PQ
-  uint64_t                  unlockTime = 0;
+  uint64_t                  unlockHeight = 0;
   std::vector<DigestInput>  inputs;
   std::vector<DigestOutput> outputs;
   std::vector<uint8_t>      extra;
@@ -125,7 +125,7 @@ Hash256 spendCommit(const DsaPublicKey& spendPub, const Rho& rho) noexcept;
 Hash256 nullifier(const DsaPublicKey& spendPub, const Rho& rho) noexcept;
 
 // 6. txSigningDigest — amended §8.1 (see UnsignedTx). Binds the whole prefix
-//    minus per-input signatures: version || txType || LE64(unlockTime) ||
+//    minus per-input signatures: version || txType || LE64(unlockHeight) ||
 //    inputs || outputs || LE32(extra_len) || extra || LE64(fee). Each input's
 //    authPub is the long-term spend public key revealed at spend time.
 Hash256 txSigningDigest(const UnsignedTx& tx) noexcept;

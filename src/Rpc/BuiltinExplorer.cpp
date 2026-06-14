@@ -544,7 +544,7 @@ bool BuiltinExplorer::on_get_explorer_tx_by_hash(const COMMAND_EXPLORER_GET_TRAN
     body += "    Size: " + std::to_string(transactionsDetails.size) + "\n";
     body += "  </li>\n";
     body += "  <li>\n";
-    body += "    Unlock time: " + std::to_string(transactionsDetails.unlockTime) + "\n";
+    body += "    Unlock time: " + std::to_string(transactionsDetails.unlockHeight) + "\n";
     body += "  </li>\n";
     body += "  <li>\n";
     body += "    Version: " + std::to_string(transactionsDetails.version) + "\n";

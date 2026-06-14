@@ -229,7 +229,7 @@ namespace
     Transaction tx;
     tx.version = TRANSACTION_VERSION_1;
     tx.txType = TX_FREE_REG;
-    tx.unlockTime = 0;
+    tx.unlockHeight = 0;
 
     std::array<uint8_t, TX_EXTRA_PQ_VIEW_PUBKEY_SIZE> viewPub{};
     std::array<uint8_t, TX_EXTRA_PQ_SPEND_PUBKEY_SIZE> spendPub{};

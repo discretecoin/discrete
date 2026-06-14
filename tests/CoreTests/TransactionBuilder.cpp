@@ -23,8 +23,8 @@ using namespace CryptoNote;
 using namespace Crypto;
 using namespace Common;
 
-TransactionBuilder::TransactionBuilder(const CryptoNote::Currency& currency, uint64_t unlockTime)
-  : m_currency(currency), m_version(CryptoNote::CURRENT_TRANSACTION_VERSION), m_unlockTime(unlockTime), m_txKey(generateKeyPair()) {}
+TransactionBuilder::TransactionBuilder(const CryptoNote::Currency& currency, uint64_t unlockHeight)
+  : m_currency(currency), m_version(CryptoNote::CURRENT_TRANSACTION_VERSION), m_unlockHeight(unlockHeight), m_txKey(generateKeyPair()) {}
 
 TransactionBuilder& TransactionBuilder::newTxKeys() {
   m_txKey = generateKeyPair();
@@ -59,7 +59,7 @@ Transaction TransactionBuilder::build() const {
   addTransactionPublicKeyToExtra(tx.extra, m_txKey.publicKey);
 
   tx.version = static_cast<uint8_t>(m_version);
-  tx.unlockTime = m_unlockTime;
+  tx.unlockHeight = m_unlockHeight;
 
   std::vector<CryptoNote::KeyPair> contexts;
 

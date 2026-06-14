@@ -177,7 +177,7 @@ void serialize(TransactionPrefix& txP, ISerializer& serializer) {
   }
 
   serializer(txP.txType, "tx_type");
-  serializer(txP.unlockTime, "unlock_time");
+  serializer(txP.unlockHeight, "unlock_height");
   serializer(txP.inputs, "vin");
   serializer(txP.outputs, "vout");
   serializeAsBinary(txP.extra, "extra", serializer);

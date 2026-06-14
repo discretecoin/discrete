@@ -70,7 +70,7 @@ using CryptoNote::ISerializer;
       std::list<transfer_destination> destinations;
       uint64_t fee = CryptoNote::parameters::MINIMUM_FEE;
       uint64_t mixin = 0;
-      uint64_t unlock_time = 0;
+      uint64_t unlock_height = 0;
       std::string payment_id;
       std::string extra;
 
@@ -79,7 +79,7 @@ using CryptoNote::ISerializer;
         KV_MEMBER(destinations)
         KV_MEMBER(fee)
         KV_MEMBER(mixin)
-        KV_MEMBER(unlock_time)
+        KV_MEMBER(unlock_height)
         KV_MEMBER(payment_id)
         KV_MEMBER(extra)
       }
@@ -125,14 +125,14 @@ using CryptoNote::ISerializer;
     std::string tx_hash;
     uint64_t amount;
     uint64_t block_height;
-    uint64_t unlock_time;
+    uint64_t unlock_height;
 
     void serialize(ISerializer& s)
     {
       KV_MEMBER(tx_hash)
       KV_MEMBER(amount)
       KV_MEMBER(block_height)
-      KV_MEMBER(unlock_time)
+      KV_MEMBER(unlock_height)
     }
   };
 
@@ -169,7 +169,7 @@ using CryptoNote::ISerializer;
     std::string paymentId;
     std::string address;
     uint64_t blockIndex;
-    uint64_t unlockTime;
+    uint64_t unlockHeight;
     uint64_t confirmations;
     std::string txKey;
 
@@ -183,7 +183,7 @@ using CryptoNote::ISerializer;
       KV_MEMBER(paymentId)
       KV_MEMBER(address)
       KV_MEMBER(blockIndex)
-      KV_MEMBER(unlockTime)
+      KV_MEMBER(unlockHeight)
       KV_MEMBER(confirmations)
       KV_MEMBER(txKey)
     }
