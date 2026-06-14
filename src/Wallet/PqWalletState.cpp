@@ -55,7 +55,7 @@ PqWalletState::PqWalletState(const PqWalletKeys& keys)
 bool PqWalletState::processTransaction(const TransactionPrefix& tx, const Crypto::Hash& txid,
                                        uint32_t height) {
   // PQ outputs only ever appear in v2 (PQ-family) transactions.
-  if (tx.version < TRANSACTION_VERSION_PQ) {
+  if (tx.version < TRANSACTION_VERSION_1) {
     return false;
   }
 

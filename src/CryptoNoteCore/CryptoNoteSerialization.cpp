@@ -172,7 +172,7 @@ void serialize(TransactionPrefix& txP, ISerializer& serializer) {
   serializer(txP.version, "version");
 
   // Discrete only accepts the PQ transaction version; legacy ECC v1 is rejected.
-  if (txP.version != TRANSACTION_VERSION_PQ) {
+  if (txP.version != TRANSACTION_VERSION_1) {
     throw std::runtime_error("Wrong transaction version — Discrete only accepts PQ transactions");
   }
 

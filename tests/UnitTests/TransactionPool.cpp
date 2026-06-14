@@ -227,7 +227,7 @@ namespace
 
   Transaction makeFreeRegPoolTx(uint64_t nonce) {
     Transaction tx;
-    tx.version = TRANSACTION_VERSION_PQ;
+    tx.version = TRANSACTION_VERSION_1;
     tx.txType = TX_FREE_REG;
     tx.unlockTime = 0;
 

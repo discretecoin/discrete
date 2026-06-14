@@ -23,9 +23,9 @@ using namespace CryptoNote;
 
 TEST(PqTaxonomy, TransactionVersion) {
     // Discrete has a single transaction version: PQ is active from genesis, so
-    // TRANSACTION_VERSION_PQ is the one and only (and current) version.
-    EXPECT_EQ(1, TRANSACTION_VERSION_PQ);
-    EXPECT_EQ(TRANSACTION_VERSION_PQ, CURRENT_TRANSACTION_VERSION);
+    // TRANSACTION_VERSION_1 is the one and only (and current) version.
+    EXPECT_EQ(1, TRANSACTION_VERSION_1);
+    EXPECT_EQ(TRANSACTION_VERSION_1, CURRENT_TRANSACTION_VERSION);
 }
 
 TEST(PqTaxonomy, MaxExtraSizeIsPqSizeForAllVersions) {

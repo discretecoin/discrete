@@ -150,7 +150,7 @@ CryptoNote::Transaction makeUnfundedPqTx() {
   TransactionOutput out; out.amount = 500000; out.target = po;
 
   Transaction tx;
-  tx.version = TRANSACTION_VERSION_PQ;
+  tx.version = TRANSACTION_VERSION_1;
   tx.txType = TX_PQ;
   tx.unlockTime = 0;
   tx.inputs.push_back(in);

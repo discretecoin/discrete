@@ -119,7 +119,7 @@ TEST(PqDerive, TxSigningDigest) {
     Hash256 sc = spendCommit(pk, rho);
 
     UnsignedTx tx;
-    tx.version = 1;  // TRANSACTION_VERSION_PQ
+    tx.version = 1;  // TRANSACTION_VERSION_1
     tx.fee = 12345;
 
     DigestInput di;
@@ -146,7 +146,7 @@ TEST(PqDerive, TxSigningDigestIsTamperSensitive) {
     Rho rho = pat<32>(3, 9);
 
     UnsignedTx tx;
-    tx.version = 1;  // TRANSACTION_VERSION_PQ
+    tx.version = 1;  // TRANSACTION_VERSION_1
     tx.fee = 12345;
     DigestInput di; di.prevTxid = pat<32>(1, 0); di.prevOutIndex = 7;
     di.authPub = pk; di.rhoReveal = rho;

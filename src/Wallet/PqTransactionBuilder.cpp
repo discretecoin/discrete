@@ -72,7 +72,7 @@ Transaction buildPqTransaction(const std::vector<PqSpendInput>& inputs,
   }
 
   Transaction tx;
-  tx.version = TRANSACTION_VERSION_PQ;
+  tx.version = TRANSACTION_VERSION_1;
   tx.txType = TX_PQ;
   tx.unlockTime = unlockTime;
   tx.extra.clear();
@@ -160,7 +160,7 @@ Transaction buildFreeRegTransaction(const CryptoPQ::KemPublicKey& viewPub,
                                     const Crypto::Hash& refBlockHash,
                                     uint64_t nonce) {
   Transaction tx;
-  tx.version = TRANSACTION_VERSION_PQ;
+  tx.version = TRANSACTION_VERSION_1;
   tx.txType = TX_FREE_REG;
   tx.unlockTime = 0;
   tx.extra.clear();

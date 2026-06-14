@@ -549,7 +549,7 @@ bool BuiltinExplorer::on_get_explorer_tx_by_hash(const COMMAND_EXPLORER_GET_TRAN
     body += "  <li>\n";
     body += "    Version: " + std::to_string(transactionsDetails.version) + "\n";
     body += "  </li>\n";
-    if (transactionsDetails.version >= TRANSACTION_VERSION_PQ) {
+    if (transactionsDetails.version >= TRANSACTION_VERSION_1) {
       body += "  <li>\n";
       body += "    TX type: " + std::to_string(transactionsDetails.txType) + "\n";
       body += "  </li>\n";

@@ -58,7 +58,7 @@ TEST_F(Currency_isFusionTransactionTest, succeedsOnFusionTransaction) {
 
 TEST_F(Currency_isFusionTransactionTest, failsForPqTransaction) {
   Transaction tx;
-  tx.version = TRANSACTION_VERSION_PQ;
+  tx.version = TRANSACTION_VERSION_1;
   tx.txType = TX_FREE_REG;
 
   ASSERT_FALSE(m_currency.isFusionTransaction(tx));

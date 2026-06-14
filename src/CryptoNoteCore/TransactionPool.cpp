@@ -86,7 +86,7 @@ bool getPqAccountRegistrationId(const Transaction& tx, Crypto::Hash& accountId) 
         (void)r;
         assert(r.second);
       }
-      if (tx.version >= TRANSACTION_VERSION_PQ && tx.txType == TX_FREE_REG) {
+      if (tx.version >= TRANSACTION_VERSION_1 && tx.txType == TX_FREE_REG) {
         ++m_freeRegCount;
       }
 
@@ -113,7 +113,7 @@ bool getPqAccountRegistrationId(const Transaction& tx, Crypto::Hash& accountId) 
           m_pqAccountRegistrations.count(accountId)) {
         return false;
       }
-      if (tx.version >= TRANSACTION_VERSION_PQ && tx.txType == TX_FREE_REG &&
+      if (tx.version >= TRANSACTION_VERSION_1 && tx.txType == TX_FREE_REG &&
           m_freeRegCount >= parameters::FREE_REG_PER_BLOCK) {
         return false;
       }
@@ -160,8 +160,8 @@ bool getPqAccountRegistrationId(const Transaction& tx, Crypto::Hash& accountId) 
     // balance and PQ fee floor are enforced by checkTransactionInputs ->
     // checkPqInputs below. (TX_BRIDGE has classical inputs, so it uses the
     // normal accounting.)
-    const bool pqOnlyInputs = tx.version >= TRANSACTION_VERSION_PQ && tx.txType == TX_PQ;
-    const bool freeRegTransaction = tx.version >= TRANSACTION_VERSION_PQ && tx.txType == TX_FREE_REG;
+    const bool pqOnlyInputs = tx.version >= TRANSACTION_VERSION_1 && tx.txType == TX_PQ;
+    const bool freeRegTransaction = tx.version >= TRANSACTION_VERSION_1 && tx.txType == TX_FREE_REG;
     uint64_t fee = 0;
     if (!pqOnlyInputs) {
       uint64_t inputs_amount = 0;

@@ -43,7 +43,7 @@ bool PqConsumer::scanReader(const ITransactionReader& reader, uint32_t height) {
     m_logger(Logging::TRACE) << "skipping transaction that failed to parse";
     return false;
   }
-  if (prefix.version < TRANSACTION_VERSION_PQ) {
+  if (prefix.version < TRANSACTION_VERSION_1) {
     return false;
   }
   Crypto::Hash txid = reader.getTransactionHash();

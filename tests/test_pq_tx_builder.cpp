@@ -83,7 +83,7 @@ TEST(PqTxBuilder, FundedSpendPassesConsensus) {
 
     Transaction tx = buildPqTransaction({in}, {out}, sender.spendPub, sender.spendSk);
 
-    EXPECT_EQ(tx.version, TRANSACTION_VERSION_PQ);
+    EXPECT_EQ(tx.version, TRANSACTION_VERSION_1);
     EXPECT_EQ(tx.txType, TX_PQ);
     EXPECT_EQ(tx.pqSignatures.size(), 1u);
 
@@ -221,7 +221,7 @@ TEST(PqFreeReg, BuildsValidRegistration) {
     while (!CryptoNote::checkFreeRegPow(me.viewPub, ref, nonce)) ++nonce;
 
     Transaction tx = buildFreeRegTransaction(me.viewPub, me.spendPub, ref, nonce);
-    EXPECT_EQ(tx.version, TRANSACTION_VERSION_PQ);
+    EXPECT_EQ(tx.version, TRANSACTION_VERSION_1);
     EXPECT_EQ(tx.txType, TX_FREE_REG);
     EXPECT_TRUE(tx.inputs.empty());
     EXPECT_TRUE(tx.outputs.empty());

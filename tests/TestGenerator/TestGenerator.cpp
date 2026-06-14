@@ -143,11 +143,11 @@ bool test_generator::constructBlock(CryptoNote::Block& blk, uint32_t height, con
     txsSize += getObjectBinarySize(tx);
   }
 
-  // Discrete serializer rejects version!=TRANSACTION_VERSION_PQ, so a zero-initialized
+  // Discrete serializer rejects version!=TRANSACTION_VERSION_1, so a zero-initialized
   // Transaction produces SIZE_MAX from getObjectBinarySize. Start with a minimal
   // properly-versioned transaction so the initial target size is valid.
   blk.baseTransaction = boost::value_initialized<Transaction>();
-  blk.baseTransaction.version = TRANSACTION_VERSION_PQ;
+  blk.baseTransaction.version = TRANSACTION_VERSION_1;
   size_t targetBlockSize = txsSize + getObjectBinarySize(blk.baseTransaction);
   while (true) {
     if (!m_currency.constructMinerTxPq(blk.majorVersion, height, Common::medianValue(blockSizes), alreadyGeneratedCoins, targetBlockSize,
@@ -265,7 +265,7 @@ bool test_generator::constructBlockManually(Block& blk, const Block& prevBlock, 
     blk.baseTransaction = baseTransaction;
   } else {
     blk.baseTransaction = boost::value_initialized<Transaction>();
-    blk.baseTransaction.version = TRANSACTION_VERSION_PQ;
+    blk.baseTransaction.version = TRANSACTION_VERSION_1;
     size_t currentBlockSize = txsSizes + getObjectBinarySize(blk.baseTransaction);
     if (!m_currency.constructMinerTxPq(blk.majorVersion, height, Common::medianValue(blockSizes), alreadyGeneratedCoins, currentBlockSize, 0,
         minerAcc.pqViewPk(), minerAcc.pqSpendPk(), blk.baseTransaction)) {

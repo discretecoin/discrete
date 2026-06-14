@@ -25,7 +25,7 @@
 namespace CryptoNote {
 namespace parameters {
 
-const uint64_t DIFFICULTY_TARGET                             = 240; // seconds
+const uint64_t DIFFICULTY_TARGET                             = 60; // seconds
 const uint64_t EXPECTED_NUMBER_OF_BLOCKS_PER_DAY             = 24 * 60 * 60 / DIFFICULTY_TARGET;
 const uint64_t CRYPTONOTE_MAX_BLOCK_NUMBER                   = 500000000;
 // Maximum unlock_time accepted at block major v6+. Plain txs at v6+ must use
@@ -195,8 +195,8 @@ constexpr size_t DNS_CHECKPOINT_SIGNERS_COUNT                =
   (sizeof(DNS_CHECKPOINT_SIGNERS) / sizeof(DNS_CHECKPOINT_SIGNERS[0])) - 1;
 
 // Transaction versions. v1 = PQ. v2+ reserved for future upgrades.
-const uint8_t  TRANSACTION_VERSION_PQ                        =  1;
-const uint8_t  CURRENT_TRANSACTION_VERSION                   =  TRANSACTION_VERSION_PQ;
+const uint8_t  TRANSACTION_VERSION_1                        =  1;
+const uint8_t  CURRENT_TRANSACTION_VERSION                   =  TRANSACTION_VERSION_1;
 
 // Block major versions — all kept as natural values for future hard-fork use.
 // Discrete uses v1 from genesis (PQ-only). v2-v8 are reserved for future upgrades.

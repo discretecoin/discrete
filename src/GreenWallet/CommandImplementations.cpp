@@ -1148,7 +1148,7 @@ void pqAddress(std::shared_ptr<WalletInfo> walletInfo)
 
     Crypto::SecretKey spendSecret = walletInfo->wallet.getAddressSpendKey(0).secretKey;
     CryptoNote::PqAddress addr = CryptoNote::pqWalletAddress(
-        spendSecret, CryptoNote::parameters::CRYPTONOTE_PUBLIC_PQ_ADDRESS_BASE58_PREFIX);
+        spendSecret, CryptoNote::parameters::CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX);
     std::string b58 = CryptoNote::encodePqAddress(addr, CryptoNote::PqAddressEncoding::Base58);
 
     std::cout << InformationMsg("Your post-quantum (PQ) address (" + std::to_string(b58.size())

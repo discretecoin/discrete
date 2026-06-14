@@ -770,7 +770,7 @@ bool RpcServer::checkIncomingTransactionForFee(const BinaryArray& tx_blob) {
 
   const uint32_t currentHeight = m_core.getCurrentBlockchainHeight();
   const uint8_t blockMajorVersion = m_core.getBlockMajorVersionForHeight(currentHeight);
-  if (tx.version >= TRANSACTION_VERSION_PQ &&
+  if (tx.version >= TRANSACTION_VERSION_1 &&
       tx.txType == TX_FREE_REG &&
       blockMajorVersion >= BLOCK_MAJOR_VERSION_1) {
     logger(Logging::DEBUGGING) << "Masternode received free PQ account registration transaction, relaying with no fee check";

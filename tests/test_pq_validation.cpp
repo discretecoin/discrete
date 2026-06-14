@@ -107,7 +107,7 @@ BuiltTx buildSignedTx(uint64_t amountIn, uint64_t amountOut) {
     out.amount = amountOut;
     out.target = po;
 
-    b.tx.version = TRANSACTION_VERSION_PQ;
+    b.tx.version = TRANSACTION_VERSION_1;
     b.tx.txType = TX_PQ;
     b.tx.unlockTime = 0;
     b.tx.outputs.push_back(out);
@@ -272,7 +272,7 @@ TEST(PqValidation, SemanticRejectsWrongFieldSize) {
 // compatibility, but checkBridgeTransactionSemantic rejects every such tx.
 TEST(PqValidation, BridgeAlwaysRejectedInDiscrete) {
     Transaction tx;
-    tx.version = TRANSACTION_VERSION_PQ;
+    tx.version = TRANSACTION_VERSION_1;
     tx.txType = TX_BRIDGE;
     tx.unlockTime = 0;
     std::string err;
@@ -296,7 +296,7 @@ std::array<uint8_t, TX_EXTRA_PQ_SPEND_PUBKEY_SIZE> freeRegSpendPub() {
 
 Transaction makeFreeRegTx() {
     Transaction tx;
-    tx.version = TRANSACTION_VERSION_PQ;
+    tx.version = TRANSACTION_VERSION_1;
     tx.txType = TX_FREE_REG;
     tx.unlockTime = 0;
     // no inputs / outputs / signatures
@@ -336,7 +336,7 @@ TEST(PqValidation, FreeRegRejectsNonEmptyInputs) {
 TEST(PqValidation, FreeRegRejectsExtraField) {
     // A registration tx must carry ONLY the reg tag + PoW tag.
     Transaction tx;
-    tx.version = TRANSACTION_VERSION_PQ;
+    tx.version = TRANSACTION_VERSION_1;
     tx.txType = TX_FREE_REG;
     tx.unlockTime = 0;
     addPqAccountRegistrationToExtra(tx.extra, freeRegViewPub(), freeRegSpendPub());
@@ -351,7 +351,7 @@ TEST(PqValidation, FreeRegRejectsExtraField) {
 TEST(PqValidation, FreeRegRejectsPowNotLast) {
     // Append a registration AFTER the PoW tag so PoW is no longer the last field.
     Transaction tx;
-    tx.version = TRANSACTION_VERSION_PQ;
+    tx.version = TRANSACTION_VERSION_1;
     tx.txType = TX_FREE_REG;
     tx.unlockTime = 0;
     TransactionExtraPow pow{}; pow.nonce = 1;
@@ -363,7 +363,7 @@ TEST(PqValidation, FreeRegRejectsPowNotLast) {
 
 TEST(PqValidation, FreeRegRejectsMissingPow) {
     Transaction tx;
-    tx.version = TRANSACTION_VERSION_PQ;
+    tx.version = TRANSACTION_VERSION_1;
     tx.txType = TX_FREE_REG;
     tx.unlockTime = 0;
     addPqAccountRegistrationToExtra(tx.extra, freeRegViewPub(), freeRegSpendPub());  // no PoW tag

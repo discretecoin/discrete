@@ -91,7 +91,7 @@ struct DigestOutput {
 // the txid covers (txType / unlockTime / extra) would let a relayer mutate it
 // without invalidating the signature — a malleability hole. (Amends draft §8.1.)
 struct UnsignedTx {
-  uint8_t                   version = 1;  // TRANSACTION_VERSION_PQ
+  uint8_t                   version = 1;  // TRANSACTION_VERSION_1
   uint8_t                   txType = 1;   // TX_PQ
   uint64_t                  unlockTime = 0;
   std::vector<DigestInput>  inputs;

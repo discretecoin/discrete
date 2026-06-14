@@ -56,7 +56,7 @@ TransactionOutput makePqOutput() {
 
 Transaction makePqTx() {
     Transaction tx;
-    tx.version = TRANSACTION_VERSION_PQ;
+    tx.version = TRANSACTION_VERSION_1;
     tx.txType = TX_PQ;
     tx.unlockTime = 0;
     tx.inputs.push_back(makePqInput());
@@ -78,7 +78,7 @@ TEST(PqWire, RoundTrip) {
     Transaction tx2;
     ASSERT_TRUE(fromBinaryArray(tx2, ba));
 
-    EXPECT_EQ(tx2.version, TRANSACTION_VERSION_PQ);
+    EXPECT_EQ(tx2.version, TRANSACTION_VERSION_1);
     EXPECT_EQ(tx2.txType, TX_PQ);
     EXPECT_EQ(tx2.unlockTime, 0u);
     ASSERT_EQ(tx2.inputs.size(), 1u);
@@ -144,7 +144,7 @@ TEST(PqWire, SingleVersionAlwaysCarriesTxTypeByte) {
     // version, so every transaction carries a txType byte on the wire and it
     // round-trips. (Coinbase shape: BaseInput + a single PqOutput.)
     Transaction tx;
-    tx.version = TRANSACTION_VERSION_PQ;  // == 1
+    tx.version = TRANSACTION_VERSION_1;  // == 1
     tx.txType = TX_PQ;
     tx.unlockTime = 0;
     BaseInput bi; bi.blockIndex = 5;
@@ -158,7 +158,7 @@ TEST(PqWire, SingleVersionAlwaysCarriesTxTypeByte) {
     BinaryArray ba = toBinaryArray(tx);
     Transaction tx2;
     ASSERT_TRUE(fromBinaryArray(tx2, ba));
-    EXPECT_EQ(tx2.version, TRANSACTION_VERSION_PQ);
+    EXPECT_EQ(tx2.version, TRANSACTION_VERSION_1);
     EXPECT_EQ(tx2.txType, TX_PQ);  // read back from wire, not defaulted
 }
 

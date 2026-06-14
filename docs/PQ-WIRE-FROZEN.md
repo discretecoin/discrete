@@ -14,7 +14,7 @@ edit to a constant or to that test file's expected values.
 
 | Constant | Value | File |
 |---|---|---|
-| `TRANSACTION_VERSION_PQ` | `1` | `src/CryptoNoteConfig.h` |
+| `TRANSACTION_VERSION_1` | `1` | `src/CryptoNoteConfig.h` |
 | `TX_COINBASE` (txType) | `0x00` | `include/PqTxType.h` |
 | `TX_PQ` (txType) | `0x01` | `include/PqTxType.h` |
 | `TX_BRIDGE` (reserved; consensus rejects) | `0x02` | `include/PqTxType.h` |
@@ -108,7 +108,7 @@ outContext = SHA3-256(
 ```
 txSigningDigest = SHA3-256(
     kDomainTxSign              ||   // "karbo-pq-tx-sign-v1", 19 bytes
-    version (1 byte)           ||   // TRANSACTION_VERSION_PQ = 1
+    version (1 byte)           ||   // TRANSACTION_VERSION_1 = 1
     txType  (1 byte)           ||
     LE64(unlockTime)           ||
     LE32(#inputs)              ||

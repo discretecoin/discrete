@@ -302,7 +302,7 @@ bool Core::check_tx_mixin(const Transaction& /*tx*/, const Crypto::Hash& /*txHas
 
 bool Core::check_tx_fee(const Transaction& tx, const Crypto::Hash& txHash, size_t blobSize, tx_verification_context& tvc, uint32_t height) {
   const uint8_t blockMajorVersion = m_blockchain.getBlockMajorVersionForHeight(height);
-  const bool isPqTx = tx.version >= TRANSACTION_VERSION_PQ;
+  const bool isPqTx = tx.version >= TRANSACTION_VERSION_1;
   const bool isFreeRegTransaction = isPqTx && tx.txType == TX_FREE_REG;
   if (isPqTx && tx.txType == TX_PQ) {
     return true;
@@ -358,7 +358,7 @@ bool Core::check_tx_semantic(const Transaction& tx, const Crypto::Hash& txHash, 
   // PQ (v2) transactions. TX_PQ has a fully self-contained pipeline; TX_BRIDGE
   // is a classical-input tx with PQ outputs, so it runs its own shape check and
   // then continues through the classical semantic checks below.
-  if (tx.version >= TRANSACTION_VERSION_PQ) {
+  if (tx.version >= TRANSACTION_VERSION_1) {
     std::string pqErr;
     if (tx.txType == TX_PQ) {
       if (!checkPqTransactionSemantic(tx, &pqErr)) {
@@ -1276,10 +1276,10 @@ bool Core::handleIncomingTransaction(const Transaction& tx, const Crypto::Hash& 
     // sizes. TX_PQ has neither — its fee floor (MIN_PQ_FEE_PER_BYTE) and the
     // value balance are enforced in checkPqTransactionInputs. TX_BRIDGE keeps
     // classical inputs, so these still apply to it.
-    const bool pqOnlyInputs = tx.version >= TRANSACTION_VERSION_PQ && tx.txType == TX_PQ;
+    const bool pqOnlyInputs = tx.version >= TRANSACTION_VERSION_1 && tx.txType == TX_PQ;
     // The decomposed-amount rule is a classical-output rule; PQ outputs (TX_PQ
     // and TX_BRIDGE) carry arbitrary plain amounts.
-    const bool hasPqOutputs = tx.version >= TRANSACTION_VERSION_PQ;
+    const bool hasPqOutputs = tx.version >= TRANSACTION_VERSION_1;
 
     if (!pqOnlyInputs) {
       if (!check_tx_fee(tx, txHash, blobSize, tvc, height)) {

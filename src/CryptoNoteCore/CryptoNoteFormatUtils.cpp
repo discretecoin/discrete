@@ -133,7 +133,7 @@ uint32_t get_block_height(const Block& b) {
 }
 
 bool check_inputs_types_supported(const TransactionPrefix& tx) {
-  const bool pqInputs = tx.version >= TRANSACTION_VERSION_PQ && tx.txType == TX_PQ;
+  const bool pqInputs = tx.version >= TRANSACTION_VERSION_1 && tx.txType == TX_PQ;
   for (const auto& in : tx.inputs) {
     if (pqInputs) {
       if (in.type() != typeid(PqInput)) return false;
@@ -147,7 +147,7 @@ bool check_inputs_types_supported(const TransactionPrefix& tx) {
 bool check_outs_valid(const TransactionPrefix& tx, std::string* error) {
   std::unordered_set<PublicKey> keys_seen;
   for (const TransactionOutput& out : tx.outputs) {
-    if (tx.version >= TRANSACTION_VERSION_PQ && out.target.type() == typeid(PqOutput)) {
+    if (tx.version >= TRANSACTION_VERSION_1 && out.target.type() == typeid(PqOutput)) {
       if (tx.txType != TX_PQ && tx.txType != TX_BRIDGE) {
         if (error) *error = "PQ output is not allowed for this tx type";
         return false;
@@ -160,7 +160,7 @@ bool check_outs_valid(const TransactionPrefix& tx, std::string* error) {
     }
 
     if (out.target.type() == typeid(KeyOutput)) {
-      if (tx.version >= TRANSACTION_VERSION_PQ && tx.txType != TX_BRIDGE) {
+      if (tx.version >= TRANSACTION_VERSION_1 && tx.txType != TX_BRIDGE) {
         if (error) *error = "KeyOutput is not allowed for this PQ tx type";
         return false;
       }

@@ -18,7 +18,7 @@
 #include "crypto_pq/PqDerive.h"   // kDomain*, kReservedCtMask
 #include "crypto_pq/PqSeed.h"     // kDomainViewRoot, kDomainSpendRoot
 #include "CryptoNote.h"           // PQ_*_SIZE
-#include "CryptoNoteConfig.h"     // TRANSACTION_VERSION_PQ
+#include "CryptoNoteConfig.h"     // TRANSACTION_VERSION_1
 #include "PqTxType.h"             // TX_COINBASE, TX_PQ, TX_FREE_REG
 
 #include <cstring>
@@ -41,8 +41,8 @@ static_assert(PQ_RHO_SIZE            == 32,
 static_assert(PQ_SIGNATURE_SIZE      == 3309,
               "PQ_SIGNATURE_SIZE changed — hard fork");
 
-static_assert(TRANSACTION_VERSION_PQ == 1,
-              "TRANSACTION_VERSION_PQ changed — hard fork");
+static_assert(TRANSACTION_VERSION_1 == 1,
+              "TRANSACTION_VERSION_1 changed — hard fork");
 
 static_assert(TX_COINBASE == 0x00, "TX_COINBASE changed — hard fork");
 static_assert(TX_PQ       == 0x01, "TX_PQ changed — hard fork");
@@ -115,7 +115,7 @@ TEST(PqDomains, SizeConstants) {
 }
 
 TEST(PqDomains, TransactionVersion) {
-    EXPECT_EQ(static_cast<unsigned>(TRANSACTION_VERSION_PQ), 1u);
+    EXPECT_EQ(static_cast<unsigned>(TRANSACTION_VERSION_1), 1u);
 }
 
 TEST(PqDomains, TxSubtypes) {
