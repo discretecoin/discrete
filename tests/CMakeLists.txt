@@ -37,6 +37,7 @@ add_executable(HashTargetTests HashTarget.cpp)
 add_executable(HashTests Hash/main.cpp)
 
 add_executable(PqPrimitivesTests test_pq_primitives.cpp)
+add_executable(PqDomainsTests test_pq_domains.cpp)
 add_executable(PqDeriveTests test_pq_derive.cpp)
 add_executable(PqSeedAddressTests test_pq_seed_address.cpp)
 add_executable(PqExtraTests test_pq_extra.cpp)
@@ -66,6 +67,7 @@ target_link_libraries(HashTargetTests CryptoNoteCore Crypto)
 target_link_libraries(HashTests Crypto)
 
 target_link_libraries(PqPrimitivesTests CryptoPq gtest ${Boost_LIBRARIES})
+target_link_libraries(PqDomainsTests CryptoNoteCore Serialization System Logging Common Crypto CryptoPq gtest ${Boost_LIBRARIES})
 target_link_libraries(PqDeriveTests CryptoPq gtest ${Boost_LIBRARIES})
 target_link_libraries(PqSeedAddressTests CryptoPq gtest ${Boost_LIBRARIES})
 target_link_libraries(PqExtraTests CryptoNoteCore Serialization System Logging Common Crypto gtest ${Boost_LIBRARIES})
@@ -97,6 +99,7 @@ if(MSVC)
   target_link_libraries(TransfersTests legacy_stdio_definitions.lib ${OPENSSL_LIBRARIES} ws2_32)
   target_link_libraries(PqExtraTests legacy_stdio_definitions.lib ws2_32)
   target_link_libraries(PqWireTests legacy_stdio_definitions.lib ws2_32)
+  target_link_libraries(PqDomainsTests legacy_stdio_definitions.lib ws2_32)
   target_link_libraries(PqNullifierDbTests legacy_stdio_definitions.lib ws2_32)
   target_link_libraries(PqValidationTests legacy_stdio_definitions.lib ws2_32)
   target_link_libraries(PqChainTests legacy_stdio_definitions.lib ws2_32)
@@ -140,6 +143,7 @@ set_property(TARGET
   HashTargetTests
   HashTests
   PqPrimitivesTests
+  PqDomainsTests
   PqDeriveTests
   PqSeedAddressTests
   PqExtraTests
@@ -171,6 +175,7 @@ set_property(TARGET DifficultyTests PROPERTY OUTPUT_NAME "difficulty_tests")
 set_property(TARGET HashTargetTests PROPERTY OUTPUT_NAME "hash_target_tests")
 set_property(TARGET HashTests PROPERTY OUTPUT_NAME "hash_tests")
 set_property(TARGET PqPrimitivesTests PROPERTY OUTPUT_NAME "pq_primitives_tests")
+set_property(TARGET PqDomainsTests PROPERTY OUTPUT_NAME "pq_domains_tests")
 set_property(TARGET PqDeriveTests PROPERTY OUTPUT_NAME "pq_derive_tests")
 set_property(TARGET PqSeedAddressTests PROPERTY OUTPUT_NAME "pq_seed_address_tests")
 set_property(TARGET PqExtraTests PROPERTY OUTPUT_NAME "pq_extra_tests")
@@ -196,6 +201,7 @@ add_test(HashTargetTests hash_target_tests)
 add_test(SystemTests system_tests)
 add_test(UnitTests unit_tests)
 add_test(PqPrimitivesTests pq_primitives_tests)
+add_test(PqDomainsTests pq_domains_tests)
 add_test(PqDeriveTests pq_derive_tests)
 add_test(PqSeedAddressTests pq_seed_address_tests)
 add_test(PqExtraTests pq_extra_tests)

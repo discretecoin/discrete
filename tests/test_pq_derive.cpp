@@ -119,7 +119,7 @@ TEST(PqDerive, TxSigningDigest) {
     Hash256 sc = spendCommit(pk, rho);
 
     UnsignedTx tx;
-    tx.version = 2;  // TRANSACTION_VERSION_PQ
+    tx.version = 1;  // TRANSACTION_VERSION_PQ
     tx.fee = 12345;
 
     DigestInput di;
@@ -138,7 +138,7 @@ TEST(PqDerive, TxSigningDigest) {
     tx.outputs.push_back(out);
 
     EXPECT_EQ(to_hex(txSigningDigest(tx)),
-              "b9c426dd4e056cdcbf4afc5c19329e8d926f2f458914a6bc4a785fc169e41d3c");
+              "3dc9fd8f06145dbe1b9752a166d20f94e23cce29d51888e2ac0e20a315f6cdf4");
 }
 
 TEST(PqDerive, TxSigningDigestIsTamperSensitive) {
@@ -146,7 +146,7 @@ TEST(PqDerive, TxSigningDigestIsTamperSensitive) {
     Rho rho = pat<32>(3, 9);
 
     UnsignedTx tx;
-    tx.version = 2;  // TRANSACTION_VERSION_PQ
+    tx.version = 1;  // TRANSACTION_VERSION_PQ
     tx.fee = 12345;
     DigestInput di; di.prevTxid = pat<32>(1, 0); di.prevOutIndex = 7;
     di.authPub = pk; di.rhoReveal = rho;
