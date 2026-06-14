@@ -52,6 +52,7 @@ struct PqSendOutput {
   CryptoPQ::KemPublicKey recipientViewPub{};
   CryptoPQ::DsaPublicKey recipientSpendPub{};
   uint64_t               amount = 0;
+  uint64_t               subaddrIndexT = 0;  // deposit routing index; 0 for standard addresses
 };
 
 // One classical (legacy) input being migrated by a TX_BRIDGE, plus its resolved

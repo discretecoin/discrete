@@ -46,6 +46,7 @@ namespace CryptoPQ {
 struct PqOwnedOutput {
   uint32_t outputIndex = 0;
   uint64_t amount = 0;
+  uint64_t subaddrIndexT = 0;  // deposit routing index; 0 for single-address wallets
   Rho      rho{};
   Hash256  outContext{};
 };
@@ -67,17 +68,19 @@ struct PqScanOutput {
   Hash256              spendCommit{};
 };
 
-// Try to recognize ONE output. Returns the owned record on success, nullopt
+// Try to recognize ONE output for the given subaddress index T (default 0 for
+// single-address wallets). Returns the owned record on success, nullopt
 // otherwise (not ours, OR tampered — indistinguishable by design).
 std::optional<PqOwnedOutput> scanPqOutput(const PqScanKeys& keys,
                                           const Hash256& inputsHash,
-                                          const PqScanOutput& out);
+                                          const PqScanOutput& out,
+                                          uint64_t subaddrIndexT = 0);
 
-// Scan every output of one transaction. `inputsHash` is computed once by the
-// caller (the same value feeds every output's out_context).
+// Scan every output of one transaction for the given T.
 std::vector<PqOwnedOutput> scanPqOutputs(const PqScanKeys& keys,
                                          const Hash256& inputsHash,
-                                         const std::vector<PqScanOutput>& outputs);
+                                         const std::vector<PqScanOutput>& outputs,
+                                         uint64_t subaddrIndexT = 0);
 
 // --- Aggregated scanning (exchange / service wallets) ----------------------
 // A service issues many deposit addresses sharing ONE ML-KEM view key but with
@@ -92,9 +95,10 @@ struct PqAggregateOwned {
 };
 
 // Try to recognize ONE output against a set of deposit spend keys sharing viewSk.
-// Decapsulates once, decrypts rho once, then checks spend_commit against each
-// spendPubs[i]; returns the first match (or nullopt). Output amount tampering
-// and non-ownership both yield nullopt (silent), as in the single-key scan.
+// Iterates T = 0..spendPubs.size()-1: for each T, derives outContext(T), decrypts,
+// reads back T from the payload, and checks spend_commit(spendPubs[T]).
+// Decapsulates once per call; each T trial is a cheap AEAD + SHA3 operation.
+// Returns the first match (or nullopt). Tampering and non-ownership are silent.
 std::optional<PqAggregateOwned> scanPqOutputAggregate(
     const KemSecretKey& viewSk,
     const std::vector<DsaPublicKey>& spendPubs,

@@ -80,7 +80,7 @@ struct DigestOutput {
   uint8_t                 type;
   uint64_t                amount;
   KemCiphertext           kemCt;       // 1088 bytes
-  std::array<uint8_t, 48> encPayload;  // ChaCha20-Poly1305 ct||tag
+  std::array<uint8_t, 56> encPayload;  // ChaCha20-Poly1305 ct||tag
   Hash256                 spendCommit; // 32 bytes
 };
 
@@ -104,10 +104,12 @@ struct UnsignedTx {
 //    Canonical input order; never re-sorted.
 Hash256 inputsHash(const std::vector<InputRef>& inputs) noexcept;
 
-// 2. outContext = SHA3-256(domain || inputsHash || kemCt || LE32(outputIndex)).
+// 2. outContext = SHA3-256(domain || inputsHash || kemCt || LE32(outputIndex) || LE64(T)).
+//    T = subaddress index; default 0 for single-address wallets.
 Hash256 outContext(const Hash256& inputsHash,
                    const KemCiphertext& kemCt,
-                   uint32_t outputIndex) noexcept;
+                   uint32_t outputIndex,
+                   uint64_t subaddrIndexT = 0) noexcept;
 
 // 3. aeadKey = HKDF-SHA3-256(IKM=ss, salt=0, info=domain || outContext, L=32).
 //    Encrypts/decrypts the per-output rho delivered to the recipient.

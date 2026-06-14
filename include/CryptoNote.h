@@ -45,7 +45,7 @@ struct KeyOutput {
 // ---------------------------------------------------------------------------
 // Fixed-size blob sizes (consensus-enforced).
 constexpr size_t PQ_KEM_CIPHERTEXT_SIZE = 1088;  // ML-KEM-768 ciphertext
-constexpr size_t PQ_ENC_PAYLOAD_SIZE    = 48;    // ChaCha20-Poly1305(rho): 32 ct + 16 tag
+constexpr size_t PQ_ENC_PAYLOAD_SIZE    = 56;    // ChaCha20-Poly1305(rho||LE64(T)): 40 ct + 16 tag
 constexpr size_t PQ_AUTH_PUB_SIZE       = 1952;  // ML-DSA-65 public spend key
 constexpr size_t PQ_RHO_SIZE            = 32;
 constexpr size_t PQ_SIGNATURE_SIZE      = 3309;  // ML-DSA-65 signature

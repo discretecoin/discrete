@@ -108,7 +108,7 @@ Transaction buildPqTransaction(const std::vector<PqSpendInput>& inputs,
     const PqSendOutput& so = outputs[i];
     CryptoPQ::PqBuiltOutput built = CryptoPQ::buildPqOutput(
         so.recipientViewPub, so.recipientSpendPub, ih,
-        static_cast<uint32_t>(i), so.amount);
+        static_cast<uint32_t>(i), so.amount, so.subaddrIndexT);
 
     PqOutput po;
     po.kemCt.assign(built.kemCt.begin(), built.kemCt.end());

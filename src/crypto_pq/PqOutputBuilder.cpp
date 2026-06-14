@@ -47,21 +47,29 @@ PqBuiltOutput buildPqOutput(const KemCiphertext& kemCt,
                             const Hash256& inputsHash,
                             uint32_t outputIndex,
                             uint64_t amount,
-                            const Rho& rho) {
+                            const Rho& rho,
+                            uint64_t subaddrIndexT) {
   PqBuiltOutput out;
   out.kemCt = kemCt;
   out.rho = rho;
 
-  out.outContext = outContext(inputsHash, kemCt, outputIndex);
+  out.outContext = outContext(inputsHash, kemCt, outputIndex, subaddrIndexT);
 
   Hash256 aeadKey = deriveAeadKey(ss, out.outContext);
   AeadNonce nonce{};  // 12 zero bytes — safe, aead key is unique per output
   std::array<uint8_t, 40> aad = makeAad(out.outContext, amount);
 
-  // Hash256 and AeadKey are both std::array<uint8_t, 32>.
+  // Plaintext: rho (32 bytes) || LE64(T) (8 bytes) = 40 bytes.
+  // T is also bound into outContext (via the key), so a tampered T
+  // in the payload cannot be re-encrypted to pass the AEAD tag check.
+  std::array<uint8_t, 40> plaintext{};
+  std::memcpy(plaintext.data(), rho.data(), 32);
+  for (int i = 0; i < 8; ++i)
+    plaintext[32 + i] = static_cast<uint8_t>((subaddrIndexT >> (8 * i)) & 0xFF);
+
   out.encPayload = aead_encrypt(aeadKey, nonce,
                                 aad.data(), aad.size(),
-                                rho.data(), rho.size());
+                                plaintext.data(), plaintext.size());
 
   // Ownership binding: the recipient's LONG-TERM spend key, not a per-output key.
   out.spendCommit = spendCommit(recipientSpendPub, rho);
@@ -72,12 +80,13 @@ PqBuiltOutput buildPqOutput(const KemPublicKey& recipientViewPub,
                             const DsaPublicKey& recipientSpendPub,
                             const Hash256& inputsHash,
                             uint32_t outputIndex,
-                            uint64_t amount) {
+                            uint64_t amount,
+                            uint64_t subaddrIndexT) {
   std::pair<KemCiphertext, KemShared> enc = kem_encaps(recipientViewPub);
   Rho rho;
   secure_random_bytes(rho.data(), rho.size());
   return buildPqOutput(enc.first, enc.second, recipientSpendPub,
-                       inputsHash, outputIndex, amount, rho);
+                       inputsHash, outputIndex, amount, rho, subaddrIndexT);
 }
 
 }  // namespace CryptoPQ

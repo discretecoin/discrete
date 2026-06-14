@@ -38,8 +38,9 @@ std::vector<InputRef> fixedInputs() {
 
 // Build an on-chain scan output for recipient (viewPub, spendPub).
 PqScanOutput buildScanOutput(const KemPublicKey& viewPub, const DsaPublicKey& spendPub,
-                             const Hash256& ih, uint32_t idx, uint64_t amount) {
-    PqBuiltOutput b = buildPqOutput(viewPub, spendPub, ih, idx, amount);
+                             const Hash256& ih, uint32_t idx, uint64_t amount,
+                             uint64_t T = 0) {
+    PqBuiltOutput b = buildPqOutput(viewPub, spendPub, ih, idx, amount, T);
     PqScanOutput o;
     o.outputIndex = idx;
     o.amount = amount;
@@ -64,15 +65,38 @@ TEST(PqScan, RecognizesOwnOutput) {
     auto spend = deriveSpendKeys(m);
     Hash256 ih = inputsHash(fixedInputs());
 
-    PqScanOutput o = buildScanOutput(view.first, spend.first, ih, 4, 7777);
+    PqScanOutput o = buildScanOutput(view.first, spend.first, ih, 4, 7777, /*T=*/0);
 
-    auto owned = scanPqOutput(scanKeysFor(m), ih, o);
+    auto owned = scanPqOutput(scanKeysFor(m), ih, o, /*T=*/0);
     ASSERT_TRUE(owned.has_value());
     EXPECT_EQ(owned->outputIndex, 4u);
     EXPECT_EQ(owned->amount, 7777u);
-    EXPECT_EQ(owned->outContext, outContext(ih, o.kemCt, 4));
+    EXPECT_EQ(owned->subaddrIndexT, 0u);
+    EXPECT_EQ(owned->outContext, outContext(ih, o.kemCt, 4, 0));
     // The recovered rho must reconstruct the on-chain spend_commit.
     EXPECT_EQ(spendCommit(spend.first, owned->rho), o.spendCommit);
+}
+
+TEST(PqScan, TRoundTrip) {
+    // Build with T=7, scan with T=7 -> recognized; scan with T=0 or T=1 -> silent.
+    SeedMaster m = pat<32>(2, 7);
+    auto view = deriveViewKeys(m);
+    auto spend = deriveSpendKeys(m);
+    Hash256 ih = inputsHash(fixedInputs());
+    const uint64_t T = 7;
+
+    PqScanOutput o = buildScanOutput(view.first, spend.first, ih, 2, 9999, T);
+
+    auto owned = scanPqOutput(scanKeysFor(m), ih, o, T);
+    ASSERT_TRUE(owned.has_value());
+    EXPECT_EQ(owned->subaddrIndexT, T);
+    EXPECT_EQ(owned->amount, 9999u);
+
+    // Wrong T values must not recognize the output.
+    EXPECT_FALSE(scanPqOutput(scanKeysFor(m), ih, o, 0).has_value());
+    EXPECT_FALSE(scanPqOutput(scanKeysFor(m), ih, o, 1).has_value());
+    EXPECT_FALSE(scanPqOutput(scanKeysFor(m), ih, o, 6).has_value());
+    EXPECT_FALSE(scanPqOutput(scanKeysFor(m), ih, o, 8).has_value());
 }
 
 TEST(PqScan, IgnoresOthersOutput) {
@@ -163,12 +187,14 @@ TEST(PqScan, AggregateRecognizesCorrectDeposit) {
     std::vector<DsaPublicKey> spendPubs = {dep0.first, dep1.first, dep2.first};
 
     Hash256 ih = inputsHash(fixedInputs());
-    // An output paid to deposit #1 (shared viewPub + dep1 spendPub).
-    PqScanOutput o = buildScanOutput(view.first, dep1.first, ih, 5, 4242);
+    // An output paid to deposit #1 (shared viewPub + dep1 spendPub, T=1).
+    // T must equal spendPubIndex so the aggregate scanner can route it.
+    PqScanOutput o = buildScanOutput(view.first, dep1.first, ih, 5, 4242, /*T=*/1);
 
     auto owned = scanPqOutputAggregate(view.second, spendPubs, ih, o);
     ASSERT_TRUE(owned.has_value());
     EXPECT_EQ(owned->spendPubIndex, 1u);
+    EXPECT_EQ(owned->record.subaddrIndexT, 1u);
     EXPECT_EQ(owned->record.amount, 4242u);
     EXPECT_EQ(owned->record.outputIndex, 5u);
     EXPECT_EQ(spendCommit(dep1.first, owned->record.rho), o.spendCommit);
@@ -181,7 +207,8 @@ TEST(PqScan, AggregateIgnoresOtherService) {
     auto depB  = deriveSpendKeys(pat<32>(40, 4));
 
     Hash256 ih = inputsHash(fixedInputs());
-    PqScanOutput o = buildScanOutput(viewB.first, depB.first, ih, 0, 10);  // B's deposit
+    // B's deposit: T=0 (only one deposit key).
+    PqScanOutput o = buildScanOutput(viewB.first, depB.first, ih, 0, 10, /*T=*/0);
 
     // Service A (its viewSk + its deposit keys) must not recognize it.
     std::vector<DsaPublicKey> aKeys = {depA.first};
@@ -194,7 +221,7 @@ TEST(PqScan, AggregateAmountTamperNotRecognized) {
     std::vector<DsaPublicKey> spendPubs = {dep.first};
 
     Hash256 ih = inputsHash(fixedInputs());
-    PqScanOutput o = buildScanOutput(view.first, dep.first, ih, 0, 1000);
+    PqScanOutput o = buildScanOutput(view.first, dep.first, ih, 0, 1000, /*T=*/0);
     o.amount += 1;  // attacker edits the on-chain amount
     EXPECT_FALSE(scanPqOutputAggregate(view.second, spendPubs, ih, o).has_value());
 }

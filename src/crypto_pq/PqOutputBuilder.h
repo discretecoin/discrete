@@ -42,7 +42,7 @@ namespace CryptoPQ {
 struct PqBuiltOutput {
   // Wire fields (-> CryptoNote::PqOutput).
   KemCiphertext        kemCt;        // 1088 — ML-KEM ciphertext
-  std::vector<uint8_t> encPayload;   // 48   — ChaCha20-Poly1305(rho)
+  std::vector<uint8_t> encPayload;   // 56   — ChaCha20-Poly1305(rho||LE64(T))
   Hash256              spendCommit;  // 32
 
   // Sender hint: lets the sender later spend its own change output without a
@@ -59,7 +59,8 @@ PqBuiltOutput buildPqOutput(const KemCiphertext& kemCt,
                             const Hash256& inputsHash,
                             uint32_t outputIndex,
                             uint64_t amount,
-                            const Rho& rho);
+                            const Rho& rho,
+                            uint64_t subaddrIndexT = 0);
 
 // Full path: encapsulates to the recipient's view key and draws rho from the
 // secure CSPRNG. This is the normal sender entry point.
@@ -67,6 +68,7 @@ PqBuiltOutput buildPqOutput(const KemPublicKey& recipientViewPub,
                             const DsaPublicKey& recipientSpendPub,
                             const Hash256& inputsHash,
                             uint32_t outputIndex,
-                            uint64_t amount);
+                            uint64_t amount,
+                            uint64_t subaddrIndexT = 0);
 
 }  // namespace CryptoPQ

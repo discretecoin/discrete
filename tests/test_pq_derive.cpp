@@ -64,16 +64,30 @@ TEST(PqDerive, InputsHash) {
 TEST(PqDerive, OutContext) {
     Hash256 ih = inputsHash(fixedInputs());
     KemCiphertext kemCt = pat<1088>(7, 3);
+    // T=0 (default) appended as LE64 after outputIndex.
     EXPECT_EQ(to_hex(outContext(ih, kemCt, 1)),
-              "2d8b4e207f8cd9b052e4ebd6e6a752b4a6f1363e52481a00445c8cec0a2f8615");
+              "cee70686b1b69606e2ba1b8ce1fea066090ef92dd73c033d0cea3551e8bbf59e");
+}
+
+TEST(PqDerive, OutContextTIsolation) {
+    Hash256 ih = inputsHash(fixedInputs());
+    KemCiphertext kemCt = pat<1088>(7, 3);
+    // Two different T values must produce different outContext hashes.
+    Hash256 oc0 = outContext(ih, kemCt, 1, 0);
+    Hash256 oc1 = outContext(ih, kemCt, 1, 1);
+    EXPECT_NE(oc0, oc1);
+    // T=0 is also different from the pre-T derivation would be (same key space, new input).
+    Hash256 oc2 = outContext(ih, kemCt, 1, 0xFFFFFFFFFFFFFFFFull);
+    EXPECT_NE(oc0, oc2);
+    EXPECT_NE(oc1, oc2);
 }
 
 TEST(PqDerive, AeadKey) {
     Hash256 ih = inputsHash(fixedInputs());
-    Hash256 oc = outContext(ih, pat<1088>(7, 3), 1);
+    Hash256 oc = outContext(ih, pat<1088>(7, 3), 1);  // T=0 default
     KemShared ss = pat<32>(1, 0);
     EXPECT_EQ(to_hex(deriveAeadKey(ss, oc)),
-              "e93bdb04989a7a2833eea56830bb5d5091d2b4ecda8b0754a0abf8d69b0225c9");
+              "209b5f2f0f66f5ff98ff3ac7f71acc659b3fbd02228ce0274ba3edf5d4edb1d1");
 }
 
 TEST(PqDerive, SpendCommit) {
@@ -119,12 +133,12 @@ TEST(PqDerive, TxSigningDigest) {
     out.type = 0x10;
     out.amount = 1000000;
     out.kemCt = pat<1088>(7, 3);
-    out.encPayload = pat<48>(2, 1);
+    out.encPayload = pat<56>(2, 1);
     out.spendCommit = sc;
     tx.outputs.push_back(out);
 
     EXPECT_EQ(to_hex(txSigningDigest(tx)),
-              "c875c53291a7b0b0acdd8888780e680af7ff9f21087390dce1eb9ad85d78b732");
+              "b9c426dd4e056cdcbf4afc5c19329e8d926f2f458914a6bc4a785fc169e41d3c");
 }
 
 TEST(PqDerive, TxSigningDigestIsTamperSensitive) {
@@ -138,7 +152,7 @@ TEST(PqDerive, TxSigningDigestIsTamperSensitive) {
     di.authPub = pk; di.rhoReveal = rho;
     tx.inputs.push_back(di);
     DigestOutput out; out.type = 0x10; out.amount = 1000000;
-    out.kemCt = pat<1088>(7, 3); out.encPayload = pat<48>(2, 1);
+    out.kemCt = pat<1088>(7, 3); out.encPayload = pat<56>(2, 1);
     out.spendCommit = spendCommit(pk, rho);
     tx.outputs.push_back(out);
 
