@@ -39,6 +39,16 @@ bool getReserveProof(const std::vector<TransactionOutputInformation>& selectedTr
 std::string signMessage(const std::string &data, const CryptoNote::AccountKeys &keys);
 bool verifyMessage(const std::string &data, const CryptoNote::AccountPublicAddress &address, const std::string &signature, Logging::ILogger& log);
 
+// Derive the Discrete PQ mining identity (ML-KEM view + ML-DSA spend keypair)
+// from a classical 32-byte spend secret. Mirrors Wallet/PqWallet
+// derivePqWalletKeys (CEMENTED domain "karbo-pq-wallet-seed-v1"), so the daemon
+// mines+signs with the SAME identity the wallet holds — the reward recipient is
+// the block signer. Used by start_mining (console + RPC).
+void deriveMinerPqKeys(const Crypto::SecretKey& spendSecretKey,
+                       CryptoPQ::KemPublicKey& viewPub,
+                       CryptoPQ::DsaPublicKey& spendPub,
+                       CryptoPQ::DsaSecretKey& spendSk);
+
 bool is_out_to_acc(const AccountKeys& acc, const KeyOutput& out_key, const Crypto::PublicKey& tx_pub_key, size_t keyIndex);
 bool is_out_to_acc(const AccountKeys& acc, const KeyOutput& out_key, const Crypto::KeyDerivation& derivation, size_t keyIndex);
 bool lookup_acc_outs(const AccountKeys& acc, const Transaction& tx, const Crypto::PublicKey& tx_pub_key, std::vector<size_t>& outs, uint64_t& money_transfered);

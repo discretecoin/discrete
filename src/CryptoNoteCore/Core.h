@@ -62,7 +62,7 @@ namespace CryptoNote {
      virtual bool handle_block_found(Block& b) override;
      virtual bool get_block_template(Block& b, const AccountKeys& acc, Difficulty& diffic, uint32_t& height, const BinaryArray& ex_nonce) override;
      // PQ native block template using ML-KEM view + ML-DSA spend public keys.
-     bool get_block_template_pq(Block& b, const CryptoPQ::KemPublicKey& viewPub, const CryptoPQ::DsaPublicKey& spendPub, Difficulty& diffic, uint32_t& height, const BinaryArray& ex_nonce);
+     virtual bool get_block_template_pq(Block& b, const CryptoPQ::KemPublicKey& viewPub, const CryptoPQ::DsaPublicKey& spendPub, Difficulty& diffic, uint32_t& height, const BinaryArray& ex_nonce) override;
      virtual bool getBlockLongHash(Crypto::cn_context &context, const Block& b, Crypto::Hash& res) override;
 
      bool addObserver(ICoreObserver* observer) override;

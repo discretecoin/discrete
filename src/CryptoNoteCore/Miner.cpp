@@ -116,8 +116,16 @@ namespace CryptoNote
       extra_nonce = m_extra_messages[m_config.current_extra_message_index];
     }
 
-    if(!m_handler.get_block_template(bl, m_mine_account, di, height, extra_nonce)) {
-      logger(ERROR) << "Failed to get_block_template(), stopping mining";
+    // Discrete mines PQ blocks: the coinbase pays the reward to the miner's PQ
+    // identity (m_pq_view_pub/m_pq_spend_pub) and the worker signs each candidate
+    // with the matching spend secret (m_pq_spend_sk). The ECC get_block_template
+    // path is dead (constructMinerTx returns false).
+    if (!m_pq_keys_set) {
+      logger(ERROR) << "PQ miner keys not set — call startPq() before mining";
+      return false;
+    }
+    if(!m_handler.get_block_template_pq(bl, m_pq_view_pub, m_pq_spend_pub, di, height, extra_nonce)) {
+      logger(ERROR) << "Failed to get_block_template_pq(), stopping mining";
       return false;
     }
 

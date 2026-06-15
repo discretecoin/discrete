@@ -204,8 +204,11 @@ std::unordered_map<std::string, RpcServer::RpcHandler<RpcServer::HandlerFunction
   { "/get_transaction_hashes_by_payment_id", { jsonMethod<COMMAND_RPC_GET_TRANSACTION_HASHES_BY_PAYMENT_ID>(&RpcServer::on_get_transaction_hashes_by_paymentid), true } },
   
   // disabled in restricted rpc mode
-  { "/start_mining", { jsonMethod<COMMAND_RPC_START_MINING>(&RpcServer::on_start_mining), false } },
-  { "/stop_mining", { jsonMethod<COMMAND_RPC_STOP_MINING>(&RpcServer::on_stop_mining), false } },
+  // allowBusyCore = true: mining control must work even before the node is
+  // "synchronized" — otherwise a fresh network (no peers) could never mine its
+  // first blocks to bootstrap.
+  { "/start_mining", { jsonMethod<COMMAND_RPC_START_MINING>(&RpcServer::on_start_mining), true } },
+  { "/stop_mining", { jsonMethod<COMMAND_RPC_STOP_MINING>(&RpcServer::on_stop_mining), true } },
   { "/stop_daemon", { jsonMethod<COMMAND_RPC_STOP_DAEMON>(&RpcServer::on_stop_daemon), true } },
   { "/getconnections", { jsonMethod<COMMAND_RPC_GET_CONNECTIONS>(&RpcServer::on_get_connections), true } },
   { "/getpeers", { jsonMethod<COMMAND_RPC_GET_PEER_LIST>(&RpcServer::on_get_peer_list), true } },
@@ -1784,28 +1787,26 @@ bool RpcServer::on_start_mining(const COMMAND_RPC_START_MINING::request& req, CO
   }
 
   if (m_protocolQuery.getPeerCount() == 0) {
-    res.status = "Mining was not started because there are no connected peers";
-    return true;
+    // Solo mining (e.g. bootstrapping a fresh network) is allowed — warn only.
+    logger(Logging::INFO) << "Starting mining with no connected peers (solo).";
   }
-  
-  AccountKeys keys = boost::value_initialized<AccountKeys>();
 
+  // Discrete: identity-bound mining. The reward goes to the miner's PQ identity
+  // AND the miner signs each block with that identity's spend key, so the daemon
+  // derives the PQ keypair from the classical spend secret the wallet sent.
   Crypto::Hash key_hash;
   size_t size;
   if (!Common::fromHex(req.miner_spend_key, &key_hash, sizeof(key_hash), size) || size != sizeof(key_hash)) {
     throw JsonRpc::JsonRpcError{ CORE_RPC_ERROR_CODE_WRONG_PARAM, "Failed to parse miner spend key" };
   }
-  keys.spendSecretKey = *(struct Crypto::SecretKey *) &key_hash;
+  Crypto::SecretKey spendSecret = *(struct Crypto::SecretKey *) &key_hash;
 
-  if (!Common::fromHex(req.miner_view_key, &key_hash, sizeof(key_hash), size) || size != sizeof(key_hash)) {
-    throw JsonRpc::JsonRpcError{ CORE_RPC_ERROR_CODE_WRONG_PARAM, "Failed to parse miner view key" };
-  }
-  keys.viewSecretKey = *(struct Crypto::SecretKey *) &key_hash;
+  CryptoPQ::KemPublicKey pqViewPub;
+  CryptoPQ::DsaPublicKey pqSpendPub;
+  CryptoPQ::DsaSecretKey pqSpendSk;
+  deriveMinerPqKeys(spendSecret, pqViewPub, pqSpendPub, pqSpendSk);
 
-  Crypto::secret_key_to_public_key(keys.spendSecretKey, keys.address.spendPublicKey);
-  Crypto::secret_key_to_public_key(keys.viewSecretKey, keys.address.viewPublicKey);
-
-  if (!m_core.get_miner().start(keys, static_cast<size_t>(req.threads_count))) {
+  if (!m_core.get_miner().startPq(pqViewPub, pqSpendPub, pqSpendSk, static_cast<size_t>(req.threads_count))) {
     res.status = "Already mining";
     return true;
   }

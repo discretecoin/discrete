@@ -18,6 +18,7 @@
 
 #include "CryptoNoteFormatUtils.h"
 
+#include <algorithm>
 #include <set>
 
 #include <Logging/LoggerRef.h>
@@ -39,6 +40,8 @@
 
 #include "CryptoNoteConfig.h"
 #include "PqTxType.h"
+#include "crypto_pq/PqHash.h"
+#include "crypto_pq/PqSeed.h"
 
 using namespace Logging;
 using namespace Crypto;
@@ -536,6 +539,26 @@ std::string signMessage(const std::string &data, const CryptoNote::AccountKeys &
   Crypto::Signature signature;
   Crypto::generate_signature(hash, keys.address.spendPublicKey, keys.spendSecretKey, signature);
   return Tools::Base58::encode_addr(CryptoNote::parameters::CRYPTONOTE_KEYS_SIGNATURE_BASE58_PREFIX, std::string((const char *)&signature, sizeof(signature)));
+}
+
+void deriveMinerPqKeys(const Crypto::SecretKey& spendSecretKey,
+                       CryptoPQ::KemPublicKey& viewPub,
+                       CryptoPQ::DsaPublicKey& spendPub,
+                       CryptoPQ::DsaSecretKey& spendSk) {
+  // CEMENTED wallet-layer derivation (must match Wallet/PqWallet.cpp
+  // pqSeedMasterFromSpendSecret + PqSeed deriveViewKeys/deriveSpendKeys). The
+  // domain string is fixed forever — changing it orphans every PQ identity.
+  static const char kPqWalletSeedDomain[] = "karbo-pq-wallet-seed-v1";
+  CryptoPQ::Hash256 okm = CryptoPQ::hkdf_sha3_256(
+      spendSecretKey.data, sizeof(spendSecretKey.data),
+      kPqWalletSeedDomain, sizeof(kPqWalletSeedDomain) - 1);
+  CryptoPQ::SeedMaster sm{};
+  std::copy(okm.begin(), okm.end(), sm.begin());
+  auto view = CryptoPQ::deriveViewKeys(sm);
+  auto spend = CryptoPQ::deriveSpendKeys(sm);
+  viewPub = view.first;
+  spendPub = spend.first;
+  spendSk = spend.second;
 }
 
 bool verifyMessage(const std::string &data, const CryptoNote::AccountPublicAddress &address, const std::string &signature, Logging::ILogger& log) {

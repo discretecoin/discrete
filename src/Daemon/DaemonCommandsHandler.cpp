@@ -26,6 +26,7 @@
 #include <Common/ColouredMsg.h>
 #include "CryptoNoteCore/Miner.h"
 #include "CryptoNoteCore/Core.h"
+#include "CryptoNoteCore/CryptoNoteFormatUtils.h"
 #include "CryptoNoteProtocol/CryptoNoteProtocolHandler.h"
 #include "Serialization/SerializationTools.h"
 #include "version.h"
@@ -59,7 +60,7 @@ DaemonCommandsHandler::DaemonCommandsHandler(CryptoNote::Core& core, CryptoNote:
   //m_consoleHandler.setHandler("print_bc_outs", std::bind(&DaemonCommandsHandler::print_bc_outs, this, std::placeholders::_1));
   m_consoleHandler.setHandler("print_block", std::bind(&DaemonCommandsHandler::print_block, this, std::placeholders::_1), "Print block, print_block <block_hash> | <block_height>");
   m_consoleHandler.setHandler("print_tx", std::bind(&DaemonCommandsHandler::print_tx, this, std::placeholders::_1), "Print transaction, print_tx <transaction_hash>");
-  m_consoleHandler.setHandler("start_mining", std::bind(&DaemonCommandsHandler::start_mining, this, std::placeholders::_1), "Start mining with keys, start_mining <spend key> <view key> [threads=1]");
+  m_consoleHandler.setHandler("start_mining", std::bind(&DaemonCommandsHandler::start_mining, this, std::placeholders::_1), "Start mining to your own PQ identity, start_mining <spend key> [threads=1]");
   m_consoleHandler.setHandler("stop_mining", std::bind(&DaemonCommandsHandler::stop_mining, this, std::placeholders::_1), "Stop mining");
   m_consoleHandler.setHandler("print_pool", std::bind(&DaemonCommandsHandler::print_pool, this, std::placeholders::_1), "Print transaction pool (long format)");
   m_consoleHandler.setHandler("print_pool_sh", std::bind(&DaemonCommandsHandler::print_pool_sh, this, std::placeholders::_1), "Print transaction pool (short format)");
@@ -396,41 +397,38 @@ bool DaemonCommandsHandler::print_pool_count(const std::vector<std::string>& arg
 //--------------------------------------------------------------------------------
 bool DaemonCommandsHandler::start_mining(const std::vector<std::string> &args) {
   if (protocolQuery.getPeerCount() == 0) {
-    std::cout << "Mining was not started because there are no connected peers." << std::endl;
-    return true;
+    // Solo mining (e.g. bootstrapping a fresh network) is allowed — warn only.
+    std::cout << "Note: mining with no connected peers (solo)." << std::endl;
   }
 
   if (!args.size()) {
-    std::cout << "Please, specify wallet address to mine for: start_mining <spend key> <view key> [threads=1]" << std::endl;
+    std::cout << "Please specify the spend secret key to mine for: start_mining <spend key> [threads=1]" << std::endl;
     return true;
   }
 
-  CryptoNote::AccountKeys keys = boost::value_initialized<CryptoNote::AccountKeys>();
-
+  // Discrete: identity-bound mining. The reward goes to the miner's PQ identity
+  // and the daemon signs each block with that identity's spend key, both derived
+  // from the classical spend secret key below.
   Crypto::Hash private_key_hash;
   size_t size;
   if (!Common::fromHex(args.front(), &private_key_hash, sizeof(private_key_hash), size) || size != sizeof(private_key_hash)) {
-    logger(Logging::INFO) << "could not parse private spend key";
+    logger(Logging::INFO) << "could not parse spend secret key";
     return false;
   }
-  keys.spendSecretKey = *(struct Crypto::SecretKey *) &private_key_hash;
+  Crypto::SecretKey spendSecret = *(struct Crypto::SecretKey *) &private_key_hash;
 
-  if (!Common::fromHex(args[1], &private_key_hash, sizeof(private_key_hash), size) || size != sizeof(private_key_hash)) {
-    logger(Logging::INFO) << "could not parse private view key";
-    return false;
-  }
-  keys.viewSecretKey = *(struct Crypto::SecretKey *) &private_key_hash;
-
-  Crypto::secret_key_to_public_key(keys.spendSecretKey, keys.address.spendPublicKey);
-  Crypto::secret_key_to_public_key(keys.viewSecretKey, keys.address.viewPublicKey);
+  CryptoPQ::KemPublicKey pqViewPub;
+  CryptoPQ::DsaPublicKey pqSpendPub;
+  CryptoPQ::DsaSecretKey pqSpendSk;
+  CryptoNote::deriveMinerPqKeys(spendSecret, pqViewPub, pqSpendPub, pqSpendSk);
 
   size_t threads_count = 1;
-  if (args.size() > 2) {
-    bool ok = Common::fromString(args[2], threads_count);
+  if (args.size() > 1) {
+    bool ok = Common::fromString(args[1], threads_count);
     threads_count = (ok && 0 < threads_count) ? threads_count : 1;
   }
 
-  m_core.get_miner().start(keys, threads_count);
+  m_core.get_miner().startPq(pqViewPub, pqSpendPub, pqSpendSk, threads_count);
   return true;
 }
 //--------------------------------------------------------------------------------

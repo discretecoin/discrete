@@ -19,11 +19,18 @@
 
 #include "CryptoNoteCore/CryptoNoteBasic.h"
 #include "CryptoNoteCore/Difficulty.h"
+#include "crypto_pq/PqKem.h"
+#include "crypto_pq/PqDsa.h"
 
 namespace CryptoNote {
   struct IMinerHandler {
     virtual bool handle_block_found(Block& b) = 0;
     virtual bool get_block_template(Block& b, const AccountKeys& acc, Difficulty& diffic, uint32_t& height, const BinaryArray& ex_nonce) = 0;
+    // PQ block template: the coinbase reward goes to (viewPub, spendPub) AND the
+    // coinbase extra carries spendPub — the miner signs the block with the matching
+    // spend secret, so the reward recipient IS the block signer (identity-bound
+    // mining; you cannot mine to a key you do not hold).
+    virtual bool get_block_template_pq(Block& b, const CryptoPQ::KemPublicKey& viewPub, const CryptoPQ::DsaPublicKey& spendPub, Difficulty& diffic, uint32_t& height, const BinaryArray& ex_nonce) = 0;
     virtual bool getBlockLongHash(Crypto::cn_context &context, const Block& b, Crypto::Hash& res) = 0;
 
   protected:
