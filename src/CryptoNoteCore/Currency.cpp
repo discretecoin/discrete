@@ -83,21 +83,9 @@ namespace CryptoNote {
     }
 
     if (isTestnet()) {
-      if (m_upgradeHeightV2 == parameters::UPGRADE_HEIGHT_V2) {
-        m_upgradeHeightV2 = 2;
-      }
-      if (m_upgradeHeightV3 == parameters::UPGRADE_HEIGHT_V3) {
-        m_upgradeHeightV3 = 3;
-      }
-      if (m_upgradeHeightV4 == parameters::UPGRADE_HEIGHT_V4) {
-        m_upgradeHeightV4 = 4;
-      }
-      if (m_upgradeHeightV5 == parameters::UPGRADE_HEIGHT_V5) {
-        m_upgradeHeightV5 = 15;
-      }
-      if (m_upgradeHeightV6 == parameters::UPGRADE_HEIGHT_V6) {
-        m_upgradeHeightV6 = 20;
-      }
+      // Testnet, like mainnet, is block major version 1 only — the full ruleset
+      // applies from genesis, and versions 2..8 stay reserved. (Historically this
+      // block phased in v2..v6 on testnet; Discrete has a single ruleset.)
       m_blocksFileName = "testnet_" + m_blocksFileName;
       m_blocksCacheFileName = "testnet_" + m_blocksCacheFileName;
       m_blockIndexesFileName = "testnet_" + m_blockIndexesFileName;
@@ -147,16 +135,10 @@ namespace CryptoNote {
     return true;
   }
 
-  size_t Currency::blockGrantedFullRewardZoneByBlockVersion(uint8_t blockMajorVersion) const {
-    if (blockMajorVersion >= BLOCK_MAJOR_VERSION_3) {
-      return m_blockGrantedFullRewardZone;
-    }
-    else if (blockMajorVersion == BLOCK_MAJOR_VERSION_2) {
-      return CryptoNote::parameters::CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V2;
-    }
-    else {
-      return CryptoNote::parameters::CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V1;
-    }
+  size_t Currency::blockGrantedFullRewardZoneByBlockVersion(uint8_t /*blockMajorVersion*/) const {
+    // Discrete is block v1 only and applies the final ruleset from genesis: the
+    // full reward zone (historical V3+ value) applies at every height.
+    return m_blockGrantedFullRewardZone;
   }
 
   uint32_t Currency::upgradeHeight(uint8_t majorVersion) const {

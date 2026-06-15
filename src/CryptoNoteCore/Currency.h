@@ -45,23 +45,16 @@ public:
   size_t expectedNumberOfBlocksPerDay() const { return m_expectedNumberOfBlocksPerDay; }
 
   size_t timestampCheckWindow() const { return m_timestampCheckWindow; }
-  size_t timestampCheckWindow(uint8_t blockMajorVersion) const {
-    if (blockMajorVersion >= BLOCK_MAJOR_VERSION_4) {
-      return timestampCheckWindow_v1();
-    }
-    else {
-      return timestampCheckWindow();
-    }
+  // Discrete is block v1 only and applies the final ruleset from genesis, so the
+  // version-keyed selectors below ignore blockMajorVersion and return the single
+  // Discrete value (the historical v4+ value).
+  size_t timestampCheckWindow(uint8_t /*blockMajorVersion*/) const {
+    return timestampCheckWindow_v1();
   }
   size_t timestampCheckWindow_v1() const { return m_timestampCheckWindow_v1; }
   uint64_t blockFutureTimeLimit() const { return m_blockFutureTimeLimit; }
-  uint64_t blockFutureTimeLimit(uint8_t blockMajorVersion) const {
-    if (blockMajorVersion >= BLOCK_MAJOR_VERSION_4) {
-      return blockFutureTimeLimit_v1();
-    }
-    else {
-      return blockFutureTimeLimit();
-    }
+  uint64_t blockFutureTimeLimit(uint8_t /*blockMajorVersion*/) const {
+    return blockFutureTimeLimit_v1();
   }
   uint64_t blockFutureTimeLimit_v1() const { return m_blockFutureTimeLimit_v1; }
 
@@ -91,19 +84,9 @@ public:
   size_t difficultyWindow() const { return m_difficultyWindow; }
   size_t difficultyLag() const { return m_difficultyLag; }
   size_t difficultyCut() const { return m_difficultyCut; }
-  size_t difficultyBlocksCountByBlockVersion(uint8_t blockMajorVersion) const {
-    if (blockMajorVersion >= BLOCK_MAJOR_VERSION_5) {
-      return difficultyBlocksCount4() + 1;
-    }
-    else if (blockMajorVersion == BLOCK_MAJOR_VERSION_3 || blockMajorVersion == BLOCK_MAJOR_VERSION_4) {
-      return difficultyBlocksCount3() + 1;
-    }
-    else if (blockMajorVersion == BLOCK_MAJOR_VERSION_2) {
-      return difficultyBlocksCount2();
-    }
-    else {
-      return difficultyBlocksCount();
-    }
+  size_t difficultyBlocksCountByBlockVersion(uint8_t /*blockMajorVersion*/) const {
+    // Discrete uses LWMA (the historical V5 window) from genesis, v1 only.
+    return difficultyBlocksCount4() + 1;
   };
   size_t difficultyBlocksCount() const { return m_difficultyWindow + m_difficultyLag; }
   size_t difficultyBlocksCount2() const { return CryptoNote::parameters::DIFFICULTY_WINDOW; }

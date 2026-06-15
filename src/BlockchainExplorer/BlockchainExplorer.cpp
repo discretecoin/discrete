@@ -459,13 +459,11 @@ uint64_t BlockchainExplorer::getFullRewardMaxBlockSize(uint8_t majorVersion) {
     throw std::system_error(make_error_code(CryptoNote::error::BlockchainExplorerErrorCodes::NOT_INITIALIZED));
   }
 
-  if (majorVersion >= BLOCK_MAJOR_VERSION_3) {
-    return parameters::CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE;
-  } else if (majorVersion == BLOCK_MAJOR_VERSION_2) {
-    return parameters::CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V2;
-  } else {
-    return parameters::CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V1;
-  }
+  // Discrete is block v1 only with the final ruleset from genesis: the full
+  // reward zone applies at every height (mirrors Currency::
+  // blockGrantedFullRewardZoneByBlockVersion).
+  (void)majorVersion;
+  return parameters::CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE;
 }
 
 bool BlockchainExplorer::isSynchronized() {

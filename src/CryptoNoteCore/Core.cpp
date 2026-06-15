@@ -262,7 +262,9 @@ bool Core::handle_incoming_tx(const BinaryArray& tx_blob, tx_verification_contex
   tvc = boost::value_initialized<tx_verification_context>();
   //want to process all transactions sequentially
 
-  if (tx_blob.size() > m_currency.maxTransactionSizeLimit() && getCurrentBlockMajorVersion() >= BLOCK_MAJOR_VERSION_4) {
+  // Discrete enforces the tx size cap from genesis (v1); it was historically
+  // gated to block v4+.
+  if (tx_blob.size() > m_currency.maxTransactionSizeLimit()) {
     logger(INFO) << "WRONG TRANSACTION BLOB, too big size " << tx_blob.size() << ", rejected";
     tvc.m_verification_failed = true;
     return false;
@@ -1266,7 +1268,7 @@ bool Core::handleIncomingTransaction(const Transaction& tx, const Crypto::Hash& 
 
   // is in checkpoint zone
   if (!m_blockchain.isInCheckpointZone(getCurrentBlockchainHeight())) {
-    if (blobSize > m_currency.maxTransactionSizeLimit() && getCurrentBlockMajorVersion() >= BLOCK_MAJOR_VERSION_4) {
+    if (blobSize > m_currency.maxTransactionSizeLimit()) {
       logger(INFO) << "Transaction verification failed: too big size " << blobSize << " of transaction " << txHash << ", rejected";
       tvc.m_verification_failed = true;
       return false;
