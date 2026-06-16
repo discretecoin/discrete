@@ -2,8 +2,8 @@
 //
 // This file is part of Discrete — a post-quantum-only cryptocurrency.
 //
-// Pins the frozen genesis: the deterministic 14-tranche premine coinbase, its
-// per-output unlock schedule, the total premine, reproducibility, that the
+// Pins the frozen genesis: the deterministic 21-batch Treasury Reserve coinbase,
+// its per-output unlock schedule, the total reserve, reproducibility, that the
 // frozen GENESIS_COINBASE_TX_HEX matches the builder, and the genesis block hash.
 
 #include <gtest/gtest.h>
@@ -13,7 +13,7 @@
 #include "CryptoNoteConfig.h"
 #include "CryptoNoteCore/Currency.h"
 #include "CryptoNoteCore/CryptoNoteTools.h"
-#include "CryptoNoteCore/GenesisPremine.h"
+#include "CryptoNoteCore/GenesisTreasuryReserve.h"
 #include "Common/StringTools.h"
 #include "Logging/ConsoleLogger.h"
 #include "PqTxType.h"
@@ -27,9 +27,10 @@ Currency makeCurrency(Logging::ILogger& logger) {
 }
 }  // namespace
 
-// Premine economics: 14 tranches of 500,000 XDS (50,000,000 atoms), staggered
-// unlock at 0, 80000, ... 1,040,000; total 7,000,000 XDS.
-TEST(PqGenesis, PremineStructure) {
+// Treasury Reserve economics: 21 batches of 50,000 XDS (5,000,000 atoms), staggered
+// unlock at 0, 87600, ... 1,752,000 (quarterly over 5 years); total 1,050,000 XDS
+// (5% of the 21,000,000 XDS ceiling).
+TEST(PqGenesis, TreasuryReserveStructure) {
   Logging::ConsoleLogger logger;
   Currency currency = makeCurrency(logger);
   const Transaction& cb = currency.genesisBlock().baseTransaction;
@@ -41,25 +42,25 @@ TEST(PqGenesis, PremineStructure) {
   EXPECT_EQ(boost::get<BaseInput>(cb.inputs[0]).blockIndex, 0u);
   EXPECT_TRUE(cb.pqSignatures.empty());
 
-  ASSERT_EQ(cb.outputs.size(), GENESIS_PREMINE_TRANCHES);
+  ASSERT_EQ(cb.outputs.size(), GENESIS_TREASURY_RESERVE_BATCHES);
   uint64_t total = 0;
   for (size_t i = 0; i < cb.outputs.size(); ++i) {
-    EXPECT_EQ(cb.outputs[i].amount, GENESIS_PREMINE_TRANCHE_ATOMS) << "tranche " << i;
+    EXPECT_EQ(cb.outputs[i].amount, GENESIS_TREASURY_RESERVE_BATCH_ATOMS) << "batch " << i;
     EXPECT_EQ(cb.outputs[i].unlockHeight,
-              static_cast<uint64_t>(i) * GENESIS_PREMINE_UNLOCK_STEP) << "tranche " << i;
-    EXPECT_EQ(cb.outputs[i].target.type(), typeid(PqOutput)) << "tranche " << i;
+              static_cast<uint64_t>(i) * GENESIS_TREASURY_RESERVE_UNLOCK_STEP) << "batch " << i;
+    EXPECT_EQ(cb.outputs[i].target.type(), typeid(PqOutput)) << "batch " << i;
     total += cb.outputs[i].amount;
   }
-  EXPECT_EQ(total, GENESIS_PREMINE_TOTAL_ATOMS);
-  EXPECT_EQ(total, UINT64_C(700000000));  // 7,000,000 XDS at 2 decimals
+  EXPECT_EQ(total, GENESIS_TREASURY_RESERVE_TOTAL_ATOMS);
+  EXPECT_EQ(total, UINT64_C(105000000));  // 1,050,000 XDS at 2 decimals
 }
 
-// Building the premine coinbase twice yields byte-identical output (deterministic
+// Building the Treasury Reserve coinbase twice yields byte-identical output (deterministic
 // ML-KEM encaps + seed-derived rho) — this is what makes --print-genesis-tx
 // reproducible across runs/hosts.
 TEST(PqGenesis, BuilderIsDeterministic) {
-  BinaryArray a = toBinaryArray(buildGenesisPremineCoinbase());
-  BinaryArray b = toBinaryArray(buildGenesisPremineCoinbase());
+  BinaryArray a = toBinaryArray(buildGenesisTreasuryReserveCoinbase());
+  BinaryArray b = toBinaryArray(buildGenesisTreasuryReserveCoinbase());
   EXPECT_EQ(a, b);
   EXPECT_FALSE(a.empty());
 }
@@ -69,7 +70,7 @@ TEST(PqGenesis, BuilderIsDeterministic) {
 TEST(PqGenesis, FrozenHexMatchesBuilder) {
   BinaryArray fromConst;
   ASSERT_TRUE(Common::fromHex(std::string(GENESIS_COINBASE_TX_HEX), fromConst));
-  BinaryArray fromBuilder = toBinaryArray(buildGenesisPremineCoinbase());
+  BinaryArray fromBuilder = toBinaryArray(buildGenesisTreasuryReserveCoinbase());
   EXPECT_EQ(fromConst, fromBuilder);
 }
 
@@ -79,7 +80,7 @@ TEST(PqGenesis, GenesisBlockHashPinned) {
   Logging::ConsoleLogger logger;
   Currency currency = makeCurrency(logger);
   EXPECT_EQ(Common::podToHex(currency.genesisBlockHash()),
-            "69462d0732edab6182c8872315dc0ea7a0d6a8695971c405894f4e17014b1de8");
+            "a77e3f242f03f8ebe1d6bc4b50873fe157f4c2c95d9ff4207107991439c399ee");
 }
 
 int main(int argc, char** argv) {

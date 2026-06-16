@@ -89,7 +89,7 @@ struct TransactionOutput {
   // this block height. 0 = no lock (immediately spendable once mature). This is
   // a consensus field, distinct from the per-tx TransactionPrefix.unlockHeight:
   // it lets one transaction time-lock some outputs (e.g. a vesting payment or a
-  // genesis premine tranche) while leaving others (e.g. change) spendable.
+  // genesis Treasury Reserve batch) while leaving others (e.g. change) spendable.
   uint64_t unlockHeight = 0;
   TransactionOutputTarget target;
 };

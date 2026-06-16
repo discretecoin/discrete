@@ -148,7 +148,7 @@ kemCt (1088) || encPayload (56) || spendCommit (32)
 `unlockHeight` is a consensus field: the output is unspendable until the chain
 reaches that block height (`0` = no lock). It is per-output — distinct from the
 per-tx `TransactionPrefix.unlockHeight` — so one transaction can time-lock some
-outputs (a vesting payment, a genesis premine tranche) while leaving others
+outputs (a vesting payment, a genesis Treasury Reserve batch) while leaving others
 (change) spendable. It is bound into `txSigningDigest` (§6) and the txid, so it is
 not malleable. It is **not** part of `outContext` or the AEAD AAD (key derivation
 and ownership are independent of the lock).
@@ -172,7 +172,7 @@ consensus enforces that the miner who *signs* the block is the miner who gets
 *paid* — you cannot mine to a key you do not hold. This is the anti-pool/botnet
 property: aggregating hashpower requires sharing the spend secret. The coinbase is
 a single undivided output (one signature, minimal size). Genesis (height 0) is
-exempt (it is trusted and carries the premine to many recipients). Enforced in
+exempt (it is trusted and carries the Treasury Reserve to many recipients). Enforced in
 `Blockchain::validate_block_signature`; built in `Currency::constructMinerTxPq`.
 
 Because `rho_C` is **public** (unlike a normal output's secret random `rho`), the

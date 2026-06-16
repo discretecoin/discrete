@@ -30,7 +30,7 @@
 #include "CryptoNoteBasicImpl.h"
 #include "CryptoNoteFormatUtils.h"
 #include "CryptoNoteTools.h"
-#include "GenesisPremine.h"
+#include "GenesisTreasuryReserve.h"
 #include "TransactionExtra.h"
 #include "UpgradeDetector.h"
 #include "crypto_pq/PqOutputBuilder.h"
@@ -108,12 +108,12 @@ namespace CryptoNote {
       fromBinaryArray(m_genesisBlock.baseTransaction, minerTxBlob);
 
     if (!r) {
-      // No frozen hex yet — regenerate the deterministic premine coinbase. This
-      // is byte-identical to the hex once GENESIS_COINBASE_TX_HEX is frozen, so a
-      // node with the hex and a node regenerating agree. The genesis block
-      // signature is skipped at height 0 (validate_block_signature).
+      // No frozen hex yet — regenerate the deterministic Treasury Reserve
+      // coinbase. This is byte-identical to the hex once GENESIS_COINBASE_TX_HEX is
+      // frozen, so a node with the hex and a node regenerating agree. The genesis
+      // block signature is skipped at height 0 (validate_block_signature).
       try {
-        m_genesisBlock.baseTransaction = buildGenesisPremineCoinbase();
+        m_genesisBlock.baseTransaction = buildGenesisTreasuryReserveCoinbase();
       } catch (const std::exception& e) {
         logger(ERROR, BRIGHT_RED) << "Failed to create PQ genesis coinbase: " << e.what();
         return false;
@@ -122,7 +122,9 @@ namespace CryptoNote {
 
     m_genesisBlock.majorVersion = BLOCK_MAJOR_VERSION_1;
     m_genesisBlock.minorVersion = BLOCK_MINOR_VERSION_0;
-    m_genesisBlock.timestamp = 0;
+    // Genesis timestamp: 2026-06-16 14:21:00 UTC (9:21 AM CDT) — the publication
+    // time of the Reuters headline embedded in the genesis coinbase.
+    m_genesisBlock.timestamp = 1781619660;
     m_genesisBlock.nonce = 70;
     if (m_testnet) {
       ++m_genesisBlock.nonce;
@@ -645,10 +647,10 @@ namespace CryptoNote {
   }
 
   Transaction CurrencyBuilder::generateGenesisTransaction() {
-    // Deterministic premine coinbase. Used by `discreted --print-genesis-tx` to
+    // Deterministic Treasury Reserve coinbase. Used by `discreted --print-genesis-tx` to
     // emit GENESIS_COINBASE_TX_HEX. (The legacy ECC constructMinerTx path is dead
     // in Discrete.)
-    return buildGenesisPremineCoinbase();
+    return buildGenesisTreasuryReserveCoinbase();
   }
   CurrencyBuilder& CurrencyBuilder::emissionSpeedFactor(unsigned int val) {
     if (val <= 0 || val > 8 * sizeof(uint64_t)) {

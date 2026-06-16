@@ -1254,8 +1254,8 @@ bool Blockchain::prevalidate_miner_transaction(const Block& b, uint32_t height) 
     return false;
   }
   // Discrete: coinbase is a PQ transaction. Normal blocks carry exactly one
-  // PqOutput; the genesis block (height 0) carries the premine allocation as
-  // multiple staggered per-output-unlock PqOutputs in the coinbase.
+  // PqOutput; the genesis block (height 0) carries the Treasury Reserve allocation
+  // as multiple staggered per-output-unlock PqOutputs in the coinbase.
   if (height == 0) {
     if (b.baseTransaction.outputs.empty()) {
       logger(ERROR, BRIGHT_RED) << "Genesis coinbase transaction must have at least one output";
@@ -1285,8 +1285,8 @@ bool Blockchain::prevalidate_miner_transaction(const Block& b, uint32_t height) 
       << ", expected: " << height;
     return false;
   }
-  // Genesis (height 0) uses per-output unlockHeights for the premine tranches,
-  // so the per-tx unlockHeight equality does not apply there.
+  // Genesis (height 0) uses per-output unlockHeights for the Treasury Reserve
+  // batches, so the per-tx unlockHeight equality does not apply there.
   if (height != 0 &&
       !(b.baseTransaction.unlockHeight == height + m_currency.minedMoneyUnlockWindow())) {
     logger(ERROR, BRIGHT_RED) << "Coinbase transaction has wrong unlock time="
@@ -1320,9 +1320,9 @@ bool Blockchain::validate_miner_transaction(const Block& b, uint32_t height,
     minerReward += o.amount;
   }
 
-  // Genesis (height 0) carries the premine allocation in its coinbase. There is
-  // no emission-curve "block reward" for it; the whole coinbase value is the
-  // premine and becomes alreadyGeneratedCoins for the next block. Accept the
+  // Genesis (height 0) carries the Treasury Reserve allocation in its coinbase.
+  // There is no emission-curve "block reward" for it; the whole coinbase value is
+  // the Treasury Reserve and becomes alreadyGeneratedCoins for the next block. Accept the
   // coinbase sum as-is (it is fixed forever by GENESIS_COINBASE_TX_HEX) and
   // report it as the emission change.
   if (height == 0) {
@@ -2197,7 +2197,7 @@ bool Blockchain::checkPqInputs(const Transaction& tx, uint32_t* pmax_used_block_
         if (in.prevOutIndex < te.tx.outputs.size()) {
           const TransactionOutput& o = te.tx.outputs[in.prevOutIndex];
           if (o.target.type() == typeid(PqOutput)) {
-            // Maturity: a PqOutput (coinbase reward, a genesis premine tranche,
+            // Maturity: a PqOutput (coinbase reward, a genesis Treasury Reserve batch,
             // or any output with a non-zero unlockHeight) can only be spent once
             // its PER-OUTPUT lock has elapsed. Gating is on the referenced
             // output's unlockHeight, not the producing tx's, so one tx can lock
