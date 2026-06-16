@@ -392,6 +392,54 @@ bool runFunded() {
                                  core.getCurrentBlockchainHeight());
   ok &= expect(!tvc2.m_added_to_pool, "funded: double-spend of PQ output rejected");
 
+  // Tamper 1 — wrong tx: spend block-1's coinbase but point the input at a
+  // DIFFERENT existing output (block-2's coinbase), revealing block-1's (spendPub,
+  // rho). The referenced output's spend_commit won't match the revealed values
+  // (block-2's coinbase rho differs), so consensus rejects. This proves the
+  // outpoint cannot be swapped to a wrong output to forge/relocate a spend.
+  {
+    Block blk2;
+    ok &= expect(core.getBlockByHash(core.getBlockIdByHeight(2), blk2), "tamper: load block 2");
+    Crypto::Hash cb2Hash = getObjectHash(blk2.baseTransaction);
+    std::vector<PqSpendInput> tamperIns(1);
+    tamperIns[0].prevTxid = cb2Hash;     // wrong outpoint (different real output)
+    tamperIns[0].prevOutIndex = 0;
+    tamperIns[0].amount = inAmount;
+    tamperIns[0].rho = owned->rho;       // but reveal block-1's rho
+    PqWalletKeys recip4 = pqKeysFromPattern(6, 6);
+    Transaction tamper = buildPqTransaction(
+        tamperIns, {PqSendOutput{recip4.viewPub, recip4.spendPub, inAmount - pqFee}},
+        miner.pqSpendPk(), miner.pqSpendSk());  // validly signed over the tampered outpoint
+    Crypto::Hash tHash = getObjectHash(tamper);
+    BinaryArray tBlob = toBinaryArray(tamper);
+    tx_verification_context tvc3{};
+    core.handleIncomingTransaction(tamper, tHash, tBlob.size(), tvc3, false,
+                                   core.getCurrentBlockchainHeight());
+    ok &= expect(!tvc3.m_added_to_pool && tvc3.m_verification_failed,
+                 "tamper: input pointing at a wrong tx rejected (spend_commit mismatch)");
+  }
+
+  // Tamper 2 — wrong index: point at block-1's coinbase with an out-of-range
+  // output index. The output does not exist, so the spend is rejected.
+  {
+    std::vector<PqSpendInput> tamperIns(1);
+    tamperIns[0].prevTxid = cbHash;      // real coinbase tx
+    tamperIns[0].prevOutIndex = 1;       // but it has only output 0
+    tamperIns[0].amount = inAmount;
+    tamperIns[0].rho = owned->rho;
+    PqWalletKeys recip5 = pqKeysFromPattern(7, 7);
+    Transaction tamper = buildPqTransaction(
+        tamperIns, {PqSendOutput{recip5.viewPub, recip5.spendPub, inAmount - pqFee}},
+        miner.pqSpendPk(), miner.pqSpendSk());
+    Crypto::Hash tHash = getObjectHash(tamper);
+    BinaryArray tBlob = toBinaryArray(tamper);
+    tx_verification_context tvc4{};
+    core.handleIncomingTransaction(tamper, tHash, tBlob.size(), tvc4, false,
+                                   core.getCurrentBlockchainHeight());
+    ok &= expect(!tvc4.m_added_to_pool && tvc4.m_verification_failed,
+                 "tamper: input pointing at a wrong output index rejected (no such output)");
+  }
+
   core.deinit();
   std::filesystem::remove_all(dataDir, ec);
   return ok;
