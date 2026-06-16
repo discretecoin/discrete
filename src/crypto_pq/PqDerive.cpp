@@ -92,12 +92,15 @@ Hash256 spendCommit(const DsaPublicKey& spendPub, const Rho& rho) noexcept {
   return sha3_256(buf.data(), buf.size());
 }
 
-Hash256 nullifier(const DsaPublicKey& spendPub, const Rho& rho) noexcept {
+Hash256 nullifier(const DsaPublicKey& spendPub, const Rho& rho,
+                  const Hash256& prevTxid, uint32_t prevOutIndex) noexcept {
   std::vector<uint8_t> buf;
-  buf.reserve(sizeof(kDomainNullifier) + spendPub.size() + rho.size());
+  buf.reserve(sizeof(kDomainNullifier) + spendPub.size() + rho.size() + prevTxid.size() + 4);
   appendDomain(buf, kDomainNullifier);
   appendBytes(buf, spendPub.data(), spendPub.size());
   appendBytes(buf, rho.data(), rho.size());
+  appendBytes(buf, prevTxid.data(), prevTxid.size());
+  appendLe32(buf, prevOutIndex);
   return sha3_256(buf.data(), buf.size());
 }
 

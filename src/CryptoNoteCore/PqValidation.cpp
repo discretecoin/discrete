@@ -103,7 +103,10 @@ Crypto::Hash pqNullifier(const PqInput& in) {
   if (!pqInputFieldsValid(in)) {
     return Crypto::Hash{};
   }
-  return toHash(CryptoPQ::nullifier(toDsaPub(in.authPub), toRho(in.rhoReveal)));
+  CryptoPQ::Hash256 prevTxid;
+  std::memcpy(prevTxid.data(), in.prevTxid.data, 32);
+  return toHash(CryptoPQ::nullifier(toDsaPub(in.authPub), toRho(in.rhoReveal),
+                                    prevTxid, in.prevOutIndex));
 }
 
 Crypto::KeyImage pqInputNullifierAsKeyImage(const PqInput& in) {

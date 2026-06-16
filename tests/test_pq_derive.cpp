@@ -100,15 +100,27 @@ TEST(PqDerive, SpendCommit) {
 TEST(PqDerive, Nullifier) {
     DsaPublicKey pk = pat<1952>(5, 1);
     Rho rho = pat<32>(3, 9);
-    EXPECT_EQ(to_hex(nullifier(pk, rho)),
-              "93722da8561f4e172bdfc97d8abbde3ce29b09dc29c86fcb9edb550870c20869");
+    Hash256 prevTxid = pat<32>(1, 0);
+    EXPECT_EQ(to_hex(nullifier(pk, rho, prevTxid, 7)),
+              "7be545e4a7f67980cea96103f183e71dd85b652ae891e2bc08df8226610db4a8");
+}
+
+TEST(PqDerive, NullifierBindsOutpoint) {
+    // Same (pk, rho) but different outpoints -> distinct nullifiers (a public rho
+    // cannot be replayed into a colliding output).
+    DsaPublicKey pk = pat<1952>(5, 1);
+    Rho rho = pat<32>(3, 9);
+    Hash256 txA = pat<32>(1, 0);
+    Hash256 txB = pat<32>(2, 0);
+    EXPECT_NE(nullifier(pk, rho, txA, 7), nullifier(pk, rho, txB, 7));
+    EXPECT_NE(nullifier(pk, rho, txA, 7), nullifier(pk, rho, txA, 8));
 }
 
 TEST(PqDerive, SpendCommitAndNullifierDiffer) {
     // Same (pk, rho), different domain -> distinct outputs.
     DsaPublicKey pk = pat<1952>(5, 1);
     Rho rho = pat<32>(3, 9);
-    EXPECT_NE(spendCommit(pk, rho), nullifier(pk, rho));
+    EXPECT_NE(spendCommit(pk, rho), nullifier(pk, rho, pat<32>(1, 0), 7));
 }
 
 TEST(PqDerive, TxSigningDigest) {

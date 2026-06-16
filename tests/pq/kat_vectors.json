@@ -75,9 +75,12 @@
       "output": "e68cb8c9336055b6627ca1a23f7b1a0962a2952d1f58466d28039c67405ca46d"
     },
     "nullifier": {
+      "_note": "SHA3-256(domain || spend_pub || rho || prev_txid || LE32(prev_out_index)). The outpoint is bound so a public rho cannot be replayed into a colliding output.",
       "spend_pub": "pat(1952,5,1)",
       "rho": "pat(32,3,9)",
-      "output": "93722da8561f4e172bdfc97d8abbde3ce29b09dc29c86fcb9edb550870c20869"
+      "prev_txid": "pat(32,1,0)",
+      "prev_out_index": 7,
+      "output": "7be545e4a7f67980cea96103f183e71dd85b652ae891e2bc08df8226610db4a8"
     },
     "tx_signing_digest": {
       "_note": "Amended §8.1: binds version || txType || LE64(unlockHeight) || inputs || outputs || LE32(extra_len)||extra || LE64(fee). Each output binds type || LE64(amount) || LE64(unlockHeight) || kemCt || encPayload || spendCommit. txType/tx-unlockHeight/extra and the per-output unlockHeight are bound to close malleability gaps (txid covers them).",

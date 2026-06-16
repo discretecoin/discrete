@@ -175,6 +175,19 @@ a single undivided output (one signature, minimal size). Genesis (height 0) is
 exempt (it is trusted and carries the premine to many recipients). Enforced in
 `Blockchain::validate_block_signature`; built in `Currency::constructMinerTxPq`.
 
+Because `rho_C` is **public** (unlike a normal output's secret random `rho`), the
+nullifier binds the spent output's **outpoint** so the public value can't be
+replayed into a colliding output:
+
+```
+nullifier = SHA3-256(kDomainNullifier || spendPub || rho || prevTxid || LE32(prevOutIndex))
+```
+
+Two outputs that share `(spendPub, rho)` therefore still get distinct nullifiers.
+The outpoint is revealed in the spending `PqInput` regardless, so this adds no
+leakage. Normal (non-coinbase) outputs keep a secret random `rho`, so their
+recipient stays unlinkable until spend.
+
 ---
 
 *(§§ renumbered as features were added.)*

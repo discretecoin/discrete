@@ -77,7 +77,9 @@ bool PqWalletState::processTransaction(const TransactionPrefix& tx, const Crypto
     std::memcpy(authPub.data(), in.authPub.data(), authPub.size());
     CryptoPQ::Rho rho;
     std::memcpy(rho.data(), in.rhoReveal.data(), rho.size());
-    Crypto::Hash nf = toHash(CryptoPQ::nullifier(authPub, rho));
+    CryptoPQ::Hash256 inPrevTxid;
+    std::memcpy(inPrevTxid.data(), in.prevTxid.data, 32);
+    Crypto::Hash nf = toHash(CryptoPQ::nullifier(authPub, rho, inPrevTxid, in.prevOutIndex));
 
     auto it = m_byNullifier.find(nf);
     if (it != m_byNullifier.end()) {
@@ -116,8 +118,12 @@ bool PqWalletState::processTransaction(const TransactionPrefix& tx, const Crypto
       continue;  // not ours (or tampered) — silent, by design
     }
 
-    // Skip if already recorded (idempotent re-scan of the same tx/output).
-    Crypto::Hash nf = toHash(CryptoPQ::nullifier(m_spendPub, owned->rho));
+    // Skip if already recorded (idempotent re-scan of the same tx/output). The
+    // watched nullifier binds this output's outpoint (txid, i) — the same value
+    // the future spending input will produce.
+    CryptoPQ::Hash256 ownTxid;
+    std::memcpy(ownTxid.data(), txid.data, 32);
+    Crypto::Hash nf = toHash(CryptoPQ::nullifier(m_spendPub, owned->rho, ownTxid, i));
     if (m_byNullifier.count(nf)) {
       continue;
     }

@@ -2903,8 +2903,10 @@ void Blockchain::popBlock() {
 }
 
 // Recompute a PQ input's nullifier (= SHA3-256("karbo-pq-nullifier-v1" ||
-// auth_pub || rho_reveal)). Fields are fixed-size after serialization; a
-// malformed input (wrong sizes) yields a zero hash, which validation rejects.
+// auth_pub || rho_reveal || prev_txid || LE32(prev_out_index))). Binding the
+// outpoint makes the double-spend tag unique per output even if two outputs
+// share (auth_pub, rho). Fields are fixed-size after serialization; a malformed
+// input (wrong sizes) yields a zero hash, which validation rejects.
 static Crypto::Hash pqInputNullifier(const PqInput& in) {
   Crypto::Hash h{};
   if (in.authPub.size() != CryptoNote::PQ_AUTH_PUB_SIZE ||
@@ -2915,7 +2917,9 @@ static Crypto::Hash pqInputNullifier(const PqInput& in) {
   CryptoPQ::Rho rho;
   std::memcpy(ap.data(), in.authPub.data(), ap.size());
   std::memcpy(rho.data(), in.rhoReveal.data(), rho.size());
-  CryptoPQ::Hash256 n = CryptoPQ::nullifier(ap, rho);
+  CryptoPQ::Hash256 prevTxid;
+  std::memcpy(prevTxid.data(), in.prevTxid.data, 32);
+  CryptoPQ::Hash256 n = CryptoPQ::nullifier(ap, rho, prevTxid, in.prevOutIndex);
   std::memcpy(h.data, n.data(), 32);
   return h;
 }

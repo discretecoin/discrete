@@ -121,10 +121,14 @@ Hash256 deriveAeadKey(const KemShared& ss, const Hash256& outContext) noexcept;
 //    recipient's long-term ML-DSA spend public key (from the address).
 Hash256 spendCommit(const DsaPublicKey& spendPub, const Rho& rho) noexcept;
 
-// 5. nullifier = SHA3-256(domain || spendPub || rho). Node-side only; never
-//    serialized. rho makes it unique per output, so reusing one spend key across
-//    many outputs still yields distinct nullifiers.
-Hash256 nullifier(const DsaPublicKey& spendPub, const Rho& rho) noexcept;
+// 5. nullifier = SHA3-256(domain || spendPub || rho || prevTxid || LE32(prevOutIndex)).
+//    Node-side only; never serialized. Binding the spent output's OUTPOINT makes
+//    the nullifier unique per output even if two outputs share (spendPub, rho) —
+//    so a publicly-known rho (the canonical coinbase rho, §5b) can never be
+//    replayed into a colliding output to brick the original. The outpoint is
+//    revealed in the spending PqInput anyway, so this leaks nothing extra.
+Hash256 nullifier(const DsaPublicKey& spendPub, const Rho& rho,
+                  const Hash256& prevTxid, uint32_t prevOutIndex) noexcept;
 
 // 5b. coinbaseRho = SHA3-256(domain || spendPub || LE32(height)). The CANONICAL,
 //     publicly-recomputable rho for a coinbase output. Consensus uses it to bind
