@@ -52,6 +52,7 @@ NUL terminator.
 | `kDomainSpendCommit` | `karbo-pq-spend-commit-v1` | 24 |
 | `kDomainNullifier` | `karbo-pq-nullifier-v1` | 21 |
 | `kDomainTxSign` | `karbo-pq-tx-sign-v1` | 19 |
+| `kDomainCoinbaseRho` | `discrete-coinbase-rho-v1` | 24 |
 
 ### Seed / key derivation (PqSeed.h)
 
@@ -151,6 +152,32 @@ outputs (a vesting payment, a genesis premine tranche) while leaving others
 (change) spendable. It is bound into `txSigningDigest` (§6) and the txid, so it is
 not malleable. It is **not** part of `outContext` or the AEAD AAD (key derivation
 and ownership are independent of the lock).
+
+---
+
+## 8. Coinbase recipient == block signer (identity-bound mining)
+
+Every non-genesis block carries an ML-DSA-65 signature over
+`SHA3-256(get_block_hashing_blob(b))`, verified against the producer spend pubkey
+in the coinbase `extra` (tag `0x07`). Additionally, the **single** coinbase
+`PqOutput` must pay that same identity:
+
+```
+rho_C        = SHA3-256(kDomainCoinbaseRho || signerSpendPub || LE32(height))
+require: coinbaseOutput.spendCommit == SHA3-256(kDomainSpendCommit || signerSpendPub || rho_C)
+```
+
+`rho_C` is canonical (publicly recomputable from the signer pubkey + height), so
+consensus enforces that the miner who *signs* the block is the miner who gets
+*paid* — you cannot mine to a key you do not hold. This is the anti-pool/botnet
+property: aggregating hashpower requires sharing the spend secret. The coinbase is
+a single undivided output (one signature, minimal size). Genesis (height 0) is
+exempt (it is trusted and carries the premine to many recipients). Enforced in
+`Blockchain::validate_block_signature`; built in `Currency::constructMinerTxPq`.
+
+---
+
+*(§§ renumbered as features were added.)*
 
 ---
 

@@ -77,6 +77,10 @@ TEST(PqDomains, DeriveDomainStrings) {
     // kDomainTxSign — used in txSigningDigest()
     EXPECT_STREQ(kDomainTxSign,      "karbo-pq-tx-sign-v1");
     EXPECT_EQ(std::strlen(kDomainTxSign), 19u);
+
+    // kDomainCoinbaseRho — used in coinbaseRho() (identity-bound mining)
+    EXPECT_STREQ(kDomainCoinbaseRho, "discrete-coinbase-rho-v1");
+    EXPECT_EQ(std::strlen(kDomainCoinbaseRho), 24u);
 }
 
 TEST(PqDomains, SeedDomainStrings) {
@@ -99,7 +103,7 @@ TEST(PqDomains, ReservedCtMaskNotReused) {
     const char* phase1[] = {
         kDomainInputsHash, kDomainOutContext, kDomainAeadKey,
         kDomainSpendCommit, kDomainNullifier, kDomainTxSign,
-        kDomainViewRoot, kDomainSpendRoot,
+        kDomainCoinbaseRho, kDomainViewRoot, kDomainSpendRoot,
     };
     for (const char* tag : phase1) {
         EXPECT_STRNE(tag, kReservedCtMask) << "collision with reserved tag: " << tag;

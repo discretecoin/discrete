@@ -28,6 +28,7 @@
 
 #include "PqTxType.h"
 #include "CryptoNoteCore/TransactionExtra.h"
+#include "CryptoNoteCore/CryptoNoteFormatUtils.h"
 #include "Wallet/PqWallet.h"
 #include "Wallet/PqTransactionBuilder.h"
 #include "Wallet/PqWalletState.h"
@@ -674,6 +675,88 @@ bool runEmission() {
   return ok;
 }
 
+// Identity-bound mining (anti-pool/botnet): the coinbase reward recipient MUST
+// be the block signer. A block whose coinbase pays one identity but is signed by
+// a different identity must be rejected by validate_block_signature.
+bool runMinerBinding() {
+  using namespace CryptoNote;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  const Currency currency = CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(11).upgradeHeightV6(12)
+      .currency();
+
+  std::filesystem::path dataDir("pq_binding_test_data");
+  std::error_code ec;
+  std::filesystem::remove_all(dataDir, ec);
+  std::filesystem::create_directories(dataDir, ec);
+
+  System::Dispatcher dispatcher;
+  Core core(currency, nullptr, logger, dispatcher, 0, false);
+  CoreConfig coreConfig; coreConfig.configFolder = dataDir.string();
+  MinerConfig minerConfig;
+  if (!expect(core.init(coreConfig, minerConfig, false), "binding: core.init")) return false;
+
+  test_generator gen(currency);
+  gen.setBlockchain(&core.get_blockchain_storage());
+
+  AccountBase miner;    miner.generate();
+  AccountBase attacker; attacker.generate();
+
+  Crypto::Hash genesisHash = core.getBlockIdByHeight(0);
+  Block genesis;
+  if (!expect(core.getBlockByHash(genesisHash, genesis), "binding: load genesis")) { core.deinit(); return false; }
+  std::vector<size_t> emptySizes;
+  gen.addBlock(genesis, 0, 0, emptySizes, 0);
+
+  uint64_t ts = static_cast<uint64_t>(std::time(nullptr)) - 24 * 60 * 60;
+  const uint64_t step = currency.difficultyTarget() * 10;
+  for (int i = 0; i < 3; ++i) {
+    if (!expect(mineBlock(core, currency, gen, miner, ts), "binding: warmup mine")) { core.deinit(); return false; }
+    ts += step;
+  }
+
+  // Construct a normal (valid) block paying `attacker`, signed by `attacker`.
+  uint32_t height = core.getCurrentBlockchainHeight();
+  Crypto::Hash tail = core.get_tail_id();
+  uint64_t generated = 0; core.getAlreadyGeneratedCoins(tail, generated);
+  std::vector<size_t> sizes; core.getBackwardBlocksSizes(height - 1, sizes, currency.rewardBlocksWindow());
+  gen.defaultMajorVersion = core.getBlockMajorVersionForHeight(height);
+  Block good; std::list<Transaction> txs;
+  if (!expect(gen.constructBlock(good, height, tail, attacker, ts, generated, sizes, txs), "binding: construct")) { core.deinit(); return false; }
+
+  // Tamper a copy: keep the coinbase paying `attacker` but re-point the producer
+  // identity to `miner` and re-sign with miner's key. Now recipient != signer.
+  Block bad = good;
+  bad.baseTransaction.extra.clear();
+  std::array<uint8_t, PQ_AUTH_PUB_SIZE> minerPub{};
+  std::copy(miner.pqSpendPk().begin(), miner.pqSpendPk().end(), minerPub.begin());
+  addPqMinerSpendPubToExtra(bad.baseTransaction.extra, minerPub);
+  BinaryArray hb;
+  if (!expect(get_block_hashing_blob(bad, hb), "binding: hashing blob")) { core.deinit(); return false; }
+  Crypto::Hash hh = Crypto::cn_fast_hash(hb.data(), hb.size());
+  CryptoPQ::DsaSignature sig = CryptoPQ::dsa_sign(miner.pqSpendSk(), hh.data, sizeof(hh.data));
+  bad.signature.assign(sig.begin(), sig.end());
+
+  bool ok = true;
+  block_verification_context bvcBad{};
+  core.handle_incoming_block(bad, bvcBad, false, false);
+  ok &= expect(bvcBad.m_verification_failed && !bvcBad.m_added_to_main_chain,
+               "binding: coinbase-recipient != signer REJECTED");
+
+  // The untampered block (recipient == signer == attacker) is accepted, proving
+  // the rejection above is due to the binding rule, not PoW/structure.
+  block_verification_context bvcGood{};
+  core.handle_incoming_block(good, bvcGood, false, false);
+  ok &= expect(bvcGood.m_added_to_main_chain && !bvcGood.m_verification_failed,
+               "binding: coinbase-recipient == signer ACCEPTED");
+
+  core.deinit();
+  std::filesystem::remove_all(dataDir, ec);
+  return ok;
+}
+
 }  // namespace
 
 int main() {
@@ -695,6 +778,10 @@ int main() {
   }
   if (!runEmission()) {
     std::cerr << "[FAIL] PQ emission curve and maturity test" << std::endl;
+    return 1;
+  }
+  if (!runMinerBinding()) {
+    std::cerr << "[FAIL] PQ miner identity-binding test" << std::endl;
     return 1;
   }
   std::cout << "[PASS] PQ chain integration test" << std::endl;

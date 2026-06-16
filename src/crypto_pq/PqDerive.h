@@ -48,6 +48,7 @@ constexpr char kDomainAeadKey[]     = "karbo-pq-aead-key-v1";
 constexpr char kDomainSpendCommit[] = "karbo-pq-spend-commit-v1";
 constexpr char kDomainNullifier[]   = "karbo-pq-nullifier-v1";
 constexpr char kDomainTxSign[]      = "karbo-pq-tx-sign-v1";
+constexpr char kDomainCoinbaseRho[] = "discrete-coinbase-rho-v1";
 
 // RESERVED for Phase 2 (KDSK-CT) — MUST NOT be used by any v1-plain code.
 // A unit test asserts none of the tags above collides with this string.
@@ -124,6 +125,15 @@ Hash256 spendCommit(const DsaPublicKey& spendPub, const Rho& rho) noexcept;
 //    serialized. rho makes it unique per output, so reusing one spend key across
 //    many outputs still yields distinct nullifiers.
 Hash256 nullifier(const DsaPublicKey& spendPub, const Rho& rho) noexcept;
+
+// 5b. coinbaseRho = SHA3-256(domain || spendPub || LE32(height)). The CANONICAL,
+//     publicly-recomputable rho for a coinbase output. Consensus uses it to bind
+//     the coinbase reward recipient to the block signer: the single coinbase
+//     output's spendCommit MUST equal spendCommit(signerSpendPub, coinbaseRho),
+//     so the reward can only be spent by the key that signed the block (identity
+//     -bound mining — no pools/botnets without sharing the spend secret). Unique
+//     per (signer, height), so a miner's coinbases get distinct nullifiers.
+Rho coinbaseRho(const DsaPublicKey& spendPub, uint32_t height) noexcept;
 
 // 6. txSigningDigest — amended §8.1 (see UnsignedTx). Binds the whole prefix
 //    minus per-input signatures: version || txType || LE64(unlockHeight) ||

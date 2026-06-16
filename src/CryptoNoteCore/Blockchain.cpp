@@ -1396,6 +1396,27 @@ bool Blockchain::validate_block_signature(const Block& b, const Crypto::Hash& id
       << id << " at height " << height;
     return false;
   }
+
+  // Identity-bound mining: the coinbase reward recipient MUST be the block
+  // signer. The single coinbase output's spendCommit must equal
+  // spendCommit(signerSpendPub, coinbaseRho(signerSpendPub, height)) — so the
+  // reward can only ever be spent by the same ML-DSA key that signed the block.
+  // This makes pools/botnets require sharing the spend secret (no separation of
+  // "who mines" from "who is paid"). The coinbase has a single, undivided output
+  // (one signature, minimal size) — enforced by prevalidate_miner_transaction.
+  if (b.baseTransaction.outputs.size() != 1 ||
+      b.baseTransaction.outputs[0].target.type() != typeid(PqOutput)) {
+    logger(ERROR, BRIGHT_RED) << "Block " << id << " coinbase must be a single PqOutput";
+    return false;
+  }
+  const PqOutput& cbOut = boost::get<PqOutput>(b.baseTransaction.outputs[0].target);
+  CryptoPQ::Rho cbRho = CryptoPQ::coinbaseRho(spendPub, height);
+  CryptoPQ::Hash256 expectedCommit = CryptoPQ::spendCommit(spendPub, cbRho);
+  if (std::memcmp(cbOut.spendCommit.data, expectedCommit.data(), 32) != 0) {
+    logger(ERROR, BRIGHT_RED) << "Block " << id << " at height " << height
+      << ": coinbase reward recipient is not the block signer";
+    return false;
+  }
   return true;
 }
 

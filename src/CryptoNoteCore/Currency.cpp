@@ -36,6 +36,7 @@
 #include "crypto_pq/PqOutputBuilder.h"
 #include "crypto_pq/PqHash.h"
 #include "crypto_pq/PqDsa.h"
+#include "crypto_pq/PqDerive.h"
 #include "crypto_pq/PqKem.h"
 #include "PqTxType.h"
 
@@ -250,11 +251,18 @@ namespace CryptoNote {
       return false;
     }
 
-    // Single PQ output to the miner's address.
-    // inputsHash = zeros (coinbase has no PQ inputs, no prior outpoints).
+    // Single PQ output to the miner's address. inputsHash = zeros (coinbase has
+    // no PQ inputs). The reward recipient MUST be the block signer, so the output
+    // uses the CANONICAL coinbase rho (deterministic from the miner's spend pub +
+    // height): consensus recomputes it and checks the spendCommit, binding the
+    // reward to whoever signs the block (validate_block_signature). kemCt is still
+    // a fresh encapsulation so the miner's wallet recovers the rho normally.
     CryptoPQ::Hash256 inputsHash{};
+    auto cbEnc = CryptoPQ::kem_encaps(minerViewPub);
+    CryptoPQ::Rho cbRho = CryptoPQ::coinbaseRho(minerSpendPub, height);
     CryptoPQ::PqBuiltOutput built = CryptoPQ::buildPqOutput(
-        minerViewPub, minerSpendPub, inputsHash, /*outputIndex=*/0, blockReward);
+        cbEnc.first, cbEnc.second, minerSpendPub, inputsHash, /*outputIndex=*/0,
+        blockReward, cbRho, /*subaddrIndexT=*/0);
 
     PqOutput po;
     po.kemCt.assign(built.kemCt.begin(), built.kemCt.end());

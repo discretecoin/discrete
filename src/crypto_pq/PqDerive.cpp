@@ -101,6 +101,15 @@ Hash256 nullifier(const DsaPublicKey& spendPub, const Rho& rho) noexcept {
   return sha3_256(buf.data(), buf.size());
 }
 
+Rho coinbaseRho(const DsaPublicKey& spendPub, uint32_t height) noexcept {
+  std::vector<uint8_t> buf;
+  buf.reserve(sizeof(kDomainCoinbaseRho) + spendPub.size() + 4);
+  appendDomain(buf, kDomainCoinbaseRho);
+  appendBytes(buf, spendPub.data(), spendPub.size());
+  appendLe32(buf, height);
+  return sha3_256(buf.data(), buf.size());
+}
+
 Hash256 txSigningDigest(const UnsignedTx& tx) noexcept {
   std::vector<uint8_t> buf;
   appendDomain(buf, kDomainTxSign);
