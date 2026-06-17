@@ -191,6 +191,32 @@ TEST(PqMessage, RejectsGarbageAndWrongPrefix) {
     EXPECT_FALSE(verifyMessagePq("m", keys.spendPub, ""));
 }
 
+// Mirrors the DNS checkpoint verification path (src/Checkpoints/Checkpoints.cpp):
+// a maintainer signs "<height>:<hash>" with their wallet's ML-DSA spend key and
+// publishes their PQ address; the loader decodes that address back to the spend
+// public key and verifies the record with verifyMessagePq.
+TEST(PqMessage, CheckpointStyleSignAndVerify) {
+    PqWalletKeys signer = derivePqWalletKeys(makeSpendSecret(13, 2));
+    PqAddress addr = pqWalletAddress(signer, kNet);
+    std::string addrStr = encodePqAddress(addr, PqAddressEncoding::Base58);
+    ASSERT_FALSE(addrStr.empty());
+
+    // Loader side: decode the published PQ address back to the ML-DSA spend pubkey.
+    PqAddress decoded;
+    ASSERT_TRUE(decodePqAddress(addrStr, decoded, PqAddressEncoding::Base58));
+    EXPECT_EQ(decoded.spendPub, signer.spendPub);
+
+    const std::string payload = "1000:" + std::string(64, 'a');
+    std::string sig = signMessagePq(payload, signer.spendSk);
+    EXPECT_TRUE(verifyMessagePq(payload, decoded.spendPub, sig));
+
+    // A record for a different height is a different payload → rejected.
+    EXPECT_FALSE(verifyMessagePq("1001:" + std::string(64, 'a'), decoded.spendPub, sig));
+    // A signature from a non-approved signer → rejected.
+    PqWalletKeys other = derivePqWalletKeys(makeSpendSecret(13, 3));
+    EXPECT_FALSE(verifyMessagePq(payload, other.spendPub, sig));
+}
+
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

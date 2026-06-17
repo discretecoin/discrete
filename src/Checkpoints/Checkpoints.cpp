@@ -38,6 +38,7 @@
 #include "Common/DnsTools.h"
 #include "CryptoNoteCore/CryptoNoteBasicImpl.h"
 #include "CryptoNoteCore/CryptoNoteFormatUtils.h"
+#include "PqAddress.h"
 
 using namespace Logging;
 #undef ERROR
@@ -201,28 +202,27 @@ bool Checkpoints::load_checkpoints_from_dns()
     return true;
   }
 
-  // Pre-parse the approved signer list once per DNS fetch. Addresses that
-  // fail Base58/curve validation are logged and dropped so an accidentally-
-  // mistyped address in the config does not silently lock the verifier
-  // open to attacker signatures (it can't — Common::Base58::decode_addr
-  // would just reject — but we want the diagnostic to point at the bad
-  // entry).
-  std::vector<CryptoNote::AccountPublicAddress> signers;
-  signers.reserve(CryptoNote::DNS_CHECKPOINT_SIGNERS_COUNT);
+  // Pre-parse the approved PQ signer addresses once per DNS fetch. Each signer is
+  // a Discrete PQ address; we keep its ML-DSA-65 spend public key, which
+  // verifyMessagePq checks the record signature against. A mistyped/invalid PQ
+  // address is logged and dropped (it can't open the verifier — decodePqAddress
+  // rejects it — but the diagnostic points at the bad entry). PQ addresses are
+  // normally base58; we also accept the bech32m encoding.
+  std::vector<CryptoPQ::DsaPublicKey> signerSpendPubs;
+  signerSpendPubs.reserve(CryptoNote::DNS_CHECKPOINT_SIGNERS_COUNT);
   for (size_t i = 0; i < CryptoNote::DNS_CHECKPOINT_SIGNERS_COUNT; ++i) {
-    CryptoNote::AccountPublicAddress addr;
-    uint64_t prefix = 0;
-    if (CryptoNote::parseAccountAddressString(prefix, addr,
-            std::string(CryptoNote::DNS_CHECKPOINT_SIGNERS[i]))) {
-      signers.push_back(addr);
+    const std::string entry(CryptoNote::DNS_CHECKPOINT_SIGNERS[i]);
+    CryptoNote::PqAddress addr;
+    if (CryptoNote::decodePqAddress(entry, addr, CryptoNote::PqAddressEncoding::Base58) ||
+        CryptoNote::decodePqAddress(entry, addr, CryptoNote::PqAddressEncoding::Bech32m)) {
+      signerSpendPubs.push_back(addr.spendPub);
     } else {
       logger(Logging::ERROR, BRIGHT_RED)
-          << "DNS_CHECKPOINT_SIGNERS[" << i << "]='"
-          << CryptoNote::DNS_CHECKPOINT_SIGNERS[i]
-          << "' is not a valid Karbo address; skipping.";
+          << "DNS_CHECKPOINT_SIGNERS[" << i << "]='" << entry
+          << "' is not a valid Discrete PQ address; skipping.";
     }
   }
-  if (signers.empty()) {
+  if (signerSpendPubs.empty()) {
     logger(Logging::WARNING) << "No usable DNS checkpoint signers after parsing; "
                                 "ignoring all DNS records.";
     return true;
@@ -270,13 +270,14 @@ bool Checkpoints::load_checkpoints_from_dns()
       continue;
     }
 
-    // Verify the signature against any one of the approved signers. The
+    // Verify the ML-DSA signature against any one of the approved signers. The
     // signed payload is the literal "<height>:<hash>" string — what the
-    // maintainer types into simplewallet's sign_message prompt.
+    // maintainer types into simplewallet's sign_message prompt (which signs with
+    // the wallet's ML-DSA spend key; see CryptoNoteFormatUtils::signMessagePq).
     const std::string signed_payload = height_str + ":" + hash_str;
     bool verified = false;
-    for (const auto& signer : signers) {
-      if (CryptoNote::verifyMessage(signed_payload, signer, sig_str, logger.getLogger())) {
+    for (const auto& spendPub : signerSpendPubs) {
+      if (CryptoNote::verifyMessagePq(signed_payload, spendPub, sig_str)) {
         verified = true;
         break;
       }
