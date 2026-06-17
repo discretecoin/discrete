@@ -92,6 +92,11 @@ TEST(PqDomains, SeedDomainStrings) {
     // kDomainSpendRoot — HKDF info for spend keypair seed derivation
     EXPECT_STREQ(kDomainSpendRoot,   "karbo-pq-spend-root-v1");
     EXPECT_EQ(std::strlen(kDomainSpendRoot), 22u);
+
+    // kDomainDepositSpendRoot — HKDF info prefix for the Spec-1 deposit spend-key
+    // family (followed by LE32(index)). CEMENTED recovery contract.
+    EXPECT_STREQ(kDomainDepositSpendRoot, "discrete-pq-deposit-spend-v1");
+    EXPECT_EQ(std::strlen(kDomainDepositSpendRoot), 28u);
 }
 
 TEST(PqDomains, ReservedCtMaskNotReused) {

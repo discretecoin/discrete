@@ -100,6 +100,56 @@ TEST(PqSeed, ViewAndSpendKeysAreIndependent) {
                              std::min(vk.first.size(), sk.first.size())));
 }
 
+// --- Deposit spend-key family (Spec 1 / aggregated-multikey) ---------------
+
+TEST(PqSeed, DepositSpendSeedKat) {
+    // Cement the deposit recovery derivation. Changing the domain, the LE32 index
+    // encoding, or the HKDF params orphans deposit balances on restore — update
+    // this ONLY when deliberately changing the contract.
+    SeedMaster m = pat<32>(1, 0);  // bytes 0..31
+    EXPECT_EQ(to_hex(deriveDepositSpendSeed(m, 0)),
+              "0022e0e977bb331d83ea772cefc1caddb8ae19037e86c3c500030424bf5ad94d");
+}
+
+TEST(PqSeed, DepositSpendKeysDeterministic) {
+    SeedMaster m = pat<32>(2, 7);
+    auto a = deriveDepositSpendKeys(m, 5);
+    auto b = deriveDepositSpendKeys(m, 5);
+    EXPECT_EQ(a.first, b.first);
+    EXPECT_EQ(a.second, b.second);
+}
+
+TEST(PqSeed, DepositSpendKeysIndexSensitive) {
+    // Different deposit indices give different spend keys (one per deposit).
+    SeedMaster m = pat<32>(2, 7);
+    EXPECT_NE(deriveDepositSpendKeys(m, 0).first, deriveDepositSpendKeys(m, 1).first);
+    EXPECT_NE(deriveDepositSpendKeys(m, 1).first, deriveDepositSpendKeys(m, 2).first);
+    EXPECT_NE(deriveDepositSpendKeys(m, 0).first, deriveDepositSpendKeys(m, 1000).first);
+}
+
+TEST(PqSeed, DepositSpendKeysSeedSensitive) {
+    SeedMaster m1 = pat<32>(2, 7);
+    SeedMaster m2 = m1; m2[0] ^= 0x01;
+    EXPECT_NE(deriveDepositSpendKeys(m1, 3).first, deriveDepositSpendKeys(m2, 3).first);
+}
+
+TEST(PqSeed, DepositKeysDistinctFromBaseSpendKey) {
+    // Deposit #0 must NOT equal the account's main spend key (separate domain),
+    // so the main address and deposit #0 never collide.
+    SeedMaster m = pat<32>(2, 7);
+    EXPECT_NE(deriveSpendKeys(m).first, deriveDepositSpendKeys(m, 0).first);
+}
+
+TEST(PqSeed, DepositKeysShareTheSingleViewKey) {
+    // Spec 1: the whole deposit family decapsulates with ONE shared view key. The
+    // view key is the account's view key, independent of any deposit index.
+    SeedMaster m = pat<32>(2, 7);
+    auto view = deriveViewKeys(m);
+    // (No per-index view derivation exists — that is the point. This test just
+    // documents that the view key is index-free and stable.)
+    EXPECT_EQ(view.first, deriveViewKeys(m).first);
+}
+
 // --- Address encode / decode ---------------------------------------------
 
 TEST(PqAddress, ChecksumDerivation) {

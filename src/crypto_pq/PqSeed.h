@@ -54,6 +54,10 @@ namespace CryptoPQ {
 
 constexpr char kDomainViewRoot[]  = "karbo-pq-view-root-v1";
 constexpr char kDomainSpendRoot[] = "karbo-pq-spend-root-v1";
+// Deposit-wallet Spec 1 (aggregated-multikey): a FAMILY of ML-DSA spend keys, one
+// per deposit index, all sharing the single view key above. CEMENTED recovery
+// contract — see deriveDepositSpendKeys.
+constexpr char kDomainDepositSpendRoot[] = "discrete-pq-deposit-spend-v1";
 
 using SeedMaster = std::array<uint8_t, 32>;
 
@@ -69,5 +73,18 @@ DsaKeypairSeed deriveSpendSeed(const SeedMaster& seedMaster) noexcept;
 // Long-term ML-DSA spend keypair (spending authority) derived from the master
 // seed. spend_pub goes in the address; spend_sk authorizes spends.
 std::pair<DsaPublicKey, DsaSecretKey> deriveSpendKeys(const SeedMaster& seedMaster);
+
+// Deposit spend-key family (Spec 1 / aggregated-multikey). One ML-DSA-65 spend
+// keypair per deposit index, all under the SAME shared view key (deriveViewKeys),
+// so a deposit walletd hands out many addresses that differ only in the spend key
+// and decapsulate with one view secret. Each per-deposit spend seed is
+//   HKDF-SHA3-256(IKM=seed_master, salt=0, info="discrete-pq-deposit-spend-v1" || LE32(index), L=32)
+// then ML-DSA-65.KeyGen(xi=seed). This family is DISTINCT from the account's base
+// spend key (deriveSpendKeys), so deposit #0 != the main address. CEMENTED — the
+// domain, the LE32 index encoding, and the HKDF parameters must never change or
+// existing deposit balances become unrecoverable on restore.
+DsaKeypairSeed deriveDepositSpendSeed(const SeedMaster& seedMaster, uint32_t depositIndex) noexcept;
+std::pair<DsaPublicKey, DsaSecretKey> deriveDepositSpendKeys(const SeedMaster& seedMaster,
+                                                             uint32_t depositIndex);
 
 }  // namespace CryptoPQ

@@ -45,4 +45,22 @@ std::pair<DsaPublicKey, DsaSecretKey> deriveSpendKeys(const SeedMaster& seedMast
   return dsa_keygen_from_seed(deriveSpendSeed(seedMaster));
 }
 
+DsaKeypairSeed deriveDepositSpendSeed(const SeedMaster& seedMaster, uint32_t depositIndex) noexcept {
+  // info = "discrete-pq-deposit-spend-v1" || LE32(depositIndex). L=32 (ML-DSA xi).
+  constexpr std::size_t kDomLen = sizeof(kDomainDepositSpendRoot) - 1;
+  uint8_t info[kDomLen + 4];
+  for (std::size_t i = 0; i < kDomLen; ++i) {
+    info[i] = static_cast<uint8_t>(kDomainDepositSpendRoot[i]);
+  }
+  for (int i = 0; i < 4; ++i) {
+    info[kDomLen + i] = static_cast<uint8_t>((depositIndex >> (8 * i)) & 0xFF);
+  }
+  return hkdf_sha3_256(seedMaster.data(), seedMaster.size(), info, sizeof(info));
+}
+
+std::pair<DsaPublicKey, DsaSecretKey> deriveDepositSpendKeys(const SeedMaster& seedMaster,
+                                                             uint32_t depositIndex) {
+  return dsa_keygen_from_seed(deriveDepositSpendSeed(seedMaster, depositIndex));
+}
+
 }  // namespace CryptoPQ
