@@ -39,7 +39,7 @@ TEST(PqTaxonomy, MaxExtraSizeIsPqSizeForAllVersions) {
 
 TEST(PqTaxonomy, SubtypeEnumValues) {
     EXPECT_EQ(0x01, TX_PQ);
-    EXPECT_EQ(0x02, TX_BRIDGE);
+    // 0x02 is permanently reserved (no named constant; consensus rejects it).
     EXPECT_EQ(0x03, TX_FREE_REG);
 }
 

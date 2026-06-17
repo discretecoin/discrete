@@ -141,21 +141,6 @@ Transaction buildPqTransaction(const std::vector<PqSpendInput>& inputs,
   return tx;
 }
 
-Transaction buildBridgeTransaction(std::vector<BridgeLegacyInput>& /*inputs*/,
-                                   const std::vector<PqSendOutput>& /*pqOutputs*/,
-                                   const std::vector<BridgeKeyOutput>& /*keyOutputs*/,
-                                   uint64_t /*unlockHeight*/) {
-  // Bridge transactions do not exist in Discrete (no legacy chain to migrate from).
-  throw std::runtime_error("Bridge transactions not supported in Discrete");
-}
-
-Transaction buildBridgeTransaction(std::vector<BridgeLegacyInput>& inputs,
-                                   const std::vector<PqSendOutput>& outputs,
-                                   uint64_t unlockHeight) {
-  const std::vector<BridgeKeyOutput> keyOutputs;
-  return buildBridgeTransaction(inputs, outputs, keyOutputs, unlockHeight);
-}
-
 Transaction buildFreeRegTransaction(const CryptoPQ::KemPublicKey& viewPub,
                                     const CryptoPQ::DsaPublicKey& spendPub,
                                     const Crypto::Hash& refBlockHash,

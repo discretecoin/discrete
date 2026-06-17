@@ -119,7 +119,7 @@ TEST(PqWire, TxTypeIsCoveredByHash) {
     // The prefix hash must cover txType, so changing it changes the tx hash.
     Transaction a = makePqTx();
     Transaction b = makePqTx();
-    b.txType = TX_BRIDGE;
+    b.txType = TX_FREE_REG;
     EXPECT_NE(getObjectHash(a), getObjectHash(b));
 }
 

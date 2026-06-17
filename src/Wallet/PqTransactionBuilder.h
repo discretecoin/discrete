@@ -32,8 +32,7 @@
 // Transaction the node will accept; tests previously hand-rolled this.
 //
 // This header covers TX_PQ (PQ inputs -> PQ outputs), which is node-independent
-// (no ring/mixin resolution). TX_BRIDGE (classical inputs -> PQ outputs, with
-// optional CN change) reuses the legacy ring-signature machinery.
+// (no ring/mixin resolution), and TX_FREE_REG (account-number registration).
 
 namespace CryptoNote {
 
@@ -56,31 +55,13 @@ struct PqSendOutput {
   uint64_t               unlockHeight = 0;   // per-output spend lock; 0 = none (e.g. change)
 };
 
-// One classical (legacy) input being migrated by a TX_BRIDGE, plus its resolved
-// ring members. Same shape the legacy builder consumes; the caller resolves the
-// ring from the node before calling.
-struct BridgeLegacyInput {
-  TransactionTypes::InputKeyInfo keyInfo;
-  AccountKeys                    senderKeys;
-};
-
-// A classical CryptoNote output produced by a TX_BRIDGE, used for returning
-// unbridged change back to the sender's ECC wallet.
-struct BridgeKeyOutput {
-  AccountPublicAddress destination;
-  uint64_t             amount = 0;
-};
-
 // The PQ "inputs hash" a wallet binds into every output's out_context. This is a
 // WALLET-SIDE convention (consensus never recomputes out_context); sender and
 // receiver MUST agree on it or outputs become undetectable, so it is part of the
 // recovery contract — cemented, like the seed_master derivation.
 //   * TX_PQ inputs (PqInput): SHA3 over (prevTxid || LE32(prevOutIndex)) — the
 //     outpoint is on the wire.
-//   * TX_BRIDGE inputs (KeyInput): the outpoint is hidden by the ring, so we use
-//     the on-wire key image as the per-input identifier: InputRef{prevTxid=keyImage,
-//     prevOutIndex=0}.
-// Both reuse the cemented CryptoPQ::inputsHash function/domain.
+// Reuses the cemented CryptoPQ::inputsHash function/domain.
 // Takes a TransactionPrefix (Transaction derives from it) because the wallet's
 // scanner only has the prefix available (ITransactionReader::getTransactionData).
 CryptoPQ::Hash256 pqTransactionInputsHash(const TransactionPrefix& tx);
@@ -100,22 +81,6 @@ Transaction buildPqTransaction(const std::vector<PqSpendInput>& inputs,
                                const CryptoPQ::DsaPublicKey& spendPub,
                                const CryptoPQ::DsaSecretKey& spendSk,
                                uint64_t unlockHeight = 0);
-
-// Build and sign a TX_BRIDGE (one-way legacy -> PQ migration). Classical inputs
-// are ring-signed exactly as a v1 transaction (the signature covers the prefix,
-// which includes PQ outputs and any classical change). At least one PQ output is
-// required; optional BridgeKeyOutput entries return unbridged change to ECC CN.
-// `inputs` is taken by non-const reference because key-image / ephemeral-key
-// generation is performed per input. Throws std::runtime_error on empty/oversized
-// sets or if outputs exceed inputs.
-Transaction buildBridgeTransaction(std::vector<BridgeLegacyInput>& inputs,
-                                   const std::vector<PqSendOutput>& pqOutputs,
-                                   const std::vector<BridgeKeyOutput>& keyOutputs,
-                                   uint64_t unlockHeight = 0);
-
-Transaction buildBridgeTransaction(std::vector<BridgeLegacyInput>& inputs,
-                                   const std::vector<PqSendOutput>& outputs,
-                                   uint64_t unlockHeight = 0);
 
 // Assemble a TX_FREE_REG (zero-fee account-number registration) given a PoW
 // solution: an empty-input/output v2 tx whose tx_extra is exactly the PQ

@@ -231,7 +231,7 @@ TEST(PqValidation, RejectsDuplicateNullifier) {
 
 TEST(PqValidation, SemanticRejectsWrongSubtype) {
     BuiltTx b = buildSignedTx(1000000, 900000);
-    b.tx.txType = TX_BRIDGE;
+    b.tx.txType = 0x02;  // permanently-reserved/unknown subtype
     std::string err;
     EXPECT_FALSE(checkPqTransactionSemantic(b.tx, &err));
 }
@@ -273,18 +273,13 @@ TEST(PqValidation, SemanticRejectsWrongFieldSize) {
     EXPECT_FALSE(checkPqTransactionSemantic(b.tx, &err));
 }
 
-// --- TX_BRIDGE semantic (classical inputs -> PQ outputs) -------------------
-
-// TX_BRIDGE (legacy→PQ migration) does not exist in Discrete — there is no
-// legacy chain to migrate from. The subtype constant survives for wire
-// compatibility, but checkBridgeTransactionSemantic rejects every such tx.
-TEST(PqValidation, BridgeAlwaysRejectedInDiscrete) {
-    Transaction tx;
-    tx.version = TRANSACTION_VERSION_1;
-    tx.txType = TX_BRIDGE;
-    tx.unlockHeight = 0;
+// The permanently-reserved 0x02 subtype (never-deployed legacy bridge) must keep
+// being rejected by the PQ semantic gate, which admits only TX_PQ.
+TEST(PqValidation, ReservedSubtype0x02Rejected) {
+    BuiltTx b = buildSignedTx(1000000, 900000);
+    b.tx.txType = 0x02;
     std::string err;
-    EXPECT_FALSE(checkBridgeTransactionSemantic(tx, &err));
+    EXPECT_FALSE(checkPqTransactionSemantic(b.tx, &err));
 }
 
 // --- TX_FREE_REG semantic (zero-fee account registration + PoW) -------------

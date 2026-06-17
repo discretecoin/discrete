@@ -158,8 +158,7 @@ bool getPqAccountRegistrationId(const Transaction& tx, Crypto::Hash& accountId) 
     // TX_PQ input value lives in the referenced outputs (chain state), not in
     // the input — get_inputs_money_amount would read 0 and falsely reject. Its
     // balance and PQ fee floor are enforced by checkTransactionInputs ->
-    // checkPqInputs below. (TX_BRIDGE has classical inputs, so it uses the
-    // normal accounting.)
+    // checkPqInputs below.
     const bool pqOnlyInputs = tx.version >= TRANSACTION_VERSION_1 && tx.txType == TX_PQ;
     const bool freeRegTransaction = tx.version >= TRANSACTION_VERSION_1 && tx.txType == TX_FREE_REG;
     uint64_t fee = 0;

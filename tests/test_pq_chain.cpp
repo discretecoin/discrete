@@ -9,10 +9,9 @@
 //     (Core::check_tx_semantic -> Blockchain::checkPqInputs) and is rejected
 //     when it spends a non-existent output.
 //
-// NOTE: the funded happy-path lifecycle (bridge a coinbase -> spend via TX_PQ ->
-// double-spend reject -> reorg-reinsert) additionally needs a ring-signed
-// TX_BRIDGE builder (overlaps the wallet spend path); the PQ consensus crypto
-// for it is already covered by PqValidationTests / PqNullifierDbTests.
+// NOTE: the funded happy-path lifecycle (mine a coinbase -> spend via TX_PQ ->
+// double-spend reject -> reorg-reinsert) is exercised by runFunded() below; the
+// PQ consensus crypto is also covered by PqValidationTests / PqNullifierDbTests.
 
 #include "CryptoNoteCore/Account.h"
 #include "CryptoNoteCore/Core.h"
@@ -95,7 +94,7 @@ bool mineBlock(CryptoNote::Core& core, const CryptoNote::Currency& currency,
 }
 
 // Mine a block that includes the given transactions (test_generator accounts
-// their fees via get_tx_fee — works for bridge KeyInputs which carry amounts).
+// their fees via get_tx_fee).
 bool mineBlockWithTxs(CryptoNote::Core& core, const CryptoNote::Currency& currency,
                       test_generator& gen, const CryptoNote::AccountBase& miner,
                       uint64_t timestamp, const std::list<CryptoNote::Transaction>& txs) {
@@ -267,8 +266,8 @@ CryptoNote::PqWalletKeys pqKeysFromPattern(uint8_t a, uint8_t b) {
 // Funded happy-path lifecycle through the LIVE Core:
 //   mine PQ coinbase -> mature -> scan with miner PQ keys -> spend via TX_PQ
 //   (accepted by consensus); a second spend of the same output (same nullifier)
-//   is rejected. Discrete has no legacy chain or bridge, so the coinbase PqOutput
-//   is the sole funds source (spendable once matured).
+//   is rejected. Discrete has no legacy chain, so the coinbase PqOutput is the
+//   sole funds source (spendable once matured).
 bool runFunded() {
   using namespace CryptoNote;
   Logging::ConsoleLogger logger(Logging::ERROR);

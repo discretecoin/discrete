@@ -2154,7 +2154,7 @@ bool Blockchain::checkTransactionInputs(const Transaction& tx, uint32_t* pmax_us
 
 bool Blockchain::checkTransactionInputs(const Transaction& tx, const Crypto::Hash& tx_prefix_hash,
                                          uint32_t* pmax_used_block_height) {
-  // Discrete: only PQ transactions are accepted. TX_BRIDGE and legacy v1 are rejected.
+  // Discrete: only PQ transactions are accepted. Legacy v1 (pre-PQ) txs are rejected.
   if (tx.version == TRANSACTION_VERSION_1) {
     if (tx.txType == TX_PQ) {
       return checkPqInputs(tx, pmax_used_block_height);
@@ -2697,7 +2697,7 @@ bool Blockchain::pushBlock(const Block& blockData, const std::vector<Transaction
       }
       // TX_PQ inputs carry no amount (value lives in the referenced outputs), so
       // getInputAmount would read 0 and the fee would underflow. Resolve the
-      // referenced amounts instead. (TX_BRIDGE has classical inputs -> normal.)
+      // referenced amounts instead.
       const bool pqOnlyInputs = curTx.version >= TRANSACTION_VERSION_1 && curTx.txType == TX_PQ;
       uint64_t fee = 0;
       if (pqOnlyInputs) {

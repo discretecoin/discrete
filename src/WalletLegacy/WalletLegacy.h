@@ -103,17 +103,6 @@ public:
   std::vector<PqSpendInput> pqSpendableInputs() const;
   uint32_t pqSyncedHeight() const;
 
-  // Build a signed TX_BRIDGE migrating `amount` of the LEGACY balance to the
-  // given PQ recipient, with unbridged change returned to this wallet's CN
-  // address.
-  // One-way (legacy -> PQ). `minimumFee` is the normal legacy minimum fee because
-  // TX_BRIDGE uses classical KeyInputs. `feeOut` reports the fee charged. Throws
-  // std::runtime_error on insufficient unlocked legacy funds.
-  Transaction createBridgeTransaction(const CryptoPQ::KemPublicKey& destViewPub,
-                                      const CryptoPQ::DsaPublicKey& destSpendPub,
-                                      uint64_t amount, uint64_t minimumFee,
-                                      uint64_t mixin, uint64_t& feeOut);
-
   virtual size_t getTransactionCount() override;
   virtual size_t getTransferCount() override;
   virtual size_t getUnlockedOutputsCount() override;

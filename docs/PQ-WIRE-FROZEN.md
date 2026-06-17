@@ -17,7 +17,7 @@ edit to a constant or to that test file's expected values.
 | `TRANSACTION_VERSION_1` | `1` | `src/CryptoNoteConfig.h` |
 | `TX_COINBASE` (txType) | `0x00` | `include/PqTxType.h` |
 | `TX_PQ` (txType) | `0x01` | `include/PqTxType.h` |
-| `TX_BRIDGE` (reserved; consensus rejects) | `0x02` | `include/PqTxType.h` |
+| `0x02` (permanently reserved; no named constant; consensus rejects) | `0x02` | `include/PqTxType.h` |
 | `TX_FREE_REG` (txType) | `0x03` | `include/PqTxType.h` |
 
 ---

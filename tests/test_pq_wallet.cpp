@@ -2,8 +2,8 @@
 //
 // This file is part of Karbo.
 //
-// Tests for the wallet-core PQ identity bridge (src/Wallet/PqWallet). Covers
-// deterministic derivation from the classical spend secret key (recovery
+// Tests for the wallet-core PQ identity derivation (src/Wallet/PqWallet). Covers
+// deterministic derivation from the account spend secret key (recovery
 // contract), the wallet's own address round-trip, and PQ-vs-classical address
 // detection used by the front-ends.
 

@@ -734,7 +734,6 @@ simple_wallet::simple_wallet(System::Dispatcher& dispatcher, const CryptoNote::C
   m_consoleHandler.setHandler("pq_address", std::bind(&simple_wallet::pq_address, this, std::placeholders::_1), "Show this wallet's post-quantum (PQ) address, derived from the same seed. Add 'bech32' for the QR-friendly encoding.");
   m_consoleHandler.setHandler("pq_balance", std::bind(&simple_wallet::pq_balance, this, std::placeholders::_1), "Show the separate post-quantum (PQ) balance");
   m_consoleHandler.setHandler("pq_transfer", std::bind(&simple_wallet::pq_transfer, this, std::placeholders::_1), "pq_transfer <pq_address> <amount> - Send PQ funds to a PQ address");
-  m_consoleHandler.setHandler("bridge_legacy", std::bind(&simple_wallet::bridge_legacy, this, std::placeholders::_1), "bridge_legacy <pq_address> <amount> - One-way migrate legacy funds to a PQ address");
   m_consoleHandler.setHandler("pq_register", std::bind(&simple_wallet::pq_register, this, std::placeholders::_1), "Register a free post-quantum (PQ) account number (anti-spam PoW, no fee)");
   m_consoleHandler.setHandler("pq_register_paid", std::bind(&simple_wallet::pq_register_paid, this, std::placeholders::_1), "Register a post-quantum (PQ) account number with a normal fee-paying transaction");
   m_consoleHandler.setHandler("pq_account", std::bind(&simple_wallet::pq_account, this, std::placeholders::_1), "Show this wallet's PQ account number (once its registration is confirmed)");
@@ -2896,68 +2895,6 @@ bool simple_wallet::resolvePqRecipient(const std::string& s, CryptoPQ::KemPublic
     return true;
   }
   return false;
-}
-//----------------------------------------------------------------------------------------------------
-bool simple_wallet::bridge_legacy(const std::vector<std::string> &args) {
-  if (args.size() != 2) {
-    fail_msg_writer() << "usage: bridge_legacy <pq_address> <amount>";
-    return true;
-  }
-  if (m_trackingWallet) {
-    fail_msg_writer() << "This is a tracking wallet and cannot bridge.";
-    return true;
-  }
-  auto* wl = dynamic_cast<CryptoNote::WalletLegacy*>(m_wallet.get());
-  if (!wl || !wl->pqEnabled()) {
-    fail_msg_writer() << "Bridging is unavailable for this wallet.";
-    return true;
-  }
-
-  CryptoPQ::KemPublicKey destView;
-  CryptoPQ::DsaPublicKey destSpend;
-  if (!resolvePqRecipient(args[0], destView, destSpend)) {
-    fail_msg_writer() << "Recipient is not a valid PQ address or account number.";
-    return true;
-  }
-  uint64_t amount = 0;
-  if (!m_currency.parseAmount(args[1], amount) || amount == 0) {
-    fail_msg_writer() << "Invalid amount.";
-    return true;
-  }
-
-  std::cout << "Bridging " << m_currency.formatAmount(amount)
-            << " from your LEGACY balance to a PQ address.\n"
-            << "This is ONE-WAY: bridged funds can only be spent as PQ funds. Continue? (Y/n): ";
-  std::string confirm;
-  std::getline(std::cin, confirm);
-  if (!confirm.empty() && confirm[0] != 'y' && confirm[0] != 'Y') {
-    logger(INFO) << "Cancelled.";
-    return true;
-  }
-
-  try {
-    uint64_t fee = 0;
-    CryptoNote::Transaction tx = wl->createBridgeTransaction(
-        destView, destSpend, amount, m_node->getMinimalFee(),
-        m_currency.minMixin(), fee);
-
-    success_msg_writer() << "Built bridge transaction (fee " << m_currency.formatAmount(fee) << "). Relaying...";
-
-    std::promise<std::error_code> promise;
-    auto future = promise.get_future();
-    m_node->relayTransaction(tx, [&promise](std::error_code ec) { promise.set_value(ec); });
-    std::error_code ec = future.get();
-    if (ec) {
-      fail_msg_writer() << "Failed to relay bridge transaction: " << ec.message();
-      return true;
-    }
-    success_msg_writer(true) << "Bridge transaction sent. Hash: "
-                             << Common::podToHex(CryptoNote::getObjectHash(tx));
-    logger(INFO) << "The migrated funds will appear in your PQ balance once confirmed.";
-  } catch (const std::exception& e) {
-    fail_msg_writer() << "Bridge failed: " << e.what();
-  }
-  return true;
 }
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::process_command(const std::vector<std::string> &args) {

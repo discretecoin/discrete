@@ -24,10 +24,10 @@
 #include "crypto_pq/PqSeed.h"
 #include "crypto_pq/PqScan.h"
 
-// Wallet-core bridge between a classical Karbo identity and its post-quantum
-// (Phase-1) identity. The PQ keypairs are derived deterministically from the
-// classical account's spend secret key, so the SAME 25-word mnemonic that backs
-// up a Karbo wallet also recovers its PQ funds — no second seed to store.
+// Wallet-core link between a wallet's mnemonic-backed account secret and its
+// post-quantum identity. The PQ keypairs are derived deterministically from the
+// account's spend secret key, so the SAME 25-word mnemonic that backs up the
+// wallet also recovers its PQ funds — no second seed to store.
 //
 //   seed_master = HKDF-SHA3-256(IKM = classical spendSecretKey (32 B),
 //                               salt = 0x00*32,

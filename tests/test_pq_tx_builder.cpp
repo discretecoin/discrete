@@ -198,17 +198,6 @@ TEST(PqTxBuilder, RejectsOverspend) {
                  std::runtime_error);
 }
 
-// --- TX_BRIDGE (legacy -> PQ) ---------------------------------------------
-
-// Discrete has no legacy chain, so the bridge builder is a hard stub: it throws
-// rather than constructing a (consensus-rejected) TX_BRIDGE.
-TEST(PqBridgeBuilder, BuilderThrowsInDiscrete) {
-    PqWalletKeys recip = derivePqWalletKeys(spendSecret(9, 1));
-    std::vector<BridgeLegacyInput> ins(1);  // contents irrelevant; builder rejects outright
-    PqSendOutput out{recip.viewPub, recip.spendPub, 900000};
-    EXPECT_THROW(buildBridgeTransaction(ins, {out}), std::runtime_error);
-}
-
 // --- TX_FREE_REG (zero-fee account registration) ---------------------------
 
 TEST(PqFreeReg, BuildsValidRegistration) {

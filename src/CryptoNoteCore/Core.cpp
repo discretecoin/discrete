@@ -357,9 +357,9 @@ bool Core::check_tx_unmixable(const Transaction& tx, const Crypto::Hash& txHash,
 }
 
 bool Core::check_tx_semantic(const Transaction& tx, const Crypto::Hash& txHash, bool keeped_by_block) {
-  // PQ (v2) transactions. TX_PQ has a fully self-contained pipeline; TX_BRIDGE
-  // is a classical-input tx with PQ outputs, so it runs its own shape check and
-  // then continues through the classical semantic checks below.
+  // PQ (v2) transactions. Every Discrete tx is PQ-native: TX_PQ has a fully
+  // self-contained pipeline, TX_FREE_REG is a zero-fee registration; any other
+  // subtype (including the permanently-reserved 0x02) is rejected.
   if (tx.version >= TRANSACTION_VERSION_1) {
     std::string pqErr;
     if (tx.txType == TX_PQ) {
@@ -368,12 +368,6 @@ bool Core::check_tx_semantic(const Transaction& tx, const Crypto::Hash& txHash, 
         return false;
       }
       return true;
-    } else if (tx.txType == TX_BRIDGE) {
-      if (!checkBridgeTransactionSemantic(tx, &pqErr)) {
-        logger(ERROR) << "bridge tx semantic check failed (" << pqErr << ") for tx id= " << Common::podToHex(txHash);
-        return false;
-      }
-      // fall through to classical checks (classical inputs + ring signatures)
     } else if (tx.txType == TX_FREE_REG) {
       if (!checkFreeRegTransactionSemantic(tx, &pqErr, m_currency.freeRegPowTarget())) {
         logger(ERROR) << "free-reg tx semantic check failed (" << pqErr << ") for tx id= " << Common::podToHex(txHash);
@@ -1276,11 +1270,10 @@ bool Core::handleIncomingTransaction(const Transaction& tx, const Crypto::Hash& 
   
     // Legacy fee/mixin accounting reads classical KeyInput amounts and ring
     // sizes. TX_PQ has neither — its fee floor (MIN_PQ_FEE_PER_1000_BYTES) and the
-    // value balance are enforced in checkPqTransactionInputs. TX_BRIDGE keeps
-    // classical inputs, so these still apply to it.
+    // value balance are enforced in checkPqTransactionInputs.
     const bool pqOnlyInputs = tx.version >= TRANSACTION_VERSION_1 && tx.txType == TX_PQ;
-    // The decomposed-amount rule is a classical-output rule; PQ outputs (TX_PQ
-    // and TX_BRIDGE) carry arbitrary plain amounts.
+    // The decomposed-amount rule is a classical-output rule; PQ outputs carry
+    // arbitrary plain amounts.
     const bool hasPqOutputs = tx.version >= TRANSACTION_VERSION_1;
 
     if (!pqOnlyInputs) {

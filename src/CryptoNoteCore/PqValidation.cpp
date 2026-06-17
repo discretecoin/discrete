@@ -161,53 +161,6 @@ bool checkPqTransactionSemantic(const Transaction& tx, std::string* error) {
   return true;
 }
 
-bool checkBridgeTransactionSemantic(const Transaction& tx, std::string* error) {
-  // TX_BRIDGE (legacy→PQ migration) is not supported in Discrete.
-  (void)tx;
-  return fail(error, "TX_BRIDGE not supported in Discrete");
-
-  size_t pqOutputCount = 0;
-  bool hasPqOutput = false;
-  std::unordered_set<Crypto::PublicKey> keyOutputsSeen;
-  for (const auto& out : tx.outputs) {
-    if (out.amount == 0) {
-      return fail(error, "bridge output with zero amount");
-    }
-    if (out.target.type() == typeid(PqOutput)) {
-      hasPqOutput = true;
-      ++pqOutputCount;
-      if (pqOutputCount > parameters::MAX_PQ_OUTPUTS_PER_TX) {
-        return fail(error, "too many bridge PQ outputs");
-      }
-      if (!pqOutputFieldsValid(boost::get<PqOutput>(out.target))) {
-        return fail(error, "bridge PqOutput field has wrong length");
-      }
-      continue;
-    }
-
-    if (out.target.type() == typeid(KeyOutput)) {
-      const Crypto::PublicKey& key = boost::get<KeyOutput>(out.target).key;
-      if (!Crypto::check_key(key)) {
-        return fail(error, "bridge KeyOutput has invalid key");
-      }
-      if (keyOutputsSeen.find(key) != keyOutputsSeen.end()) {
-        return fail(error, "bridge has duplicate KeyOutput target");
-      }
-      keyOutputsSeen.insert(key);
-      continue;
-    }
-
-    return fail(error, "TX_BRIDGE output has unsupported type");
-  }
-  if (!hasPqOutput) {
-    return fail(error, "TX_BRIDGE has no PqOutput");
-  }
-  if (toBinaryArray(tx).size() > parameters::MAX_PQ_TX_SIZE) {
-    return fail(error, "bridge tx exceeds MAX_PQ_TX_SIZE");
-  }
-  return true;
-}
-
 bool checkFreeRegPow(const std::array<uint8_t, 1184>& viewPub,
                      const Crypto::Hash& refBlockHash, uint64_t nonce,
                      uint64_t target) {
@@ -303,7 +256,7 @@ bool checkPqTransactionInputs(const Transaction& tx,
       return fail(error, "referenced output is not a PqOutput");
     }
     // NOTE: coinbase PqOutputs ARE spendable in Discrete (they are the sole
-    // funds source — there is no legacy chain or bridge). Coinbase maturity
+    // funds source — there is no legacy chain). Coinbase maturity
     // (minedMoneyUnlockWindow) is height-dependent, so it is enforced in the
     // chain-context layer (Blockchain::checkPqInputs via is_tx_spendheight_unlocked),
     // not here in the context-free shape/balance check.

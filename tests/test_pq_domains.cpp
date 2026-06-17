@@ -46,7 +46,8 @@ static_assert(TRANSACTION_VERSION_1 == 1,
 
 static_assert(TX_COINBASE == 0x00, "TX_COINBASE changed — hard fork");
 static_assert(TX_PQ       == 0x01, "TX_PQ changed — hard fork");
-static_assert(TX_BRIDGE   == 0x02, "TX_BRIDGE changed — hard fork");
+// 0x02 is permanently reserved (never-deployed legacy bridge subtype); it has no
+// named constant and consensus rejects it as an unknown PQ subtype.
 static_assert(TX_FREE_REG == 0x03, "TX_FREE_REG changed — hard fork");
 
 // ===========================================================================
@@ -125,7 +126,7 @@ TEST(PqDomains, TransactionVersion) {
 TEST(PqDomains, TxSubtypes) {
     EXPECT_EQ(static_cast<unsigned>(TX_COINBASE), 0x00u);
     EXPECT_EQ(static_cast<unsigned>(TX_PQ),       0x01u);
-    EXPECT_EQ(static_cast<unsigned>(TX_BRIDGE),   0x02u);  // reserved; consensus rejects
+    // 0x02 stays reserved (no named constant; consensus rejects it as unknown).
     EXPECT_EQ(static_cast<unsigned>(TX_FREE_REG), 0x03u);
 }
 

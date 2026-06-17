@@ -151,7 +151,7 @@ bool check_outs_valid(const TransactionPrefix& tx, std::string* error) {
   std::unordered_set<PublicKey> keys_seen;
   for (const TransactionOutput& out : tx.outputs) {
     if (tx.version >= TRANSACTION_VERSION_1 && out.target.type() == typeid(PqOutput)) {
-      if (tx.txType != TX_PQ && tx.txType != TX_BRIDGE) {
+      if (tx.txType != TX_PQ) {
         if (error) *error = "PQ output is not allowed for this tx type";
         return false;
       }
@@ -163,11 +163,12 @@ bool check_outs_valid(const TransactionPrefix& tx, std::string* error) {
     }
 
     if (out.target.type() == typeid(KeyOutput)) {
-      if (tx.version >= TRANSACTION_VERSION_1 && tx.txType != TX_BRIDGE) {
-        if (error) *error = "KeyOutput is not allowed for this PQ tx type";
+      if (tx.version >= TRANSACTION_VERSION_1) {
+        // Discrete has no classical (ECC) outputs — only PQ outputs exist.
+        if (error) *error = "KeyOutput is not allowed in Discrete";
         return false;
       }
- 
+
       if (out.amount == 0) {
         if (error) {
           *error = "Zero amount ouput";

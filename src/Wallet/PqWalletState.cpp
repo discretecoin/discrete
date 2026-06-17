@@ -67,7 +67,7 @@ bool PqWalletState::processTransaction(const TransactionPrefix& tx, const Crypto
   //    outputs means that output is now spent.
   for (const auto& input : tx.inputs) {
     if (input.type() != typeid(PqInput)) {
-      continue;  // bridge KeyInputs never spend PQ outputs
+      continue;  // only PqInputs spend PQ outputs (coinbase BaseInput etc. do not)
     }
     const PqInput& in = boost::get<PqInput>(input);
     if (in.authPub.size() != PQ_AUTH_PUB_SIZE || in.rhoReveal.size() != PQ_RHO_SIZE) {
@@ -93,7 +93,7 @@ bool PqWalletState::processTransaction(const TransactionPrefix& tx, const Crypto
   }
 
   // 2. Output recognition. inputsHash seeds every output's out_context; the
-  //    wallet-side helper handles both TX_PQ (PqInput) and TX_BRIDGE (KeyInput).
+  //    wallet-side helper derives it from the tx's PqInputs.
   CryptoPQ::Hash256 ih = pqTransactionInputsHash(tx);
   for (uint32_t i = 0; i < tx.outputs.size(); ++i) {
     const TransactionOutput& out = tx.outputs[i];

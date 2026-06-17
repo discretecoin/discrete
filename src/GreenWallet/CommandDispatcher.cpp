@@ -152,10 +152,6 @@ bool handleCommand(const std::string command,
     {
         pqTransfer(walletInfo, node);
     }
-    else if (command == "bridge_legacy")
-    {
-        bridgeLegacy(walletInfo, node);
-    }
     else if (command == "pq_register")
     {
         pqRegister(walletInfo, node);
