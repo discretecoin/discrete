@@ -2441,34 +2441,47 @@ bool simple_wallet::save_address_to_file(const std::vector<std::string> &args/* 
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::sign_message(const std::vector<std::string> &args) {
   if (args.size() != 1) {
-    fail_msg_writer() << "usage: sign \"message to sign\" (use quotes if case of spaces)";
+    fail_msg_writer() << "usage: sign_message \"message to sign\" (use quotes if it has spaces)";
     return true;
   }
   if (m_trackingWallet) {
     fail_msg_writer() << "wallet is watch-only and cannot sign";
     return true;
   }
-  std::string message = args[0];
-  std::string signature = m_wallet->sign_message(message);
+  // Discrete signs with the wallet's post-quantum (ML-DSA) spend key — the same
+  // identity its PQ address publishes — not the classical ECC key.
+  CryptoNote::AccountKeys keys;
+  m_wallet->getAccountKeys(keys);
+  if (keys.spendSecretKey == boost::value_initialized<Crypto::SecretKey>()) {
+    fail_msg_writer() << "Wallet has no spend secret key; cannot sign.";
+    return true;
+  }
+  CryptoNote::PqWalletKeys pq = CryptoNote::derivePqWalletKeys(keys.spendSecretKey);
+  std::string signature = CryptoNote::signMessagePq(args[0], pq.spendSk);
   success_msg_writer() << signature;
   return true;
 }
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::verify_message(const std::vector<std::string> &args) {
   if (args.size() != 3) {
-    fail_msg_writer() << "usage: verify \"message to verify\" <address> <signature>";
+    fail_msg_writer() << "usage: verify_message \"message\" <pq_address|account_number> <signature>";
     return true;
   }
-  std::string message = args[0];
-  std::string address_string = args[1];
-  std::string signature = args[2];
-  CryptoNote::AccountPublicAddress address;
-  if (!m_currency.parseAccountAddressString(address_string, address)) {
-    fail_msg_writer() << "failed to parse address " << address_string;
+  const std::string& message = args[0];
+  const std::string& address_string = args[1];
+  const std::string& signature = args[2];
+
+  // The signer is identified by its PQ (ML-DSA) spend key. Accept either a raw PQ
+  // address (carries the key directly) or a registered account number (resolved
+  // via the node), reusing the same resolver pq_transfer uses.
+  CryptoPQ::KemPublicKey viewPub;
+  CryptoPQ::DsaPublicKey spendPub;
+  if (!resolvePqRecipient(address_string, viewPub, spendPub)) {
+    fail_msg_writer() << "failed to parse PQ address / account number " << address_string;
     return true;
   }
 
-  bool r = m_wallet->verify_message(message, address, signature);
+  bool r = CryptoNote::verifyMessagePq(message, spendPub, signature);
   if (!r) {
     fail_msg_writer() << "Invalid signature from " << address_string;
   } else {

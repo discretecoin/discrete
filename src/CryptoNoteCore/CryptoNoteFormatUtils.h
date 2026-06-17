@@ -39,6 +39,17 @@ bool getReserveProof(const std::vector<TransactionOutputInformation>& selectedTr
 std::string signMessage(const std::string &data, const CryptoNote::AccountKeys &keys);
 bool verifyMessage(const std::string &data, const CryptoNote::AccountPublicAddress &address, const std::string &signature, Logging::ILogger& log);
 
+// PQ message signing (ML-DSA-65). Discrete has no ECC account identity, so a
+// human-signed message is authorized by the wallet's long-term ML-DSA spend key
+// (the same key its PQ address publishes). The signed bytes are a domain-separated
+// SHA3-256 digest of `data`; the domain is distinct from every consensus signing
+// domain, so a message signature can never be replayed as a transaction signature.
+// The signature is base58-encoded with the CRYPTONOTE_KEYS_SIGNATURE_BASE58_PREFIX
+// tag (same tag as the classical scheme, but the blob is 3309 bytes vs. 64).
+// verifyMessagePq checks it against a PQ address's spendPub.
+std::string signMessagePq(const std::string &data, const CryptoPQ::DsaSecretKey &spendSk);
+bool verifyMessagePq(const std::string &data, const CryptoPQ::DsaPublicKey &spendPub, const std::string &signature);
+
 // Derive the Discrete PQ mining identity (ML-KEM view + ML-DSA spend keypair)
 // from a classical 32-byte spend secret. Mirrors Wallet/PqWallet
 // derivePqWalletKeys (CEMENTED domain "karbo-pq-wallet-seed-v1"), so the daemon

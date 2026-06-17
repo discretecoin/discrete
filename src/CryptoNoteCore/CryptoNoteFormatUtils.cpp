@@ -42,6 +42,7 @@
 #include "PqTxType.h"
 #include "crypto_pq/PqHash.h"
 #include "crypto_pq/PqSeed.h"
+#include "crypto_pq/PqDsa.h"
 
 using namespace Logging;
 using namespace Crypto;
@@ -540,6 +541,47 @@ std::string signMessage(const std::string &data, const CryptoNote::AccountKeys &
   Crypto::Signature signature;
   Crypto::generate_signature(hash, keys.address.spendPublicKey, keys.spendSecretKey, signature);
   return Tools::Base58::encode_addr(CryptoNote::parameters::CRYPTONOTE_KEYS_SIGNATURE_BASE58_PREFIX, std::string((const char *)&signature, sizeof(signature)));
+}
+
+namespace {
+// Wallet-layer message-signing domain. NOT a consensus constant, but signers and
+// verifiers must agree on it. It is deliberately distinct from every PqDerive
+// consensus domain (esp. kDomainTxSign) so a signed message digest can never
+// collide with a transaction signing digest.
+constexpr char kPqMessageDomain[] = "discrete-pq-message-v1";
+
+CryptoPQ::Hash256 pqMessageDigest(const std::string& data) {
+  std::vector<uint8_t> buf;
+  buf.reserve((sizeof(kPqMessageDomain) - 1) + data.size());
+  buf.insert(buf.end(), kPqMessageDomain, kPqMessageDomain + (sizeof(kPqMessageDomain) - 1));
+  buf.insert(buf.end(), data.begin(), data.end());
+  return CryptoPQ::sha3_256(buf.data(), buf.size());
+}
+}  // namespace
+
+std::string signMessagePq(const std::string& data, const CryptoPQ::DsaSecretKey& spendSk) {
+  CryptoPQ::Hash256 digest = pqMessageDigest(data);
+  CryptoPQ::DsaSignature sig = CryptoPQ::dsa_sign(spendSk, digest.data(), digest.size());
+  return Tools::Base58::encode_addr(
+      CryptoNote::parameters::CRYPTONOTE_KEYS_SIGNATURE_BASE58_PREFIX,
+      std::string(reinterpret_cast<const char*>(sig.data()), sig.size()));
+}
+
+bool verifyMessagePq(const std::string& data, const CryptoPQ::DsaPublicKey& spendPub,
+                     const std::string& signature) {
+  std::string decoded;
+  uint64_t prefix = 0;
+  if (!Tools::Base58::decode_addr(signature, prefix, decoded) ||
+      prefix != CryptoNote::parameters::CRYPTONOTE_KEYS_SIGNATURE_BASE58_PREFIX) {
+    return false;
+  }
+  if (decoded.size() != CryptoPQ::kDsaSignatureBytes) {
+    return false;
+  }
+  CryptoPQ::DsaSignature sig;
+  std::memcpy(sig.data(), decoded.data(), sig.size());
+  CryptoPQ::Hash256 digest = pqMessageDigest(data);
+  return CryptoPQ::dsa_verify(spendPub, digest.data(), digest.size(), sig);
 }
 
 void deriveMinerPqKeys(const Crypto::SecretKey& spendSecretKey,

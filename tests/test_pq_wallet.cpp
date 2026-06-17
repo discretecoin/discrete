@@ -10,6 +10,7 @@
 #include "gtest/gtest.h"
 
 #include "Wallet/PqWallet.h"
+#include "CryptoNoteCore/CryptoNoteFormatUtils.h"
 
 #include <array>
 #include <cstdint>
@@ -148,6 +149,47 @@ TEST(PqWallet, ChecksumTamperRejectedThroughParse) {
 
 // PQ account numbers reuse the shared CryptoNote::AccountNumber format; its
 // round-trip/checksum behaviour is covered by the AccountNumber tests, not here.
+
+// --- PQ message sign/verify (ML-DSA-65) ------------------------------------
+
+TEST(PqMessage, SignVerifyRoundTrip) {
+    PqWalletKeys keys = derivePqWalletKeys(makeSpendSecret(11, 7));
+    const std::string msg = "I, the holder of this PQ address, authorize payout #42.";
+    std::string sig = signMessagePq(msg, keys.spendSk);
+    ASSERT_FALSE(sig.empty());
+    EXPECT_TRUE(verifyMessagePq(msg, keys.spendPub, sig));
+}
+
+TEST(PqMessage, RejectsTamperedMessage) {
+    PqWalletKeys keys = derivePqWalletKeys(makeSpendSecret(11, 7));
+    std::string sig = signMessagePq("send 10 to Alice", keys.spendSk);
+    EXPECT_FALSE(verifyMessagePq("send 10 to Mallory", keys.spendPub, sig));
+}
+
+TEST(PqMessage, RejectsTamperedSignature) {
+    PqWalletKeys keys = derivePqWalletKeys(makeSpendSecret(11, 7));
+    const std::string msg = "hello world";
+    std::string sig = signMessagePq(msg, keys.spendSk);
+    ASSERT_GT(sig.size(), 4u);
+    // Flip a character in the middle of the base58 blob.
+    sig[sig.size() / 2] = (sig[sig.size() / 2] == 'A') ? 'B' : 'A';
+    EXPECT_FALSE(verifyMessagePq(msg, keys.spendPub, sig));
+}
+
+TEST(PqMessage, RejectsWrongSignerKey) {
+    PqWalletKeys signer = derivePqWalletKeys(makeSpendSecret(11, 7));
+    PqWalletKeys other  = derivePqWalletKeys(makeSpendSecret(11, 8));
+    const std::string msg = "ownership proof";
+    std::string sig = signMessagePq(msg, signer.spendSk);
+    EXPECT_TRUE(verifyMessagePq(msg, signer.spendPub, sig));
+    EXPECT_FALSE(verifyMessagePq(msg, other.spendPub, sig));
+}
+
+TEST(PqMessage, RejectsGarbageAndWrongPrefix) {
+    PqWalletKeys keys = derivePqWalletKeys(makeSpendSecret(11, 7));
+    EXPECT_FALSE(verifyMessagePq("m", keys.spendPub, "not-base58-at-all!!"));
+    EXPECT_FALSE(verifyMessagePq("m", keys.spendPub, ""));
+}
 
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
