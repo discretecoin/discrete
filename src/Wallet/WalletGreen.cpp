@@ -54,7 +54,9 @@
 #include "CryptoNoteCore/CryptoNoteSerialization.h"
 #include "Wallet/TransactionBuilder.h"
 #include "Wallet/PqWallet.h"
+#include "Wallet/PqTransactionBuilder.h"
 #include "CryptoNoteCore/CryptoNoteTools.h"
+#include "CryptoNoteCore/PqValidation.h"
 #include "CryptoNoteCore/TransactionApi.h"
 #include "CryptoNoteCore/TransactionExtra.h"
 #include "crypto/crypto.h"
@@ -3481,6 +3483,38 @@ std::string WalletGreen::getPqAddress() const {
   PqWalletKeys keys = derivePqWalletKeys(primary.secretKey);
   PqAddress addr = pqWalletAddress(keys, CryptoNote::parameters::CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX);
   return encodePqAddress(addr, PqAddressEncoding::Base58);
+}
+
+bool WalletGreen::getPqRegistrationKeysHex(std::string& viewHex, std::string& spendHex) const {
+  throwIfNotInitialized();
+  throwIfStopped();
+  if (getAddressCount() == 0) {
+    return false;
+  }
+  KeyPair primary = getAddressSpendKey(0);
+  if (primary.secretKey == NULL_SECRET_KEY) {
+    return false;  // tracking wallet: no PQ identity
+  }
+  PqWalletKeys keys = derivePqWalletKeys(primary.secretKey);
+  viewHex = Common::toHex(keys.viewPub.data(), keys.viewPub.size());
+  spendHex = Common::toHex(keys.spendPub.data(), keys.spendPub.size());
+  return true;
+}
+
+Transaction WalletGreen::buildPqFreeRegTransaction(const Crypto::Hash& refBlockHash) const {
+  throwIfNotInitialized();
+  throwIfStopped();
+  if (getAddressCount() == 0) {
+    throw std::runtime_error("wallet has no addresses");
+  }
+  KeyPair primary = getAddressSpendKey(0);
+  if (primary.secretKey == NULL_SECRET_KEY) {
+    throw std::runtime_error("tracking wallet cannot register a PQ account");
+  }
+  PqWalletKeys keys = derivePqWalletKeys(primary.secretKey);
+  // Shared anti-spam PoW grind (same helper simplewallet uses → same target).
+  uint64_t nonce = grindFreeRegPow(keys.viewPub, refBlockHash);
+  return buildFreeRegTransaction(keys.viewPub, keys.spendPub, refBlockHash, nonce);
 }
 
 void WalletGreen::startBlockchainSynchronizer() {

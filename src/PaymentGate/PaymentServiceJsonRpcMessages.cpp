@@ -204,6 +204,30 @@ void GetPqBalance::Response::serialize(CryptoNote::ISerializer& serializer) {
   serializer(pqEnabled, "pqEnabled");
 }
 
+void RegisterPqAccount::Request::serialize(CryptoNote::ISerializer& serializer) {
+}
+
+void RegisterPqAccount::Response::serialize(CryptoNote::ISerializer& serializer) {
+  serializer(transactionHash, "transactionHash");
+}
+
+void RegisterPqAccountPaid::Request::serialize(CryptoNote::ISerializer& serializer) {
+}
+
+void RegisterPqAccountPaid::Response::serialize(CryptoNote::ISerializer& serializer) {
+  serializer(transactionHash, "transactionHash");
+}
+
+void GetPqAccountStatus::Request::serialize(CryptoNote::ISerializer& serializer) {
+}
+
+void GetPqAccountStatus::Response::serialize(CryptoNote::ISerializer& serializer) {
+  serializer(registered, "registered");
+  serializer(accountNumber, "accountNumber");
+  serializer(blockHeight, "blockHeight");
+  serializer(txIndex, "txIndex");
+}
+
 void GetBlockHashes::Request::serialize(CryptoNote::ISerializer& serializer) {
   bool r = serializer(firstBlockIndex, "firstBlockIndex");
   r &= serializer(blockCount, "blockCount");

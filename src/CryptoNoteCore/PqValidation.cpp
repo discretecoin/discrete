@@ -181,6 +181,15 @@ bool checkFreeRegPow(const std::array<uint8_t, 1184>& viewPub,
   return lead <= target;
 }
 
+uint64_t grindFreeRegPow(const std::array<uint8_t, 1184>& viewPub,
+                         const Crypto::Hash& refBlockHash, uint64_t powTarget) {
+  uint64_t nonce = 0;
+  while (!checkFreeRegPow(viewPub, refBlockHash, nonce, powTarget)) {
+    ++nonce;
+  }
+  return nonce;
+}
+
 bool checkFreeRegTransactionSemantic(const Transaction& tx, std::string* error, uint64_t powTarget) {
   if (tx.txType != TX_FREE_REG) {
     return fail(error, "not a TX_FREE_REG subtype");

@@ -276,6 +276,54 @@ struct GetPqBalance {
   };
 };
 
+// Register this wallet's PQ identity for free via an anti-spam-PoW TX_FREE_REG
+// (no funds required). Returns the registration transaction hash; poll
+// getPqAccountStatus until it confirms. Mirrors simplewallet's `pq_register`.
+struct RegisterPqAccount {
+  struct Request {
+    void serialize(CryptoNote::ISerializer& serializer);
+  };
+
+  struct Response {
+    std::string transactionHash;
+
+    void serialize(CryptoNote::ISerializer& serializer);
+  };
+};
+
+// Paid PQ account registration (no PoW). NOT YET SUPPORTED over walletd: it
+// requires spending PQ funds + fee via a TX_PQ, and walletd has no PQ-send path
+// yet. The handler returns a not-supported error rather than building a tx that
+// consensus would reject. Use the free RegisterPqAccount instead.
+struct RegisterPqAccountPaid {
+  struct Request {
+    void serialize(CryptoNote::ISerializer& serializer);
+  };
+
+  struct Response {
+    std::string transactionHash;
+
+    void serialize(CryptoNote::ISerializer& serializer);
+  };
+};
+
+// Poll the registration status of this wallet's PQ identity against the node's
+// PQ account registry. `accountNumber` (H-I-C) is set only once `registered`.
+struct GetPqAccountStatus {
+  struct Request {
+    void serialize(CryptoNote::ISerializer& serializer);
+  };
+
+  struct Response {
+    bool registered;
+    std::string accountNumber;  // H-I-C; empty until registered
+    uint32_t blockHeight;
+    uint32_t txIndex;
+
+    void serialize(CryptoNote::ISerializer& serializer);
+  };
+};
+
 struct GetBlockHashes {
   struct Request {
     uint32_t firstBlockIndex;

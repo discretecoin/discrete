@@ -205,9 +205,11 @@ TEST(PqFreeReg, BuildsValidRegistration) {
     Crypto::Hash ref;
     for (int i = 0; i < 32; ++i) ref.data[i] = static_cast<uint8_t>(i + 1);
 
-    // Grind the anti-spam PoW (instant under the current max-target placeholder).
-    uint64_t nonce = 0;
-    while (!CryptoNote::checkFreeRegPow(me.viewPub, ref, nonce)) ++nonce;
+    // Grind the anti-spam PoW via the shared helper (the same one simplewallet
+    // and walletd call). Instant under the current max-target placeholder.
+    uint64_t nonce = CryptoNote::grindFreeRegPow(me.viewPub, ref);
+    // The helper must return a nonce that actually satisfies the predicate.
+    EXPECT_TRUE(CryptoNote::checkFreeRegPow(me.viewPub, ref, nonce));
 
     Transaction tx = buildFreeRegTransaction(me.viewPub, me.spendPub, ref, nonce);
     EXPECT_EQ(tx.version, TRANSACTION_VERSION_1);

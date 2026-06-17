@@ -77,6 +77,15 @@ bool checkFreeRegPow(const std::array<uint8_t, 1184>& viewPub,
                      const Crypto::Hash& refBlockHash, uint64_t nonce,
                      uint64_t target = parameters::FREE_REG_POW_TARGET);
 
+// Grind the free-reg anti-spam PoW: return the smallest nonce such that
+// checkFreeRegPow(viewPub, refBlockHash, nonce, powTarget) holds. Shared by every
+// wallet front-end (simplewallet, walletd) so they all grind to the same
+// consensus target. Always terminates (the predicate is satisfiable for some
+// nonce), but the work scales with 1/powTarget.
+uint64_t grindFreeRegPow(const std::array<uint8_t, 1184>& viewPub,
+                         const Crypto::Hash& refBlockHash,
+                         uint64_t powTarget = parameters::FREE_REG_POW_TARGET);
+
 // Context-free input/balance/signature checks given resolved referenced outputs
 // (resolved[i] corresponds to tx.inputs[i]). On success, *outNullifiers (if not
 // null) is filled with each input's nullifier so the caller can test them

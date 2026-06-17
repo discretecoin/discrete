@@ -58,6 +58,13 @@ public:
   // secret — the same address simplewallet's `pq_address` prints. Empty string
   // for a tracking wallet (no spend secret → no PQ identity).
   std::string getPqAddress() const;
+  // Hex-encode this wallet's PQ identity pubkeys (view, spend) for node PQ-account
+  // queries. Returns false (and leaves the strings untouched) for a tracking wallet.
+  bool getPqRegistrationKeysHex(std::string& viewHex, std::string& spendHex) const;
+  // Build a signed TX_FREE_REG registering this wallet's PQ identity, grinding the
+  // anti-spam PoW against `refBlockHash` (a recent main-chain block). The caller
+  // relays the returned transaction. Throws on a tracking wallet.
+  Transaction buildPqFreeRegTransaction(const Crypto::Hash& refBlockHash) const;
 
   virtual void initialize(const std::string& path, const std::string& password) override;
   virtual void initializeWithViewKey(const std::string& path, const std::string& password, const Crypto::SecretKey& viewSecretKey) override;

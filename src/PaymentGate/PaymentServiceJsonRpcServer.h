@@ -103,6 +103,9 @@ private:
   std::error_code handleGetAddressesCount(const GetAddressesCount::Request& request, GetAddressesCount::Response& response);
   std::error_code handleGetPqAddress(const GetPqAddress::Request& request, GetPqAddress::Response& response);
   std::error_code handleGetPqBalance(const GetPqBalance::Request& request, GetPqBalance::Response& response);
+  std::error_code handleRegisterPqAccount(const RegisterPqAccount::Request& request, RegisterPqAccount::Response& response);
+  std::error_code handleRegisterPqAccountPaid(const RegisterPqAccountPaid::Request& request, RegisterPqAccountPaid::Response& response);
+  std::error_code handleGetPqAccountStatus(const GetPqAccountStatus::Request& request, GetPqAccountStatus::Response& response);
   std::error_code handleValidateAddress(const ValidateAddress::Request& request, ValidateAddress::Response& response);
   std::error_code handleGetReserveProof(const GetReserveProof::Request& request, GetReserveProof::Response& response);
   std::error_code handleSignMessage(const SignMessage::Request& request, SignMessage::Response& response);

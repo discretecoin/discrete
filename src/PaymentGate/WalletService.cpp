@@ -46,6 +46,8 @@
 
 #include "Wallet/WalletGreen.h"
 #include "Wallet/LegacyKeysImporter.h"
+#include "AccountNumber.h"
+#include "CryptoNoteCore/CryptoNoteTools.h"
 #include "Wallet/WalletErrors.h"
 #include "Wallet/WalletUtils.h"
 #include "WalletServiceErrorCategory.h"
@@ -1351,6 +1353,112 @@ std::error_code WalletService::getPqBalance(uint64_t& availableBalance, uint32_t
   }
 
   logger(Logging::DEBUGGING) << "PQ available balance: " << availableBalance << ", scanned height: " << scannedHeight;
+  return std::error_code();
+}
+
+std::error_code WalletService::registerPqAccount(std::string& transactionHash) {
+  try {
+    System::EventLock lk(readyEvent);
+    logger(Logging::DEBUGGING) << "Registering PQ account (free, anti-spam PoW)";
+
+    auto* greenWallet = dynamic_cast<CryptoNote::WalletGreen*>(&wallet);
+    if (greenWallet == nullptr || !greenWallet->pqEnabled()) {
+      logger(Logging::WARNING) << "PQ registration unavailable (tracking wallet or no spend key)";
+      return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
+    }
+
+    // Reference a recent main-chain block (validated within FREE_REG_REF_WINDOW).
+    Crypto::Hash refBlockHash = node.getLastLocalBlockHeaderInfo().hash;
+    if (refBlockHash == Crypto::Hash{}) {
+      logger(Logging::WARNING) << "Node has no known block to reference yet";
+      return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
+    }
+
+    // Build (grind PoW) inside the wallet, then relay through the node. The node
+    // proxy runs on its own dispatcher thread, so the future wait does not deadlock.
+    CryptoNote::Transaction tx = greenWallet->buildPqFreeRegTransaction(refBlockHash);
+
+    auto relayCompleted = std::promise<std::error_code>();
+    auto relayFuture = relayCompleted.get_future();
+    node.relayTransaction(tx, [&relayCompleted](std::error_code error) {
+      auto detached = std::move(relayCompleted);
+      detached.set_value(error);
+    });
+    std::error_code relayError = relayFuture.get();
+    if (relayError) {
+      logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Failed to relay PQ registration: " << relayError.message();
+      return relayError;
+    }
+
+    transactionHash = Common::podToHex(CryptoNote::getObjectHash(tx));
+  } catch (std::system_error& x) {
+    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while registering PQ account: " << x.what();
+    return x.code();
+  } catch (std::exception& e) {
+    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while registering PQ account: " << e.what();
+    return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
+  }
+
+  logger(Logging::DEBUGGING) << "PQ registration submitted, tx hash: " << transactionHash;
+  return std::error_code();
+}
+
+std::error_code WalletService::registerPqAccountPaid(std::string& transactionHash) {
+  // Paid registration must spend PQ funds + a fee via a TX_PQ carrying the
+  // registration extra. walletd has no PQ-send path yet, so rather than build a
+  // transaction consensus would reject, report this as unsupported. Use the free
+  // registerPqAccount (anti-spam PoW) instead. See docs/WALLETD-PQ.md.
+  (void)transactionHash;
+  logger(Logging::WARNING, Logging::BRIGHT_YELLOW)
+      << "registerPqAccountPaid is not supported over walletd yet (needs PQ-send); use registerPqAccount";
+  return make_error_code(std::errc::function_not_supported);
+}
+
+std::error_code WalletService::getPqAccountStatus(bool& registered, std::string& accountNumber,
+                                                  uint32_t& blockHeight, uint32_t& txIndex) {
+  try {
+    System::EventLock lk(readyEvent);
+    logger(Logging::DEBUGGING) << "Getting PQ account status";
+
+    registered = false;
+    accountNumber.clear();
+    blockHeight = 0;
+    txIndex = 0;
+
+    auto* greenWallet = dynamic_cast<CryptoNote::WalletGreen*>(&wallet);
+    if (greenWallet == nullptr) {
+      return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
+    }
+    std::string viewHex, spendHex;
+    if (!greenWallet->getPqRegistrationKeysHex(viewHex, spendHex)) {
+      // Tracking wallet / no PQ identity: nothing to register, not registered.
+      return std::error_code();
+    }
+
+    auto statusCompleted = std::promise<std::error_code>();
+    auto statusFuture = statusCompleted.get_future();
+    node.getPqAccount(viewHex, spendHex, registered, blockHeight, txIndex,
+                      [&statusCompleted](std::error_code error) {
+                        auto detached = std::move(statusCompleted);
+                        detached.set_value(error);
+                      });
+    std::error_code statusError = statusFuture.get();
+    if (statusError) {
+      logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Failed to query PQ account: " << statusError.message();
+      return statusError;
+    }
+
+    if (registered) {
+      accountNumber = CryptoNote::AccountNumber{blockHeight, txIndex}.toString();
+    }
+  } catch (std::system_error& x) {
+    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while getting PQ account status: " << x.what();
+    return x.code();
+  } catch (std::exception& e) {
+    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while getting PQ account status: " << e.what();
+    return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
+  }
+
   return std::error_code();
 }
 

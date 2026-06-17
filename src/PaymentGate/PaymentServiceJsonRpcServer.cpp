@@ -66,6 +66,9 @@ PaymentServiceJsonRpcServer::PaymentServiceJsonRpcServer(System::Dispatcher* sys
   handlers.emplace("getAddressesCount", jsonHandler<GetAddressesCount::Request, GetAddressesCount::Response>(std::bind(&PaymentServiceJsonRpcServer::handleGetAddressesCount, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("getPqAddress", jsonHandler<GetPqAddress::Request, GetPqAddress::Response>(std::bind(&PaymentServiceJsonRpcServer::handleGetPqAddress, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("getPqBalance", jsonHandler<GetPqBalance::Request, GetPqBalance::Response>(std::bind(&PaymentServiceJsonRpcServer::handleGetPqBalance, this, std::placeholders::_1, std::placeholders::_2)));
+  handlers.emplace("registerPqAccount", jsonHandler<RegisterPqAccount::Request, RegisterPqAccount::Response>(std::bind(&PaymentServiceJsonRpcServer::handleRegisterPqAccount, this, std::placeholders::_1, std::placeholders::_2)));
+  handlers.emplace("registerPqAccountPaid", jsonHandler<RegisterPqAccountPaid::Request, RegisterPqAccountPaid::Response>(std::bind(&PaymentServiceJsonRpcServer::handleRegisterPqAccountPaid, this, std::placeholders::_1, std::placeholders::_2)));
+  handlers.emplace("getPqAccountStatus", jsonHandler<GetPqAccountStatus::Request, GetPqAccountStatus::Response>(std::bind(&PaymentServiceJsonRpcServer::handleGetPqAccountStatus, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("validateAddress", jsonHandler<ValidateAddress::Request, ValidateAddress::Response>(std::bind(&PaymentServiceJsonRpcServer::handleValidateAddress, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("getReserveProof", jsonHandler<GetReserveProof::Request, GetReserveProof::Response>(std::bind(&PaymentServiceJsonRpcServer::handleGetReserveProof, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("signMessage", jsonHandler<SignMessage::Request, SignMessage::Response>(std::bind(&PaymentServiceJsonRpcServer::handleSignMessage, this, std::placeholders::_1, std::placeholders::_2)));
@@ -289,6 +292,18 @@ std::error_code PaymentServiceJsonRpcServer::handleGetPqAddress(const GetPqAddre
 
 std::error_code PaymentServiceJsonRpcServer::handleGetPqBalance(const GetPqBalance::Request& request, GetPqBalance::Response& response) {
   return service.getPqBalance(response.availableBalance, response.scannedHeight, response.pqEnabled);
+}
+
+std::error_code PaymentServiceJsonRpcServer::handleRegisterPqAccount(const RegisterPqAccount::Request& request, RegisterPqAccount::Response& response) {
+  return service.registerPqAccount(response.transactionHash);
+}
+
+std::error_code PaymentServiceJsonRpcServer::handleRegisterPqAccountPaid(const RegisterPqAccountPaid::Request& request, RegisterPqAccountPaid::Response& response) {
+  return service.registerPqAccountPaid(response.transactionHash);
+}
+
+std::error_code PaymentServiceJsonRpcServer::handleGetPqAccountStatus(const GetPqAccountStatus::Request& request, GetPqAccountStatus::Response& response) {
+  return service.getPqAccountStatus(response.registered, response.accountNumber, response.blockHeight, response.txIndex);
 }
 
 }

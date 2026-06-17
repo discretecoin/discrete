@@ -2733,13 +2733,11 @@ bool simple_wallet::pq_register(const std::vector<std::string> &args) {
     return true;
   }
 
-  // Anti-spam PoW grind. Instant under the current placeholder target; when the
-  // target is lowered this is the loop that would move to a background thread.
+  // Anti-spam PoW grind (shared helper — walletd grinds the same way). Instant
+  // under the current placeholder target; if the target is lowered this is the
+  // call that would move to a background thread.
   success_msg_writer() << "Assigning your PQ account number (solving anti-spam PoW)...";
-  uint64_t nonce = 0;
-  while (!CryptoNote::checkFreeRegPow(pq.viewPub, refBlockHash, nonce)) {
-    ++nonce;
-  }
+  uint64_t nonce = CryptoNote::grindFreeRegPow(pq.viewPub, refBlockHash);
 
   try {
     CryptoNote::Transaction tx = CryptoNote::buildFreeRegTransaction(pq.viewPub, pq.spendPub, refBlockHash, nonce);
