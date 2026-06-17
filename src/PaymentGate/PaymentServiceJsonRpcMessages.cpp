@@ -187,6 +187,23 @@ void GetBalance::Response::serialize(CryptoNote::ISerializer& serializer) {
   serializer(lockedAmount, "lockedAmount");
 }
 
+void GetPqAddress::Request::serialize(CryptoNote::ISerializer& serializer) {
+}
+
+void GetPqAddress::Response::serialize(CryptoNote::ISerializer& serializer) {
+  serializer(pqAddress, "pqAddress");
+  serializer(pqEnabled, "pqEnabled");
+}
+
+void GetPqBalance::Request::serialize(CryptoNote::ISerializer& serializer) {
+}
+
+void GetPqBalance::Response::serialize(CryptoNote::ISerializer& serializer) {
+  serializer(availableBalance, "availableBalance");
+  serializer(scannedHeight, "scannedHeight");
+  serializer(pqEnabled, "pqEnabled");
+}
+
 void GetBlockHashes::Request::serialize(CryptoNote::ISerializer& serializer) {
   bool r = serializer(firstBlockIndex, "firstBlockIndex");
   r &= serializer(blockCount, "blockCount");

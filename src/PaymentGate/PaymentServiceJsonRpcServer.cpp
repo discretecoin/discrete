@@ -64,6 +64,8 @@ PaymentServiceJsonRpcServer::PaymentServiceJsonRpcServer(System::Dispatcher* sys
   handlers.emplace("getStatus", jsonHandler<GetStatus::Request, GetStatus::Response>(std::bind(&PaymentServiceJsonRpcServer::handleGetStatus, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("getAddresses", jsonHandler<GetAddresses::Request, GetAddresses::Response>(std::bind(&PaymentServiceJsonRpcServer::handleGetAddresses, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("getAddressesCount", jsonHandler<GetAddressesCount::Request, GetAddressesCount::Response>(std::bind(&PaymentServiceJsonRpcServer::handleGetAddressesCount, this, std::placeholders::_1, std::placeholders::_2)));
+  handlers.emplace("getPqAddress", jsonHandler<GetPqAddress::Request, GetPqAddress::Response>(std::bind(&PaymentServiceJsonRpcServer::handleGetPqAddress, this, std::placeholders::_1, std::placeholders::_2)));
+  handlers.emplace("getPqBalance", jsonHandler<GetPqBalance::Request, GetPqBalance::Response>(std::bind(&PaymentServiceJsonRpcServer::handleGetPqBalance, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("validateAddress", jsonHandler<ValidateAddress::Request, ValidateAddress::Response>(std::bind(&PaymentServiceJsonRpcServer::handleValidateAddress, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("getReserveProof", jsonHandler<GetReserveProof::Request, GetReserveProof::Response>(std::bind(&PaymentServiceJsonRpcServer::handleGetReserveProof, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("signMessage", jsonHandler<SignMessage::Request, SignMessage::Response>(std::bind(&PaymentServiceJsonRpcServer::handleSignMessage, this, std::placeholders::_1, std::placeholders::_2)));
@@ -279,6 +281,14 @@ std::error_code PaymentServiceJsonRpcServer::handleGetAddresses(const GetAddress
 
 std::error_code PaymentServiceJsonRpcServer::handleGetAddressesCount(const GetAddressesCount::Request& request, GetAddressesCount::Response& response) {
   return service.getAddressesCount(response.addresses_count);
+}
+
+std::error_code PaymentServiceJsonRpcServer::handleGetPqAddress(const GetPqAddress::Request& request, GetPqAddress::Response& response) {
+  return service.getPqAddress(response.pqAddress, response.pqEnabled);
+}
+
+std::error_code PaymentServiceJsonRpcServer::handleGetPqBalance(const GetPqBalance::Request& request, GetPqBalance::Response& response) {
+  return service.getPqBalance(response.availableBalance, response.scannedHeight, response.pqEnabled);
 }
 
 }

@@ -54,6 +54,10 @@ public:
   uint64_t pqActualBalance() const;
   std::vector<PqSpendInput> pqSpendableInputs() const;
   uint32_t pqSyncedHeight() const;
+  // The wallet's PQ address (base58), derived from the primary address's spend
+  // secret — the same address simplewallet's `pq_address` prints. Empty string
+  // for a tracking wallet (no spend secret → no PQ identity).
+  std::string getPqAddress() const;
 
   virtual void initialize(const std::string& path, const std::string& password) override;
   virtual void initializeWithViewKey(const std::string& path, const std::string& password, const Crypto::SecretKey& viewSecretKey) override;

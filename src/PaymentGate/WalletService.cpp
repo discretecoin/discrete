@@ -1302,6 +1302,58 @@ std::error_code WalletService::getAddressesCount(size_t& addressesCount) {
   return std::error_code();
 }
 
+std::error_code WalletService::getPqAddress(std::string& pqAddress, bool& pqEnabled) {
+  try {
+    System::EventLock lk(readyEvent);
+    logger(Logging::DEBUGGING) << "Getting PQ address";
+
+    // The PQ surface is concrete on WalletGreen, not on the IWallet interface.
+    auto* greenWallet = dynamic_cast<CryptoNote::WalletGreen*>(&wallet);
+    if (greenWallet == nullptr) {
+      pqEnabled = false;
+      pqAddress.clear();
+      return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
+    }
+    pqEnabled = greenWallet->pqEnabled();
+    pqAddress = greenWallet->getPqAddress();
+  } catch (std::system_error& x) {
+    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while getting PQ address: " << x.what();
+    return x.code();
+  } catch (std::exception& e) {
+    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while getting PQ address: " << e.what();
+    return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
+  }
+
+  return std::error_code();
+}
+
+std::error_code WalletService::getPqBalance(uint64_t& availableBalance, uint32_t& scannedHeight, bool& pqEnabled) {
+  try {
+    System::EventLock lk(readyEvent);
+    logger(Logging::DEBUGGING) << "Getting PQ balance";
+
+    auto* greenWallet = dynamic_cast<CryptoNote::WalletGreen*>(&wallet);
+    if (greenWallet == nullptr) {
+      pqEnabled = false;
+      availableBalance = 0;
+      scannedHeight = 0;
+      return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
+    }
+    pqEnabled = greenWallet->pqEnabled();
+    availableBalance = greenWallet->pqActualBalance();
+    scannedHeight = greenWallet->pqSyncedHeight();
+  } catch (std::system_error& x) {
+    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while getting PQ balance: " << x.what();
+    return x.code();
+  } catch (std::exception& e) {
+    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while getting PQ balance: " << e.what();
+    return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
+  }
+
+  logger(Logging::DEBUGGING) << "PQ available balance: " << availableBalance << ", scanned height: " << scannedHeight;
+  return std::error_code();
+}
+
 std::error_code WalletService::sendTransaction(const SendTransaction::Request& request, std::string& transactionHash, std::string& transactionSecretKey) {
   try {
     System::EventLock lk(readyEvent);

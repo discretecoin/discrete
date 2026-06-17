@@ -244,6 +244,38 @@ struct GetBalance {
   };
 };
 
+// PQ (post-quantum) address of the service's wallet. Discrete derives the PQ
+// identity from the primary address's spend secret, so there is one PQ address
+// per container; it matches simplewallet's `pq_address`.
+struct GetPqAddress {
+  struct Request {
+    void serialize(CryptoNote::ISerializer& serializer);
+  };
+
+  struct Response {
+    std::string pqAddress;  // empty if the wallet has no PQ identity (tracking)
+    bool pqEnabled;
+
+    void serialize(CryptoNote::ISerializer& serializer);
+  };
+};
+
+// PQ balance of the service's wallet. PQ funds are tracked separately from the
+// (unused) classical balance and are never combined. Mirrors `pq_balance`.
+struct GetPqBalance {
+  struct Request {
+    void serialize(CryptoNote::ISerializer& serializer);
+  };
+
+  struct Response {
+    uint64_t availableBalance;
+    uint32_t scannedHeight;
+    bool pqEnabled;
+
+    void serialize(CryptoNote::ISerializer& serializer);
+  };
+};
+
 struct GetBlockHashes {
   struct Request {
     uint32_t firstBlockIndex;

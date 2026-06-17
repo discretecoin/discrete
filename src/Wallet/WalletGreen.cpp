@@ -3468,6 +3468,21 @@ uint32_t WalletGreen::pqSyncedHeight() const {
   return m_pqConsumer ? m_pqConsumer->state().lastScannedHeight() : 0;
 }
 
+std::string WalletGreen::getPqAddress() const {
+  throwIfNotInitialized();
+  throwIfStopped();
+  if (getAddressCount() == 0) {
+    return std::string();
+  }
+  KeyPair primary = getAddressSpendKey(0);
+  if (primary.secretKey == NULL_SECRET_KEY) {
+    return std::string();  // tracking wallet: no PQ identity
+  }
+  PqWalletKeys keys = derivePqWalletKeys(primary.secretKey);
+  PqAddress addr = pqWalletAddress(keys, CryptoNote::parameters::CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX);
+  return encodePqAddress(addr, PqAddressEncoding::Base58);
+}
+
 void WalletGreen::startBlockchainSynchronizer() {
   if (!m_walletsContainer.empty() && !m_blockchainSynchronizerStarted) {
     m_logger(DEBUGGING) << "Starting BlockchainSynchronizer";

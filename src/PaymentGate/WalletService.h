@@ -101,6 +101,8 @@ public:
   std::error_code getTransactionProof(const std::string& transactionHash, const std::string& destinationAddress, const std::string& transactionSecretKey, std::string& transactionProof);
   std::error_code getAddresses(std::vector<std::string>& addresses);
   std::error_code getAddressesCount(size_t& addressesCount);
+  std::error_code getPqAddress(std::string& pqAddress, bool& pqEnabled);
+  std::error_code getPqBalance(uint64_t& availableBalance, uint32_t& scannedHeight, bool& pqEnabled);
   std::error_code sendTransaction(const SendTransaction::Request& request, std::string& transactionHash, std::string& transactionSecretKey);
   std::error_code createDelayedTransaction(const CreateDelayedTransaction::Request& request, std::string& transactionHash);
   std::error_code getDelayedTransactionHashes(std::vector<std::string>& transactionHashes);
