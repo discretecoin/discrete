@@ -26,8 +26,8 @@
 #include "PqKem.h"
 #include "PqDsa.h"
 
-// Domain-separated protocol derivations for the Karbo PQ transaction family
-// (transaction version 4, block major v7). See PQ Phase 1 spec §6 / §8.
+// Domain-separated protocol derivations for the Discrete PQ transaction family
+// (transaction version 1; PQ is active from genesis). See PQ Phase 1 spec §6 / §8.
 //
 // Every derivation here is consensus-critical: a byte-order or domain-string
 // mismatch between independent implementations is a chain split (spec §14).

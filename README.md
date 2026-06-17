@@ -1,124 +1,97 @@
-![Build check](https://github.com/seredat/karbowanec/workflows/Build%20check/badge.svg)
+# Discrete
 
-**HARDFORK AT HEIGHT 700000!!!** 
+**Discrete is a post-quantum-only cryptocurrency** — a CryptoNote-family chain in
+which *every block and every transaction is post-quantum from genesis*. There is
+no legacy elliptic-curve (ECC) chain, no ring signatures, and no migration
+"bridge": the quantum-resistant scheme is the only scheme the network has ever
+spoken.
 
-Karbo is people's electronic cash, a cryptocurrency, just like Bitcoin but Ukrainian and anonymous thanks to Cryptonote technology. The key principle of CryptoNote is adaptive parameters. Karbo already has adaptive block size limit and adaptive difficulty, which we improved, and which ensures it's stable emission rate and thus makes Karbo sound money.
+> Status: pre-launch. Consensus parameters, genesis, and network identity are
+> being finalized (see `docs/DISCRETE-COMPLETION-PLAN.md`). The PQ crypto core and
+> wallet stack are implemented and test-covered.
 
+## What "post-quantum" means here
 
+| Role | Primitive | Standard |
+|---|---|---|
+| Wallet **view** key / key exchange | ML-KEM-768 | FIPS 203 |
+| Wallet **spend** key / signatures | ML-DSA-65 | FIPS 204 |
+| Block signatures (identity-bound mining) | ML-DSA-65 | FIPS 204 |
+| Key/commitment derivations | SHA3-256 + HKDF-SHA3-256 | FIPS 202 / RFC 5869 |
+| Per-output payload encryption | ChaCha20-Poly1305 (IETF) | RFC 8439 |
+| Proof-of-work | yespower | — |
 
-## Building Karbo 
+Each identity has a long-term **ML-DSA-65 spend key** (spend authority) and an
+**ML-KEM-768 view key** (scanning / payment detection); a PQ address publishes
+both. Only the holder of the spend secret can spend — the sender, who runs the
+KEM encapsulation, cannot (see `docs/PQ-OWNERSHIP-FIX.md` for why this matters and
+how the naive KEM-derived-spend-key design is broken). Mining is **identity-bound**:
+the coinbase reward can only be spent by the same ML-DSA key that signed the block,
+so pooling hash power requires sharing a spend secret.
 
-### On *nix
+The consensus-frozen wire format, domain-separation tags, and blob sizes are
+documented in `docs/PQ-WIRE-FROZEN.md` and pinned by `tests/test_pq_domains.cpp`.
 
-Dependencies: GCC 4.7.3 or later, CMake 2.8.6 or later, and Boost 1.55 or later, OpenSSL.
+## Building (Windows / Visual Studio 2022, x64)
 
-You may download them from:
+Discrete vendors [liboqs](https://github.com/open-quantum-safe/liboqs) (ML-KEM /
+ML-DSA) and the other dependencies under `external/`. You need Visual Studio 2022
+(Desktop C++), CMake, and Boost.
 
-- https://gcc.gnu.org/
-- https://www.cmake.org/
-- https://www.boost.org/
-- https://www.openssl.org/
+Configure once:
 
-Alternatively, it may be possible to install them using a package manager.
-
-To build, change to a directory where this file is located, and run `make`.
-
-or
-
-Run these commands:
 ```
-cd ~
-sudo apt-get install build-essential git cmake libboost-all-dev libssl-dev
-git clone https://github.com/seredat/karbowanec.git
-cd karbowanec
-mkdir build
-cd build
-cmake ..
-cd ..
-make
-```
-
-The resulting executables can be found in `build/release/src`.
-
-**Advanced options:**
-
-* Parallel build: run `make -j<number of threads>` instead of `make`.
-* Debug build: run `make build-debug`.
-* Test suite: run `make test-release` to run tests in addition to building. Running `make test-debug` will do the same to the debug version.
-* Building with Clang: it may be possible to use Clang instead of GCC, but this may not work everywhere. To build, run `export CC=clang CXX=clang++` before running `make`.
-
-### On Windows
-
-Dependencies: MSVC 2013 or later, CMake 2.8.6 or later, Boost 1.55 or later, OpenSSL. You may download them from:
-
-* https://www.microsoft.com/
-* https://www.cmake.org/
-* https://www.boost.org/
-* https://slproweb.com/products/Win32OpenSSL.html
-
-To build, change to a directory where this file is located, and run these commands: 
-```
-mkdir build
-cd build
-cmake -G "Visual Studio 15 Win64" ..
+cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DBUILD_TESTS=ON -DOQS_BUILD_ONLY_LIB=ON
 ```
 
-And then do Build.
-Good luck!
+Build the binaries (Release):
 
-
-### Building for macOS
-
-Dependencies: cmake boost and Xcode
-
-Download Xcode from the App store and the Xcode command line tools with `xcode-select --install`
-For the other we recommand you to use [Homebrew](https://brew.sh)
-
-Continue with:
 ```
-brew install git cmake boost
-git clone https://github.com/seredat/karbowanec.git
-cd karbowanec
-cd build
-cmake ..
-make
+cmake --build build --config Release --target Daemon SimpleWallet PaymentGateService
 ```
 
+This produces, under `build/src/Release/`:
 
-### Building for Android on Linux
+| Binary | Target | Purpose |
+|---|---|---|
+| `discreted.exe` | `Daemon` | full node / miner |
+| `simplewallet.exe` | `SimpleWallet` | CLI wallet (full PQ support) |
+| `walletd.exe` | `PaymentGateService` | JSON-RPC wallet service (PaymentGate) |
+| `greenwallet.exe` | `GreenWallet` | alternative CLI wallet |
 
-Set up the 32 bit toolchain
-Download and extract the Android SDK and NDK
-```
-android-ndk-r15c/build/tools/make_standalone_toolchain.py --api 21 --stl=libc++ --arch arm --install-dir /opt/android/tool32
-```
+> Tests must be built and run with `--config Release` — the Debug config has a
+> Boost/gtest CRT mismatch.
 
-Download and setup the Boost 1.65.1 source
-```
-wget https://sourceforge.net/projects/boost/files/boost/1.65.1/boost_1_65_1.tar.bz2/download -O boost_1_65_1.tar.bz2
-tar xjf boost_1_65_1.tar.bz2
-cd boost_1_65_1
-./bootstrap.sh
-```
-apply patch from external/boost1_65_1/libs/filesystem/src
+### Running the test suite
 
-Build Boost with the 32 bit toolchain
 ```
-export PATH=/opt/android/tool32/arm-linux-androideabi/bin:/opt/android/tool32/bin:$PATH
-./b2 abi=aapcs architecture=arm binary-format=elf address-model=32 link=static runtime-link=static --with-chrono --with-date_time --with-filesystem --with-program_options --with-regex --with-serialization --with-system --with-thread --with-context --with-coroutine --with-atomic --build-dir=android32 --stagedir=android32 toolset=clang threading=multi threadapi=pthread target-os=android --reconfigure stage
+ctest --test-dir build -C Release -R Pq --output-on-failure
 ```
 
-Build Karbo for 32 bit Android
-```
-mkdir -p build/release.android32
-cd build/release.android32
-CC=clang CXX=clang++ cmake -D BUILD_TESTS=OFF -D ARCH="armv7-a" -ldl -D STATIC=ON -D BUILD_64=OFF -D CMAKE_BUILD_TYPE=release -D ANDROID=true -D BUILD_TAG="android" -D BOOST_ROOT=/opt/android/boost_1_65_1 -D BOOST_LIBRARYDIR=/opt/android/boost_1_65_1/android32/lib -D CMAKE_POSITION_INDEPENDENT_CODE:BOOL=true -D BOOST_IGNORE_SYSTEM_PATHS_DEFAULT=ON ../..
-make SimpleWallet
-```
+The `Pq*` suites cover the PQ crypto primitives, derivations, wire format,
+validation, scanning, and chain integration.
 
-### Portable and optimized binaries
+## PQ wallet quickstart (`simplewallet`)
 
-By default it will compile portable binary, to build optimized for your CPU, run Cmake with flag `-DARCH=native`.
+Start a node, then open or generate a wallet with `simplewallet`. The PQ
+identity is derived from the same 25-word mnemonic that backs the wallet — there
+is no second seed to store.
 
+| Command | Description |
+|---|---|
+| `pq_address [bech32]` | Show this wallet's PQ address (base58, or bech32m/QR) |
+| `pq_balance` | Show the PQ balance |
+| `pq_transfer <pq_address> <amount>` | Send PQ funds |
+| `pq_register` | Register a free account number (anti-spam PoW, no fee) |
+| `pq_register_paid` | Register an account number with a fee |
+| `pq_account` | Show this wallet's account number |
+| `sign_message "<msg>"` | Sign a message with the wallet's ML-DSA spend key |
+| `verify_message "<msg>" <pq_address> <sig>` | Verify an ML-DSA message signature |
 
+Mine to your own PQ identity with the daemon's `start_mining` (the reward is
+bound to the mining identity — see identity-bound mining above).
 
+## License
+
+Distributed under the terms of the GNU Lesser General Public License v3. Discrete
+is derived from Karbowanec / CryptoNote; see the per-file headers.

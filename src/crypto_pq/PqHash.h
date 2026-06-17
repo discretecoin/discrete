@@ -21,8 +21,8 @@
 #include <cstddef>
 #include <cstdint>
 
-// FIPS 202 SHA3-256 + RFC 5869 HKDF-SHA3-256 for the Karbo PQ transaction
-// family (block major v6, transaction version 1). See PQ Phase 1 spec §2.
+// FIPS 202 SHA3-256 + RFC 5869 HKDF-SHA3-256 for the Discrete PQ transaction
+// family (transaction version 1; PQ is active from genesis). See PQ Phase 1 spec §2.
 //
 // INTENTIONALLY DISTINCT from Crypto::cn_fast_hash and src/crypto/keccak.{c,h},
 // which implement CryptoNote-Keccak (padding 0x01) — those are NOT NIST SHA-3

@@ -47,10 +47,9 @@ public:
   INode& getNode() { return m_node; }
 
   // --- PQ (post-quantum) balance / spend (concrete; not on IWallet) ----------
-  // Mirrors WalletLegacy. Available only when PQ activation is scheduled and the
-  // wallet holds a spend secret (the PQ identity derives from the primary
-  // address's spend key). Tracking wallets / pre-activation chains return
-  // false / 0 / empty.
+  // Mirrors WalletLegacy. PQ is active from genesis, so the only requirement is
+  // that the wallet holds a spend secret (the PQ identity derives from the
+  // primary address's spend key). Tracking wallets return false / 0 / empty.
   bool pqEnabled() const { return static_cast<bool>(m_pqConsumer); }
   uint64_t pqActualBalance() const;
   std::vector<PqSpendInput> pqSpendableInputs() const;
@@ -345,8 +344,8 @@ protected:
   void startBlockchainSynchronizer();
   void stopBlockchainSynchronizer();
   // Create + register the PQ scanning consumer for the primary address, gated on
-  // a spend secret being present and PQ activation being scheduled. No-op if
-  // already created or gates fail.
+  // a spend secret being present (PQ is active from genesis). No-op if already
+  // created or the gate fails.
   void initPqConsumer(const Crypto::SecretKey& spendSecretKey, const SynchronizationStart& syncStart);
   // Serialize the PQ consumer's sync cursor + PqWalletState into m_pqState (for
   // save), and restore them from m_pqState into a live consumer (after load).
@@ -409,8 +408,8 @@ protected:
   bool m_blockchainSynchronizerStarted;
   BlockchainSynchronizer m_blockchainSynchronizer;
   TransfersSyncronizer m_synchronizer;
-  // PQ output scanning consumer (created lazily for the primary address when PQ
-  // activation is scheduled). Null otherwise. See initPqConsumer.
+  // PQ output scanning consumer (created lazily for the primary address when a
+  // spend secret is present). Null otherwise. See initPqConsumer.
   std::unique_ptr<PqConsumer> m_pqConsumer;
 
   System::Event m_eventOccurred;

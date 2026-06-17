@@ -399,15 +399,15 @@ namespace CryptoNote {
     bool checkTransactionInputs(const Transaction& tx, const Crypto::Hash& tx_prefix_hash,
                                  uint32_t* pmax_used_block_height = nullptr);
     bool checkTransactionInputs(const Transaction& tx, uint32_t* pmax_used_block_height = nullptr);
-    // v2 TX_PQ input validation: resolves referenced outputs from the DB, runs
-    // the context-free PQ checks (PqValidation), and rejects on-chain nullifier
-    // reuse. Height-gated to block major v6.
+    // TX_PQ input validation: resolves referenced outputs from the DB, runs the
+    // context-free PQ checks (PqValidation), and rejects on-chain nullifier reuse.
+    // No height gate — PQ is active from genesis.
     bool checkPqInputs(const Transaction& tx, uint32_t* pmax_used_block_height);
     // Sum of a TX_PQ's referenced-output amounts (resolved from the chain) — the
     // input-side value for fee/reward accounting, since PQ inputs carry no amount.
     uint64_t pqReferencedInputAmount(const Transaction& tx);
-    // v2 TX_FREE_REG chain-context checks: v6 gate, refBlockHash on the main
-    // chain within FREE_REG_REF_WINDOW, and first-registration-wins.
+    // TX_FREE_REG chain-context checks: refBlockHash on the main chain within
+    // FREE_REG_REF_WINDOW, and first-registration-wins. No height gate (PQ from genesis).
     bool checkFreeRegInputs(const Transaction& tx, uint32_t* pmax_used_block_height);
 
     // Returns by value (deserialized from tx_entries)

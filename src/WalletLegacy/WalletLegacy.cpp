@@ -349,15 +349,14 @@ void WalletLegacy::initSync() {
 
   m_sender.reset(new WalletTransactionSender(m_currency, m_transactionsCache, m_account.getAccountKeys(), *m_transferDetails, m_node));
 
-  // PQ scanning consumer. Requires a spend secret (the PQ identity is derived
-  // from it); tracking wallets have none, so they get no PQ balance. Also gated
+  // PQ scanning consumer. PQ is active from genesis in Discrete, so the only gate
+  // is having a spend secret (the PQ identity is derived from it); tracking
+  // wallets have none, so they get no PQ balance.
   const auto& keys = m_account.getAccountKeys();
-  const bool pqScheduled = true;  // PQ is always active in Discrete
-  if (pqScheduled && keys.spendSecretKey != NULL_SECRET_KEY) {
+  if (keys.spendSecretKey != NULL_SECRET_KEY) {
     PqWalletKeys pqKeys = derivePqWalletKeys(keys.spendSecretKey);
-    // TODO(pq): persist the PQ consumer cursor + PqWalletState so the wallet
-    // does not rescan PQ outputs from genesis on each load. Until PQ activates
-    // (block v6) there are no PQ blocks, so the rescan is currently a no-op.
+    // TODO(pq): persist the PQ consumer cursor + PqWalletState so the wallet does
+    // not rescan PQ outputs from genesis on each load.
     m_pqConsumer.reset(new PqConsumer(pqKeys, sub.syncStart, m_logger.getLogger()));
     m_blockchainSync.addConsumer(m_pqConsumer.get());
   }

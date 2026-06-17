@@ -1,5 +1,16 @@
 # PQ Phase 2+ — Confidential Amounts & Future Unlinkability (design notes)
 
+> **⚠️ DISCRETE BANNER — read first.** The transaction-version / block-major
+> "activation ladder" below (v1 classical → v6 PQ → v7 confidential …) describes
+> the *karbowanec* `dev/pq` branch it was drafted on, **NOT Discrete.** Discrete
+> is **post-quantum from genesis**: there is no classical ECC chain, no rings, no
+> `TX_BRIDGE`, and no activation height — every block is PQ and every transaction
+> is `TRANSACTION_VERSION_1 = 1` with a `txType` of `TX_PQ`/`TX_FREE_REG`/coinbase
+> (see `include/PqTxType.h`, `docs/PQ-WIRE-FROZEN.md`). The "v6/v7" language in
+> this file maps to Discrete's *block-major* version constants only; it does NOT
+> mean PQ "activates later." Treat this doc purely as forward design intent for
+> confidential amounts; ignore its activation/version ladder for Discrete.
+
 Status: **design intent / not implemented.** Phase 1 (plain PQ) is what's built
 today. This records the agreed direction so the transaction-version ladder and
 the wire/consensus shape are reserved correctly. Everything here is gated behind

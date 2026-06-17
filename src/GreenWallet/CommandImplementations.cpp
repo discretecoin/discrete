@@ -1162,8 +1162,7 @@ void pqBalance(std::shared_ptr<WalletInfo> walletInfo)
 {
     if (!walletInfo->wallet.pqEnabled())
     {
-        std::cout << WarningMsg("PQ balance is unavailable (view wallet, no spend key, "
-                                "or PQ activation is not yet scheduled).")
+        std::cout << WarningMsg("PQ balance is unavailable (view wallet or no spend key).")
                   << std::endl;
         return;
     }

@@ -375,8 +375,8 @@ void serialize(BlockHeader& header, ISerializer& serializer) {
 
 void serialize(Block& block, ISerializer& serializer) {
   serializeBlockHeader(block, serializer);
-  // All Discrete blocks are v6+ — ML-DSA-65 block signature always present,
-  // merge-mining parent block never present.
+  // All Discrete blocks (PQ from genesis) carry an ML-DSA-65 block signature;
+  // merge-mining parent block is never present.
   serializePqBlob(block.signature, CryptoNote::PQ_SIGNATURE_SIZE, "signature", serializer);
   serializer(block.baseTransaction, "miner_tx");
   serializer(block.transactionHashes, "tx_hashes");

@@ -158,8 +158,12 @@ and ownership are independent of the lock).
 ## 8. Coinbase recipient == block signer (identity-bound mining)
 
 Every non-genesis block carries an ML-DSA-65 signature over
-`SHA3-256(get_block_hashing_blob(b))`, verified against the producer spend pubkey
-in the coinbase `extra` (tag `0x07`). Additionally, the **single** coinbase
+`cn_fast_hash(get_block_hashing_blob(b))`, verified against the producer spend
+pubkey in the coinbase `extra` (tag `0x07`). (`cn_fast_hash` is the CryptoNote
+block hash — Keccak with 0x01 padding — i.e. the block's own identity hash, NOT
+NIST SHA3-256. The SHA3-256 family is used only for the PQ *derivations* in §§3–6;
+the block signature reuses the existing block-hash function. Enforced in
+`Blockchain::validate_block_signature`.) Additionally, the **single** coinbase
 `PqOutput` must pay that same identity:
 
 ```
