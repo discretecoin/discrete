@@ -15,6 +15,7 @@
 #include "CryptoNoteCore/Account.h"
 #include "CryptoNoteCore/CryptoNoteBasicImpl.h"
 #include "CryptoNoteCore/CryptoNoteTools.h"
+#include "CryptoNoteCore/CryptoNoteFormatUtils.h"
 #include "CryptoNoteCore/TransactionExtra.h"
 #include "Wallet/PqWallet.h"
 #include "Wallet/PqTransactionBuilder.h"
@@ -960,9 +961,11 @@ void signMessage(std::shared_ptr<WalletInfo> walletInfo, bool viewWallet)
 
     try
     {
-        std::string walletAddress = walletInfo->walletAddress;
-
-        std::string signature = walletInfo->wallet.signMessage(message, walletAddress);
+        // Discrete signs with the wallet's post-quantum (ML-DSA) spend key — the
+        // same identity its PQ address publishes — not the classical ECC key.
+        Crypto::SecretKey spendSecret = walletInfo->wallet.getAddressSpendKey(0).secretKey;
+        CryptoNote::PqWalletKeys pq = CryptoNote::derivePqWalletKeys(spendSecret);
+        std::string signature = CryptoNote::signMessagePq(message, pq.spendSk);
 
         std::cout << SuccessMsg("Signature: ")
                   << InformationMsg(signature)
@@ -977,22 +980,21 @@ void signMessage(std::shared_ptr<WalletInfo> walletInfo, bool viewWallet)
 
 void verifyMessage(CryptoNote::WalletGreen &wallet)
 {
+    (void)wallet;  // verification needs only the public PQ address, not the wallet
     std::string addrStr;
+    CryptoNote::PqAddress pqAddr{};
 
     while (true)
     {
-        std::cout << InformationMsg("Enter address: ");
-
-        CryptoNote::AccountPublicAddress address;
-
-        uint64_t prefix;
+        std::cout << InformationMsg("Enter PQ address: ");
 
         std::getline(std::cin, addrStr);
         boost::algorithm::trim(addrStr);
 
-        if (!CryptoNote::parseAccountAddressString(prefix, address, addrStr))
+        // Discrete verifies against the PQ address's ML-DSA spend key.
+        if (!CryptoNote::parsePqAddress(addrStr, pqAddr))
         {
-            std::cout << WarningMsg("Failed to parse address") << std::endl;
+            std::cout << WarningMsg("Failed to parse PQ address") << std::endl;
         }
         else
         {
@@ -1047,7 +1049,7 @@ void verifyMessage(CryptoNote::WalletGreen &wallet)
 
     try
     {
-        bool r = wallet.verifyMessage(message, addrStr, signature);
+        bool r = CryptoNote::verifyMessagePq(message, pqAddr.spendPub, signature);
 
         if (r)
         {
