@@ -79,6 +79,64 @@ struct AccountNumber {
     return true;
   }
 
+  // --- H-I-T-C: deposit subaddress of this account (Spec 2 / KRB-ACCT-SPEC-002) -
+  // A deposit address is the base account (H-I = one ML-KEM view + one ML-DSA
+  // spend key) plus a subaddress index T. T is NOT a key: spend authority reads
+  // only H-I, while T routes attribution and is recovered from the output by
+  // decapsulation (no lookup table). The check char C is Luhn mod-36 over the
+  // concatenated decimal digits of H, I and T, so a transcription typo in any
+  // field is caught. "H-I-T-C" (3 dashes) is distinct from the base "H-I-C"
+  // (2 dashes), so the two never alias.
+  std::string toStringWithIndex(uint32_t subaddrIndex) const {
+    std::string digits = std::to_string(blockHeight) + std::to_string(txIndex) +
+                         std::to_string(subaddrIndex);
+    char check = luhnMod36Generate(digits);
+    return std::to_string(blockHeight) + "-" + std::to_string(txIndex) + "-" +
+           std::to_string(subaddrIndex) + "-" + check;
+  }
+
+  static bool fromStringWithIndex(const std::string& str, AccountNumber& out,
+                                  uint32_t& subaddrIndex) {
+    // Format: H-I-T-C (exactly three dashes).
+    size_t dash1 = str.find('-');
+    if (dash1 == std::string::npos) return false;
+    size_t dash2 = str.find('-', dash1 + 1);
+    if (dash2 == std::string::npos) return false;
+    size_t dash3 = str.find('-', dash2 + 1);
+    if (dash3 == std::string::npos) return false;
+    if (str.find('-', dash3 + 1) != std::string::npos) return false;  // no 4th field
+
+    std::string hStr = str.substr(0, dash1);
+    std::string iStr = str.substr(dash1 + 1, dash2 - dash1 - 1);
+    std::string tStr = str.substr(dash2 + 1, dash3 - dash2 - 1);
+    std::string cStr = str.substr(dash3 + 1);
+
+    if (hStr.empty() || iStr.empty() || tStr.empty() || cStr.size() != 1) return false;
+    for (char c : hStr) { if (c < '0' || c > '9') return false; }
+    for (char c : iStr) { if (c < '0' || c > '9') return false; }
+    for (char c : tStr) { if (c < '0' || c > '9') return false; }
+
+    uint64_t h, i, t;
+    try {
+      h = std::stoull(hStr);
+      i = std::stoull(iStr);
+      t = std::stoull(tStr);
+    } catch (...) {
+      return false;
+    }
+    if (h > UINT32_MAX || i > UINT32_MAX || t > UINT32_MAX) return false;
+
+    std::string digits = hStr + iStr + tStr;
+    char expectedCheck = luhnMod36Generate(digits);
+    char actualCheck = static_cast<char>(std::toupper(static_cast<unsigned char>(cStr[0])));
+    if (actualCheck != expectedCheck) return false;
+
+    out.blockHeight = static_cast<uint32_t>(h);
+    out.txIndex = static_cast<uint32_t>(i);
+    subaddrIndex = static_cast<uint32_t>(t);
+    return true;
+  }
+
 private:
   static const char* alphabet() {
     return "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";

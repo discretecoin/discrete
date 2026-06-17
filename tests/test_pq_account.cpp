@@ -157,6 +157,59 @@ TEST(PqAccountReuse, ChecksumRejectsWrongHeight) {
     EXPECT_FALSE(AccountNumber::fromString(tampered, b));
 }
 
+// --- H-I-T-C deposit subaddress (Spec 2 / single-key-index) ------------------
+
+TEST(PqDepositAccount, HitcRoundTrip) {
+    AccountNumber a{1234567, 42};
+    std::string s = a.toStringWithIndex(9);
+    EXPECT_EQ(s.substr(0, 12), "1234567-42-9");
+
+    AccountNumber b{};
+    uint32_t t = 0;
+    ASSERT_TRUE(AccountNumber::fromStringWithIndex(s, b, t));
+    EXPECT_EQ(b.blockHeight, 1234567u);
+    EXPECT_EQ(b.txIndex, 42u);
+    EXPECT_EQ(t, 9u);
+}
+
+TEST(PqDepositAccount, HitcDefaultIndexZero) {
+    AccountNumber a{900, 7};
+    std::string s = a.toStringWithIndex(0);
+    AccountNumber b{};
+    uint32_t t = 123;
+    ASSERT_TRUE(AccountNumber::fromStringWithIndex(s, b, t));
+    EXPECT_EQ(t, 0u);
+}
+
+TEST(PqDepositAccount, HitcCheckCharRejectsTypo) {
+    std::string s = AccountNumber{900, 7}.toStringWithIndex(5);
+    s[s.size() - 1] = (s[s.size() - 1] == 'A') ? 'B' : 'A';  // corrupt check char
+    AccountNumber b{};
+    uint32_t t = 0;
+    EXPECT_FALSE(AccountNumber::fromStringWithIndex(s, b, t));
+}
+
+TEST(PqDepositAccount, HitcRejectsTamperedIndex) {
+    // Changing T must invalidate the check char (it covers H, I and T).
+    std::string s = AccountNumber{900, 7}.toStringWithIndex(5);  // "900-7-5-C"
+    std::string tampered = s;
+    tampered[s.find_last_of('-') - 1] = '6';  // T 5 -> 6, check char now wrong
+    AccountNumber b{};
+    uint32_t t = 0;
+    EXPECT_FALSE(AccountNumber::fromStringWithIndex(tampered, b, t));
+}
+
+TEST(PqDepositAccount, HitcAndHicDoNotAlias) {
+    // The 3-field H-I-C parser must reject a 4-field H-I-T-C string and vice versa.
+    std::string hitc = AccountNumber{900, 7}.toStringWithIndex(5);
+    AccountNumber b{};
+    EXPECT_FALSE(AccountNumber::fromString(hitc, b));  // H-I-C rejects H-I-T-C
+
+    std::string hic = AccountNumber{900, 7}.toString();
+    uint32_t t = 0;
+    EXPECT_FALSE(AccountNumber::fromStringWithIndex(hic, b, t));  // and the reverse
+}
+
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
