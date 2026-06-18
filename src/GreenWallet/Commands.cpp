@@ -66,7 +66,6 @@ std::vector<AdvancedCommand> allCommands()
         AdvancedCommand("tx_key", "Display transaction secret key if it's stored in wallet cache", false, true),
         AdvancedCommand("tx_proof", "Display proof of payment to specified address", false, true),
         AdvancedCommand("verify_message", "Verify signed message", true, true),
-        AdvancedCommand("register_account", "Register an account number for easy payments", false, true),
         AdvancedCommand("pq_address", "Display your post-quantum (PQ) address", false, true),
         AdvancedCommand("pq_balance", "Display your separate post-quantum (PQ) balance", false, true),
         AdvancedCommand("pq_transfer", "Send PQ funds to a PQ address", false, true),

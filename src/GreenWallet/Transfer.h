@@ -60,12 +60,6 @@ Maybe<std::string> getExtra();
 
 Maybe<std::string> getDestinationAddress();
 
-bool isAccountNumber(const std::string& input);
-
-bool resolveAccountNumberViaNode(CryptoNote::INode& node, const std::string& accountNumber, std::string& address);
-
-bool getAccountNumberViaNode(CryptoNote::INode& node, const std::string& address, std::string& accountNumber);
-
 Maybe<uint64_t> getFee();
 
 Maybe<uint64_t> getTransferAmount();

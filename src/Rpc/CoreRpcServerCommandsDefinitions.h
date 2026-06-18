@@ -357,18 +357,6 @@ struct COMMAND_EXPLORER_GET_TRANSACTIONS_BY_PAYMENT_ID {
   typedef std::string response;
 };
 
-struct COMMAND_EXPLORER_GET_ACCOUNT_NUMBER {
-  struct request {
-    std::string account_number;
-
-    void serialize(ISerializer &s) {
-      KV_MEMBER(account_number)
-    }
-  };
-
-  typedef std::string response;
-};
-
 struct COMMAND_EXPLORER_GET_ADDRESS {
   struct request {
     std::string address;
@@ -1468,46 +1456,6 @@ struct COMMAND_RPC_CHECK_PAYMENT_BY_PAYMENT_ID {
       KV_MEMBER(transaction_hashes);
       KV_MEMBER(received_amount);
       KV_MEMBER(confirmations);
-    }
-  };
-};
-
-struct COMMAND_RPC_RESOLVE_ACCOUNT_NUMBER {
-  struct request {
-    std::string account_number;
-
-    void serialize(ISerializer& s) {
-      KV_MEMBER(account_number)
-    }
-  };
-
-  struct response {
-    std::string address;
-    std::string status;
-
-    void serialize(ISerializer& s) {
-      KV_MEMBER(address)
-      KV_MEMBER(status)
-    }
-  };
-};
-
-struct COMMAND_RPC_GET_ACCOUNT_NUMBER {
-  struct request {
-    std::string address;
-
-    void serialize(ISerializer& s) {
-      KV_MEMBER(address)
-    }
-  };
-
-  struct response {
-    std::string account_number;
-    std::string status;
-
-    void serialize(ISerializer& s) {
-      KV_MEMBER(account_number)
-      KV_MEMBER(status)
     }
   };
 };

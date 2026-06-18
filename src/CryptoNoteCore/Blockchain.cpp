@@ -3327,44 +3327,6 @@ bool Blockchain::isInCheckpointZone(const uint32_t height) {
 
 // ─── Account number lookups ──────────────────────────────────────────────────
 
-bool Blockchain::resolveAccountNumber(uint32_t blockHeight, uint32_t txIndex,
-                                      AccountPublicAddress& address) {
-  std::lock_guard<std::recursive_mutex> lk(m_blockchain_lock);
-  const uint32_t chainHeight = m_db.getChainHeight();
-  if (blockHeight >= chainHeight || txIndex == 0 ||
-      txIndex > std::numeric_limits<uint16_t>::max()) {
-    return false;
-  }
-  uint8_t spendKey[32], viewKey[32];
-  if (m_db.getAccountRegistration(blockHeight, txIndex, spendKey, viewKey)) {
-    memcpy(address.spendPublicKey.data, spendKey, 32);
-    memcpy(address.viewPublicKey.data, viewKey, 32);
-    return true;
-  }
-
-  // Fallback: registration may predate the index — fetch the tx directly
-  try {
-    TransactionEntry te = transactionByIndex({ blockHeight, static_cast<uint16_t>(txIndex) });
-    TransactionExtraAccountRegistration reg;
-    if (getAccountRegistrationFromExtra(te.tx.extra, reg) &&
-        isWellFormedAccountRegistration(te.tx.extra)) {
-      address.spendPublicKey = reg.spendPublicKey;
-      address.viewPublicKey = reg.viewPublicKey;
-      return true;
-    }
-  } catch (...) {
-  }
-  return false;
-}
-
-bool Blockchain::getAccountNumber(const AccountPublicAddress& address,
-                                  uint32_t& blockHeight, uint32_t& txIndex) {
-  std::lock_guard<std::recursive_mutex> lk(m_blockchain_lock);
-  return m_db.findAccountRegistrationByKeys(address.spendPublicKey.data,
-                                            address.viewPublicKey.data,
-                                            blockHeight, txIndex);
-}
-
 bool Blockchain::resolvePqAccountNumber(uint32_t blockHeight, uint32_t txIndex,
                                         std::array<uint8_t, TX_EXTRA_PQ_VIEW_PUBKEY_SIZE>& viewPub,
                                         std::array<uint8_t, TX_EXTRA_PQ_SPEND_PUBKEY_SIZE>& spendPub) {

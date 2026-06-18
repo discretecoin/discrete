@@ -188,10 +188,6 @@ namespace CryptoNote {
      uint8_t getBlockMajorVersionForHeight(uint32_t height) const;
      virtual bool getMixin(const Transaction& transaction, uint64_t& mixin) override;
 
-     virtual bool resolveAccountNumber(uint32_t blockHeight, uint32_t txIndex,
-                                       AccountPublicAddress& address) override;
-     virtual bool getAccountNumber(const AccountPublicAddress& address,
-                                   uint32_t& blockHeight, uint32_t& txIndex) override;
      virtual bool getCanonicalAccountRegistrationsCount(uint64_t& count) override;
 
      // PQ account registry (concrete; not on ICore).

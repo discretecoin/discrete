@@ -306,17 +306,6 @@ bool BuiltinExplorer::on_get_explorer(const COMMAND_EXPLORER::request& req, COMM
 }
 
 bool BuiltinExplorer::on_explorer_search(const COMMAND_RPC_EXPLORER_SEARCH::request& req, COMMAND_RPC_EXPLORER_SEARCH::response& res) {
-  // Try account number format (H-I-C)
-  AccountNumber acctNum;
-  if (AccountNumber::fromString(req.query, acctNum)) {
-    AccountPublicAddress address;
-    if (m_core.resolveAccountNumber(acctNum.blockHeight, acctNum.txIndex, address)) {
-      res.result = "/explorer/account/" + req.query;
-      res.status = CORE_RPC_STATUS_OK;
-      return true;
-    }
-  }
-
   // Try as address
   {
     AccountPublicAddress address;
@@ -566,49 +555,6 @@ bool BuiltinExplorer::on_get_explorer_tx_by_hash(const COMMAND_EXPLORER_GET_TRAN
       body += "  </li>\n";
     }
     // Check for account registration in tx extra
-    {
-      TransactionExtraAccountRegistration reg;
-      if (getAccountRegistrationFromExtra(txs.back().extra, reg)) {
-        AccountPublicAddress regAddr;
-        regAddr.spendPublicKey = reg.spendPublicKey;
-        regAddr.viewPublicKey = reg.viewPublicKey;
-        std::string regAddrStr = m_core.currency().accountAddressAsString(regAddr);
-
-        body += "  <li>\n";
-        body += "    Account registration: <a class=\"wrap\" href=\"/explorer/address/" + regAddrStr + "\">"
-             + regAddrStr + "</a>\n";
-        body += "  </li>\n";
-        body += "  <li>\n";
-        body += "    Spend public key: <span class=\"wrap\">" + Common::podToHex(reg.spendPublicKey) + "</span>\n";
-        body += "  </li>\n";
-        body += "  <li>\n";
-        body += "    View public key: <span class=\"wrap\">" + Common::podToHex(reg.viewPublicKey) + "</span>\n";
-        body += "  </li>\n";
-
-        // Show resulting account number if tx is in blockchain
-        if (transactionsDetails.inBlockchain) {
-          // Find tx index within block
-          uint32_t txIdx = 0;
-          uint32_t bh = transactionsDetails.blockHeight;
-          AccountPublicAddress checkAddr;
-          // Walk through possible indices to find this registration
-          for (uint32_t i = 0; i < 1000; ++i) {
-            if (m_core.resolveAccountNumber(bh, i, checkAddr)) {
-              if (checkAddr.spendPublicKey == reg.spendPublicKey &&
-                  checkAddr.viewPublicKey == reg.viewPublicKey) {
-                txIdx = i;
-                AccountNumber an{bh, txIdx};
-                body += "  <li>\n";
-                body += "    Account number: <a href=\"/explorer/account/" + an.toString() + "\">"
-                     + an.toString() + "</a>\n";
-                body += "  </li>\n";
-                break;
-              }
-            }
-          }
-        }
-      }
-    }
     // Check for PQ account registration in tx extra
     {
       TransactionExtraPqAccountRegistration reg;
@@ -807,50 +753,6 @@ bool BuiltinExplorer::on_get_explorer_txs_by_payment_id(const COMMAND_EXPLORER_G
   return true;
 }
 
-bool BuiltinExplorer::on_get_explorer_account_number(const COMMAND_EXPLORER_GET_ACCOUNT_NUMBER::request& req, COMMAND_EXPLORER_GET_ACCOUNT_NUMBER::response& res) {
-  AccountNumber acctNum;
-  if (!AccountNumber::fromString(req.account_number, acctNum)) {
-    return false;
-  }
-
-  AccountPublicAddress address;
-  if (!m_core.resolveAccountNumber(acctNum.blockHeight, acctNum.txIndex, address)) {
-    return false;
-  }
-
-  std::string addressStr = m_core.currency().accountAddressAsString(address);
-
-  std::string body = index_start + (m_core.currency().isTestnet() ? "testnet" : "mainnet") + "\n<p>";
-  body += "<a href=\"/explorer/\">Home</a>";
-  body += "<hr />";
-
-  body += "<h2>Account Number " + acctNum.toString() + "</h2>\n";
-
-  body += "<ul>\n";
-  body += "  <li>\n";
-  body += "    Block height: <a href=\"/explorer/block/" + std::to_string(acctNum.blockHeight) + "\">"
-       + std::to_string(acctNum.blockHeight) + "</a>\n";
-  body += "  </li>\n";
-  body += "  <li>\n";
-  body += "    Transaction index: " + std::to_string(acctNum.txIndex) + "\n";
-  body += "  </li>\n";
-  body += "  <li>\n";
-  body += "    Address: <a class=\"wrap\" href=\"/explorer/address/" + addressStr + "\">"
-       + addressStr + "</a>\n";
-  body += "  </li>\n";
-  body += "  <li>\n";
-  body += "    Spend public key: <span class=\"wrap\">" + Common::podToHex(address.spendPublicKey) + "</span>\n";
-  body += "  </li>\n";
-  body += "  <li>\n";
-  body += "    View public key: <span class=\"wrap\">" + Common::podToHex(address.viewPublicKey) + "</span>\n";
-  body += "  </li>\n";
-  body += "</ul>\n";
-
-  body += index_finish;
-  res = body;
-  return true;
-}
-
 bool BuiltinExplorer::on_get_explorer_address(const COMMAND_EXPLORER_GET_ADDRESS::request& req, COMMAND_EXPLORER_GET_ADDRESS::response& res) {
   AccountPublicAddress address;
   uint64_t prefix;
@@ -875,21 +777,6 @@ bool BuiltinExplorer::on_get_explorer_address(const COMMAND_EXPLORER_GET_ADDRESS
   body += "  <li>View public key: <span class=\"wrap\">" + Common::podToHex(address.viewPublicKey) + "</span>"
        + (validView ? " &#10004;" : " &#10008; <b>INVALID</b>") + "</li>\n";
   body += "</ul>\n";
-
-  // Look up registered account number
-  {
-    uint32_t blockHeight, txIndex;
-    if (m_core.getAccountNumber(address, blockHeight, txIndex)) {
-      AccountNumber an{blockHeight, txIndex};
-      std::string anStr = an.toString();
-      body += "<h3>Account Number</h3>\n";
-      body += "<p><a href=\"/explorer/account/" + anStr + "\">" + anStr + "</a>"
-              " (block <a href=\"/explorer/block/" + std::to_string(blockHeight) + "\">"
-              + std::to_string(blockHeight) + "</a>)</p>\n";
-    } else {
-      body += "<p>No account number registered for this address.</p>\n";
-    }
-  }
 
   body += index_finish;
   res = body;

@@ -1361,16 +1361,6 @@ bool Core::getMixin(const Transaction& /*transaction*/, uint64_t& mixin) {
   return true;
 }
 
-bool Core::resolveAccountNumber(uint32_t blockHeight, uint32_t txIndex,
-                                AccountPublicAddress& address) {
-  return m_blockchain.resolveAccountNumber(blockHeight, txIndex, address);
-}
-
-bool Core::getAccountNumber(const AccountPublicAddress& address,
-                            uint32_t& blockHeight, uint32_t& txIndex) {
-  return m_blockchain.getAccountNumber(address, blockHeight, txIndex);
-}
-
 bool Core::resolvePqAccountNumber(uint32_t blockHeight, uint32_t txIndex,
                                   std::array<uint8_t, TX_EXTRA_PQ_VIEW_PUBKEY_SIZE>& viewPub,
                                   std::array<uint8_t, TX_EXTRA_PQ_SPEND_PUBKEY_SIZE>& spendPub) {

@@ -59,8 +59,6 @@ public:
                                   COMMAND_EXPLORER_GET_TRANSACTION_DETAILS_BY_HASH::response& res);
   bool on_get_explorer_txs_by_payment_id(const COMMAND_EXPLORER_GET_TRANSACTIONS_BY_PAYMENT_ID::request& req,
                                          COMMAND_EXPLORER_GET_TRANSACTIONS_BY_PAYMENT_ID::response& res);
-  bool on_get_explorer_account_number(const COMMAND_EXPLORER_GET_ACCOUNT_NUMBER::request& req,
-                                      COMMAND_EXPLORER_GET_ACCOUNT_NUMBER::response& res);
   bool on_get_explorer_address(const COMMAND_EXPLORER_GET_ADDRESS::request& req,
                                COMMAND_EXPLORER_GET_ADDRESS::response& res);
 

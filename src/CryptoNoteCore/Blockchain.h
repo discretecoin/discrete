@@ -151,11 +151,6 @@ namespace CryptoNote {
 
     bool getHashingBlob(const uint32_t height, BinaryArray& blob);
 
-    // Account number lookups
-    bool resolveAccountNumber(uint32_t blockHeight, uint32_t txIndex,
-                              AccountPublicAddress& address);
-    bool getAccountNumber(const AccountPublicAddress& address,
-                          uint32_t& blockHeight, uint32_t& txIndex);
     bool getCanonicalAccountRegistrationsCount(uint64_t& count);
 
     // PQ account registry. resolve: (height, txIndex) -> the registered view +

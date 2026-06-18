@@ -569,28 +569,6 @@ void RpcServer::processRequest(const CryptoNote::HttpRequest& request, CryptoNot
           return;
         }
 
-        std::string account_method = "/explorer/account/";
-        if (Common::starts_with(url, account_method)) {
-          std::string account_str = url.substr(account_method.size());
-
-          COMMAND_EXPLORER_GET_ACCOUNT_NUMBER::request req;
-          req.account_number = account_str;
-          COMMAND_EXPLORER_GET_ACCOUNT_NUMBER::response rsp;
-
-          bool r = on_get_explorer_account_number(req, rsp);
-          if (r) {
-            response.setStatus(CryptoNote::HttpResponse::STATUS_200);
-            response.setBody(rsp);
-          }
-          else {
-            response.setStatus(CryptoNote::HttpResponse::STATUS_404);
-            response.setBody("Not found");
-          }
-          response.addHeader("Content-Type", "text/html");
-
-          return;
-        }
-
         std::string address_method = "/explorer/address/";
         if (Common::starts_with(url, address_method)) {
           std::string address_str = url.substr(address_method.size());
@@ -724,8 +702,6 @@ bool RpcServer::processJsonRpcRequest(const CryptoNote::HttpRequest& request, Cr
       { "submitblock", { makeMemberMethod(&RpcServer::on_submitblock), false } },
       { "resolveopenalias", { makeMemberMethod(&RpcServer::on_resolve_open_alias), true } },
       { "search", { makeMemberMethod(&RpcServer::on_explorer_search), true } },
-      { "resolveaccountnumber", { makeMemberMethod(&RpcServer::on_resolve_account_number), true } },
-      { "getaccountnumber", { makeMemberMethod(&RpcServer::on_get_account_number), true } },
       { "getpqaccount", { makeMemberMethod(&RpcServer::on_get_pq_account), true } },
       { "resolvepqaccount", { makeMemberMethod(&RpcServer::on_resolve_pq_account), true } },
 
@@ -1550,10 +1526,6 @@ bool RpcServer::on_get_explorer_tx_by_hash(const COMMAND_EXPLORER_GET_TRANSACTIO
 
 bool RpcServer::on_get_explorer_txs_by_payment_id(const COMMAND_EXPLORER_GET_TRANSACTIONS_BY_PAYMENT_ID::request& req, COMMAND_EXPLORER_GET_TRANSACTIONS_BY_PAYMENT_ID::response& res) {
   return m_builtinExplorer->on_get_explorer_txs_by_payment_id(req, res);
-}
-
-bool RpcServer::on_get_explorer_account_number(const COMMAND_EXPLORER_GET_ACCOUNT_NUMBER::request& req, COMMAND_EXPLORER_GET_ACCOUNT_NUMBER::response& res) {
-  return m_builtinExplorer->on_get_explorer_account_number(req, res);
 }
 
 bool RpcServer::on_get_explorer_address(const COMMAND_EXPLORER_GET_ADDRESS::request& req, COMMAND_EXPLORER_GET_ADDRESS::response& res) {
@@ -2770,47 +2742,6 @@ bool RpcServer::on_resolve_open_alias(const COMMAND_RPC_RESOLVE_OPEN_ALIAS::requ
   }
 #endif
 
-  res.status = CORE_RPC_STATUS_OK;
-  return true;
-}
-
-bool RpcServer::on_resolve_account_number(const COMMAND_RPC_RESOLVE_ACCOUNT_NUMBER::request& req,
-                                          COMMAND_RPC_RESOLVE_ACCOUNT_NUMBER::response& res) {
-  AccountNumber acctNum;
-  if (!AccountNumber::fromString(req.account_number, acctNum)) {
-    throw JsonRpc::JsonRpcError{ CORE_RPC_ERROR_CODE_WRONG_PARAM, "Invalid account number format" };
-  }
-  if (acctNum.txIndex == 0 ||
-      acctNum.txIndex > std::numeric_limits<uint16_t>::max() ||
-      acctNum.blockHeight >= m_core.getCurrentBlockchainHeight()) {
-    throw JsonRpc::JsonRpcError{ CORE_RPC_ERROR_CODE_WRONG_PARAM, "Invalid account number format" };
-  }
-
-  AccountPublicAddress address;
-  if (!m_core.resolveAccountNumber(acctNum.blockHeight, acctNum.txIndex, address)) {
-    throw JsonRpc::JsonRpcError{ CORE_RPC_ERROR_CODE_WRONG_PARAM, "Account number not found" };
-  }
-
-  res.address = m_core.currency().accountAddressAsString(address);
-  res.status = CORE_RPC_STATUS_OK;
-  return true;
-}
-
-bool RpcServer::on_get_account_number(const COMMAND_RPC_GET_ACCOUNT_NUMBER::request& req,
-                                      COMMAND_RPC_GET_ACCOUNT_NUMBER::response& res) {
-  AccountPublicAddress address;
-  uint64_t prefix;
-  if (!parseAccountAddressString(prefix, address, req.address)) {
-    throw JsonRpc::JsonRpcError{ CORE_RPC_ERROR_CODE_WRONG_PARAM, "Invalid address" };
-  }
-
-  uint32_t blockHeight, txIndex;
-  if (!m_core.getAccountNumber(address, blockHeight, txIndex)) {
-    throw JsonRpc::JsonRpcError{ CORE_RPC_ERROR_CODE_WRONG_PARAM, "No account number registered for this address" };
-  }
-
-  AccountNumber acctNum{blockHeight, txIndex};
-  res.account_number = acctNum.toString();
   res.status = CORE_RPC_STATUS_OK;
   return true;
 }

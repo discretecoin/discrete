@@ -100,8 +100,6 @@ public:
   virtual void isSynchronized(bool& syncStatus, const Callback& callback) override;
   virtual void getConnections(std::vector<p2pConnection>& connections, const Callback& callback) override;
 
-  virtual void resolveAccountNumber(const std::string& accountNumber, std::string& address, const Callback& callback) override;
-  virtual void getAccountNumber(const std::string& address, std::string& accountNumber, const Callback& callback) override;
   virtual void getPqAccount(const std::string& viewPubHex, const std::string& spendPubHex, bool& registered, uint32_t& blockHeight, uint32_t& txIndex, const Callback& callback) override;
   virtual void resolvePqAccount(uint32_t blockHeight, uint32_t txIndex, bool& found, std::string& viewPubHex, std::string& spendPubHex, const Callback& callback) override;
 
@@ -150,8 +148,6 @@ private:
   std::error_code doGetTransactions(const std::vector<Crypto::Hash>& transactionHashes, std::vector<TransactionDetails>& transactions);
   std::error_code doGetBlockTimestamp(uint32_t height, uint64_t& timestamp);
   std::error_code doGetConnections(std::vector<p2pConnection>& connections);
-  std::error_code doResolveAccountNumber(const std::string& accountNumber, std::string& address);
-  std::error_code doGetAccountNumber(const std::string& address, std::string& accountNumber);
   std::error_code doGetPqAccount(const std::string& viewPubHex, const std::string& spendPubHex, bool& registered, uint32_t& blockHeight, uint32_t& txIndex);
   std::error_code doResolvePqAccount(uint32_t blockHeight, uint32_t txIndex, bool& found, std::string& viewPubHex, std::string& spendPubHex);
 
