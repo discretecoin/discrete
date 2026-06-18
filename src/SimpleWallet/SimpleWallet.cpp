@@ -2476,7 +2476,8 @@ bool simple_wallet::verify_message(const std::vector<std::string> &args) {
   // via the node), reusing the same resolver pq_transfer uses.
   CryptoPQ::KemPublicKey viewPub;
   CryptoPQ::DsaPublicKey spendPub;
-  if (!resolvePqRecipient(address_string, viewPub, spendPub)) {
+  uint64_t ignoredT = 0;  // message verification needs only the spend key, not T
+  if (!resolvePqRecipient(address_string, viewPub, spendPub, ignoredT)) {
     fail_msg_writer() << "failed to parse PQ address / account number " << address_string;
     return true;
   }
@@ -2633,7 +2634,8 @@ bool simple_wallet::pq_transfer(const std::vector<std::string> &args) {
 
   CryptoPQ::KemPublicKey destView;
   CryptoPQ::DsaPublicKey destSpend;
-  if (!resolvePqRecipient(args[0], destView, destSpend)) {
+  uint64_t destSubaddrT = 0;  // non-zero only when paying an H-I-T-C deposit subaddress
+  if (!resolvePqRecipient(args[0], destView, destSpend, destSubaddrT)) {
     fail_msg_writer() << "Recipient is not a valid PQ address or account number.";
     return true;
   }
@@ -2673,8 +2675,10 @@ bool simple_wallet::pq_transfer(const std::vector<std::string> &args) {
   // final size whenever a change output is present.
   auto buildWith = [&](uint64_t change) {
     std::vector<CryptoNote::PqSendOutput> outs;
-    outs.push_back(CryptoNote::PqSendOutput{destView, destSpend, amount});
+    // Recipient output carries the deposit subaddress index (0 for a normal payee).
+    outs.push_back(CryptoNote::PqSendOutput{destView, destSpend, amount, destSubaddrT});
     if (change > 0) {
+      // Change returns to our own main address (subaddress 0).
       outs.push_back(CryptoNote::PqSendOutput{pq.viewPub, pq.spendPub, change});
     }
     return CryptoNote::buildPqTransaction(selected, outs, pq.spendPub, pq.spendSk);
@@ -2880,17 +2884,23 @@ bool simple_wallet::pq_account(const std::vector<std::string> &args) {
 }
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::resolvePqRecipient(const std::string& s, CryptoPQ::KemPublicKey& viewPub,
-                                       CryptoPQ::DsaPublicKey& spendPub) {
-  // 1. A raw PQ address carries both keys directly.
+                                       CryptoPQ::DsaPublicKey& spendPub, uint64_t& subaddrIndexT) {
+  subaddrIndexT = 0;
+  // 1. A raw PQ address carries both keys directly (subaddress T = 0).
   CryptoNote::PqAddress addr;
   if (CryptoNote::parsePqAddress(s, addr)) {
     viewPub = addr.viewPub;
     spendPub = addr.spendPub;
     return true;
   }
-  // 2. An H-I-C account number: resolve its registration via the node.
+  // 2. An account number, either H-I-C (base account, T=0) or H-I-T-C (deposit
+  //    subaddress, T = the parsed index). BOTH resolve the SAME account (H,I)
+  //    registration via the node; only the subaddress T differs.
   CryptoNote::AccountNumber acct;
-  if (CryptoNote::AccountNumber::fromString(s, acct)) {
+  uint32_t t = 0;
+  bool isHitc = CryptoNote::AccountNumber::fromStringWithIndex(s, acct, t);
+  if (isHitc || CryptoNote::AccountNumber::fromString(s, acct)) {
+    if (isHitc) subaddrIndexT = t;
     bool found = false;
     std::string viewHex, spendHex;
     std::promise<std::error_code> promise;

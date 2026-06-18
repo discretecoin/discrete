@@ -1180,8 +1180,11 @@ void pqBalance(std::shared_ptr<WalletInfo> walletInfo)
 // Resolve a recipient string (a raw PQ address OR an H-I-C account number) to
 // its view + spend public keys, querying the node for an account number.
 static bool resolvePqRecipientGreen(CryptoNote::INode &node, const std::string &s,
-                                    CryptoPQ::KemPublicKey &viewPub, CryptoPQ::DsaPublicKey &spendPub)
+                                    CryptoPQ::KemPublicKey &viewPub, CryptoPQ::DsaPublicKey &spendPub,
+                                    uint64_t &subaddrIndexT)
 {
+    subaddrIndexT = 0;
+    // A raw PQ address carries both keys directly (subaddress T = 0).
     CryptoNote::PqAddress addr;
     if (CryptoNote::parsePqAddress(s, addr))
     {
@@ -1189,9 +1192,14 @@ static bool resolvePqRecipientGreen(CryptoNote::INode &node, const std::string &
         spendPub = addr.spendPub;
         return true;
     }
+    // Account number: H-I-C (base account, T=0) or H-I-T-C (deposit subaddress,
+    // T = the parsed index). Both resolve the same (H,I) registration via the node.
     CryptoNote::AccountNumber acct;
-    if (CryptoNote::AccountNumber::fromString(s, acct))
+    uint32_t t = 0;
+    bool isHitc = CryptoNote::AccountNumber::fromStringWithIndex(s, acct, t);
+    if (isHitc || CryptoNote::AccountNumber::fromString(s, acct))
     {
+        if (isHitc) subaddrIndexT = t;
         bool found = false;
         std::string viewHex, spendHex;
         std::promise<std::error_code> promise;
@@ -1224,7 +1232,8 @@ void pqTransfer(std::shared_ptr<WalletInfo> walletInfo, CryptoNote::INode &node)
     std::getline(std::cin, addrStr);
     CryptoPQ::KemPublicKey destView;
     CryptoPQ::DsaPublicKey destSpend;
-    if (!resolvePqRecipientGreen(node, addrStr, destView, destSpend))
+    uint64_t destSubaddrT = 0;  // non-zero only for an H-I-T-C deposit subaddress
+    if (!resolvePqRecipientGreen(node, addrStr, destView, destSpend, destSubaddrT))
     {
         std::cout << WarningMsg("Not a valid PQ address or account number.") << std::endl;
         return;
@@ -1266,7 +1275,8 @@ void pqTransfer(std::shared_ptr<WalletInfo> walletInfo, CryptoNote::INode &node)
 
     auto buildWith = [&](uint64_t change) {
         std::vector<CryptoNote::PqSendOutput> outs;
-        outs.push_back(CryptoNote::PqSendOutput{destView, destSpend, amount});
+        // Recipient output carries the deposit subaddress index (0 for a normal payee).
+        outs.push_back(CryptoNote::PqSendOutput{destView, destSpend, amount, destSubaddrT});
         if (change > 0)
         {
             outs.push_back(CryptoNote::PqSendOutput{pq.viewPub, pq.spendPub, change});

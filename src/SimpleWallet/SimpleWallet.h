@@ -140,9 +140,12 @@ namespace CryptoNote
     bool pq_register_paid(const std::vector<std::string> &args = std::vector<std::string>());
     bool pq_account(const std::vector<std::string> &args = std::vector<std::string>());
     // Resolve a recipient string (a raw PQ address OR an H-I-C account number) to
-    // its view + spend public keys. Returns false if neither form resolves.
+    // its view + spend public keys. Accepts a raw PQ address, an H-I-C account
+    // number (base account, T=0), or an H-I-T-C deposit subaddress (T = the parsed
+    // index). `subaddrIndexT` receives that T (0 for the first two). Returns false
+    // if no form resolves.
     bool resolvePqRecipient(const std::string& s, CryptoPQ::KemPublicKey& viewPub,
-                            CryptoPQ::DsaPublicKey& spendPub);
+                            CryptoPQ::DsaPublicKey& spendPub, uint64_t& subaddrIndexT);
 
     std::string get_formatted_wallet_keys();
 
