@@ -723,7 +723,7 @@ TEST_F(TransfersContainer_balance, treatsAboveV6UnlockCapAsUnlockedAfterV6) {
   TransfersContainer cappedContainer(cappedCurrency, logger, TEST_TRANSACTION_SPENDABLE_AGE);
 
   TestTransactionBuilder tx;
-  tx.setUnlockTime(CryptoNote::parameters::CRYPTONOTE_MAX_UNLOCK_HEIGHT_V6 + 1);
+  tx.setUnlockTime(CryptoNote::parameters::CRYPTONOTE_MAX_BLOCK_NUMBER + 1);
   tx.addTestInput(AMOUNT_1 + 1);
   auto outInfo = tx.addTestKeyOutput(AMOUNT_1, TEST_TRANSACTION_OUTPUT_GLOBAL_INDEX, account);
 

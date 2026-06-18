@@ -630,17 +630,10 @@ bool ICoreStub::getBlockLongHash(Crypto::cn_context &context, const CryptoNote::
 }
 
 bool ICoreStub::getMixin(const CryptoNote::Transaction& transaction, uint64_t& mixin) {
+  // Discrete has no ring/mixin inputs (KeyInput was removed from the input
+  // variant); PQ inputs carry no mixin.
+  (void)transaction;
   mixin = 0;
-
-  for (const auto& txIn : transaction.inputs) {
-    if (txIn.type() != typeid(CryptoNote::KeyInput)) {
-      continue;
-    }
-
-    const auto& keyInput = boost::get<CryptoNote::KeyInput>(txIn);
-    mixin = std::max<uint64_t>(mixin, keyInput.outputIndexes.size());
-  }
-
   return true;
 }
 

@@ -158,42 +158,7 @@ private:
   Crypto::Hash transactionHash;
 };
 
-class FusionTransactionBuilder {
-public:
-  FusionTransactionBuilder(const Currency& currency, uint64_t amount);
-
-  uint64_t getAmount() const;
-  void setAmount(uint64_t val);
-
-  uint64_t getFirstInput() const;
-  void setFirstInput(uint64_t val);
-
-  uint64_t getFirstOutput() const;
-  void setFirstOutput(uint64_t val);
-
-  uint64_t getFee() const;
-  void setFee(uint64_t val);
-
-  size_t getExtraSize() const;
-  void setExtraSize(size_t val);
-
-  size_t getInputCount() const;
-  void setInputCount(size_t val);
-
-  std::unique_ptr<ITransactionReader> buildReader() const;
-  Transaction buildTx() const;
-
-  Transaction createFusionTransactionBySize(size_t targetSize);
-
-private:
-  const Currency& m_currency;
-  uint64_t m_amount;
-  uint64_t m_firstInput;
-  uint64_t m_firstOutput;
-  uint64_t m_fee;
-  size_t m_extraSize;
-  size_t m_inputCount;
-};
+// FusionTransactionBuilder removed: Discrete has no fusion transactions.
 
 }
 
