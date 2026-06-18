@@ -324,6 +324,53 @@ struct GetPqAccountStatus {
   };
 };
 
+// The container's deposit-wallet scheme (fixed at creation): "aggregated-multikey"
+// (Spec 1) or "single-key-index" (Spec 2). See docs/WALLETD-PQ.md.
+struct GetPqDepositScheme {
+  struct Request {
+    void serialize(CryptoNote::ISerializer& serializer);
+  };
+
+  struct Response {
+    std::string scheme;
+    uint32_t depositCount;  // how many deposit addresses have been issued
+
+    void serialize(CryptoNote::ISerializer& serializer);
+  };
+};
+
+// Create a new deposit address (the familiar exchange surface). In
+// aggregated-multikey mode `address` is a base58 PQ address with its own spend
+// key; in single-key-index mode it is the H-I-T-C account number. `index` is the
+// deposit index (the subaddress T in single-key-index mode).
+struct CreatePqDepositAddress {
+  struct Request {
+    void serialize(CryptoNote::ISerializer& serializer);
+  };
+
+  struct Response {
+    std::string address;
+    uint32_t index;
+
+    void serialize(CryptoNote::ISerializer& serializer);
+  };
+};
+
+// List every deposit address issued so far (parallel arrays: addresses[i] has
+// index indices[i]).
+struct ListPqDepositAddresses {
+  struct Request {
+    void serialize(CryptoNote::ISerializer& serializer);
+  };
+
+  struct Response {
+    std::vector<std::string> addresses;
+    std::vector<uint32_t> indices;
+
+    void serialize(CryptoNote::ISerializer& serializer);
+  };
+};
+
 struct GetBlockHashes {
   struct Request {
     uint32_t firstBlockIndex;

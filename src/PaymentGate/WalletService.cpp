@@ -330,7 +330,7 @@ std::vector<CryptoNote::WalletOrder> convertWalletRpcOrdersToWalletOrders(const 
 
 }
 
-void generateNewWallet(const CryptoNote::Currency& currency, const WalletConfiguration& conf, Logging::ILogger& logger, System::Dispatcher& dispatcher, CryptoNote::INode& node) {
+void generateNewWallet(const CryptoNote::Currency& currency, const WalletConfiguration& conf, Logging::ILogger& logger, System::Dispatcher& dispatcher, CryptoNote::INode& node, CryptoNote::PqDepositScheme depositScheme) {
   Logging::LoggerRef log(logger, "generateNewWallet");
 
   CryptoNote::IWallet* wallet = new CryptoNote::WalletGreen(dispatcher, currency, node, logger);
@@ -437,7 +437,19 @@ void generateNewWallet(const CryptoNote::Currency& currency, const WalletConfigu
     }
   }
 
-  wallet->save(CryptoNote::WalletSaveLevel::SAVE_KEYS_ONLY);
+  // Record the deposit-wallet scheme in the container (immutable after creation).
+  // It lives in the PQ state blob, which is only serialized at SAVE_ALL, so a
+  // freshly generated container is saved at SAVE_ALL (its tx/transfer collections
+  // are empty, so this is just the keys + the deposit scheme).
+  if (auto* greenWallet = dynamic_cast<CryptoNote::WalletGreen*>(wallet)) {
+    if (greenWallet->pqEnabled()) {
+      greenWallet->setPqDepositScheme(depositScheme);
+      log(Logging::INFO, Logging::BRIGHT_WHITE) << "Deposit scheme: "
+        << (depositScheme == CryptoNote::PqDepositScheme::SingleKeyIndex ? "single-key-index" : "aggregated-multikey");
+    }
+  }
+
+  wallet->save(CryptoNote::WalletSaveLevel::SAVE_ALL);
   log(Logging::INFO, Logging::BRIGHT_WHITE) << "Wallet is saved";
 }
 
@@ -1459,6 +1471,133 @@ std::error_code WalletService::getPqAccountStatus(bool& registered, std::string&
     return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
   }
 
+  return std::error_code();
+}
+
+namespace {
+
+const char* depositSchemeName(CryptoNote::PqDepositScheme s) {
+  return s == CryptoNote::PqDepositScheme::SingleKeyIndex ? "single-key-index" : "aggregated-multikey";
+}
+
+// Resolve this wallet's OWN PQ account registration coords (H, I) via the node.
+// `registered` is false (with H=I=0) for a tracking wallet or an unregistered one.
+std::error_code resolveOwnPqRegistration(CryptoNote::INode& node, CryptoNote::WalletGreen& gw,
+                                         bool& registered, uint32_t& blockHeight, uint32_t& txIndex) {
+  registered = false;
+  blockHeight = 0;
+  txIndex = 0;
+  std::string viewHex, spendHex;
+  if (!gw.getPqRegistrationKeysHex(viewHex, spendHex)) {
+    return std::error_code();  // tracking wallet: nothing registered
+  }
+  auto completed = std::promise<std::error_code>();
+  auto fut = completed.get_future();
+  node.getPqAccount(viewHex, spendHex, registered, blockHeight, txIndex,
+                    [&completed](std::error_code e) {
+                      auto detached = std::move(completed);
+                      detached.set_value(e);
+                    });
+  return fut.get();
+}
+
+}  // namespace
+
+std::error_code WalletService::getPqDepositScheme(std::string& scheme, uint32_t& depositCount) {
+  try {
+    System::EventLock lk(readyEvent);
+    auto* gw = dynamic_cast<CryptoNote::WalletGreen*>(&wallet);
+    if (gw == nullptr) {
+      return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
+    }
+    scheme = depositSchemeName(gw->getPqDepositScheme());
+    depositCount = gw->getPqDepositCount();
+  } catch (std::system_error& x) {
+    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while getting deposit scheme: " << x.what();
+    return x.code();
+  } catch (std::exception& e) {
+    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while getting deposit scheme: " << e.what();
+    return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
+  }
+  return std::error_code();
+}
+
+std::error_code WalletService::createPqDepositAddress(std::string& address, uint32_t& index) {
+  try {
+    System::EventLock lk(readyEvent);
+    logger(Logging::DEBUGGING) << "Creating PQ deposit address";
+
+    auto* gw = dynamic_cast<CryptoNote::WalletGreen*>(&wallet);
+    if (gw == nullptr || !gw->pqEnabled()) {
+      return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
+    }
+
+    // single-key-index deposit identities are H-I-T-C, which needs the account's
+    // on-chain registration coords (H, I). Resolve them first; require registration.
+    uint32_t regH = 0, regI = 0;
+    if (gw->getPqDepositScheme() == CryptoNote::PqDepositScheme::SingleKeyIndex) {
+      bool registered = false;
+      std::error_code rc = resolveOwnPqRegistration(node, *gw, registered, regH, regI);
+      if (rc) {
+        return rc;
+      }
+      if (!registered) {
+        logger(Logging::WARNING) << "single-key-index deposit address requested before the account is registered";
+        return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
+      }
+    }
+
+    index = gw->reservePqDepositIndex();
+    address = gw->pqDepositAddress(index, regH, regI);
+  } catch (std::system_error& x) {
+    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while creating deposit address: " << x.what();
+    return x.code();
+  } catch (std::exception& e) {
+    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while creating deposit address: " << e.what();
+    return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
+  }
+  return std::error_code();
+}
+
+std::error_code WalletService::listPqDepositAddresses(std::vector<std::string>& addresses,
+                                                      std::vector<uint32_t>& indices) {
+  try {
+    System::EventLock lk(readyEvent);
+    addresses.clear();
+    indices.clear();
+
+    auto* gw = dynamic_cast<CryptoNote::WalletGreen*>(&wallet);
+    if (gw == nullptr || !gw->pqEnabled()) {
+      return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
+    }
+
+    uint32_t regH = 0, regI = 0;
+    if (gw->getPqDepositScheme() == CryptoNote::PqDepositScheme::SingleKeyIndex) {
+      bool registered = false;
+      std::error_code rc = resolveOwnPqRegistration(node, *gw, registered, regH, regI);
+      if (rc) {
+        return rc;
+      }
+      // If unregistered we simply cannot render H-I-T-C; return the empty list.
+      if (!registered) {
+        return std::error_code();
+      }
+    }
+
+    uint32_t count = gw->getPqDepositCount();
+    addresses.reserve(count);
+    indices.reserve(count);
+    for (uint32_t i = 0; i < count; ++i) {
+      addresses.push_back(gw->pqDepositAddress(i, regH, regI));
+      indices.push_back(i);
+    }
+  } catch (std::system_error& x) {
+    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while listing deposit addresses: " << x.what();
+    return x.code();
+  } catch (std::exception& e) {
+    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while listing deposit addresses: " << e.what();
+    return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
+  }
   return std::error_code();
 }
 

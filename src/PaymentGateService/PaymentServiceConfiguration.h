@@ -27,6 +27,7 @@
 #include <boost/program_options.hpp>
 
 #include "Common/PasswordContainer.h"
+#include "Wallet/PqWallet.h"  // CryptoNote::PqDepositScheme
 
 namespace {
   Tools::PasswordContainer pwd_container;
@@ -77,6 +78,10 @@ struct Configuration {
 
   uint32_t scanHeight;
   uint32_t restoreAddressCount;
+
+  // Deposit-wallet scheme, set ONLY when generating a container and persisted in
+  // it (immutable thereafter). Defaults to aggregated-multikey (Spec 1).
+  CryptoNote::PqDepositScheme pqDepositScheme;
 };
 
 } //namespace PaymentService

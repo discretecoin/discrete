@@ -228,6 +228,30 @@ void GetPqAccountStatus::Response::serialize(CryptoNote::ISerializer& serializer
   serializer(txIndex, "txIndex");
 }
 
+void GetPqDepositScheme::Request::serialize(CryptoNote::ISerializer& serializer) {
+}
+
+void GetPqDepositScheme::Response::serialize(CryptoNote::ISerializer& serializer) {
+  serializer(scheme, "scheme");
+  serializer(depositCount, "depositCount");
+}
+
+void CreatePqDepositAddress::Request::serialize(CryptoNote::ISerializer& serializer) {
+}
+
+void CreatePqDepositAddress::Response::serialize(CryptoNote::ISerializer& serializer) {
+  serializer(address, "address");
+  serializer(index, "index");
+}
+
+void ListPqDepositAddresses::Request::serialize(CryptoNote::ISerializer& serializer) {
+}
+
+void ListPqDepositAddresses::Response::serialize(CryptoNote::ISerializer& serializer) {
+  serializer(addresses, "addresses");
+  serializer(indices, "indices");
+}
+
 void GetBlockHashes::Request::serialize(CryptoNote::ISerializer& serializer) {
   bool r = serializer(firstBlockIndex, "firstBlockIndex");
   r &= serializer(blockCount, "blockCount");

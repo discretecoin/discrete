@@ -292,7 +292,7 @@ void PaymentGateService::runRpcProxy(Logging::LoggerRef& log) {
 
 void PaymentGateService::runWalletServiceOr(const CryptoNote::Currency& currency, CryptoNote::INode& node) {
   if (config.gateConfiguration.generateNewContainer) {
-    generateNewWallet(currency, getWalletConfig(), logger, *dispatcher, node);
+    generateNewWallet(currency, getWalletConfig(), logger, *dispatcher, node, config.gateConfiguration.pqDepositScheme);
   }
   else if (config.gateConfiguration.changePassword) {
     changePassword(currency, getWalletConfig(), logger, *dispatcher, node, config.gateConfiguration.newContainerPassword);

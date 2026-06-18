@@ -3411,9 +3411,12 @@ void WalletGreen::buildPqStateBlob() {
   if (!m_pqConsumer) {
     return;
   }
-  std::stringstream consumerStream;
-  m_blockchainSynchronizer.getConsumerState(m_pqConsumer.get())->save(consumerStream);
-  std::string consumerBlob = consumerStream.str();
+  std::string consumerBlob;
+  if (auto* consumerState = m_blockchainSynchronizer.getConsumerState(m_pqConsumer.get())) {
+    std::stringstream consumerStream;
+    consumerState->save(consumerStream);
+    consumerBlob = consumerStream.str();
+  }
 
   std::stringstream stateStream;
   m_pqConsumer->state().save(stateStream);

@@ -59,6 +59,7 @@ Configuration::Configuration() {
   m_key_file = "";
   scanHeight = 0;
   restoreAddressCount = 1;
+  pqDepositScheme = CryptoNote::PqDepositScheme::AggregatedMultikey;
 }
 
 void Configuration::initOptions(po::options_description& desc) {
@@ -90,6 +91,8 @@ void Configuration::initOptions(po::options_description& desc) {
       ("server-root", po::value<std::string>(), "server root. The service will use it as working directory. Don't set it if don't want to change it")
       ("log-level", po::value<size_t>(), "log level")
       ("scan-height", po::value<uint32_t>(), "The height to begin scanning a wallet from")
+      ("aggregated-multikey", "deposit-wallet scheme = Spec 1 (custodial web-wallet): one shared ML-KEM view key plus a separate ML-DSA spend key per deposit, giving per-deposit spend isolation. DEFAULT. Valid only with --generate-container; immutable after creation. Mutually exclusive with --single-key-index.")
+      ("single-key-index", "deposit-wallet scheme = Spec 2 / H-I-T-C (exchange): one view + one spend key; deposits are distinguished by an integer subaddress index (no per-deposit key, no per-deposit registration). NO per-deposit spend isolation — a spend-key compromise exposes every deposit. Valid only with --generate-container; immutable after creation. Mutually exclusive with --aggregated-multikey.")
       ("address", "print wallet addresses and exit");
 }
 
@@ -181,6 +184,21 @@ void Configuration::init(const po::variables_map& options) {
 
   if (options.count("generate-container") != 0) {
     generateNewContainer = true;
+  }
+
+  {
+    bool agg = options.count("aggregated-multikey") != 0;
+    bool single = options.count("single-key-index") != 0;
+    if (agg || single) {
+      if (!generateNewContainer) {
+        throw ConfigurationError("--aggregated-multikey / --single-key-index are valid only with generate-container");
+      }
+      if (agg && single) {
+        throw ConfigurationError("--aggregated-multikey and --single-key-index are mutually exclusive");
+      }
+      pqDepositScheme = single ? CryptoNote::PqDepositScheme::SingleKeyIndex
+                               : CryptoNote::PqDepositScheme::AggregatedMultikey;
+    }
   }
 
   if (options.count("deterministic") != 0) {

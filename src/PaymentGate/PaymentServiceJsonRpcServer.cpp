@@ -69,6 +69,9 @@ PaymentServiceJsonRpcServer::PaymentServiceJsonRpcServer(System::Dispatcher* sys
   handlers.emplace("registerPqAccount", jsonHandler<RegisterPqAccount::Request, RegisterPqAccount::Response>(std::bind(&PaymentServiceJsonRpcServer::handleRegisterPqAccount, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("registerPqAccountPaid", jsonHandler<RegisterPqAccountPaid::Request, RegisterPqAccountPaid::Response>(std::bind(&PaymentServiceJsonRpcServer::handleRegisterPqAccountPaid, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("getPqAccountStatus", jsonHandler<GetPqAccountStatus::Request, GetPqAccountStatus::Response>(std::bind(&PaymentServiceJsonRpcServer::handleGetPqAccountStatus, this, std::placeholders::_1, std::placeholders::_2)));
+  handlers.emplace("getPqDepositScheme", jsonHandler<GetPqDepositScheme::Request, GetPqDepositScheme::Response>(std::bind(&PaymentServiceJsonRpcServer::handleGetPqDepositScheme, this, std::placeholders::_1, std::placeholders::_2)));
+  handlers.emplace("createPqDepositAddress", jsonHandler<CreatePqDepositAddress::Request, CreatePqDepositAddress::Response>(std::bind(&PaymentServiceJsonRpcServer::handleCreatePqDepositAddress, this, std::placeholders::_1, std::placeholders::_2)));
+  handlers.emplace("listPqDepositAddresses", jsonHandler<ListPqDepositAddresses::Request, ListPqDepositAddresses::Response>(std::bind(&PaymentServiceJsonRpcServer::handleListPqDepositAddresses, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("validateAddress", jsonHandler<ValidateAddress::Request, ValidateAddress::Response>(std::bind(&PaymentServiceJsonRpcServer::handleValidateAddress, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("getReserveProof", jsonHandler<GetReserveProof::Request, GetReserveProof::Response>(std::bind(&PaymentServiceJsonRpcServer::handleGetReserveProof, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("signMessage", jsonHandler<SignMessage::Request, SignMessage::Response>(std::bind(&PaymentServiceJsonRpcServer::handleSignMessage, this, std::placeholders::_1, std::placeholders::_2)));
@@ -304,6 +307,18 @@ std::error_code PaymentServiceJsonRpcServer::handleRegisterPqAccountPaid(const R
 
 std::error_code PaymentServiceJsonRpcServer::handleGetPqAccountStatus(const GetPqAccountStatus::Request& request, GetPqAccountStatus::Response& response) {
   return service.getPqAccountStatus(response.registered, response.accountNumber, response.blockHeight, response.txIndex);
+}
+
+std::error_code PaymentServiceJsonRpcServer::handleGetPqDepositScheme(const GetPqDepositScheme::Request& request, GetPqDepositScheme::Response& response) {
+  return service.getPqDepositScheme(response.scheme, response.depositCount);
+}
+
+std::error_code PaymentServiceJsonRpcServer::handleCreatePqDepositAddress(const CreatePqDepositAddress::Request& request, CreatePqDepositAddress::Response& response) {
+  return service.createPqDepositAddress(response.address, response.index);
+}
+
+std::error_code PaymentServiceJsonRpcServer::handleListPqDepositAddresses(const ListPqDepositAddresses::Request& request, ListPqDepositAddresses::Response& response) {
+  return service.listPqDepositAddresses(response.addresses, response.indices);
 }
 
 }

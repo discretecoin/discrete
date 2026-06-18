@@ -27,6 +27,7 @@
 #include "IWallet.h"
 #include "INode.h"
 #include "CryptoNoteCore/Currency.h"
+#include "Wallet/PqWallet.h"  // CryptoNote::PqDepositScheme
 #include "PaymentServiceJsonRpcMessages.h"
 #ifdef _WIN32
 #undef ERROR //TODO: workaround for windows build. fix it
@@ -53,7 +54,7 @@ struct WalletConfiguration {
   uint32_t restoreAddressCount = 1;
 };
 
-void generateNewWallet(const CryptoNote::Currency& currency, const WalletConfiguration& conf, Logging::ILogger& logger, System::Dispatcher& dispatcher, CryptoNote::INode& node);
+void generateNewWallet(const CryptoNote::Currency& currency, const WalletConfiguration& conf, Logging::ILogger& logger, System::Dispatcher& dispatcher, CryptoNote::INode& node, CryptoNote::PqDepositScheme depositScheme = CryptoNote::PqDepositScheme::AggregatedMultikey);
 void changePassword(const CryptoNote::Currency& currency, const WalletConfiguration& conf, Logging::ILogger& logger, System::Dispatcher& dispatcher, CryptoNote::INode& node, const std::string newPassword);
 
 struct TransactionsInBlockInfoFilter;
@@ -106,6 +107,9 @@ public:
   std::error_code registerPqAccount(std::string& transactionHash);
   std::error_code registerPqAccountPaid(std::string& transactionHash);
   std::error_code getPqAccountStatus(bool& registered, std::string& accountNumber, uint32_t& blockHeight, uint32_t& txIndex);
+  std::error_code getPqDepositScheme(std::string& scheme, uint32_t& depositCount);
+  std::error_code createPqDepositAddress(std::string& address, uint32_t& index);
+  std::error_code listPqDepositAddresses(std::vector<std::string>& addresses, std::vector<uint32_t>& indices);
   std::error_code sendTransaction(const SendTransaction::Request& request, std::string& transactionHash, std::string& transactionSecretKey);
   std::error_code createDelayedTransaction(const CreateDelayedTransaction::Request& request, std::string& transactionHash);
   std::error_code getDelayedTransactionHashes(std::vector<std::string>& transactionHashes);
