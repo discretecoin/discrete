@@ -99,36 +99,41 @@ std::optional<PqAggregateOwned> scanPqOutputAggregate(
     const std::vector<DsaPublicKey>& spendPubs,
     const Hash256& inputsHash,
     const PqScanOutput& out) {
-  // 1. The one expensive step: decapsulate with the shared view key.
+  // Spec 1 (aggregated-multikey): one shared ML-KEM view key decapsulates the
+  // output; the DEPOSIT is distinguished by which deposit spend key the output
+  // commits to (the spec's distinguisher), NOT by the subaddress index. A Spec-1
+  // deposit address is a plain PQ address, so the sender uses subaddress T=0.
+  //
+  // So: decapsulate once, derive the AEAD key at T=0, decrypt once, then test
+  // spendCommit against each deposit spend key to find the matching deposit.
   KemShared ss = kem_decaps(viewSk, out.kemCt);
 
-  // 2. Iterate T = 0..spendPubs.size()-1. Each T gives a distinct outContext
-  //    (and thus a distinct AEAD key). The output was built with T=spendPubIndex,
-  //    so only the matching T decrypts successfully.
+  const uint64_t T = 0;
+  Hash256 oc = outContext(inputsHash, out.kemCt, out.outputIndex, T);
+  Hash256 aeadKey = deriveAeadKey(ss, oc);
   AeadNonce nonce{};
+
+  std::array<uint8_t, 40> aad{};
+  std::memcpy(aad.data(), oc.data(), oc.size());
+  for (int j = 0; j < 8; ++j)
+    aad[32 + j] = static_cast<uint8_t>((out.amount >> (8 * j)) & 0xFF);
+
+  auto maybePt = aead_decrypt(aeadKey, nonce, aad.data(), aad.size(),
+                              out.encPayload.data(), out.encPayload.size());
+  if (!maybePt || maybePt->size() != 40) return std::nullopt;
+
+  // The payload's T must be 0 (a tampered T would have broken the AEAD key anyway).
+  uint64_t recoveredT = 0;
+  for (int j = 0; j < 8; ++j)
+    recoveredT |= static_cast<uint64_t>((*maybePt)[32 + j]) << (8 * j);
+  if (recoveredT != T) return std::nullopt;
+
+  Rho rho{};
+  std::memcpy(rho.data(), maybePt->data(), 32);
+
+  // Route by deposit spend key: the matching deposit is the one whose spendPub
+  // reproduces the on-chain spendCommit.
   for (std::size_t i = 0; i < spendPubs.size(); ++i) {
-    const uint64_t T = static_cast<uint64_t>(i);
-    Hash256 oc = outContext(inputsHash, out.kemCt, out.outputIndex, T);
-    Hash256 aeadKey = deriveAeadKey(ss, oc);
-
-    std::array<uint8_t, 40> aad{};
-    std::memcpy(aad.data(), oc.data(), oc.size());
-    for (int j = 0; j < 8; ++j)
-      aad[32 + j] = static_cast<uint8_t>((out.amount >> (8 * j)) & 0xFF);
-
-    auto maybePt = aead_decrypt(aeadKey, nonce, aad.data(), aad.size(),
-                                out.encPayload.data(), out.encPayload.size());
-    if (!maybePt || maybePt->size() != 40) continue;
-
-    // Verify recovered T matches the index we tried.
-    uint64_t recoveredT = 0;
-    for (int j = 0; j < 8; ++j)
-      recoveredT |= static_cast<uint64_t>((*maybePt)[32 + j]) << (8 * j);
-    if (recoveredT != T) continue;
-
-    Rho rho{};
-    std::memcpy(rho.data(), maybePt->data(), 32);
-
     if (spendCommit(spendPubs[i], rho) != out.spendCommit) continue;
 
     PqAggregateOwned res;

@@ -187,17 +187,37 @@ TEST(PqScan, AggregateRecognizesCorrectDeposit) {
     std::vector<DsaPublicKey> spendPubs = {dep0.first, dep1.first, dep2.first};
 
     Hash256 ih = inputsHash(fixedInputs());
-    // An output paid to deposit #1 (shared viewPub + dep1 spendPub, T=1).
-    // T must equal spendPubIndex so the aggregate scanner can route it.
-    PqScanOutput o = buildScanOutput(view.first, dep1.first, ih, 5, 4242, /*T=*/1);
+    // An output paid to deposit #1 (shared viewPub + dep1 spendPub). A Spec-1
+    // deposit address is a plain PQ address, so the sender uses subaddress T=0;
+    // the aggregate scanner routes by which deposit spend key the output commits to.
+    PqScanOutput o = buildScanOutput(view.first, dep1.first, ih, 5, 4242, /*T=*/0);
 
     auto owned = scanPqOutputAggregate(view.second, spendPubs, ih, o);
     ASSERT_TRUE(owned.has_value());
-    EXPECT_EQ(owned->spendPubIndex, 1u);
-    EXPECT_EQ(owned->record.subaddrIndexT, 1u);
+    EXPECT_EQ(owned->spendPubIndex, 1u);          // routed to deposit #1 by spend key
+    EXPECT_EQ(owned->record.subaddrIndexT, 0u);   // Spec-1 deposits are subaddress 0
     EXPECT_EQ(owned->record.amount, 4242u);
     EXPECT_EQ(owned->record.outputIndex, 5u);
     EXPECT_EQ(spendCommit(dep1.first, owned->record.rho), o.spendCommit);
+}
+
+TEST(PqScan, AggregateRoutesEachDepositToItsOwnKey) {
+    // Three deposits under one shared view key must each route to the right index.
+    auto view = deriveViewKeys(pat<32>(2, 7));
+    auto dep0 = deriveSpendKeys(pat<32>(10, 1));
+    auto dep1 = deriveSpendKeys(pat<32>(20, 2));
+    auto dep2 = deriveSpendKeys(pat<32>(30, 3));
+    std::vector<DsaPublicKey> spendPubs = {dep0.first, dep1.first, dep2.first};
+    Hash256 ih = inputsHash(fixedInputs());
+
+    const DsaPublicKey* deps[3] = {&dep0.first, &dep1.first, &dep2.first};
+    for (uint32_t i = 0; i < 3; ++i) {
+        PqScanOutput o = buildScanOutput(view.first, *deps[i], ih, i, 100 + i, /*T=*/0);
+        auto owned = scanPqOutputAggregate(view.second, spendPubs, ih, o);
+        ASSERT_TRUE(owned.has_value());
+        EXPECT_EQ(owned->spendPubIndex, i);
+        EXPECT_EQ(owned->record.amount, 100u + i);
+    }
 }
 
 TEST(PqScan, AggregateIgnoresOtherService) {
