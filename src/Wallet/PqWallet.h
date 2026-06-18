@@ -50,6 +50,20 @@ namespace CryptoNote {
 // derivations in PqDerive.h. CEMENTED — see file header.
 constexpr char kPqWalletSeedDomain[] = "karbo-pq-wallet-seed-v1";
 
+// Deposit-wallet scheme, chosen once at container creation and persisted (it
+// changes how deposit keys are derived and how the encPayload routing field is
+// interpreted, so it cannot be a per-run toggle). See docs/WALLETD-PQ.md and the
+// deposit-wallet-modes spec.
+enum class PqDepositScheme : uint8_t {
+  // Spec 1: one shared ML-KEM view key + a FAMILY of ML-DSA spend keys (one per
+  // deposit). Per-deposit spend isolation. DEFAULT. Use case: custodial web wallet.
+  AggregatedMultikey = 0,
+  // Spec 2 / H-I-T-C: one view + one spend key; deposits are distinguished by an
+  // integer subaddress index T (no per-deposit key, no per-deposit registration).
+  // Use case: exchange.
+  SingleKeyIndex = 1,
+};
+
 // A complete PQ identity. `spendSk` is spending authority — treat as sensitive
 // and prefer to derive it on demand (derivePqSpendKeys) rather than holding it.
 struct PqWalletKeys {

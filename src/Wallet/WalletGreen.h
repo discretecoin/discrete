@@ -66,6 +66,25 @@ public:
   // relays the returned transaction. Throws on a tracking wallet.
   Transaction buildPqFreeRegTransaction(const Crypto::Hash& refBlockHash) const;
 
+  // --- Deposit-wallet scheme (Spec 1 aggregated-multikey / Spec 2 single-key-index)
+  // The scheme is chosen ONCE at container creation and persisted; it cannot be
+  // changed for an existing container. setPqDepositScheme throws if the container
+  // already has deposit state (i.e. is not freshly created).
+  PqDepositScheme getPqDepositScheme() const { return m_pqDepositScheme; }
+  uint32_t getPqDepositCount() const { return m_pqDepositCount; }
+  void setPqDepositScheme(PqDepositScheme scheme);
+  // Reserve and return the next deposit index (the Spec-1 deposit-key index, or the
+  // Spec-2 subaddress T). Increments the persisted deposit count. Throws on a
+  // tracking wallet.
+  uint32_t reservePqDepositIndex();
+  // The deposit address for `index` under THIS container's scheme:
+  //  - AggregatedMultikey: base58 PQ address = (shared view key, deposit spend key
+  //    #index). regBlockHeight/regTxIndex are ignored.
+  //  - SingleKeyIndex: the H-I-T-C account number built from the account's on-chain
+  //    registration coords (regBlockHeight=H, regTxIndex=I) and T=index. The caller
+  //    resolves (H,I) from the node first.
+  std::string pqDepositAddress(uint32_t index, uint32_t regBlockHeight, uint32_t regTxIndex) const;
+
   virtual void initialize(const std::string& path, const std::string& password) override;
   virtual void initializeWithViewKey(const std::string& path, const std::string& password, const Crypto::SecretKey& viewSecretKey) override;
   virtual void initializeWithViewKey(const std::string& path, const std::string& password, const Crypto::SecretKey& viewSecretKey, const uint64_t& creationTimestamp) override;
@@ -434,6 +453,13 @@ protected:
   std::string m_path;
   std::string m_extra; // workaround for wallet reset
   std::string m_pqState; // persisted PQ consumer cursor + PqWalletState (see save/loadPqState)
+  // Deposit-wallet scheme + how many deposit addresses have been issued. Persisted
+  // inside m_pqState (a third framed section); defaults apply to pre-deposit containers.
+  PqDepositScheme m_pqDepositScheme = PqDepositScheme::AggregatedMultikey;
+  uint32_t m_pqDepositCount = 0;
+  // True once the scheme has been chosen (at creation) or read back from a
+  // persisted container; makes setPqDepositScheme reject any later change.
+  bool m_pqDepositSchemeChosen = false;
 
   Crypto::PublicKey m_viewPublicKey;
   Crypto::SecretKey m_viewSecretKey;

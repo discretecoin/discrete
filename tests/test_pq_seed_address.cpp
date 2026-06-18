@@ -150,6 +150,31 @@ TEST(PqSeed, DepositKeysShareTheSingleViewKey) {
     EXPECT_EQ(view.first, deriveViewKeys(m).first);
 }
 
+TEST(PqDepositAddress, Spec1AddressPerIndexIsDistinctAndDecodes) {
+    // A Spec-1 deposit address pairs the ONE shared view key with a per-deposit
+    // spend key. Each index yields a distinct, decodable address that recovers the
+    // shared view key and that deposit's spend key (what WalletGreen::pqDepositAddress
+    // builds for AggregatedMultikey).
+    SeedMaster m = pat<32>(3, 9);
+    auto view = deriveViewKeys(m);
+    const uint64_t prefix = 111;
+
+    std::string prev;
+    for (uint32_t i = 0; i < 4; ++i) {
+        auto dep = deriveDepositSpendKeys(m, i);
+        PqAddress addr = makePqAddress(prefix, view.first, dep.first);
+        std::string enc = encodePqAddress(addr, PqAddressEncoding::Base58);
+        ASSERT_FALSE(enc.empty());
+        EXPECT_NE(enc, prev);  // each deposit address differs
+        prev = enc;
+
+        PqAddress dec;
+        ASSERT_TRUE(decodePqAddress(enc, dec, PqAddressEncoding::Base58));
+        EXPECT_EQ(dec.viewPub, view.first);    // shared view key
+        EXPECT_EQ(dec.spendPub, dep.first);    // this deposit's spend key
+    }
+}
+
 // --- Address encode / decode ---------------------------------------------
 
 TEST(PqAddress, ChecksumDerivation) {

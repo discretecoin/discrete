@@ -55,6 +55,7 @@
 #include "Wallet/TransactionBuilder.h"
 #include "Wallet/PqWallet.h"
 #include "Wallet/PqTransactionBuilder.h"
+#include "AccountNumber.h"
 #include "CryptoNoteCore/CryptoNoteTools.h"
 #include "CryptoNoteCore/PqValidation.h"
 #include "CryptoNoteCore/TransactionApi.h"
@@ -3418,7 +3419,9 @@ void WalletGreen::buildPqStateBlob() {
   m_pqConsumer->state().save(stateStream);
   std::string stateBlob = stateStream.str();
 
-  // Frame: [u64 len || bytes] x2 (consumer sync cursor, then PqWalletState).
+  // Frame: [u64 len || bytes] x3 (consumer sync cursor, PqWalletState, deposit
+  // metadata). The third section is append-only, so old 2-section blobs still load
+  // (the deposit reader below treats its absence as "defaults").
   std::stringstream out;
   auto writeSection = [&out](const std::string& s) {
     uint64_t len = s.size();
@@ -3427,6 +3430,15 @@ void WalletGreen::buildPqStateBlob() {
   };
   writeSection(consumerBlob);
   writeSection(stateBlob);
+
+  // Deposit metadata: [u8 scheme][LE32 depositCount].
+  std::string depositBlob;
+  depositBlob.push_back(static_cast<char>(static_cast<uint8_t>(m_pqDepositScheme)));
+  for (int i = 0; i < 4; ++i) {
+    depositBlob.push_back(static_cast<char>((m_pqDepositCount >> (8 * i)) & 0xFF));
+  }
+  writeSection(depositBlob);
+
   m_pqState = out.str();
 }
 
@@ -3443,7 +3455,7 @@ void WalletGreen::restorePqStateBlob() {
     if (len) in.read(&s[0], static_cast<std::streamsize>(len));
     return static_cast<bool>(in);
   };
-  std::string consumerBlob, stateBlob;
+  std::string consumerBlob, stateBlob, depositBlob;
   try {
     if (readSection(consumerBlob) && !consumerBlob.empty()) {
       std::stringstream cs(consumerBlob);
@@ -3452,6 +3464,16 @@ void WalletGreen::restorePqStateBlob() {
     if (readSection(stateBlob) && !stateBlob.empty()) {
       std::stringstream ss(stateBlob);
       m_pqConsumer->state().load(ss);
+    }
+    // Deposit metadata (third section; absent on pre-deposit containers).
+    if (readSection(depositBlob) && depositBlob.size() >= 5) {
+      m_pqDepositScheme = static_cast<PqDepositScheme>(static_cast<uint8_t>(depositBlob[0]));
+      uint32_t count = 0;
+      for (int i = 0; i < 4; ++i) {
+        count |= static_cast<uint32_t>(static_cast<uint8_t>(depositBlob[1 + i])) << (8 * i);
+      }
+      m_pqDepositCount = count;
+      m_pqDepositSchemeChosen = true;  // an existing container's scheme is fixed
     }
   } catch (const std::exception& e) {
     m_logger(WARNING) << "Failed to restore PQ state (" << e.what() << "); will rescan.";
@@ -3499,6 +3521,57 @@ bool WalletGreen::getPqRegistrationKeysHex(std::string& viewHex, std::string& sp
   viewHex = Common::toHex(keys.viewPub.data(), keys.viewPub.size());
   spendHex = Common::toHex(keys.spendPub.data(), keys.spendPub.size());
   return true;
+}
+
+void WalletGreen::setPqDepositScheme(PqDepositScheme scheme) {
+  throwIfNotInitialized();
+  throwIfStopped();
+  if (m_pqDepositSchemeChosen) {
+    throw std::runtime_error("deposit scheme is immutable after container creation");
+  }
+  m_pqDepositScheme = scheme;
+  m_pqDepositSchemeChosen = true;
+}
+
+uint32_t WalletGreen::reservePqDepositIndex() {
+  throwIfNotInitialized();
+  throwIfStopped();
+  if (getAddressCount() == 0 || getAddressSpendKey(0).secretKey == NULL_SECRET_KEY) {
+    throw std::runtime_error("tracking wallet cannot create deposit addresses");
+  }
+  if (m_pqDepositCount == std::numeric_limits<uint32_t>::max()) {
+    throw std::runtime_error("deposit index space exhausted");
+  }
+  // The first call chooses the default scheme implicitly if it was never set, so
+  // the persisted metadata records the scheme even for default (aggregated) wallets.
+  m_pqDepositSchemeChosen = true;
+  return m_pqDepositCount++;
+}
+
+std::string WalletGreen::pqDepositAddress(uint32_t index, uint32_t regBlockHeight,
+                                          uint32_t regTxIndex) const {
+  throwIfNotInitialized();
+  throwIfStopped();
+  if (getAddressCount() == 0) {
+    return std::string();
+  }
+  KeyPair primary = getAddressSpendKey(0);
+  if (primary.secretKey == NULL_SECRET_KEY) {
+    return std::string();  // tracking wallet: no PQ identity
+  }
+  PqWalletKeys base = derivePqWalletKeys(primary.secretKey);
+
+  if (m_pqDepositScheme == PqDepositScheme::SingleKeyIndex) {
+    // Spec 2: one keypair; the deposit identity is the H-I-T-C account number.
+    return CryptoNote::AccountNumber{regBlockHeight, regTxIndex}.toStringWithIndex(index);
+  }
+
+  // Spec 1: shared view key + a per-deposit ML-DSA spend key. The address carries
+  // the deposit spend key so each deposit has its own spend authority.
+  auto depositSpend = CryptoPQ::deriveDepositSpendKeys(base.seedMaster, index);
+  PqAddress addr = makePqAddress(CryptoNote::parameters::CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX,
+                                 base.viewPub, depositSpend.first);
+  return encodePqAddress(addr, PqAddressEncoding::Base58);
 }
 
 Transaction WalletGreen::buildPqFreeRegTransaction(const Crypto::Hash& refBlockHash) const {
