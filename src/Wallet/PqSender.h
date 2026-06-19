@@ -1,0 +1,68 @@
+// Copyright (c) 2026, The Karbo developers
+//
+// This file is part of Karbo.
+//
+// Karbo is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Karbo is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with Karbo.  If not, see <http://www.gnu.org/licenses/>.
+
+#pragma once
+
+#include <cstdint>
+#include <stdexcept>
+#include <string>
+#include <vector>
+
+#include "CryptoNote.h"
+#include "PqWallet.h"               // PqWalletKeys
+#include "PqTransactionBuilder.h"   // PqSpendInput, PqSendOutput
+
+// The single, engine-agnostic PQ spend path shared by BOTH wallet engines
+// (WalletLegacy/simplewallet and WalletGreen/greenwallet/walletd). All deterministic
+// policy — input selection order, canonical denomination decomposition, two-pass fee
+// rounding, change handling, signing — lives here so the front-ends can never drift.
+// It performs NO I/O and touches no node: the caller relays the returned transaction.
+
+namespace CryptoNote {
+
+// One recipient with the lump amount to pay. buildPqSend decomposes the amount into
+// canonical denominations (Denominations.h) and may emit several outputs per recipient.
+struct PqSendRequest {
+  std::vector<PqSendOutput> recipients;  // each .amount is the lump to that recipient
+  uint64_t explicitFee = 0;              // 0 = auto (two-pass measured fee)
+  uint64_t unlockHeight = 0;             // tx-level spend lock (0 = none)
+};
+
+struct PqSendResult {
+  Transaction               tx;
+  uint64_t                  fee = 0;
+  uint64_t                  sent = 0;     // sum of recipient amounts (excl. fee/change)
+  uint64_t                  change = 0;
+  std::vector<PqSpendInput> selected;     // inputs actually spent
+};
+
+enum class PqSendErrorCode { NoRecipients, ZeroAmount, InsufficientFunds, TooLarge };
+
+struct PqSendError : std::runtime_error {
+  PqSendErrorCode code;
+  PqSendError(PqSendErrorCode c, const std::string& msg) : std::runtime_error(msg), code(c) {}
+};
+
+// Build (and sign) a TX_PQ paying `req.recipients` from `available`, owned by `keys`.
+// Deterministic; throws PqSendError on no/zero recipients, insufficient funds, or a
+// transaction that cannot be made to fit the consensus caps. Change returns to the
+// wallet's own primary address. The caller relays result.tx.
+PqSendResult buildPqSend(const std::vector<PqSpendInput>& available,
+                         const PqWalletKeys& keys,
+                         const PqSendRequest& req);
+
+}  // namespace CryptoNote
