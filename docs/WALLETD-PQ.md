@@ -18,16 +18,16 @@ walletd --container-file w.wallet --container-password PW \
 
 All examples below POST JSON-RPC 2.0 to `http://127.0.0.1:8070/json_rpc`.
 
-## `getPqAddress`
+## `getAddress`
 
 Returns the wallet's PQ address (base58). This is the address payers send PQ
-funds to; it is identical to `simplewallet`'s `pq_address` for the same seed.
+funds to; it is identical to `simplewallet`'s `address` for the same seed.
 
 Request:
 
 ```
 curl -s -u :RPC -X POST http://127.0.0.1:8070/json_rpc -H 'Content-Type: application/json' -d '{
-  "jsonrpc": "2.0", "id": 1, "method": "getPqAddress", "params": {}
+  "jsonrpc": "2.0", "id": 1, "method": "getAddress", "params": {}
 }'
 ```
 
@@ -37,25 +37,25 @@ Response:
 {
   "jsonrpc": "2.0", "id": 1,
   "result": {
-    "pqAddress": "<base58 PQ address>",
-    "pqEnabled": true
+    "address": "<base58 PQ address>",
+    "enabled": true
   }
 }
 ```
 
-`pqEnabled` is `false` (and `pqAddress` empty) for a tracking/view-only container,
+`enabled` is `false` (and `address` empty) for a tracking/view-only container,
 which has no spend secret and therefore no PQ identity.
 
-## `getPqBalance`
+## `getBalance`
 
 Returns the PQ available balance (atomic units) and the height the PQ scanner has
-reached. Mirrors `simplewallet`'s `pq_balance`.
+reached. Mirrors `simplewallet`'s `balance`.
 
 Request:
 
 ```
 curl -s -u :RPC -X POST http://127.0.0.1:8070/json_rpc -H 'Content-Type: application/json' -d '{
-  "jsonrpc": "2.0", "id": 1, "method": "getPqBalance", "params": {}
+  "jsonrpc": "2.0", "id": 1, "method": "getBalance", "params": {}
 }'
 ```
 
@@ -67,7 +67,7 @@ Response:
   "result": {
     "availableBalance": 0,
     "scannedHeight": 12345,
-    "pqEnabled": true
+    "enabled": true
   }
 }
 ```
@@ -75,16 +75,16 @@ Response:
 `availableBalance` is in atomic units (divide by 10^`CRYPTONOTE_DISPLAY_DECIMAL_POINT`
 for whole coins). PQ and classical balances are never combined.
 
-## `registerPqAccount` (free, anti-spam PoW)
+## `registerAccount` (free, anti-spam PoW)
 
 Registers this wallet's PQ identity for a human-readable account number via a
 `TX_FREE_REG` — no funds required, only an anti-spam proof-of-work that walletd
 solves for you. Returns the registration transaction hash; poll
-`getPqAccountStatus` until it confirms. Mirrors simplewallet's `pq_register`.
+`getAccountStatus` until it confirms. Mirrors simplewallet's `register`.
 
 ```
 curl -s -u :RPC -X POST http://127.0.0.1:8070/json_rpc -H 'Content-Type: application/json' -d '{
-  "jsonrpc": "2.0", "id": 1, "method": "registerPqAccount", "params": {}
+  "jsonrpc": "2.0", "id": 1, "method": "registerAccount", "params": {}
 }'
 ```
 
@@ -92,15 +92,15 @@ curl -s -u :RPC -X POST http://127.0.0.1:8070/json_rpc -H 'Content-Type: applica
 { "jsonrpc": "2.0", "id": 1, "result": { "transactionHash": "<hex>" } }
 ```
 
-## `registerPqAccountPaid`
+## `registerAccountPaid`
 
 **Not supported over walletd yet.** Paid registration must spend PQ funds + a fee
 via a `TX_PQ` carrying the registration tag, and walletd has no PQ-send path yet.
 The method is present for API completeness but returns a `function_not_supported`
 error rather than building a transaction consensus would reject. Use the free
-`registerPqAccount` instead.
+`registerAccount` instead.
 
-## `getPqAccountStatus`
+## `getAccountStatus`
 
 Polls the node's PQ account registry for this wallet's identity. Once the
 registration confirms, `registered` becomes `true` and `accountNumber` holds the
@@ -108,7 +108,7 @@ human-readable H-I-C account number.
 
 ```
 curl -s -u :RPC -X POST http://127.0.0.1:8070/json_rpc -H 'Content-Type: application/json' -d '{
-  "jsonrpc": "2.0", "id": 1, "method": "getPqAccountStatus", "params": {}
+  "jsonrpc": "2.0", "id": 1, "method": "getAccountStatus", "params": {}
 }'
 ```
 
@@ -124,9 +124,9 @@ After confirmation:
 { "jsonrpc": "2.0", "id": 1, "result": { "registered": true, "accountNumber": "<H-I-C>", "blockHeight": 1234, "txIndex": 1 } }
 ```
 
-Typical flow: call `registerPqAccount`, wait for the tx to be mined, then poll
-`getPqAccountStatus` until `registered` is `true`. The account number is the same
-one simplewallet's `pq_account` shows for the same seed.
+Typical flow: call `registerAccount`, wait for the tx to be mined, then poll
+`getAccountStatus` until `registered` is `true`. The account number is the same
+one simplewallet's `account` shows for the same seed.
 
 ## Deposit-wallet modes
 
@@ -146,37 +146,37 @@ walletd --container-file exchange.wallet --container-password PW -g --single-key
 walletd --container-file webwallet.wallet --container-password PW -g            # aggregated-multikey (default)
 ```
 
-### `getPqDepositScheme`
+### `getDepositScheme`
 
 ```
-curl ... -d '{ "jsonrpc":"2.0","id":1,"method":"getPqDepositScheme","params":{} }'
+curl ... -d '{ "jsonrpc":"2.0","id":1,"method":"getDepositScheme","params":{} }'
 # -> { "result": { "scheme": "single-key-index", "depositCount": 3 } }
 ```
 
-### `createPqDepositAddress`
+### `createDepositAddress`
 
 Returns a new deposit address and its index. In aggregated-multikey mode the
 address is a base58 PQ address with its own spend key; in single-key-index mode it
 is the **H-I-T-C** account number (the base account's `H-I` plus the new index `T`
 and a Luhn check char). single-key-index requires the account to be **registered
-first** (run `registerPqAccount` and wait for confirmation), because H-I-T-C
+first** (run `registerAccount` and wait for confirmation), because H-I-T-C
 embeds the account's on-chain registration coordinates.
 
 ```
-curl ... -d '{ "jsonrpc":"2.0","id":1,"method":"createPqDepositAddress","params":{} }'
+curl ... -d '{ "jsonrpc":"2.0","id":1,"method":"createDepositAddress","params":{} }'
 # aggregated-multikey -> { "result": { "address": "<base58 PQ address>", "index": 3 } }
 # single-key-index    -> { "result": { "address": "<H-I-T-C>", "index": 3 } }
 ```
 
-### `listPqDepositAddresses`
+### `listDepositAddresses`
 
 ```
-curl ... -d '{ "jsonrpc":"2.0","id":1,"method":"listPqDepositAddresses","params":{} }'
+curl ... -d '{ "jsonrpc":"2.0","id":1,"method":"listDepositAddresses","params":{} }'
 # -> { "result": { "addresses": ["...","..."], "indices": [0,1] } }
 ```
 
 Paying a deposit address works from any Discrete wallet: `simplewallet`/`greenwallet`
-`pq_transfer` accept a raw PQ address (aggregated-multikey deposit), an H-I-C account
+`transfer` accept a raw PQ address (aggregated-multikey deposit), an H-I-C account
 number, or an H-I-T-C deposit subaddress (single-key-index), threading the deposit
 index `T` into the payment automatically.
 
@@ -193,9 +193,9 @@ index `T` into the payment automatically.
 
 ## Verifying parity with simplewallet
 
-Open the same container with `simplewallet` and run `pq_address` / `pq_balance`.
-The `getPqAddress.pqAddress` must equal the address `pq_address` prints, and
-`getPqBalance.availableBalance` must equal the `pq_balance` amount (in atomic
+Open the same container with `simplewallet` and run `address` / `balance`.
+The `getAddress.address` must equal the address `address` prints, and
+`getBalance.availableBalance` must equal the `balance` amount (in atomic
 units) once both have scanned to the same height. The PQ address is derived
 deterministically from the container's primary spend secret, so it is stable
 across reopen and identical between the two front-ends.

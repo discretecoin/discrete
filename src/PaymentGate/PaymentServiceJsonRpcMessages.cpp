@@ -191,8 +191,8 @@ void GetPqAddress::Request::serialize(CryptoNote::ISerializer& serializer) {
 }
 
 void GetPqAddress::Response::serialize(CryptoNote::ISerializer& serializer) {
-  serializer(pqAddress, "pqAddress");
-  serializer(pqEnabled, "pqEnabled");
+  serializer(pqAddress, "address");
+  serializer(pqEnabled, "enabled");
 }
 
 void GetPqBalance::Request::serialize(CryptoNote::ISerializer& serializer) {
@@ -201,7 +201,7 @@ void GetPqBalance::Request::serialize(CryptoNote::ISerializer& serializer) {
 void GetPqBalance::Response::serialize(CryptoNote::ISerializer& serializer) {
   serializer(availableBalance, "availableBalance");
   serializer(scannedHeight, "scannedHeight");
-  serializer(pqEnabled, "pqEnabled");
+  serializer(pqEnabled, "enabled");
 }
 
 void RegisterPqAccount::Request::serialize(CryptoNote::ISerializer& serializer) {

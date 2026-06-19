@@ -35,8 +35,8 @@ to the same `WalletGreen` / `PqTransactionBuilder` core (no half-wired stubs):
   `pq_register` is the recommended (and fully PQ-native) registration path. Paid
   registration over a `TX_PQ` carrying the registration tag is future work shared
   by all front-ends.
-- **walletd** has no PQ-send path yet, so it exposes free `registerPqAccount` but
-  returns `not_supported` for `registerPqAccountPaid` (see `docs/WALLETD-PQ.md`).
+- **walletd** has no PQ-send path yet, so it exposes free `registerAccount` but
+  returns `not_supported` for `registerAccountPaid` (see `docs/WALLETD-PQ.md`).
 
 ## Guidance
 
