@@ -35,6 +35,10 @@
 #include "Wallet/MiningKeyLoader.h"
 #include "Wallet/WalletErrors.h"
 #include "Wallet/WalletGreen.h"
+#include "Wallet/PqWallet.h"
+#include "Wallet/PqTransactionBuilder.h"
+#include "crypto_pq/PqOutputBuilder.h"
+#include "crypto_pq/PqDerive.h"
 #include "Wallet/WalletSerializationV2.h"
 #include "Wallet/WalletUtils.h"
 #include "WalletLegacy/WalletUserTransactionsCache.h"
@@ -3923,4 +3927,100 @@ TEST_F(WalletApi, walletExportFailedIfFileAlreadyExists) {
     ASSERT_TRUE(boost::filesystem::exists(BOB_WALLET_PATH));
     ASSERT_EQ(1, boost::filesystem::file_size(BOB_WALLET_PATH));
   }
+}
+
+// --- PQ convergence integration: a real WalletGreen syncing a PQ transaction ---
+// Drives the full pipeline (INodeTrivialRefreshStub -> BlockchainSynchronizer ->
+// WalletLedgerConsumer -> WalletLedger) and asserts the NATIVE IWallet getters
+// (getActualBalance / getTransactionCount / getTransaction) reflect the PQ ledger.
+// This is the end-to-end gate for the PQ-as-native-engine convergence.
+namespace {
+CryptoNote::Transaction makePqPayTo(const CryptoNote::PqWalletKeys& from,
+                                    const CryptoNote::PqWalletKeys& to,
+                                    uint64_t inAmount, uint64_t payAmount, uint8_t seed) {
+  std::vector<CryptoPQ::InputRef> refs(1);
+  for (auto& b : refs[0].prevTxid) b = seed;
+  refs[0].prevOutIndex = 1;
+  CryptoPQ::Hash256 fih = CryptoPQ::inputsHash(refs);
+  CryptoPQ::PqBuiltOutput src =
+      CryptoPQ::buildPqOutput(from.viewPub, from.spendPub, fih, 0, inAmount);
+  CryptoNote::PqSpendInput in;
+  for (std::size_t i = 0; i < 32; ++i) in.prevTxid.data[i] = static_cast<uint8_t>(seed + i);
+  in.prevOutIndex = 0;
+  in.amount = inAmount;
+  in.rho = src.rho;
+  CryptoNote::PqSendOutput out{to.viewPub, to.spendPub, payAmount};
+  return CryptoNote::buildPqTransaction({in}, {out}, from.spendPub, from.spendSk);
+}
+// Pump wallet events until `pred` holds or the timeout elapses.
+void pumpUntil(System::Dispatcher& dispatcher, CryptoNote::WalletGreen& wallet,
+               std::function<bool()> pred,
+               std::chrono::nanoseconds timeout = std::chrono::seconds(30)) {
+  System::Context<> waitContext(dispatcher, [&wallet, &pred]() {
+    while (!pred()) { wallet.getEvent(); }
+  });
+  System::Context<> timeoutContext(dispatcher, [&dispatcher, &waitContext, timeout]() {
+    System::Timer(dispatcher).sleep(timeout);
+    waitContext.interrupt();
+  });
+  try { waitContext.get(); } catch (System::InterruptedException&) {}
+}
+}  // namespace
+
+// End-to-end gate for the PQ-as-native-engine convergence: drives a real WalletGreen
+// (INodeTrivialRefreshStub -> BlockchainSynchronizer -> WalletLedgerConsumer) and
+// asserts the NATIVE IWallet getters reflect the PQ ledger.
+//
+// DISABLED: TestBlockchainGenerator cannot build Discrete's yespower (v5+) PoW blocks
+// without a real Core sink (it throws "block hash wasn't found" during block
+// construction) — the same limitation that leaves the classical UnitTests
+// runtime-broken on this fork. Enable once the real-node harness exists
+// (completion-plan Phase 6.1). NOTE: running this test already proved its worth — it
+// surfaced the classical TransfersConsumer stalling PQ sync (fixed in
+// TransfersConsumer::onNewBlocks: PQ-only blocks now count as empty instead of
+// detaching).
+TEST(PqWalletIntegration, DISABLED_IncomingTransactionCreditsNativeBalance) {
+  System::Dispatcher dispatcher;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(1000000).upgradeHeightV6(1000000)
+      .currency();
+  TestBlockchainGenerator generator(currency);
+  INodeTrivialRefreshStub node(generator);
+  CryptoNote::WalletGreen wallet(dispatcher, currency, node, logger);
+
+  const std::string path = "pq_integration.wallet";
+  boost::filesystem::remove(path);
+  wallet.initialize(path, "pass");
+  wallet.createAddress();
+
+  // The wallet's PQ identity derives from its primary spend secret.
+  Crypto::SecretKey spend = wallet.getAddressSpendKey(0).secretKey;
+  CryptoNote::PqWalletKeys mine = CryptoNote::derivePqWalletKeys(spend);
+
+  // Some other wallet pays us 800000 via a TX_PQ placed on-chain.
+  Crypto::SecretKey otherSecret;
+  for (std::size_t i = 0; i < sizeof(otherSecret.data); ++i)
+    otherSecret.data[i] = static_cast<uint8_t>(i * 7 + 3);
+  CryptoNote::PqWalletKeys them = CryptoNote::derivePqWalletKeys(otherSecret);
+
+  CryptoNote::Transaction pqTx = makePqPayTo(them, mine, 1000000, 800000, 0x55);
+  generator.addTxToBlockchain(pqTx);
+  node.updateObservers();
+
+  // The native IWallet getters must reflect the PQ ledger once the block syncs.
+  pumpUntil(dispatcher, wallet, [&wallet]() { return wallet.getActualBalance() == 800000u; });
+
+  EXPECT_EQ(wallet.getActualBalance(), 800000u);
+  EXPECT_EQ(wallet.getPendingBalance(), 0u);
+  ASSERT_EQ(wallet.getTransactionCount(), 1u);
+
+  CryptoNote::WalletTransaction tx0 = wallet.getTransaction(0);
+  EXPECT_EQ(tx0.totalAmount, 800000);
+  EXPECT_EQ(tx0.hash, CryptoNote::getObjectHash(pqTx));
+
+  wallet.shutdown();
+  boost::filesystem::remove(path);
 }

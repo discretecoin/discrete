@@ -266,17 +266,30 @@ uint32_t TransfersConsumer::onNewBlocks(const CompleteBlock* blocks, uint32_t st
       blockInfo.timestamp = block->timestamp;
       blockInfo.transactionIndex = 0; // position in block
 
+      // Collect this block's classical transactions. PQ-family transactions carry
+      // no transaction public key (NULL_PUBLIC_KEY) and belong to the PQ ledger,
+      // not this consumer. Skipping them must NOT stall block completion: a block
+      // with no classical transactions (e.g. one with only a PQ coinbase — every
+      // block on a PQ-only chain) counts as empty, and the block-completion marker
+      // goes on the LAST CLASSICAL transaction, not the on-wire last one.
+      std::vector<Tx> blockTxs;
       for (const auto& tx : blocks[i].transactions) {
         auto pubKey = tx->getTransactionPublicKey();
         if (pubKey == NULL_PUBLIC_KEY) {
           ++blockInfo.transactionIndex;
           continue;
         }
-
-        bool isLastTransactionInBlock = blockInfo.transactionIndex + 1 == blocks[i].transactions.size();
-        Tx item = { blockInfo, tx.get(), isLastTransactionInBlock };
-        inputQueue.push(item);
+        blockTxs.push_back(Tx{ blockInfo, tx.get(), false });
         ++blockInfo.transactionIndex;
+      }
+
+      if (blockTxs.empty()) {
+        ++emptyBlockCount;  // nothing classical here; the PQ consumer owns this block
+        continue;
+      }
+      blockTxs.back().isLastTransactionInBlock = true;
+      for (const auto& item : blockTxs) {
+        inputQueue.push(item);
       }
     }
 

@@ -3949,8 +3949,33 @@ std::vector<TransactionsInBlockInfo> WalletGreen::getTransactionsInBlocks(uint32
     return result;
   }
 
-  auto& blockHeightIndex = m_transactions.get<BlockHeightIndex>();
   uint32_t stopIndex = static_cast<uint32_t>(std::min(m_blockchain.size(), blockIndex + count));
+
+  if (pqEnabled()) {
+    // PQ-native: group the ledger's confirmed history rows by block height. The
+    // wallet's block-hash list (m_blockchain) still tracks the chain, so heights
+    // map to hashes the same way. Counterparties aren't recoverable, so each tx
+    // carries one net WalletTransfer against the wallet's own address.
+    const auto& hist = m_pqConsumer->state().history();
+    std::string ownAddress = getPqAddress();
+    for (uint32_t height = blockIndex; height < stopIndex; ++height) {
+      TransactionsInBlockInfo info;
+      info.blockHash = m_blockchain[height];
+      for (const auto& row : hist) {
+        if (row.height != height) {
+          continue;
+        }
+        WalletTransactionWithTransfers w;
+        w.transaction = pqRowToWalletTx(row);
+        w.transfers.push_back(WalletTransfer{WalletTransferType::USUAL, ownAddress, row.netAmount});
+        info.transactions.push_back(std::move(w));
+      }
+      result.push_back(std::move(info));
+    }
+    return result;
+  }
+
+  auto& blockHeightIndex = m_transactions.get<BlockHeightIndex>();
 
   for (uint32_t height = blockIndex; height < stopIndex; ++height) {
     TransactionsInBlockInfo info;
