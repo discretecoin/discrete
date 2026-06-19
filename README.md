@@ -77,16 +77,18 @@ Start a node, then open or generate a wallet with `simplewallet`. The PQ
 identity is derived from the same 25-word mnemonic that backs the wallet — there
 is no second seed to store.
 
+Everything is post-quantum by default, so the commands carry no `pq_` prefix.
+
 | Command | Description |
 |---|---|
-| `pq_address [bech32]` | Show this wallet's PQ address (base58, or bech32m/QR) |
-| `pq_balance` | Show the PQ balance |
-| `pq_transfer <pq_address> <amount>` | Send PQ funds |
-| `pq_register` | Register a free account number (anti-spam PoW, no fee) |
-| `pq_register_paid` | Register an account number with a fee |
-| `pq_account` | Show this wallet's account number |
+| `address [bech32]` | Show this wallet's address (base58, or bech32m/QR) |
+| `balance` | Show the balance |
+| `transfer <address> <amount>` | Send funds to an address or account number |
+| `register` | Register a free account number (anti-spam PoW, no fee) |
+| `register_paid` | Register an account number with a fee |
+| `account` | Show this wallet's account number |
 | `sign_message "<msg>"` | Sign a message with the wallet's ML-DSA spend key |
-| `verify_message "<msg>" <pq_address> <sig>` | Verify an ML-DSA message signature |
+| `verify_message "<msg>" <address> <sig>` | Verify an ML-DSA message signature |
 
 Mine to your own PQ identity with the daemon's `start_mining` (the reward is
 bound to the mining identity — see identity-bound mining above):

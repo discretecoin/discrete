@@ -679,23 +679,20 @@ simple_wallet::simple_wallet(System::Dispatcher& dispatcher, const CryptoNote::C
   m_consoleHandler.setHandler("restore_seed", std::bind(&simple_wallet::restore_seed, this, std::placeholders::_1), "Restore wallet from 25-word mnemonic seed phrase");
   m_consoleHandler.setHandler("export_keys", std::bind(&simple_wallet::export_keys_to_file, this, std::placeholders::_1), "Save current wallet private keys to file");
   m_consoleHandler.setHandler("tracking_key", std::bind(&simple_wallet::show_tracking_key, this, std::placeholders::_1), "Show the tracking key (192 hex chars) - import into a view-only wallet for audit");
-  m_consoleHandler.setHandler("balance", std::bind(&simple_wallet::show_balance, this, std::placeholders::_1), "Show current wallet balance");
+  m_consoleHandler.setHandler("balance", std::bind(&simple_wallet::pq_balance, this, std::placeholders::_1), "Show current wallet balance");
   m_consoleHandler.setHandler("incoming_transfers", std::bind(&simple_wallet::show_incoming_transfers, this, std::placeholders::_1), "Show incoming transfers");
   m_consoleHandler.setHandler("outgoing_transfers", std::bind(&simple_wallet::show_outgoing_transfers, this, std::placeholders::_1), "Show outgoing transfers");
   m_consoleHandler.setHandler("list_transfers", std::bind(&simple_wallet::list_transfers, this, std::placeholders::_1), "Show all known transfers");
   m_consoleHandler.setHandler("payments", std::bind(&simple_wallet::show_payments, this, std::placeholders::_1), "payments <payment_id_1> [<payment_id_2> ... <payment_id_N>] - Show payments <payment_id_1>, ... <payment_id_N>");
   m_consoleHandler.setHandler("outputs", std::bind(&simple_wallet::show_unlocked_outputs_count, this, std::placeholders::_1), "Show the number of unlocked outputs available for a transaction");
   m_consoleHandler.setHandler("bc_height", std::bind(&simple_wallet::show_blockchain_height, this, std::placeholders::_1), "Show blockchain height");
-  m_consoleHandler.setHandler("transfer", std::bind(&simple_wallet::transfer, this, std::placeholders::_1),
-    "transfer <addr_1> <amount_1> [<addr_2> <amount_2> ... <addr_N> <amount_N>] [-p payment_id] [-f fee] [-m ring_size]"
-    " - Transfer <amount_1>,... <amount_N> to <address_1>,... <address_N>, respectively. "
-    "<ring_size> is the total number of ring members (real + decoys); your transaction is "
-    "indistinguishable from the others in the ring. Use -m 0 to sweep unmixable coins.");
+  m_consoleHandler.setHandler("transfer", std::bind(&simple_wallet::pq_transfer, this, std::placeholders::_1),
+    "transfer <address> <amount> - Send funds to a post-quantum address (or account number)");
   m_consoleHandler.setHandler("prepare", std::bind(&simple_wallet::prepare_tx, this, std::placeholders::_1),
     "Prepare raw transaction in hex format but do not relay, e.g. for manual relay <addr_1> <amount_1> ... <addr_N> <amount_N> [-p payment_id] [-f fee] [-m ring_size]"
     " - Transfer <amount_1>,... <amount_N> to <address_1>,... <address_N>, respectively. ");
   m_consoleHandler.setHandler("set_log", std::bind(&simple_wallet::set_log, this, std::placeholders::_1), "set_log <level> - Change current log level, <level> is a number 0-4");
-  m_consoleHandler.setHandler("address", std::bind(&simple_wallet::print_address, this, std::placeholders::_1), "Show current wallet public address");
+  m_consoleHandler.setHandler("address", std::bind(&simple_wallet::pq_address, this, std::placeholders::_1), "Show this wallet's address, derived from the seed. Add 'bech32' for the QR-friendly encoding.");
   m_consoleHandler.setHandler("save_address", std::bind(&simple_wallet::save_address_to_file, this, std::placeholders::_1), "Save current wallet public address to file");
   m_consoleHandler.setHandler("save", std::bind(&simple_wallet::save, this, std::placeholders::_1), "Save wallet synchronized data");
   m_consoleHandler.setHandler("reset", std::bind(&simple_wallet::reset, this, std::placeholders::_1), "Discard cache data and start synchronizing from the start");
@@ -707,12 +704,9 @@ simple_wallet::simple_wallet(System::Dispatcher& dispatcher, const CryptoNote::C
     "If 'all' is specified, you prove the entire accounts' balance.\n");
   m_consoleHandler.setHandler("sign_message", std::bind(&simple_wallet::sign_message, this, std::placeholders::_1), "Sign the message");
   m_consoleHandler.setHandler("verify_message", std::bind(&simple_wallet::verify_message, this, std::placeholders::_1), "Verify a signature of the message");
-  m_consoleHandler.setHandler("pq_address", std::bind(&simple_wallet::pq_address, this, std::placeholders::_1), "Show this wallet's post-quantum (PQ) address, derived from the same seed. Add 'bech32' for the QR-friendly encoding.");
-  m_consoleHandler.setHandler("pq_balance", std::bind(&simple_wallet::pq_balance, this, std::placeholders::_1), "Show the separate post-quantum (PQ) balance");
-  m_consoleHandler.setHandler("pq_transfer", std::bind(&simple_wallet::pq_transfer, this, std::placeholders::_1), "pq_transfer <pq_address> <amount> - Send PQ funds to a PQ address");
-  m_consoleHandler.setHandler("pq_register", std::bind(&simple_wallet::pq_register, this, std::placeholders::_1), "Register a free post-quantum (PQ) account number (anti-spam PoW, no fee)");
-  m_consoleHandler.setHandler("pq_register_paid", std::bind(&simple_wallet::pq_register_paid, this, std::placeholders::_1), "Register a post-quantum (PQ) account number with a normal fee-paying transaction");
-  m_consoleHandler.setHandler("pq_account", std::bind(&simple_wallet::pq_account, this, std::placeholders::_1), "Show this wallet's PQ account number (once its registration is confirmed)");
+  m_consoleHandler.setHandler("register", std::bind(&simple_wallet::pq_register, this, std::placeholders::_1), "Register a free account number (anti-spam PoW, no fee)");
+  m_consoleHandler.setHandler("register_paid", std::bind(&simple_wallet::pq_register_paid, this, std::placeholders::_1), "Register an account number with a normal fee-paying transaction");
+  m_consoleHandler.setHandler("account", std::bind(&simple_wallet::pq_account, this, std::placeholders::_1), "Show this wallet's account number (once its registration is confirmed)");
   m_consoleHandler.setHandler("help", std::bind(&simple_wallet::help, this, std::placeholders::_1), "Show this help");
   m_consoleHandler.setHandler("exit", std::bind(&simple_wallet::exit, this, std::placeholders::_1), "Close wallet");
 }
@@ -2432,7 +2426,7 @@ bool simple_wallet::sign_message(const std::vector<std::string> &args) {
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::verify_message(const std::vector<std::string> &args) {
   if (args.size() != 3) {
-    fail_msg_writer() << "usage: verify_message \"message\" <pq_address|account_number> <signature>";
+    fail_msg_writer() << "usage: verify_message \"message\" <address|account_number> <signature>";
     return true;
   }
   const std::string& message = args[0];
@@ -2441,7 +2435,7 @@ bool simple_wallet::verify_message(const std::vector<std::string> &args) {
 
   // The signer is identified by its PQ (ML-DSA) spend key. Accept either a raw PQ
   // address (carries the key directly) or a registered account number (resolved
-  // via the node), reusing the same resolver pq_transfer uses.
+  // via the node), reusing the same resolver transfer uses.
   CryptoPQ::KemPublicKey viewPub;
   CryptoPQ::DsaPublicKey spendPub;
   uint64_t ignoredT = 0;  // message verification needs only the spend key, not T
@@ -2494,7 +2488,7 @@ bool simple_wallet::pq_address(const std::vector<std::string> &args) {
                        << ", " << encoded.size() << " chars):";
   success_msg_writer(true) << encoded;
   if (!bech32) {
-    logger(INFO) << "Tip: 'pq_address bech32' prints the QR-friendlier encoding.";
+    logger(INFO) << "Tip: 'address bech32' prints the QR-friendlier encoding.";
   }
   logger(INFO) << "Anyone can pay this address; only this wallet's seed can spend it.";
   return true;
@@ -2506,15 +2500,14 @@ bool simple_wallet::pq_balance(const std::vector<std::string> &args) {
     fail_msg_writer() << "PQ balance is unavailable for this wallet (tracking wallet or no spend key).";
     return true;
   }
-  success_msg_writer() << "PQ available balance: " << m_currency.formatAmount(wl->pqActualBalance());
-  success_msg_writer() << "PQ scanned to height:  " << wl->pqSyncedHeight();
-  logger(INFO) << "Note: PQ and legacy balances are separate and are never combined.";
+  success_msg_writer() << "Available balance: " << m_currency.formatAmount(wl->pqActualBalance());
+  success_msg_writer() << "Scanned to height: " << wl->pqSyncedHeight();
   return true;
 }
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::pq_transfer(const std::vector<std::string> &args) {
   if (args.size() != 2) {
-    fail_msg_writer() << "usage: pq_transfer <pq_address> <amount>";
+    fail_msg_writer() << "usage: transfer <address> <amount>";
     return true;
   }
   if (m_trackingWallet) {
@@ -2651,7 +2644,7 @@ bool simple_wallet::pq_register(const std::vector<std::string> &args) {
     }
     success_msg_writer(true) << "PQ registration submitted. Tx hash: "
                              << Common::podToHex(CryptoNote::getObjectHash(tx));
-    logger(INFO) << "Once the transaction is confirmed, run 'pq_account' to see your account number.";
+    logger(INFO) << "Once the transaction is confirmed, run 'account' to see your account number.";
   } catch (const std::exception& e) {
     fail_msg_writer() << "Failed to build registration: " << e.what();
   }
@@ -2660,7 +2653,7 @@ bool simple_wallet::pq_register(const std::vector<std::string> &args) {
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::pq_register_paid(const std::vector<std::string> &args) {
   if (!args.empty()) {
-    fail_msg_writer() << "usage: pq_register_paid";
+    fail_msg_writer() << "usage: register_paid";
     return true;
   }
   if (m_trackingWallet) {
@@ -2769,8 +2762,8 @@ bool simple_wallet::pq_account(const std::vector<std::string> &args) {
     return true;
   }
   if (!registered) {
-    success_msg_writer() << "No PQ account number registered yet. Use 'pq_register', then "
-                            "re-check with 'pq_account' once it is confirmed.";
+    success_msg_writer() << "No account number registered yet. Use 'register', then "
+                            "re-check with 'account' once it is confirmed.";
     return true;
   }
   CryptoNote::AccountNumber acct{blockHeight, txIndex};
