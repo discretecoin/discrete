@@ -48,8 +48,9 @@ void readPod(std::istream& is, T& v) {
 }
 
 // v2 added PqWalletOutput::unlockHeight. v3 added PqWalletOutput::depositIndex.
-// Older blobs load with depositIndex = PQ_PRIMARY_DEPOSIT (their only address).
-constexpr uint8_t kPqStateFormatVersion = 3;
+// v4 appended the PqWalletTransaction history. Older blobs load with empty history
+// (it repopulates on the next rescan) and depositIndex = PQ_PRIMARY_DEPOSIT.
+constexpr uint8_t kPqStateFormatVersion = 4;
 
 }  // namespace
 
@@ -75,13 +76,17 @@ void PqWalletState::setDepositConfig(PqDepositScheme scheme, uint32_t depositCou
 }
 
 bool PqWalletState::processTransaction(const TransactionPrefix& tx, const Crypto::Hash& txid,
-                                       uint32_t height) {
+                                       uint32_t height, uint64_t timestamp) {
   // PQ outputs only ever appear in v2 (PQ-family) transactions.
   if (tx.version < TRANSACTION_VERSION_1) {
     return false;
   }
 
   bool affected = false;
+  // Per-tx accounting for the history row (computed on first sight only).
+  uint64_t debited = 0;       // owned outputs this tx spends (= our input total)
+  uint64_t credited = 0;      // owned outputs this tx creates (incl. our change)
+  uint64_t allOutputsSum = 0; // total of every PqOutput amount (for fee)
 
   // 1. Spend detection: a PqInput whose nullifier matches one of our owned
   //    outputs means that output is now spent.
@@ -107,6 +112,7 @@ bool PqWalletState::processTransaction(const TransactionPrefix& tx, const Crypto
       if (!o.spent) {
         o.spent = true;
         o.spentHeight = height;
+        debited += o.amount;
         affected = true;
       }
     }
@@ -125,6 +131,7 @@ bool PqWalletState::processTransaction(const TransactionPrefix& tx, const Crypto
         po.encPayload.size() != PQ_ENC_PAYLOAD_SIZE) {
       continue;
     }
+    allOutputsSum += out.amount;  // every PQ output (for the fee of our own sends)
 
     CryptoPQ::PqScanOutput so;
     so.outputIndex = i;
@@ -193,6 +200,37 @@ bool PqWalletState::processTransaction(const TransactionPrefix& tx, const Crypto
     rec.depositIndex = depositIndex;
     m_byNullifier.emplace(nf, m_outputs.size());
     m_outputs.push_back(rec);
+    credited += rec.amount;
+    affected = true;
+  }
+
+  // 3. Transaction-history row. Upsert by txid so a pool sighting that later
+  //    confirms updates in place rather than double-counting.
+  auto hit = m_historyByTxid.find(txid);
+  if (hit != m_historyByTxid.end()) {
+    PqWalletTransaction& h = m_history[hit->second];
+    if (h.height == UNCONFIRMED_HEIGHT && height != UNCONFIRMED_HEIGHT) {
+      h.height = height;        // pool -> confirmed
+      h.timestamp = timestamp;
+      affected = true;
+    }
+  } else if (debited > 0 || credited > 0) {
+    PqWalletTransaction h;
+    h.txid = txid;
+    h.height = height;
+    h.timestamp = timestamp;
+    h.outgoing = debited > 0;  // we spent at least one owned output
+    if (h.outgoing) {
+      // All inputs of a TX_PQ we sign are ours, so our input total == debited.
+      // fee = inputs - outputs; net = what came back (change) minus what we spent.
+      h.fee = debited >= allOutputsSum ? debited - allOutputsSum : 0;
+      h.netAmount = static_cast<int64_t>(credited) - static_cast<int64_t>(debited);
+    } else {
+      h.fee = 0;
+      h.netAmount = static_cast<int64_t>(credited);
+    }
+    m_historyByTxid.emplace(txid, m_history.size());
+    m_history.push_back(h);
     affected = true;
   }
 
@@ -207,6 +245,21 @@ uint64_t PqWalletState::balance() const {
     }
   }
   return total;
+}
+
+uint64_t PqWalletState::pendingBalance() const {
+  uint64_t total = 0;
+  for (const auto& o : m_outputs) {
+    if (!o.spent && o.height == UNCONFIRMED_HEIGHT) {
+      total += o.amount;
+    }
+  }
+  return total;
+}
+
+const PqWalletTransaction* PqWalletState::historyByTxid(const Crypto::Hash& txid) const {
+  auto it = m_historyByTxid.find(txid);
+  return it == m_historyByTxid.end() ? nullptr : &m_history[it->second];
 }
 
 uint64_t PqWalletState::depositBalance(uint32_t depositIndex) const {
@@ -293,6 +346,21 @@ void PqWalletState::rollbackToHeight(uint32_t h) {
   for (std::size_t i = 0; i < m_outputs.size(); ++i) {
     m_byNullifier.emplace(m_outputs[i].nullifier, i);
   }
+  // Drop orphaned history rows the same way (confirmed at/above h); unconfirmed
+  // rows survive (the driver re-feeds the pool), then rebuild the txid index.
+  std::vector<PqWalletTransaction> keptH;
+  keptH.reserve(m_history.size());
+  for (auto& t : m_history) {
+    if (t.height >= h && t.height != UNCONFIRMED_HEIGHT) {
+      continue;  // orphaned
+    }
+    keptH.push_back(t);
+  }
+  m_history = std::move(keptH);
+  m_historyByTxid.clear();
+  for (std::size_t i = 0; i < m_history.size(); ++i) {
+    m_historyByTxid.emplace(m_history[i].txid, i);
+  }
   if (m_lastScannedHeight >= h && h > 0) {
     m_lastScannedHeight = h - 1;
   }
@@ -316,20 +384,37 @@ void PqWalletState::save(std::ostream& os) const {
     writePod(os, o.spentHeight);
     writePod(os, o.depositIndex);
   }
+  // v4: transaction history.
+  uint64_t hcount = m_history.size();
+  writePod(os, hcount);
+  for (const auto& t : m_history) {
+    os.write(reinterpret_cast<const char*>(t.txid.data), 32);
+    writePod(os, t.height);
+    writePod(os, t.timestamp);
+    writePod(os, t.netAmount);
+    writePod(os, t.fee);
+    uint8_t outgoing = t.outgoing ? 1 : 0;
+    writePod(os, outgoing);
+  }
 }
 
 void PqWalletState::load(std::istream& is) {
   m_outputs.clear();
   m_byNullifier.clear();
+  m_history.clear();
+  m_historyByTxid.clear();
   m_lastScannedHeight = 0;
 
   uint8_t version = 0;
   readPod(is, version);
-  // v2 lacked PqWalletOutput::depositIndex (single-address wallets only); load it
-  // with depositIndex = PQ_PRIMARY_DEPOSIT. Anything older/unknown -> start empty.
-  if (!is || (version != kPqStateFormatVersion && version != 2)) {
+  // Accept v2 (no depositIndex), v3 (no history), and the current v4. v2 outputs
+  // load with depositIndex = PQ_PRIMARY_DEPOSIT; v2/v3 load with empty history (it
+  // repopulates on rescan). Anything older/unknown -> start empty.
+  if (!is || (version != 2 && version != 3 && version != kPqStateFormatVersion)) {
     m_outputs.clear();
     m_byNullifier.clear();
+    m_history.clear();
+    m_historyByTxid.clear();
     m_lastScannedHeight = 0;
     return;
   }
@@ -357,6 +442,26 @@ void PqWalletState::load(std::istream& is) {
     if (!is) break;
     m_byNullifier.emplace(o.nullifier, m_outputs.size());
     m_outputs.push_back(o);
+  }
+
+  // v4: transaction history (absent in v2/v3 -> leave empty).
+  if (version >= 4) {
+    uint64_t hcount = 0;
+    readPod(is, hcount);
+    for (uint64_t i = 0; i < hcount && is; ++i) {
+      PqWalletTransaction t;
+      is.read(reinterpret_cast<char*>(t.txid.data), 32);
+      readPod(is, t.height);
+      readPod(is, t.timestamp);
+      readPod(is, t.netAmount);
+      readPod(is, t.fee);
+      uint8_t outgoing = 0;
+      readPod(is, outgoing);
+      t.outgoing = outgoing != 0;
+      if (!is) break;
+      m_historyByTxid.emplace(t.txid, m_history.size());
+      m_history.push_back(t);
+    }
   }
 }
 

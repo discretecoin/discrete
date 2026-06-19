@@ -361,6 +361,113 @@ TEST(PqWalletState, DepositIndexSurvivesSaveLoad) {
     EXPECT_EQ(restored.outputs()[0].depositIndex, 1u);
 }
 
+// --- Transaction history (Phase B) -----------------------------------------
+
+TEST(PqWalletState, HistoryRecordsIncoming) {
+    PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
+    PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
+    PqWalletState st(me);
+
+    Funded f = payTo(them, me, 1000000, 800000, 0xD0);
+    ASSERT_TRUE(st.processTransaction(f.tx, f.txid, 100, 1700000000ull));
+    ASSERT_EQ(st.historyCount(), 1u);
+    const auto& h = st.history()[0];
+    EXPECT_EQ(h.txid, f.txid);
+    EXPECT_FALSE(h.outgoing);
+    EXPECT_EQ(h.netAmount, 800000);     // received
+    EXPECT_EQ(h.fee, 0u);               // counterparty's fee is not ours
+    EXPECT_EQ(h.height, 100u);
+    EXPECT_EQ(h.timestamp, 1700000000ull);
+
+    // Idempotent re-scan does not add a second row.
+    EXPECT_FALSE(st.processTransaction(f.tx, f.txid, 100, 1700000000ull));
+    EXPECT_EQ(st.historyCount(), 1u);
+}
+
+TEST(PqWalletState, HistoryRecordsOutgoingWithFeeAndChange) {
+    PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
+    PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
+    PqWalletKeys dest = derivePqWalletKeys(spendSecret(4, 4));
+    PqWalletState st(me);
+
+    Funded recv = payTo(them, me, 1000000, 1000000, 0xD1);
+    ASSERT_TRUE(st.processTransaction(recv.tx, recv.txid, 100, 111));
+
+    // Spend 300000 to dest with 690000 change back to me (fee 10000).
+    std::vector<PqSpendInput> ins = st.spendableInputs();
+    ASSERT_EQ(ins.size(), 1u);
+    Transaction spend = buildPqTransaction(
+        ins, {PqSendOutput{dest.viewPub, dest.spendPub, 300000}, PqSendOutput{me.viewPub, me.spendPub, 690000}},
+        me.spendPub, me.spendSk);
+    Crypto::Hash spendId = getObjectHash(spend);
+    ASSERT_TRUE(st.processTransaction(spend, spendId, 105, 222));
+
+    ASSERT_EQ(st.historyCount(), 2u);
+    const auto* h = st.historyByTxid(spendId);
+    ASSERT_NE(h, nullptr);
+    EXPECT_TRUE(h->outgoing);
+    EXPECT_EQ(h->fee, 10000u);             // 1,000,000 in - 990,000 out
+    EXPECT_EQ(h->netAmount, -310000);      // -(300,000 sent + 10,000 fee); change returns
+    EXPECT_EQ(st.balance(), 690000u);      // only the change remains unspent
+}
+
+TEST(PqWalletState, HistoryUpsertsPoolThenConfirm) {
+    PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
+    PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
+    PqWalletState st(me);
+
+    Funded f = payTo(them, me, 1000000, 500000, 0xD2);
+    // Seen in the mempool first.
+    ASSERT_TRUE(st.processTransaction(f.tx, f.txid, PqWalletState::UNCONFIRMED_HEIGHT, 0));
+    ASSERT_EQ(st.historyCount(), 1u);
+    EXPECT_EQ(st.history()[0].height, PqWalletState::UNCONFIRMED_HEIGHT);
+
+    // Then confirmed: the same row is updated, not duplicated.
+    EXPECT_TRUE(st.processTransaction(f.tx, f.txid, 120, 333));
+    ASSERT_EQ(st.historyCount(), 1u);
+    EXPECT_EQ(st.history()[0].height, 120u);
+    EXPECT_EQ(st.history()[0].timestamp, 333u);
+}
+
+TEST(PqWalletState, HistoryReorgDropsOrphanedRows) {
+    PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
+    PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
+    PqWalletState st(me);
+
+    Funded a = payTo(them, me, 1000000, 500000, 0xD3);  // height 100
+    Funded b = payTo(them, me, 1000000, 300000, 0xD4);  // height 110
+    ASSERT_TRUE(st.processTransaction(a.tx, a.txid, 100, 1));
+    ASSERT_TRUE(st.processTransaction(b.tx, b.txid, 110, 2));
+    ASSERT_EQ(st.historyCount(), 2u);
+
+    st.rollbackToHeight(105);  // drops the height-110 tx, keeps height-100
+    ASSERT_EQ(st.historyCount(), 1u);
+    EXPECT_EQ(st.history()[0].txid, a.txid);
+    EXPECT_EQ(st.historyByTxid(b.txid), nullptr);
+}
+
+TEST(PqWalletState, HistorySurvivesSaveLoad) {
+    PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
+    PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
+    PqWalletState st(me);
+
+    Funded f = payTo(them, me, 1000000, 700000, 0xD5);
+    ASSERT_TRUE(st.processTransaction(f.tx, f.txid, 100, 444));
+
+    std::stringstream ss;
+    st.save(ss);
+    PqWalletState restored(me);
+    restored.load(ss);
+
+    ASSERT_EQ(restored.historyCount(), 1u);
+    const auto& h = restored.history()[0];
+    EXPECT_EQ(h.txid, f.txid);
+    EXPECT_FALSE(h.outgoing);
+    EXPECT_EQ(h.netAmount, 700000);
+    EXPECT_EQ(h.height, 100u);
+    EXPECT_EQ(h.timestamp, 444u);
+}
+
 TEST(PqWalletState, LoadGarbageYieldsEmpty) {
     PqWalletKeys me = derivePqWalletKeys(spendSecret(9, 1));
     PqWalletState st(me);

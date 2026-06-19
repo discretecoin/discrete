@@ -67,6 +67,19 @@ struct PqWalletOutput {
   uint32_t      depositIndex = PQ_PRIMARY_DEPOSIT;
 };
 
+// One transaction that touched this wallet, derived as the scanner processes it.
+// This is the PQ ledger's transaction-history view (the native IWallet history is
+// built from these rows). Counterparties are NOT recoverable from owned-output
+// scanning, so only the wallet's own net effect is recorded.
+struct PqWalletTransaction {
+  Crypto::Hash txid{};
+  uint32_t     height = 0;       // UNCONFIRMED_HEIGHT while still in the mempool
+  uint64_t     timestamp = 0;    // block timestamp (0 if unknown / unconfirmed)
+  int64_t      netAmount = 0;    // + for net incoming; -(amount+fee) for our sends
+  uint64_t     fee = 0;          // our outgoing txs only (0 for incoming)
+  bool         outgoing = false; // true if this tx spends any owned output
+};
+
 class PqWalletState {
 public:
   explicit PqWalletState(const PqWalletKeys& keys);
@@ -76,7 +89,8 @@ public:
   // appears among the tx's PQ inputs. Returns true if the wallet was affected.
   // Takes a TransactionPrefix: the scanner only has the prefix (PQ input
   // signatures live inside the inputs, so the prefix carries all PQ data).
-  bool processTransaction(const TransactionPrefix& tx, const Crypto::Hash& txid, uint32_t height);
+  bool processTransaction(const TransactionPrefix& tx, const Crypto::Hash& txid, uint32_t height,
+                          uint64_t timestamp = 0);
 
   // Deposit-wallet configuration. Set once after construction (and again after
   // load) by the owning WalletGreen, which persists scheme + count separately.
@@ -86,8 +100,11 @@ public:
   // deposit count grows.
   void setDepositConfig(PqDepositScheme scheme, uint32_t depositCount);
 
-  // Total of unspent owned outputs (all deposits + primary).
+  // Total of unspent owned outputs (all deposits + primary; confirmed + pending).
   uint64_t balance() const;
+
+  // Unspent balance still in the mempool (received at UNCONFIRMED_HEIGHT).
+  uint64_t pendingBalance() const;
 
   // Unspent balance attributed to one deposit index (for walletd attribution).
   uint64_t depositBalance(uint32_t depositIndex) const;
@@ -101,6 +118,12 @@ public:
   const std::vector<PqWalletOutput>& outputs() const { return m_outputs; }
   std::size_t ownedCount() const { return m_outputs.size(); }
   std::size_t unspentCount() const;
+
+  // Transaction-history view (native IWallet history is built from these).
+  const std::vector<PqWalletTransaction>& history() const { return m_history; }
+  std::size_t historyCount() const { return m_history.size(); }
+  // The history row for `txid`, or nullptr if this tx never touched the wallet.
+  const PqWalletTransaction* historyByTxid(const Crypto::Hash& txid) const;
 
   // Reorg support: drop outputs received at height >= h, and un-spend outputs
   // whose spend was seen at height >= h.
@@ -133,6 +156,10 @@ private:
   std::vector<PqWalletOutput> m_outputs;
   // nullifier -> index into m_outputs, for O(1) spend detection.
   std::unordered_map<Crypto::Hash, std::size_t> m_byNullifier;
+
+  // Transaction-history view + txid -> index, for O(1) upsert (pool -> confirmed).
+  std::vector<PqWalletTransaction> m_history;
+  std::unordered_map<Crypto::Hash, std::size_t> m_historyByTxid;
 
   uint32_t m_lastScannedHeight = 0;
 };

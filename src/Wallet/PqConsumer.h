@@ -57,8 +57,9 @@ public:
   void removeUnconfirmedTransaction(const Crypto::Hash& transactionHash) override;
 
 private:
-  // Scan one transaction (given its reader) at a height; returns true if owned.
-  bool scanReader(const ITransactionReader& reader, uint32_t height);
+  // Scan one transaction (given its reader) at a height + block timestamp; returns
+  // true if owned. timestamp is 0 for mempool transactions.
+  bool scanReader(const ITransactionReader& reader, uint32_t height, uint64_t timestamp);
 
   PqWalletState        m_state;
   SynchronizationStart m_syncStart;

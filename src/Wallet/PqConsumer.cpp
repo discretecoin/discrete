@@ -32,7 +32,7 @@ SynchronizationStart PqConsumer::getSyncStart() {
   return m_syncStart;
 }
 
-bool PqConsumer::scanReader(const ITransactionReader& reader, uint32_t height) {
+bool PqConsumer::scanReader(const ITransactionReader& reader, uint32_t height, uint64_t timestamp) {
   // The synchronizer hands us prefix-only readers; getTransactionData() returns
   // the serialized TransactionPrefix. That carries everything PQ scanning needs
   // (PQ input signatures live inside the inputs). Non-PQ transactions are
@@ -47,7 +47,7 @@ bool PqConsumer::scanReader(const ITransactionReader& reader, uint32_t height) {
     return false;
   }
   Crypto::Hash txid = reader.getTransactionHash();
-  return m_state.processTransaction(prefix, txid, height);
+  return m_state.processTransaction(prefix, txid, height, timestamp);
 }
 
 uint32_t PqConsumer::onNewBlocks(const CompleteBlock* blocks, uint32_t startHeight, uint32_t count) {
@@ -61,9 +61,10 @@ uint32_t PqConsumer::onNewBlocks(const CompleteBlock* blocks, uint32_t startHeig
       const CompleteBlock& cb = blocks[i];
       uint32_t height = startHeight + i;
       if (cb.block.is_initialized()) {
+        uint64_t timestamp = cb.block->timestamp;
         for (const auto& tx : cb.transactions) {
           if (tx) {
-            scanReader(*tx, height);
+            scanReader(*tx, height, timestamp);
           }
         }
       }
@@ -88,7 +89,7 @@ std::error_code PqConsumer::onPoolUpdated(
   for (const auto& tx : addedTransactions) {
     if (!tx) continue;
     Crypto::Hash h = tx->getTransactionHash();
-    if (scanReader(*tx, PqWalletState::UNCONFIRMED_HEIGHT)) {
+    if (scanReader(*tx, PqWalletState::UNCONFIRMED_HEIGHT, 0)) {
       m_poolTxs.insert(h);
     }
   }
@@ -103,7 +104,7 @@ const std::unordered_set<Crypto::Hash>& PqConsumer::getKnownPoolTxIds() const {
 }
 
 std::error_code PqConsumer::addUnconfirmedTransaction(const ITransactionReader& transaction) {
-  if (scanReader(transaction, PqWalletState::UNCONFIRMED_HEIGHT)) {
+  if (scanReader(transaction, PqWalletState::UNCONFIRMED_HEIGHT, 0)) {
     m_poolTxs.insert(transaction.getTransactionHash());
   }
   return std::error_code();
