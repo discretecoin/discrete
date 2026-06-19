@@ -355,9 +355,9 @@ void WalletLegacy::initSync() {
   const auto& keys = m_account.getAccountKeys();
   if (keys.spendSecretKey != NULL_SECRET_KEY) {
     PqWalletKeys pqKeys = derivePqWalletKeys(keys.spendSecretKey);
-    // TODO(pq): persist the PQ consumer cursor + PqWalletState so the wallet does
+    // TODO(pq): persist the PQ consumer cursor + WalletLedger so the wallet does
     // not rescan PQ outputs from genesis on each load.
-    m_pqConsumer.reset(new PqConsumer(pqKeys, sub.syncStart, m_logger.getLogger()));
+    m_pqConsumer.reset(new WalletLedgerConsumer(pqKeys, sub.syncStart, m_logger.getLogger()));
     m_blockchainSync.addConsumer(m_pqConsumer.get());
   }
 

@@ -76,7 +76,7 @@ private:
   void loadUnlockTransactionsJobs(CryptoNote::ISerializer& serializer);
   void saveUnlockTransactionsJobs(CryptoNote::ISerializer& serializer);
 
-  // Opaque PQ-wallet state blob (PqConsumer sync cursor + PqWalletState),
+  // Opaque PQ-wallet state blob (WalletLedgerConsumer sync cursor + WalletLedger),
   // produced/consumed by WalletGreen. Optional field: absent in pre-PQ wallet
   // files, which load as an empty blob (no version bump needed).
   void loadPqState(CryptoNote::ISerializer& serializer);

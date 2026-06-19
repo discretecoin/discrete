@@ -24,27 +24,27 @@
 #include "ITransfersSynchronizer.h"   // SynchronizationStart
 #include "Logging/LoggerRef.h"
 #include "PqWallet.h"
-#include "PqWalletState.h"
+#include "WalletLedger.h"
 
 // A BlockchainSynchronizer consumer that scans the chain for this wallet's PQ
-// outputs and maintains its PqWalletState. It runs alongside the classical
+// outputs and maintains its WalletLedger. It runs alongside the classical
 // TransfersConsumer under the same synchronizer: the classical consumer ignores
 // PQ transactions (they carry no transaction public key), and this consumer
 // ignores everything but the PQ family.
 //
 // The synchronizer owns this consumer's block cursor (a SynchronizationState);
-// WalletLegacy persists that cursor plus the PqWalletState across restarts so
+// WalletLegacy persists that cursor plus the WalletLedger across restarts so
 // the wallet does not rescan from genesis each load.
 
 namespace CryptoNote {
 
-class PqConsumer : public IObservableImpl<IBlockchainConsumerObserver, IBlockchainConsumer> {
+class WalletLedgerConsumer : public IObservableImpl<IBlockchainConsumerObserver, IBlockchainConsumer> {
 public:
-  PqConsumer(const PqWalletKeys& keys, const SynchronizationStart& syncStart,
+  WalletLedgerConsumer(const PqWalletKeys& keys, const SynchronizationStart& syncStart,
              Logging::ILogger& logger);
 
-  PqWalletState& state() { return m_state; }
-  const PqWalletState& state() const { return m_state; }
+  WalletLedger& state() { return m_state; }
+  const WalletLedger& state() const { return m_state; }
 
   // IBlockchainConsumer
   SynchronizationStart getSyncStart() override;
@@ -61,7 +61,7 @@ private:
   // true if owned. timestamp is 0 for mempool transactions.
   bool scanReader(const ITransactionReader& reader, uint32_t height, uint64_t timestamp);
 
-  PqWalletState        m_state;
+  WalletLedger        m_state;
   SynchronizationStart m_syncStart;
   std::unordered_set<Crypto::Hash> m_poolTxs;
   Logging::LoggerRef   m_logger;

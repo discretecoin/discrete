@@ -2,14 +2,14 @@
 //
 // This file is part of Karbo.
 //
-// Tests for PqConsumer: the BlockchainSynchronizer consumer that scans blocks
+// Tests for WalletLedgerConsumer: the BlockchainSynchronizer consumer that scans blocks
 // for PQ outputs. Drives it with synthetic CompleteBlocks built from real PQ
 // transactions (via the builders) wrapped in prefix readers — exercising the
 // same prefix-blob path the live synchronizer uses.
 
 #include "gtest/gtest.h"
 
-#include "Wallet/PqConsumer.h"
+#include "Wallet/WalletLedgerConsumer.h"
 #include "Wallet/PqTransactionBuilder.h"
 #include "Wallet/PqWallet.h"
 #include "Transfers/CommonTypes.h"
@@ -65,12 +65,12 @@ CompleteBlock makeBlock(const Transaction& tx) {
 
 }  // namespace
 
-TEST(PqConsumer, ScansOwnedOutputFromBlock) {
+TEST(WalletLedgerConsumer, ScansOwnedOutputFromBlock) {
     Logging::ConsoleLogger logger(Logging::ERROR);
     PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
     PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
 
-    PqConsumer consumer(me, SynchronizationStart{0, 0}, logger);
+    WalletLedgerConsumer consumer(me, SynchronizationStart{0, 0}, logger);
 
     Transaction tx = payTo(them, me, 1000000, 800000, 0x10);
     CompleteBlock cb = makeBlock(tx);
@@ -81,13 +81,13 @@ TEST(PqConsumer, ScansOwnedOutputFromBlock) {
     EXPECT_EQ(consumer.state().lastScannedHeight(), 50u);
 }
 
-TEST(PqConsumer, IgnoresOtherWalletsOutputs) {
+TEST(WalletLedgerConsumer, IgnoresOtherWalletsOutputs) {
     Logging::ConsoleLogger logger(Logging::ERROR);
     PqWalletKeys me    = derivePqWalletKeys(spendSecret(9, 1));
     PqWalletKeys them  = derivePqWalletKeys(spendSecret(7, 3));
     PqWalletKeys other = derivePqWalletKeys(spendSecret(2, 2));
 
-    PqConsumer consumer(me, SynchronizationStart{0, 0}, logger);
+    WalletLedgerConsumer consumer(me, SynchronizationStart{0, 0}, logger);
     Transaction tx = payTo(them, other, 1000000, 800000, 0x20);
     CompleteBlock cb = makeBlock(tx);
 
@@ -95,12 +95,12 @@ TEST(PqConsumer, IgnoresOtherWalletsOutputs) {
     EXPECT_EQ(consumer.state().balance(), 0u);
 }
 
-TEST(PqConsumer, MultipleBlocksAndDetach) {
+TEST(WalletLedgerConsumer, MultipleBlocksAndDetach) {
     Logging::ConsoleLogger logger(Logging::ERROR);
     PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
     PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
 
-    PqConsumer consumer(me, SynchronizationStart{0, 0}, logger);
+    WalletLedgerConsumer consumer(me, SynchronizationStart{0, 0}, logger);
 
     Transaction a = payTo(them, me, 1000000, 500000, 0x30);
     Transaction b = payTo(them, me, 1000000, 300000, 0x40);
@@ -115,10 +115,10 @@ TEST(PqConsumer, MultipleBlocksAndDetach) {
     EXPECT_EQ(consumer.state().unspentCount(), 1u);
 }
 
-TEST(PqConsumer, EmptyBlocksCountButCreditNothing) {
+TEST(WalletLedgerConsumer, EmptyBlocksCountButCreditNothing) {
     Logging::ConsoleLogger logger(Logging::ERROR);
     PqWalletKeys me = derivePqWalletKeys(spendSecret(9, 1));
-    PqConsumer consumer(me, SynchronizationStart{0, 0}, logger);
+    WalletLedgerConsumer consumer(me, SynchronizationStart{0, 0}, logger);
 
     CompleteBlock empty;  // block not initialized
     EXPECT_EQ(consumer.onNewBlocks(&empty, 5, 1), 1u);

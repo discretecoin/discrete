@@ -183,7 +183,7 @@ index `T` into the payment automatically.
 > Status: implemented end-to-end. Scheme selection/persistence, the deposit-address
 > API, and the sender side (H-I-T-C resolution) were already in place; the walletd-side
 > **scan attribution** (crediting an incoming deposit to the specific address/index it
-> was paid to) is now wired into `PqWalletState`. The scanner derives the deposit keys
+> was paid to) is now wired into `WalletLedger`. The scanner derives the deposit keys
 > for the container's scheme and, per output, routes via `scanPqOutputAggregate`
 > (Spec 1) or a per-`T` scan (Spec 2), stamping each owned output with its
 > `depositIndex` (persisted across reloads). `WalletGreen::pqDepositBalance(index)` /

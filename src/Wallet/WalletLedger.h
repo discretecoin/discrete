@@ -80,9 +80,9 @@ struct PqWalletTransaction {
   bool         outgoing = false; // true if this tx spends any owned output
 };
 
-class PqWalletState {
+class WalletLedger {
 public:
-  explicit PqWalletState(const PqWalletKeys& keys);
+  explicit WalletLedger(const PqWalletKeys& keys);
 
   // Scan one transaction seen at `height` (use UNCONFIRMED_HEIGHT for mempool).
   // Credits owned PQ outputs and marks owned outputs spent when their nullifier

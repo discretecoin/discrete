@@ -1668,7 +1668,7 @@ void WalletGreen::deleteAddress(const std::string& address) {
 }
 
 namespace {
-// Build a native WalletTransaction from a PQ ledger history row. PqWalletState's
+// Build a native WalletTransaction from a PQ ledger history row. WalletLedger's
 // UNCONFIRMED_HEIGHT equals WALLET_UNCONFIRMED_TRANSACTION_HEIGHT (both uint32 max),
 // so the height maps through directly.
 WalletTransaction pqRowToWalletTx(const PqWalletTransaction& h) {
@@ -3006,7 +3006,7 @@ std::vector<WalletTransactionWithTransfers> WalletGreen::getUnconfirmedTransacti
   if (pqEnabled()) {
     std::string ownAddress = getPqAddress();
     for (const auto& row : m_pqConsumer->state().history()) {
-      if (row.height != PqWalletState::UNCONFIRMED_HEIGHT) {
+      if (row.height != WalletLedger::UNCONFIRMED_HEIGHT) {
         continue;
       }
       WalletTransactionWithTransfers w;
@@ -3549,7 +3549,7 @@ void WalletGreen::initPqConsumer(const Crypto::SecretKey& spendSecretKey,
     return;  // tracking wallet: no PQ identity
   }
   PqWalletKeys pqKeys = derivePqWalletKeys(spendSecretKey);
-  m_pqConsumer.reset(new PqConsumer(pqKeys, syncStart, m_logger.getLogger()));
+  m_pqConsumer.reset(new WalletLedgerConsumer(pqKeys, syncStart, m_logger.getLogger()));
   m_blockchainSynchronizer.addConsumer(m_pqConsumer.get());
   syncPqDepositConfigToState();
 }
@@ -3576,7 +3576,7 @@ void WalletGreen::buildPqStateBlob() {
   m_pqConsumer->state().save(stateStream);
   std::string stateBlob = stateStream.str();
 
-  // Frame: [u64 len || bytes] x3 (consumer sync cursor, PqWalletState, deposit
+  // Frame: [u64 len || bytes] x3 (consumer sync cursor, WalletLedger, deposit
   // metadata). The third section is append-only, so old 2-section blobs still load
   // (the deposit reader below treats its absence as "defaults").
   std::stringstream out;

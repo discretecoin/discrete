@@ -30,7 +30,7 @@
 #include "CryptoNoteCore/CryptoNoteFormatUtils.h"
 #include "Wallet/PqWallet.h"
 #include "Wallet/PqTransactionBuilder.h"
-#include "Wallet/PqWalletState.h"
+#include "Wallet/WalletLedger.h"
 #include "crypto_pq/PqOutputBuilder.h"
 #include "crypto_pq/PqScan.h"
 #include "crypto_pq/PqSeed.h"

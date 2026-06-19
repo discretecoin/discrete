@@ -15,7 +15,7 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with Karbo.  If not, see <http://www.gnu.org/licenses/>.
 
-#include "PqWalletState.h"
+#include "WalletLedger.h"
 
 #include <algorithm>
 #include <cstring>
@@ -54,10 +54,10 @@ constexpr uint8_t kPqStateFormatVersion = 4;
 
 }  // namespace
 
-PqWalletState::PqWalletState(const PqWalletKeys& keys)
+WalletLedger::WalletLedger(const PqWalletKeys& keys)
     : m_scanKeys(pqScanKeys(keys)), m_spendPub(keys.spendPub), m_seedMaster(keys.seedMaster) {}
 
-void PqWalletState::ensureDepositKeys(uint32_t count) {
+void WalletLedger::ensureDepositKeys(uint32_t count) {
   if (m_depositScheme != PqDepositScheme::AggregatedMultikey) {
     return;
   }
@@ -66,7 +66,7 @@ void PqWalletState::ensureDepositKeys(uint32_t count) {
   }
 }
 
-void PqWalletState::setDepositConfig(PqDepositScheme scheme, uint32_t depositCount) {
+void WalletLedger::setDepositConfig(PqDepositScheme scheme, uint32_t depositCount) {
   if (scheme != m_depositScheme) {
     m_depositSpendPubs.clear();  // scheme changed: any cached keys are stale
   }
@@ -75,7 +75,7 @@ void PqWalletState::setDepositConfig(PqDepositScheme scheme, uint32_t depositCou
   ensureDepositKeys(depositCount);
 }
 
-bool PqWalletState::processTransaction(const TransactionPrefix& tx, const Crypto::Hash& txid,
+bool WalletLedger::processTransaction(const TransactionPrefix& tx, const Crypto::Hash& txid,
                                        uint32_t height, uint64_t timestamp) {
   // PQ outputs only ever appear in v2 (PQ-family) transactions.
   if (tx.version < TRANSACTION_VERSION_1) {
@@ -237,7 +237,7 @@ bool PqWalletState::processTransaction(const TransactionPrefix& tx, const Crypto
   return affected;
 }
 
-uint64_t PqWalletState::balance() const {
+uint64_t WalletLedger::balance() const {
   uint64_t total = 0;
   for (const auto& o : m_outputs) {
     if (!o.spent) {
@@ -247,7 +247,7 @@ uint64_t PqWalletState::balance() const {
   return total;
 }
 
-uint64_t PqWalletState::pendingBalance() const {
+uint64_t WalletLedger::pendingBalance() const {
   uint64_t total = 0;
   for (const auto& o : m_outputs) {
     if (!o.spent && o.height == UNCONFIRMED_HEIGHT) {
@@ -257,12 +257,12 @@ uint64_t PqWalletState::pendingBalance() const {
   return total;
 }
 
-const PqWalletTransaction* PqWalletState::historyByTxid(const Crypto::Hash& txid) const {
+const PqWalletTransaction* WalletLedger::historyByTxid(const Crypto::Hash& txid) const {
   auto it = m_historyByTxid.find(txid);
   return it == m_historyByTxid.end() ? nullptr : &m_history[it->second];
 }
 
-uint64_t PqWalletState::depositBalance(uint32_t depositIndex) const {
+uint64_t WalletLedger::depositBalance(uint32_t depositIndex) const {
   uint64_t total = 0;
   for (const auto& o : m_outputs) {
     if (!o.spent && o.depositIndex == depositIndex) {
@@ -272,7 +272,7 @@ uint64_t PqWalletState::depositBalance(uint32_t depositIndex) const {
   return total;
 }
 
-std::map<uint32_t, uint64_t> PqWalletState::depositBalances() const {
+std::map<uint32_t, uint64_t> WalletLedger::depositBalances() const {
   std::map<uint32_t, uint64_t> out;
   for (const auto& o : m_outputs) {
     if (!o.spent && o.depositIndex != PQ_PRIMARY_DEPOSIT) {
@@ -282,7 +282,7 @@ std::map<uint32_t, uint64_t> PqWalletState::depositBalances() const {
   return out;
 }
 
-std::vector<PqSpendInput> PqWalletState::spendableInputs() const {
+std::vector<PqSpendInput> WalletLedger::spendableInputs() const {
   std::vector<PqSpendInput> out;
   for (const auto& o : m_outputs) {
     if (o.spent) {
@@ -314,7 +314,7 @@ std::vector<PqSpendInput> PqWalletState::spendableInputs() const {
   return out;
 }
 
-std::size_t PqWalletState::unspentCount() const {
+std::size_t WalletLedger::unspentCount() const {
   std::size_t n = 0;
   for (const auto& o : m_outputs) {
     if (!o.spent) ++n;
@@ -322,7 +322,7 @@ std::size_t PqWalletState::unspentCount() const {
   return n;
 }
 
-void PqWalletState::rollbackToHeight(uint32_t h) {
+void WalletLedger::rollbackToHeight(uint32_t h) {
   // Un-spend outputs whose spend was seen at or above the rollback height.
   for (auto& o : m_outputs) {
     if (o.spent && o.spentHeight >= h) {
@@ -366,7 +366,7 @@ void PqWalletState::rollbackToHeight(uint32_t h) {
   }
 }
 
-void PqWalletState::save(std::ostream& os) const {
+void WalletLedger::save(std::ostream& os) const {
   writePod(os, kPqStateFormatVersion);
   writePod(os, m_lastScannedHeight);
   uint64_t count = m_outputs.size();
@@ -398,7 +398,7 @@ void PqWalletState::save(std::ostream& os) const {
   }
 }
 
-void PqWalletState::load(std::istream& is) {
+void WalletLedger::load(std::istream& is) {
   m_outputs.clear();
   m_byNullifier.clear();
   m_history.clear();

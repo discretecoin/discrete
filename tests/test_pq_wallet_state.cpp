@@ -2,13 +2,13 @@
 //
 // This file is part of Karbo.
 //
-// Tests for PqWalletState: scanning raw transactions for owned PQ outputs,
+// Tests for WalletLedger: scanning raw transactions for owned PQ outputs,
 // separate balance accounting, spend detection via nullifiers, and reorg
 // rollback. Uses the real PQ builders to produce the transactions it scans.
 
 #include "gtest/gtest.h"
 
-#include "Wallet/PqWalletState.h"
+#include "Wallet/WalletLedger.h"
 #include "Wallet/PqTransactionBuilder.h"
 #include "Wallet/PqWallet.h"
 #include "CryptoNoteCore/Account.h"
@@ -95,11 +95,11 @@ Funded payToPub(const PqWalletKeys& from, const CryptoPQ::KemPublicKey& toViewPu
 
 }  // namespace
 
-TEST(PqWalletState, CreditsOwnedOutput) {
+TEST(WalletLedger, CreditsOwnedOutput) {
     PqWalletKeys me  = derivePqWalletKeys(spendSecret(9, 1));
     PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
 
-    PqWalletState st(me);
+    WalletLedger st(me);
     Funded f = payTo(them, me, 1000000, 800000, 0x10);
 
     EXPECT_TRUE(st.processTransaction(f.tx, f.txid, 100));
@@ -111,23 +111,23 @@ TEST(PqWalletState, CreditsOwnedOutput) {
     EXPECT_EQ(st.balance(), 800000u);
 }
 
-TEST(PqWalletState, IgnoresOutputsForOtherWallets) {
+TEST(WalletLedger, IgnoresOutputsForOtherWallets) {
     PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
     PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
     PqWalletKeys other = derivePqWalletKeys(spendSecret(2, 2));
 
-    PqWalletState st(me);
+    WalletLedger st(me);
     Funded f = payTo(them, other, 1000000, 800000, 0x22);  // pays `other`, not me
     EXPECT_FALSE(st.processTransaction(f.tx, f.txid, 100));
     EXPECT_EQ(st.balance(), 0u);
 }
 
-TEST(PqWalletState, DetectsSpendOfOwnedOutput) {
+TEST(WalletLedger, DetectsSpendOfOwnedOutput) {
     PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
     PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
     PqWalletKeys dest = derivePqWalletKeys(spendSecret(4, 4));
 
-    PqWalletState st(me);
+    WalletLedger st(me);
     Funded recv = payTo(them, me, 1000000, 900000, 0x30);
     ASSERT_TRUE(st.processTransaction(recv.tx, recv.txid, 100));
     ASSERT_EQ(st.balance(), 900000u);
@@ -144,12 +144,12 @@ TEST(PqWalletState, DetectsSpendOfOwnedOutput) {
     EXPECT_EQ(st.unspentCount(), 0u);
 }
 
-TEST(PqWalletState, ReorgRestoresSpentAndDropsOrphanedOutputs) {
+TEST(WalletLedger, ReorgRestoresSpentAndDropsOrphanedOutputs) {
     PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
     PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
     PqWalletKeys dest = derivePqWalletKeys(spendSecret(4, 4));
 
-    PqWalletState st(me);
+    WalletLedger st(me);
     Funded a = payTo(them, me, 1000000, 500000, 0x40);  // received at height 100
     Funded b = payTo(them, me, 1000000, 300000, 0x50);  // received at height 110
     ASSERT_TRUE(st.processTransaction(a.tx, a.txid, 100));
@@ -180,10 +180,10 @@ TEST(PqWalletState, ReorgRestoresSpentAndDropsOrphanedOutputs) {
     EXPECT_EQ(st.unspentCount(), 1u);
 }
 
-TEST(PqWalletState, SpendableInputsCarryRho) {
+TEST(WalletLedger, SpendableInputsCarryRho) {
     PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
     PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
-    PqWalletState st(me);
+    WalletLedger st(me);
     Funded f = payTo(them, me, 1000000, 700000, 0x60);
     ASSERT_TRUE(st.processTransaction(f.tx, f.txid, 100));
 
@@ -196,7 +196,7 @@ TEST(PqWalletState, SpendableInputsCarryRho) {
     EXPECT_TRUE(nonZero);
 }
 
-TEST(PqWalletState, RespectsPerOutputUnlockHeight) {
+TEST(WalletLedger, RespectsPerOutputUnlockHeight) {
     PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
     PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
 
@@ -217,7 +217,7 @@ TEST(PqWalletState, RespectsPerOutputUnlockHeight) {
     Transaction tx = buildPqTransaction({in}, {out}, them.spendPub, them.spendSk);
     Crypto::Hash txid = getObjectHash(tx);
 
-    PqWalletState st(me);
+    WalletLedger st(me);
     ASSERT_TRUE(st.processTransaction(tx, txid, 100));
     ASSERT_EQ(st.outputs().size(), 1u);
     EXPECT_EQ(st.outputs()[0].unlockHeight, 1000u);  // per-output lock recovered on scan
@@ -234,12 +234,12 @@ TEST(PqWalletState, RespectsPerOutputUnlockHeight) {
     EXPECT_EQ(st.spendableInputs()[0].amount, 800000u);
 }
 
-TEST(PqWalletState, SaveLoadRoundTrip) {
+TEST(WalletLedger, SaveLoadRoundTrip) {
     PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
     PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
     PqWalletKeys dest = derivePqWalletKeys(spendSecret(4, 4));
 
-    PqWalletState st(me);
+    WalletLedger st(me);
     Funded a = payTo(them, me, 1000000, 500000, 0x70);  // received @100
     Funded b = payTo(them, me, 1000000, 300000, 0x80);  // received @110
     ASSERT_TRUE(st.processTransaction(a.tx, a.txid, 100));
@@ -258,7 +258,7 @@ TEST(PqWalletState, SaveLoadRoundTrip) {
     std::stringstream ss;
     st.save(ss);
 
-    PqWalletState restored(me);
+    WalletLedger restored(me);
     restored.load(ss);
 
     EXPECT_EQ(restored.balance(), 300000u);
@@ -279,11 +279,11 @@ TEST(PqWalletState, SaveLoadRoundTrip) {
 
 // --- Deposit-scan attribution ----------------------------------------------
 
-TEST(PqWalletState, AggregatedMultikeyAttributesDeposit) {
+TEST(WalletLedger, AggregatedMultikeyAttributesDeposit) {
     PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
     PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
 
-    PqWalletState st(me);
+    WalletLedger st(me);
     st.setDepositConfig(PqDepositScheme::AggregatedMultikey, 3);  // 3 deposit keys
 
     // `them` pays deposit #2: shared view key + deposit spend key #2, at T=0.
@@ -305,11 +305,11 @@ TEST(PqWalletState, AggregatedMultikeyAttributesDeposit) {
     EXPECT_TRUE(st.spendableInputs().empty());
 }
 
-TEST(PqWalletState, AggregatedMultikeyKeepsPrimaryAddressSpendable) {
+TEST(WalletLedger, AggregatedMultikeyKeepsPrimaryAddressSpendable) {
     PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
     PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
 
-    PqWalletState st(me);
+    WalletLedger st(me);
     st.setDepositConfig(PqDepositScheme::AggregatedMultikey, 2);
 
     // Pay the wallet's OWN primary address (not a deposit key).
@@ -322,11 +322,11 @@ TEST(PqWalletState, AggregatedMultikeyKeepsPrimaryAddressSpendable) {
     EXPECT_EQ(st.spendableInputs().size(), 1u);    // primary funds are spendable
 }
 
-TEST(PqWalletState, SingleKeyIndexAttributesDepositByT) {
+TEST(WalletLedger, SingleKeyIndexAttributesDepositByT) {
     PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
     PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
 
-    PqWalletState st(me);
+    WalletLedger st(me);
     st.setDepositConfig(PqDepositScheme::SingleKeyIndex, 3);
 
     // Same key pair, subaddress index T=2.
@@ -340,11 +340,11 @@ TEST(PqWalletState, SingleKeyIndexAttributesDepositByT) {
     EXPECT_EQ(st.spendableInputs().size(), 1u);
 }
 
-TEST(PqWalletState, DepositIndexSurvivesSaveLoad) {
+TEST(WalletLedger, DepositIndexSurvivesSaveLoad) {
     PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
     PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
 
-    PqWalletState st(me);
+    WalletLedger st(me);
     st.setDepositConfig(PqDepositScheme::SingleKeyIndex, 3);
     Funded f = payToPub(them, me.viewPub, me.spendPub, 1000000, 600000, 0xC0, 1);
     ASSERT_TRUE(st.processTransaction(f.tx, f.txid, 100));
@@ -353,7 +353,7 @@ TEST(PqWalletState, DepositIndexSurvivesSaveLoad) {
     std::stringstream ss;
     st.save(ss);
 
-    PqWalletState restored(me);
+    WalletLedger restored(me);
     restored.setDepositConfig(PqDepositScheme::SingleKeyIndex, 3);
     restored.load(ss);
     EXPECT_EQ(restored.depositBalance(1), 600000u);
@@ -363,10 +363,10 @@ TEST(PqWalletState, DepositIndexSurvivesSaveLoad) {
 
 // --- Transaction history (Phase B) -----------------------------------------
 
-TEST(PqWalletState, HistoryRecordsIncoming) {
+TEST(WalletLedger, HistoryRecordsIncoming) {
     PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
     PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
-    PqWalletState st(me);
+    WalletLedger st(me);
 
     Funded f = payTo(them, me, 1000000, 800000, 0xD0);
     ASSERT_TRUE(st.processTransaction(f.tx, f.txid, 100, 1700000000ull));
@@ -384,11 +384,11 @@ TEST(PqWalletState, HistoryRecordsIncoming) {
     EXPECT_EQ(st.historyCount(), 1u);
 }
 
-TEST(PqWalletState, HistoryRecordsOutgoingWithFeeAndChange) {
+TEST(WalletLedger, HistoryRecordsOutgoingWithFeeAndChange) {
     PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
     PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
     PqWalletKeys dest = derivePqWalletKeys(spendSecret(4, 4));
-    PqWalletState st(me);
+    WalletLedger st(me);
 
     Funded recv = payTo(them, me, 1000000, 1000000, 0xD1);
     ASSERT_TRUE(st.processTransaction(recv.tx, recv.txid, 100, 111));
@@ -411,16 +411,16 @@ TEST(PqWalletState, HistoryRecordsOutgoingWithFeeAndChange) {
     EXPECT_EQ(st.balance(), 690000u);      // only the change remains unspent
 }
 
-TEST(PqWalletState, HistoryUpsertsPoolThenConfirm) {
+TEST(WalletLedger, HistoryUpsertsPoolThenConfirm) {
     PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
     PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
-    PqWalletState st(me);
+    WalletLedger st(me);
 
     Funded f = payTo(them, me, 1000000, 500000, 0xD2);
     // Seen in the mempool first.
-    ASSERT_TRUE(st.processTransaction(f.tx, f.txid, PqWalletState::UNCONFIRMED_HEIGHT, 0));
+    ASSERT_TRUE(st.processTransaction(f.tx, f.txid, WalletLedger::UNCONFIRMED_HEIGHT, 0));
     ASSERT_EQ(st.historyCount(), 1u);
-    EXPECT_EQ(st.history()[0].height, PqWalletState::UNCONFIRMED_HEIGHT);
+    EXPECT_EQ(st.history()[0].height, WalletLedger::UNCONFIRMED_HEIGHT);
 
     // Then confirmed: the same row is updated, not duplicated.
     EXPECT_TRUE(st.processTransaction(f.tx, f.txid, 120, 333));
@@ -429,10 +429,10 @@ TEST(PqWalletState, HistoryUpsertsPoolThenConfirm) {
     EXPECT_EQ(st.history()[0].timestamp, 333u);
 }
 
-TEST(PqWalletState, HistoryReorgDropsOrphanedRows) {
+TEST(WalletLedger, HistoryReorgDropsOrphanedRows) {
     PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
     PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
-    PqWalletState st(me);
+    WalletLedger st(me);
 
     Funded a = payTo(them, me, 1000000, 500000, 0xD3);  // height 100
     Funded b = payTo(them, me, 1000000, 300000, 0xD4);  // height 110
@@ -446,17 +446,17 @@ TEST(PqWalletState, HistoryReorgDropsOrphanedRows) {
     EXPECT_EQ(st.historyByTxid(b.txid), nullptr);
 }
 
-TEST(PqWalletState, HistorySurvivesSaveLoad) {
+TEST(WalletLedger, HistorySurvivesSaveLoad) {
     PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
     PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
-    PqWalletState st(me);
+    WalletLedger st(me);
 
     Funded f = payTo(them, me, 1000000, 700000, 0xD5);
     ASSERT_TRUE(st.processTransaction(f.tx, f.txid, 100, 444));
 
     std::stringstream ss;
     st.save(ss);
-    PqWalletState restored(me);
+    WalletLedger restored(me);
     restored.load(ss);
 
     ASSERT_EQ(restored.historyCount(), 1u);
@@ -468,9 +468,9 @@ TEST(PqWalletState, HistorySurvivesSaveLoad) {
     EXPECT_EQ(h.timestamp, 444u);
 }
 
-TEST(PqWalletState, LoadGarbageYieldsEmpty) {
+TEST(WalletLedger, LoadGarbageYieldsEmpty) {
     PqWalletKeys me = derivePqWalletKeys(spendSecret(9, 1));
-    PqWalletState st(me);
+    WalletLedger st(me);
     std::stringstream ss;
     ss << "not a valid pq state blob";
     st.load(ss);

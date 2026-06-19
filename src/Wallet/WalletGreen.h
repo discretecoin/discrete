@@ -31,7 +31,7 @@
 #include <System/Event.h>
 #include "Transfers/TransfersSynchronizer.h"
 #include "Transfers/BlockchainSynchronizer.h"
-#include "Wallet/PqConsumer.h"
+#include "Wallet/WalletLedgerConsumer.h"
 #include "Wallet/PqTransactionBuilder.h"
 #include "Wallet/PqSender.h"
 #include "../CryptoNoteConfig.h"
@@ -389,11 +389,11 @@ protected:
   // a spend secret being present (PQ is active from genesis). No-op if already
   // created or the gate fails.
   void initPqConsumer(const Crypto::SecretKey& spendSecretKey, const SynchronizationStart& syncStart);
-  // Serialize the PQ consumer's sync cursor + PqWalletState into m_pqState (for
+  // Serialize the PQ consumer's sync cursor + WalletLedger into m_pqState (for
   // save), and restore them from m_pqState into a live consumer (after load).
   void buildPqStateBlob();
   void restorePqStateBlob();
-  // Push the current deposit scheme + count into the live PqWalletState so its
+  // Push the current deposit scheme + count into the live WalletLedger so its
   // scanner attributes incoming deposits. Safe no-op without a PQ consumer.
   void syncPqDepositConfigToState();
   // Resolve (and cache) this wallet's own PQ registration coords (H,I) from the
@@ -459,7 +459,7 @@ protected:
   TransfersSyncronizer m_synchronizer;
   // PQ output scanning consumer (created lazily for the primary address when a
   // spend secret is present). Null otherwise. See initPqConsumer.
-  std::unique_ptr<PqConsumer> m_pqConsumer;
+  std::unique_ptr<WalletLedgerConsumer> m_pqConsumer;
 
   System::Event m_eventOccurred;
   std::queue<WalletEvent> m_events;
@@ -471,7 +471,7 @@ protected:
   Crypto::chacha8_key m_key;
   std::string m_path;
   std::string m_extra; // workaround for wallet reset
-  std::string m_pqState; // persisted PQ consumer cursor + PqWalletState (see save/loadPqState)
+  std::string m_pqState; // persisted PQ consumer cursor + WalletLedger (see save/loadPqState)
   // Deposit-wallet scheme + how many deposit addresses have been issued. Persisted
   // inside m_pqState (a third framed section); defaults apply to pre-deposit containers.
   PqDepositScheme m_pqDepositScheme = PqDepositScheme::AggregatedMultikey;
