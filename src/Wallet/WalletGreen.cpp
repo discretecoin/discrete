@@ -988,10 +988,41 @@ void WalletGreen::changePassword(const std::string& oldPassword, const std::stri
   m_logger(INFO, BRIGHT_WHITE) << "Container password changed";
 }
 
+bool WalletGreen::pqRegistrationCoords(uint32_t& height, uint32_t& txIndex) const {
+  if (m_pqRegResolved) {
+    height = m_pqRegHeight;
+    txIndex = m_pqRegTxIndex;
+    return true;
+  }
+  std::string viewHex, spendHex;
+  if (!getPqRegistrationKeysHex(viewHex, spendHex)) {
+    return false;  // tracking wallet
+  }
+  bool registered = false;
+  uint32_t h = 0, i = 0;
+  std::promise<std::error_code> promise;
+  auto future = promise.get_future();
+  m_node.getPqAccount(viewHex, spendHex, registered, h, i,
+                      [&promise](std::error_code ec) { promise.set_value(ec); });
+  if (future.get() || !registered) {
+    return false;
+  }
+  m_pqRegResolved = true;
+  m_pqRegHeight = h;
+  m_pqRegTxIndex = i;
+  height = h;
+  txIndex = i;
+  return true;
+}
+
 size_t WalletGreen::getAddressCount() const {
   throwIfNotInitialized();
   throwIfStopped();
 
+  if (pqEnabled()) {
+    // PQ-native address space: the primary address plus every issued deposit.
+    return static_cast<size_t>(1) + m_pqDepositCount;
+  }
   return m_walletsContainer.get<RandomAccessIndex>().size();
 }
 
@@ -1009,6 +1040,24 @@ AccountPublicAddress WalletGreen::getAccountPublicAddress(size_t index) const {
 }
 
 std::string WalletGreen::getAddress(size_t index) const {
+  if (pqEnabled()) {
+    // Index 0 is the wallet's own PQ address; index i>0 is deposit i-1.
+    if (index == 0) {
+      return getPqAddress();
+    }
+    uint32_t depositIndex = static_cast<uint32_t>(index - 1);
+    if (depositIndex >= m_pqDepositCount) {
+      m_logger(ERROR, BRIGHT_RED) << "Failed to get address: invalid address index " << index;
+      throw std::system_error(make_error_code(std::errc::invalid_argument));
+    }
+    uint32_t regH = 0, regI = 0;
+    if (m_pqDepositScheme == PqDepositScheme::SingleKeyIndex && !pqRegistrationCoords(regH, regI)) {
+      // H-I-T-C needs the account's on-chain coords; surface that it isn't ready.
+      throw std::system_error(make_error_code(error::INTERNAL_WALLET_ERROR),
+                              "single-key-index deposit address requires a confirmed registration");
+    }
+    return pqDepositAddress(depositIndex, regH, regI);
+  }
   return m_currency.accountAddressAsString(getAccountPublicAddress(index));
 }
 
@@ -1160,6 +1209,15 @@ WalletGreen::NewAddressData WalletGreen::createHdAddressData(uint64_t creationTi
 }
 
 std::string WalletGreen::createAddress() {
+  // PQ-native: "create address" mints a new deposit (a fresh ML-DSA spend key under
+  // AggregatedMultikey, or the next subaddress index T under SingleKeyIndex) and
+  // returns its address. The classical key-record path is used only for non-PQ
+  // (tracking) containers.
+  if (pqEnabled()) {
+    uint32_t depositIndex = reservePqDepositIndex();
+    return getAddress(static_cast<size_t>(depositIndex) + 1);
+  }
+
   if (m_addressGenerationMode == AddressGenerationMode::HD_DETERMINISTIC) {
     return doCreateAddressList({ createHdAddressData(static_cast<uint64_t>(time(nullptr))) }).front();
   }
@@ -1172,6 +1230,10 @@ std::string WalletGreen::createAddress() {
 }
 
 std::string WalletGreen::createAddress(uint32_t scanHeight) {
+  if (pqEnabled()) {
+    uint32_t depositIndex = reservePqDepositIndex();
+    return getAddress(static_cast<size_t>(depositIndex) + 1);
+  }
   const uint64_t creationTimestamp = scanHeightToTimestamp(scanHeight);
   if (m_addressGenerationMode == AddressGenerationMode::HD_DETERMINISTIC) {
     return doCreateAddressList({ createHdAddressData(creationTimestamp) }).front();
@@ -1642,6 +1704,20 @@ uint64_t WalletGreen::getActualBalance() const {
 uint64_t WalletGreen::getActualBalance(const std::string& address) const {
   throwIfNotInitialized();
   throwIfStopped();
+
+  if (pqEnabled()) {
+    // Map a PQ address back to its deposit bucket. Primary -> primary balance;
+    // a deposit address -> that deposit's balance; unknown -> 0.
+    if (address == getPqAddress()) {
+      return m_pqConsumer->state().depositBalance(PQ_PRIMARY_DEPOSIT);
+    }
+    for (uint32_t i = 0; i < m_pqDepositCount; ++i) {
+      if (address == getAddress(static_cast<size_t>(i) + 1)) {
+        return m_pqConsumer->state().depositBalance(i);
+      }
+    }
+    return 0;
+  }
 
   const auto& wallet = getWalletRecord(address);
   return wallet.actualBalance;

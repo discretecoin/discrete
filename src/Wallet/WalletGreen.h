@@ -389,6 +389,10 @@ protected:
   // Push the current deposit scheme + count into the live PqWalletState so its
   // scanner attributes incoming deposits. Safe no-op without a PQ consumer.
   void syncPqDepositConfigToState();
+  // Resolve (and cache) this wallet's own PQ registration coords (H,I) from the
+  // node, needed to render SingleKeyIndex (H-I-T-C) deposit addresses. Returns
+  // false if not registered / unavailable.
+  bool pqRegistrationCoords(uint32_t& height, uint32_t& txIndex) const;
   void addUnconfirmedTransaction(const ITransactionReader& transaction);
   void removeUnconfirmedTransaction(const Crypto::Hash& transactionHash);
 
@@ -468,6 +472,11 @@ protected:
   // True once the scheme has been chosen (at creation) or read back from a
   // persisted container; makes setPqDepositScheme reject any later change.
   bool m_pqDepositSchemeChosen = false;
+  // Cache of this wallet's own PQ registration coords (H,I), resolved from the node
+  // the first time a SingleKeyIndex (H-I-T-C) deposit address must be rendered.
+  mutable bool m_pqRegResolved = false;
+  mutable uint32_t m_pqRegHeight = 0;
+  mutable uint32_t m_pqRegTxIndex = 0;
 
   Crypto::PublicKey m_viewPublicKey;
   Crypto::SecretKey m_viewSecretKey;
