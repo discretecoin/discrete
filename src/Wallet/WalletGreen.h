@@ -20,6 +20,7 @@
 
 #include "IWallet.h"
 
+#include <map>
 #include <queue>
 #include <unordered_map>
 
@@ -84,6 +85,10 @@ public:
   //    registration coords (regBlockHeight=H, regTxIndex=I) and T=index. The caller
   //    resolves (H,I) from the node first.
   std::string pqDepositAddress(uint32_t index, uint32_t regBlockHeight, uint32_t regTxIndex) const;
+  // Confirmed+unconfirmed PQ balance attributed to one deposit index, and the map
+  // of all non-empty deposit balances by index (for walletd deposit attribution).
+  uint64_t pqDepositBalance(uint32_t index) const;
+  std::map<uint32_t, uint64_t> pqDepositBalances() const;
 
   virtual void initialize(const std::string& path, const std::string& password) override;
   virtual void initializeWithViewKey(const std::string& path, const std::string& password, const Crypto::SecretKey& viewSecretKey) override;
@@ -381,6 +386,9 @@ protected:
   // save), and restore them from m_pqState into a live consumer (after load).
   void buildPqStateBlob();
   void restorePqStateBlob();
+  // Push the current deposit scheme + count into the live PqWalletState so its
+  // scanner attributes incoming deposits. Safe no-op without a PQ consumer.
+  void syncPqDepositConfigToState();
   void addUnconfirmedTransaction(const ITransactionReader& transaction);
   void removeUnconfirmedTransaction(const Crypto::Hash& transactionHash);
 

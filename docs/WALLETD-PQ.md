@@ -180,12 +180,16 @@ Paying a deposit address works from any Discrete wallet: `simplewallet`/`greenwa
 number, or an H-I-T-C deposit subaddress (single-key-index), threading the deposit
 index `T` into the payment automatically.
 
-> Status: scheme selection/persistence, the deposit-address API, and the sender
-> side (H-I-T-C resolution) are implemented. The walletd-side **scan attribution**
-> (crediting an incoming deposit to the specific address/index it was paid to) is
-> the remaining integration step — the scan primitives (`scanPqOutputAggregate` for
-> Spec 1, per-`T` scan for Spec 2) are implemented and unit-tested; wiring them into
-> `PqWalletState`'s per-deposit bookkeeping is pending.
+> Status: implemented end-to-end. Scheme selection/persistence, the deposit-address
+> API, and the sender side (H-I-T-C resolution) were already in place; the walletd-side
+> **scan attribution** (crediting an incoming deposit to the specific address/index it
+> was paid to) is now wired into `PqWalletState`. The scanner derives the deposit keys
+> for the container's scheme and, per output, routes via `scanPqOutputAggregate`
+> (Spec 1) or a per-`T` scan (Spec 2), stamping each owned output with its
+> `depositIndex` (persisted across reloads). `WalletGreen::pqDepositBalance(index)` /
+> `pqDepositBalances()` expose the per-deposit balances for attribution. Live
+> end-to-end confirmation (pay each address, observe the right credit) still depends
+> on the 2-node testnet bring-up (Phase 6.2).
 
 ## Verifying parity with simplewallet
 

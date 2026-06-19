@@ -17,6 +17,7 @@
 
 #include "PqWalletState.h"
 
+#include <algorithm>
 #include <cstring>
 #include <istream>
 #include <ostream>
@@ -25,6 +26,7 @@
 #include "PqTxType.h"
 #include "crypto_pq/PqScan.h"
 #include "crypto_pq/PqDerive.h"
+#include "crypto_pq/PqSeed.h"
 
 namespace CryptoNote {
 
@@ -45,14 +47,32 @@ void readPod(std::istream& is, T& v) {
   is.read(reinterpret_cast<char*>(&v), sizeof(T));
 }
 
-// v2 added PqWalletOutput::unlockHeight. v1 blobs load with unlockHeight = 0
-// (the value for every pre-Phase-2 output anyway).
-constexpr uint8_t kPqStateFormatVersion = 2;
+// v2 added PqWalletOutput::unlockHeight. v3 added PqWalletOutput::depositIndex.
+// Older blobs load with depositIndex = PQ_PRIMARY_DEPOSIT (their only address).
+constexpr uint8_t kPqStateFormatVersion = 3;
 
 }  // namespace
 
 PqWalletState::PqWalletState(const PqWalletKeys& keys)
-    : m_scanKeys(pqScanKeys(keys)), m_spendPub(keys.spendPub) {}
+    : m_scanKeys(pqScanKeys(keys)), m_spendPub(keys.spendPub), m_seedMaster(keys.seedMaster) {}
+
+void PqWalletState::ensureDepositKeys(uint32_t count) {
+  if (m_depositScheme != PqDepositScheme::AggregatedMultikey) {
+    return;
+  }
+  for (uint32_t i = static_cast<uint32_t>(m_depositSpendPubs.size()); i < count; ++i) {
+    m_depositSpendPubs.push_back(CryptoPQ::deriveDepositSpendKeys(m_seedMaster, i).first);
+  }
+}
+
+void PqWalletState::setDepositConfig(PqDepositScheme scheme, uint32_t depositCount) {
+  if (scheme != m_depositScheme) {
+    m_depositSpendPubs.clear();  // scheme changed: any cached keys are stale
+  }
+  m_depositScheme = scheme;
+  m_depositCount = depositCount;
+  ensureDepositKeys(depositCount);
+}
 
 bool PqWalletState::processTransaction(const TransactionPrefix& tx, const Crypto::Hash& txid,
                                        uint32_t height) {
@@ -113,7 +133,40 @@ bool PqWalletState::processTransaction(const TransactionPrefix& tx, const Crypto
     so.encPayload = po.encPayload;
     std::memcpy(so.spendCommit.data(), po.spendCommit.data, 32);
 
-    auto owned = CryptoPQ::scanPqOutput(m_scanKeys, ih, so);
+    // Recognize the output and attribute it to the right address/deposit.
+    // ownerSpendPub is the spend public key the output commits to — it MUST be
+    // used for the nullifier, because the future spending input will reveal that
+    // same key (for a Spec-1 deposit that is the deposit key, not the primary).
+    std::optional<CryptoPQ::PqOwnedOutput> owned;
+    CryptoPQ::DsaPublicKey ownerSpendPub = m_spendPub;
+    uint32_t depositIndex = PQ_PRIMARY_DEPOSIT;
+
+    if (m_depositScheme == PqDepositScheme::SingleKeyIndex) {
+      // One key pair; deposits are distinguished by the subaddress index T.
+      // T=0 is the wallet's own address (and deposit #0); try every reserved T.
+      uint32_t maxT = std::max(m_depositCount, 1u);
+      for (uint32_t t = 0; t < maxT; ++t) {
+        owned = CryptoPQ::scanPqOutput(m_scanKeys, ih, so, t);
+        if (owned) {
+          depositIndex = t;
+          break;
+        }
+      }
+    } else {
+      // AggregatedMultikey: the wallet's own primary address (T=0), then the
+      // shared-view-key deposit family routed by deposit spend key.
+      owned = CryptoPQ::scanPqOutput(m_scanKeys, ih, so, 0);
+      if (!owned && m_depositCount > 0) {
+        ensureDepositKeys(m_depositCount);
+        auto agg = CryptoPQ::scanPqOutputAggregate(m_scanKeys.viewSk, m_depositSpendPubs, ih, so);
+        if (agg) {
+          owned = agg->record;
+          depositIndex = static_cast<uint32_t>(agg->spendPubIndex);
+          ownerSpendPub = m_depositSpendPubs[agg->spendPubIndex];
+        }
+      }
+    }
+
     if (!owned) {
       continue;  // not ours (or tampered) — silent, by design
     }
@@ -123,7 +176,7 @@ bool PqWalletState::processTransaction(const TransactionPrefix& tx, const Crypto
     // the future spending input will produce.
     CryptoPQ::Hash256 ownTxid;
     std::memcpy(ownTxid.data(), txid.data, 32);
-    Crypto::Hash nf = toHash(CryptoPQ::nullifier(m_spendPub, owned->rho, ownTxid, i));
+    Crypto::Hash nf = toHash(CryptoPQ::nullifier(ownerSpendPub, owned->rho, ownTxid, i));
     if (m_byNullifier.count(nf)) {
       continue;
     }
@@ -137,6 +190,7 @@ bool PqWalletState::processTransaction(const TransactionPrefix& tx, const Crypto
     rec.height = height;
     rec.unlockHeight = out.unlockHeight;  // per-output spend lock
     rec.spent = false;
+    rec.depositIndex = depositIndex;
     m_byNullifier.emplace(nf, m_outputs.size());
     m_outputs.push_back(rec);
     affected = true;
@@ -155,10 +209,39 @@ uint64_t PqWalletState::balance() const {
   return total;
 }
 
+uint64_t PqWalletState::depositBalance(uint32_t depositIndex) const {
+  uint64_t total = 0;
+  for (const auto& o : m_outputs) {
+    if (!o.spent && o.depositIndex == depositIndex) {
+      total += o.amount;
+    }
+  }
+  return total;
+}
+
+std::map<uint32_t, uint64_t> PqWalletState::depositBalances() const {
+  std::map<uint32_t, uint64_t> out;
+  for (const auto& o : m_outputs) {
+    if (!o.spent && o.depositIndex != PQ_PRIMARY_DEPOSIT) {
+      out[o.depositIndex] += o.amount;
+    }
+  }
+  return out;
+}
+
 std::vector<PqSpendInput> PqWalletState::spendableInputs() const {
   std::vector<PqSpendInput> out;
   for (const auto& o : m_outputs) {
     if (o.spent) {
+      continue;
+    }
+    // Spend-authority filter: this list is signed with the wallet's PRIMARY
+    // ML-DSA spend key. Under AggregatedMultikey a deposit output commits to a
+    // distinct per-deposit spend key, so it cannot be signed here — exclude it
+    // (it is swept via its own deposit key). Under SingleKeyIndex every output,
+    // including deposits, is spendable by the one key, so all are offered.
+    if (m_depositScheme == PqDepositScheme::AggregatedMultikey &&
+        o.depositIndex != PQ_PRIMARY_DEPOSIT) {
       continue;
     }
     // Per-output spend lock: do not offer an output the network would reject as
@@ -231,6 +314,7 @@ void PqWalletState::save(std::ostream& os) const {
     uint8_t spent = o.spent ? 1 : 0;
     writePod(os, spent);
     writePod(os, o.spentHeight);
+    writePod(os, o.depositIndex);
   }
 }
 
@@ -241,8 +325,9 @@ void PqWalletState::load(std::istream& is) {
 
   uint8_t version = 0;
   readPod(is, version);
-  if (!is || version != kPqStateFormatVersion) {
-    // Unknown/absent format -> start empty; the consumer will rescan.
+  // v2 lacked PqWalletOutput::depositIndex (single-address wallets only); load it
+  // with depositIndex = PQ_PRIMARY_DEPOSIT. Anything older/unknown -> start empty.
+  if (!is || (version != kPqStateFormatVersion && version != 2)) {
     m_outputs.clear();
     m_byNullifier.clear();
     m_lastScannedHeight = 0;
@@ -264,6 +349,11 @@ void PqWalletState::load(std::istream& is) {
     readPod(is, spent);
     o.spent = spent != 0;
     readPod(is, o.spentHeight);
+    if (version >= 3) {
+      readPod(is, o.depositIndex);
+    } else {
+      o.depositIndex = PQ_PRIMARY_DEPOSIT;  // v2 had no deposits
+    }
     if (!is) break;
     m_byNullifier.emplace(o.nullifier, m_outputs.size());
     m_outputs.push_back(o);

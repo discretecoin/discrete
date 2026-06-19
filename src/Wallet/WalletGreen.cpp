@@ -3404,6 +3404,13 @@ void WalletGreen::initPqConsumer(const Crypto::SecretKey& spendSecretKey,
   PqWalletKeys pqKeys = derivePqWalletKeys(spendSecretKey);
   m_pqConsumer.reset(new PqConsumer(pqKeys, syncStart, m_logger.getLogger()));
   m_blockchainSynchronizer.addConsumer(m_pqConsumer.get());
+  syncPqDepositConfigToState();
+}
+
+void WalletGreen::syncPqDepositConfigToState() {
+  if (m_pqConsumer) {
+    m_pqConsumer->state().setDepositConfig(m_pqDepositScheme, m_pqDepositCount);
+  }
 }
 
 void WalletGreen::buildPqStateBlob() {
@@ -3481,6 +3488,8 @@ void WalletGreen::restorePqStateBlob() {
   } catch (const std::exception& e) {
     m_logger(WARNING) << "Failed to restore PQ state (" << e.what() << "); will rescan.";
   }
+  // The scanner needs the restored scheme + count to attribute deposits.
+  syncPqDepositConfigToState();
 }
 
 uint64_t WalletGreen::pqActualBalance() const {
@@ -3534,6 +3543,7 @@ void WalletGreen::setPqDepositScheme(PqDepositScheme scheme) {
   }
   m_pqDepositScheme = scheme;
   m_pqDepositSchemeChosen = true;
+  syncPqDepositConfigToState();
 }
 
 uint32_t WalletGreen::reservePqDepositIndex() {
@@ -3548,7 +3558,9 @@ uint32_t WalletGreen::reservePqDepositIndex() {
   // The first call chooses the default scheme implicitly if it was never set, so
   // the persisted metadata records the scheme even for default (aggregated) wallets.
   m_pqDepositSchemeChosen = true;
-  return m_pqDepositCount++;
+  uint32_t reserved = m_pqDepositCount++;
+  syncPqDepositConfigToState();  // the scanner must now watch the new deposit key
+  return reserved;
 }
 
 std::string WalletGreen::pqDepositAddress(uint32_t index, uint32_t regBlockHeight,
@@ -3575,6 +3587,14 @@ std::string WalletGreen::pqDepositAddress(uint32_t index, uint32_t regBlockHeigh
   PqAddress addr = makePqAddress(CryptoNote::parameters::CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX,
                                  base.viewPub, depositSpend.first);
   return encodePqAddress(addr, PqAddressEncoding::Base58);
+}
+
+uint64_t WalletGreen::pqDepositBalance(uint32_t index) const {
+  return m_pqConsumer ? m_pqConsumer->state().depositBalance(index) : 0;
+}
+
+std::map<uint32_t, uint64_t> WalletGreen::pqDepositBalances() const {
+  return m_pqConsumer ? m_pqConsumer->state().depositBalances() : std::map<uint32_t, uint64_t>{};
 }
 
 Transaction WalletGreen::buildPqFreeRegTransaction(const Crypto::Hash& refBlockHash) const {

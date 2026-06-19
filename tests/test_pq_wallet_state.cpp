@@ -15,6 +15,7 @@
 #include "CryptoNoteCore/CryptoNoteTools.h"
 #include "crypto_pq/PqOutputBuilder.h"
 #include "crypto_pq/PqDerive.h"
+#include "crypto_pq/PqSeed.h"
 #include "CryptoNote.h"
 
 #include <cstring>
@@ -57,6 +58,34 @@ Funded payTo(const PqWalletKeys& from, const PqWalletKeys& to, uint64_t inAmount
     in.rho = src.rho;
 
     PqSendOutput out{to.viewPub, to.spendPub, payAmount};
+
+    Funded f;
+    f.tx = buildPqTransaction({in}, {out}, from.spendPub, from.spendSk);
+    f.txid = getObjectHash(f.tx);
+    return f;
+}
+
+// Pay `payAmount` to an explicit (viewPub, spendPub) at subaddress index T.
+// Used to forge deposits: Spec-1 pays a deposit spend key at T=0; Spec-2 pays the
+// wallet's own key at T=index.
+Funded payToPub(const PqWalletKeys& from, const CryptoPQ::KemPublicKey& toViewPub,
+                const CryptoPQ::DsaPublicKey& toSpendPub, uint64_t inAmount,
+                uint64_t payAmount, uint8_t seed, uint64_t T) {
+    std::vector<CryptoPQ::InputRef> refs(1);
+    for (auto& b : refs[0].prevTxid) b = seed;
+    refs[0].prevOutIndex = 1;
+    CryptoPQ::Hash256 fih = CryptoPQ::inputsHash(refs);
+    CryptoPQ::PqBuiltOutput src =
+        CryptoPQ::buildPqOutput(from.viewPub, from.spendPub, fih, 0, inAmount);
+
+    PqSpendInput in;
+    for (std::size_t i = 0; i < 32; ++i) in.prevTxid.data[i] = static_cast<uint8_t>(seed + i);
+    in.prevOutIndex = 0;
+    in.amount = inAmount;
+    in.rho = src.rho;
+
+    PqSendOutput out{toViewPub, toSpendPub, payAmount};
+    out.subaddrIndexT = T;
 
     Funded f;
     f.tx = buildPqTransaction({in}, {out}, from.spendPub, from.spendSk);
@@ -246,6 +275,90 @@ TEST(PqWalletState, SaveLoadRoundTrip) {
     Funded c = payTo(them, me, 1000000, 200000, 0x90);
     EXPECT_TRUE(restored.processTransaction(c.tx, c.txid, 130));
     EXPECT_EQ(restored.balance(), 500000u);
+}
+
+// --- Deposit-scan attribution ----------------------------------------------
+
+TEST(PqWalletState, AggregatedMultikeyAttributesDeposit) {
+    PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
+    PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
+
+    PqWalletState st(me);
+    st.setDepositConfig(PqDepositScheme::AggregatedMultikey, 3);  // 3 deposit keys
+
+    // `them` pays deposit #2: shared view key + deposit spend key #2, at T=0.
+    auto dep2 = CryptoPQ::deriveDepositSpendKeys(me.seedMaster, 2);
+    Funded f = payToPub(them, me.viewPub, dep2.first, 1000000, 800000, 0xA0, 0);
+
+    ASSERT_TRUE(st.processTransaction(f.tx, f.txid, 100));
+    EXPECT_EQ(st.balance(), 800000u);
+    EXPECT_EQ(st.depositBalance(2), 800000u);
+    EXPECT_EQ(st.depositBalance(0), 0u);
+    auto bals = st.depositBalances();
+    ASSERT_EQ(bals.size(), 1u);
+    EXPECT_EQ(bals[2], 800000u);
+    ASSERT_EQ(st.outputs().size(), 1u);
+    EXPECT_EQ(st.outputs()[0].depositIndex, 2u);
+
+    // A Spec-1 deposit output commits to its own deposit spend key, so it must
+    // NOT be offered for spending with the wallet's primary key.
+    EXPECT_TRUE(st.spendableInputs().empty());
+}
+
+TEST(PqWalletState, AggregatedMultikeyKeepsPrimaryAddressSpendable) {
+    PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
+    PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
+
+    PqWalletState st(me);
+    st.setDepositConfig(PqDepositScheme::AggregatedMultikey, 2);
+
+    // Pay the wallet's OWN primary address (not a deposit key).
+    Funded f = payToPub(them, me.viewPub, me.spendPub, 1000000, 700000, 0xA8, 0);
+    ASSERT_TRUE(st.processTransaction(f.tx, f.txid, 100));
+    EXPECT_EQ(st.balance(), 700000u);
+    ASSERT_EQ(st.outputs().size(), 1u);
+    EXPECT_EQ(st.outputs()[0].depositIndex, PQ_PRIMARY_DEPOSIT);
+    EXPECT_TRUE(st.depositBalances().empty());     // not attributed to any deposit
+    EXPECT_EQ(st.spendableInputs().size(), 1u);    // primary funds are spendable
+}
+
+TEST(PqWalletState, SingleKeyIndexAttributesDepositByT) {
+    PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
+    PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
+
+    PqWalletState st(me);
+    st.setDepositConfig(PqDepositScheme::SingleKeyIndex, 3);
+
+    // Same key pair, subaddress index T=2.
+    Funded f = payToPub(them, me.viewPub, me.spendPub, 1000000, 750000, 0xB0, 2);
+    ASSERT_TRUE(st.processTransaction(f.tx, f.txid, 100));
+    EXPECT_EQ(st.balance(), 750000u);
+    EXPECT_EQ(st.depositBalance(2), 750000u);
+    ASSERT_EQ(st.outputs().size(), 1u);
+    EXPECT_EQ(st.outputs()[0].depositIndex, 2u);
+    // Single key: every output, deposits included, is spendable by the one key.
+    EXPECT_EQ(st.spendableInputs().size(), 1u);
+}
+
+TEST(PqWalletState, DepositIndexSurvivesSaveLoad) {
+    PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
+    PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
+
+    PqWalletState st(me);
+    st.setDepositConfig(PqDepositScheme::SingleKeyIndex, 3);
+    Funded f = payToPub(them, me.viewPub, me.spendPub, 1000000, 600000, 0xC0, 1);
+    ASSERT_TRUE(st.processTransaction(f.tx, f.txid, 100));
+    ASSERT_EQ(st.depositBalance(1), 600000u);
+
+    std::stringstream ss;
+    st.save(ss);
+
+    PqWalletState restored(me);
+    restored.setDepositConfig(PqDepositScheme::SingleKeyIndex, 3);
+    restored.load(ss);
+    EXPECT_EQ(restored.depositBalance(1), 600000u);
+    ASSERT_EQ(restored.outputs().size(), 1u);
+    EXPECT_EQ(restored.outputs()[0].depositIndex, 1u);
 }
 
 TEST(PqWalletState, LoadGarbageYieldsEmpty) {

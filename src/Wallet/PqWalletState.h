@@ -19,6 +19,7 @@
 
 #include <cstdint>
 #include <iosfwd>
+#include <map>
 #include <unordered_map>
 #include <vector>
 
@@ -43,6 +44,10 @@
 
 namespace CryptoNote {
 
+// Sentinel depositIndex meaning "the wallet's own primary address" — i.e. NOT a
+// deposit issued under a deposit-wallet scheme. Distinct from any real index.
+constexpr uint32_t PQ_PRIMARY_DEPOSIT = 0xFFFFFFFFu;
+
 // One PQ output this wallet owns. Holds no secret key: the spend secret is
 // re-derived from the seed on demand at spend time.
 struct PqWalletOutput {
@@ -56,6 +61,10 @@ struct PqWalletOutput {
                                   // rejects spends before this height
   bool          spent = false;
   uint32_t      spentHeight = 0;  // height the spend was seen at (when spent)
+  // Which deposit this output was attributed to. PQ_PRIMARY_DEPOSIT = the
+  // wallet's own primary address. For AggregatedMultikey it is the deposit
+  // spend-key index; for SingleKeyIndex it is the subaddress index T.
+  uint32_t      depositIndex = PQ_PRIMARY_DEPOSIT;
 };
 
 class PqWalletState {
@@ -69,8 +78,22 @@ public:
   // signatures live inside the inputs, so the prefix carries all PQ data).
   bool processTransaction(const TransactionPrefix& tx, const Crypto::Hash& txid, uint32_t height);
 
-  // Total of unspent owned outputs.
+  // Deposit-wallet configuration. Set once after construction (and again after
+  // load) by the owning WalletGreen, which persists scheme + count separately.
+  // For AggregatedMultikey this (re)derives the deposit spend-key set so the
+  // scanner can route deposits by spend key; for SingleKeyIndex it only records
+  // how many subaddress indices T to try. Idempotent and cheap to re-call as the
+  // deposit count grows.
+  void setDepositConfig(PqDepositScheme scheme, uint32_t depositCount);
+
+  // Total of unspent owned outputs (all deposits + primary).
   uint64_t balance() const;
+
+  // Unspent balance attributed to one deposit index (for walletd attribution).
+  uint64_t depositBalance(uint32_t depositIndex) const;
+
+  // Unspent balance per deposit index, excluding the primary address.
+  std::map<uint32_t, uint64_t> depositBalances() const;
 
   // All unspent outputs as builder inputs (for buildPqTransaction).
   std::vector<PqSpendInput> spendableInputs() const;
@@ -94,8 +117,18 @@ public:
   static constexpr uint32_t UNCONFIRMED_HEIGHT = 0xFFFFFFFFu;
 
 private:
+  // Grow m_depositSpendPubs to cover [0, count) deposit keys (AggregatedMultikey
+  // only). Incremental: derives only the keys not yet cached.
+  void ensureDepositKeys(uint32_t count);
+
   CryptoPQ::PqScanKeys   m_scanKeys;
   CryptoPQ::DsaPublicKey m_spendPub;
+  CryptoPQ::SeedMaster   m_seedMaster;  // to derive deposit spend keys on demand
+
+  PqDepositScheme m_depositScheme = PqDepositScheme::AggregatedMultikey;
+  uint32_t        m_depositCount = 0;
+  // Cached deposit spend pubs (AggregatedMultikey); index == deposit index.
+  std::vector<CryptoPQ::DsaPublicKey> m_depositSpendPubs;
 
   std::vector<PqWalletOutput> m_outputs;
   // nullifier -> index into m_outputs, for O(1) spend detection.
