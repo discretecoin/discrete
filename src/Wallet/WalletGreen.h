@@ -33,6 +33,7 @@
 #include "Transfers/BlockchainSynchronizer.h"
 #include "Wallet/PqConsumer.h"
 #include "Wallet/PqTransactionBuilder.h"
+#include "Wallet/PqSender.h"
 #include "../CryptoNoteConfig.h"
 
 namespace CryptoNote {
@@ -66,6 +67,12 @@ public:
   // anti-spam PoW against `refBlockHash` (a recent main-chain block). The caller
   // relays the returned transaction. Throws on a tracking wallet.
   Transaction buildPqFreeRegTransaction(const Crypto::Hash& refBlockHash) const;
+  // Build (denominate, two-pass fee, sign) and relay a PQ transfer to already-resolved
+  // recipients via the common sender. Returns the result (tx + fee + sent). Throws on a
+  // tracking wallet, insufficient funds, or relay failure. The single PQ spend path
+  // shared with WalletLegacy/simplewallet.
+  PqSendResult sendPqTransfer(const std::vector<PqSendOutput>& recipients,
+                              uint64_t fee = 0, uint64_t unlockHeight = 0);
 
   // --- Deposit-wallet scheme (Spec 1 aggregated-multikey / Spec 2 single-key-index)
   // The scheme is chosen ONCE at container creation and persisted; it cannot be

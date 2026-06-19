@@ -56,6 +56,7 @@
 
 #include "Wallet/PqConsumer.h"
 #include "Wallet/PqTransactionBuilder.h"
+#include "Wallet/PqSender.h"
 
 #include <Logging/LoggerRef.h>
 
@@ -102,6 +103,11 @@ public:
   uint64_t pqActualBalance() const;
   std::vector<PqSpendInput> pqSpendableInputs() const;
   uint32_t pqSyncedHeight() const;
+  // Build (denominate, two-pass fee, sign) and relay a PQ transfer to already-resolved
+  // recipients via the common sender — the same deterministic path WalletGreen uses.
+  // Throws on a tracking wallet, insufficient funds, or relay failure.
+  PqSendResult sendPqTransfer(const std::vector<PqSendOutput>& recipients,
+                              uint64_t fee = 0, uint64_t unlockHeight = 0);
 
   virtual size_t getTransactionCount() override;
   virtual size_t getTransferCount() override;

@@ -85,6 +85,8 @@
 #include "Wallet/LegacyKeysImporter.h"
 #include "Wallet/PqWallet.h"
 #include "Wallet/PqTransactionBuilder.h"
+#include "Wallet/PqSender.h"
+#include "Wallet/PqRecipient.h"
 #include "WalletLegacy/WalletLegacy.h"
 #include "CryptoNoteCore/CryptoNoteTools.h"
 #include "CryptoNoteCore/PqValidation.h"
@@ -2534,72 +2536,20 @@ bool simple_wallet::pq_transfer(const std::vector<std::string> &args) {
     return true;
   }
 
-  CryptoNote::AccountKeys keys;
-  m_wallet->getAccountKeys(keys);
-  CryptoNote::PqWalletKeys pq = CryptoNote::derivePqWalletKeys(keys.spendSecretKey);
-
-  // Select spendable PQ inputs (largest first) to cover amount + fee.
-  std::vector<CryptoNote::PqSpendInput> available = wl->pqSpendableInputs();
-  std::sort(available.begin(), available.end(),
-            [](const CryptoNote::PqSpendInput& a, const CryptoNote::PqSpendInput& b) {
-              return a.amount > b.amount;
-            });
-
-  std::vector<CryptoNote::PqSpendInput> selected;
-  uint64_t sumIn = 0;
-  for (const auto& in : available) {
-    if (selected.size() >= CryptoNote::parameters::MAX_PQ_INPUTS_PER_TX) break;
-    selected.push_back(in);
-    sumIn += in.amount;
-    if (sumIn >= amount) break;
-  }
-  if (sumIn < amount) {
-    fail_msg_writer() << "Insufficient PQ balance: have " << m_currency.formatAmount(wl->pqActualBalance())
-                      << ", need at least " << m_currency.formatAmount(amount) << " plus fee.";
-    return true;
-  }
-
-  // Two-pass fee: PQ output/input sizes are fixed, so the draft size equals the
-  // final size whenever a change output is present.
-  auto buildWith = [&](uint64_t change) {
-    std::vector<CryptoNote::PqSendOutput> outs;
-    // Recipient output carries the deposit subaddress index (0 for a normal payee).
-    outs.push_back(CryptoNote::PqSendOutput{destView, destSpend, amount, destSubaddrT});
-    if (change > 0) {
-      // Change returns to our own main address (subaddress 0).
-      outs.push_back(CryptoNote::PqSendOutput{pq.viewPub, pq.spendPub, change});
-    }
-    return CryptoNote::buildPqTransaction(selected, outs, pq.spendPub, pq.spendSk);
-  };
-
+  // The deterministic build (input selection, denomination, two-pass fee, signing)
+  // and relay live in the common sender, shared with greenwallet and walletd.
   try {
-    CryptoNote::Transaction draft = buildWith(sumIn - amount);
-    uint64_t size = CryptoNote::toBinaryArray(draft).size();
-    uint64_t fee = (size * CryptoNote::parameters::MIN_PQ_FEE_PER_1000_BYTES + 999) / 1000 + 1;
-    if (sumIn < amount + fee) {
-      fail_msg_writer() << "Insufficient PQ balance to cover the " << m_currency.formatAmount(fee)
-                        << " fee.";
-      return true;
-    }
-    uint64_t change = sumIn - amount - fee;
-    CryptoNote::Transaction tx = buildWith(change);
-
-    success_msg_writer() << "Sending " << m_currency.formatAmount(amount) << " (fee "
-                         << m_currency.formatAmount(fee) << ", "
-                         << selected.size() << " input(s)) to PQ address...";
-
-    std::promise<std::error_code> promise;
-    auto future = promise.get_future();
-    m_node->relayTransaction(tx, [&promise](std::error_code ec) { promise.set_value(ec); });
-    std::error_code ec = future.get();
-    if (ec) {
-      fail_msg_writer() << "Failed to relay PQ transaction: " << ec.message();
-      return true;
-    }
-    success_msg_writer(true) << "PQ transaction sent. Hash: "
-                             << Common::podToHex(CryptoNote::getObjectHash(tx));
+    CryptoNote::PqSendOutput out{destView, destSpend, amount, destSubaddrT};
+    CryptoNote::PqSendResult r = wl->sendPqTransfer({out});
+    success_msg_writer() << "Sent " << m_currency.formatAmount(r.sent) << " (fee "
+                         << m_currency.formatAmount(r.fee) << ", " << r.selected.size()
+                         << " input(s)).";
+    success_msg_writer(true) << "PQ transaction hash: "
+                             << Common::podToHex(CryptoNote::getObjectHash(r.tx));
+  } catch (const CryptoNote::PqSendError& e) {
+    fail_msg_writer() << "Cannot send: " << e.what();
   } catch (const std::exception& e) {
-    fail_msg_writer() << "Failed to build PQ transaction: " << e.what();
+    fail_msg_writer() << "Failed to send PQ transaction: " << e.what();
   }
   return true;
 }
@@ -2773,37 +2723,8 @@ bool simple_wallet::pq_account(const std::vector<std::string> &args) {
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::resolvePqRecipient(const std::string& s, CryptoPQ::KemPublicKey& viewPub,
                                        CryptoPQ::DsaPublicKey& spendPub, uint64_t& subaddrIndexT) {
-  subaddrIndexT = 0;
-  // 1. A raw PQ address carries both keys directly (subaddress T = 0).
-  CryptoNote::PqAddress addr;
-  if (CryptoNote::parsePqAddress(s, addr)) {
-    viewPub = addr.viewPub;
-    spendPub = addr.spendPub;
-    return true;
-  }
-  // 2. An account number, either H-I-C (base account, T=0) or H-I-T-C (deposit
-  //    subaddress, T = the parsed index). BOTH resolve the SAME account (H,I)
-  //    registration via the node; only the subaddress T differs.
-  CryptoNote::AccountNumber acct;
-  uint32_t t = 0;
-  bool isHitc = CryptoNote::AccountNumber::fromStringWithIndex(s, acct, t);
-  if (isHitc || CryptoNote::AccountNumber::fromString(s, acct)) {
-    if (isHitc) subaddrIndexT = t;
-    bool found = false;
-    std::string viewHex, spendHex;
-    std::promise<std::error_code> promise;
-    auto future = promise.get_future();
-    m_node->resolvePqAccount(acct.blockHeight, acct.txIndex, found, viewHex, spendHex,
-                             [&promise](std::error_code ec) { promise.set_value(ec); });
-    if (future.get() || !found) {
-      return false;
-    }
-    size_t sz = 0;
-    if (!Common::fromHex(viewHex, viewPub.data(), viewPub.size(), sz) || sz != viewPub.size()) return false;
-    if (!Common::fromHex(spendHex, spendPub.data(), spendPub.size(), sz) || sz != spendPub.size()) return false;
-    return true;
-  }
-  return false;
+  // Delegate to the shared resolver so every front-end parses addresses identically.
+  return CryptoNote::resolvePqRecipient(*m_node, s, viewPub, spendPub, subaddrIndexT);
 }
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::process_command(const std::vector<std::string> &args) {

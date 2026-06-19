@@ -3682,6 +3682,35 @@ bool WalletGreen::getPqRegistrationKeysHex(std::string& viewHex, std::string& sp
   return true;
 }
 
+PqSendResult WalletGreen::sendPqTransfer(const std::vector<PqSendOutput>& recipients,
+                                         uint64_t fee, uint64_t unlockHeight) {
+  throwIfNotInitialized();
+  throwIfStopped();
+  if (!pqEnabled()) {
+    throw std::runtime_error("PQ spending is unavailable for this wallet");
+  }
+  KeyPair primary = getAddressSpendKey(0);
+  if (primary.secretKey == NULL_SECRET_KEY) {
+    throw std::runtime_error("tracking wallet cannot spend");
+  }
+  PqWalletKeys keys = derivePqWalletKeys(primary.secretKey);
+
+  PqSendRequest req;
+  req.recipients = recipients;
+  req.explicitFee = fee;
+  req.unlockHeight = unlockHeight;
+  PqSendResult result = buildPqSend(m_pqConsumer->state().spendableInputs(), keys, req);
+
+  std::promise<std::error_code> promise;
+  auto future = promise.get_future();
+  m_node.relayTransaction(result.tx, [&promise](std::error_code ec) { promise.set_value(ec); });
+  std::error_code ec = future.get();
+  if (ec) {
+    throw std::system_error(ec, "failed to relay PQ transaction");
+  }
+  return result;
+}
+
 void WalletGreen::setPqDepositScheme(PqDepositScheme scheme) {
   throwIfNotInitialized();
   throwIfStopped();

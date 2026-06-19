@@ -664,6 +664,34 @@ uint32_t WalletLegacy::pqSyncedHeight() const {
   return m_pqConsumer->state().lastScannedHeight();
 }
 
+PqSendResult WalletLegacy::sendPqTransfer(const std::vector<PqSendOutput>& recipients,
+                                          uint64_t fee, uint64_t unlockHeight) {
+  if (!pqEnabled()) {
+    throw std::runtime_error("PQ spending is unavailable for this wallet");
+  }
+  AccountKeys keys;
+  getAccountKeys(keys);
+  if (keys.spendSecretKey == NULL_SECRET_KEY) {
+    throw std::runtime_error("tracking wallet cannot spend");
+  }
+  PqWalletKeys pq = derivePqWalletKeys(keys.spendSecretKey);
+
+  PqSendRequest req;
+  req.recipients = recipients;
+  req.explicitFee = fee;
+  req.unlockHeight = unlockHeight;
+  PqSendResult result = buildPqSend(pqSpendableInputs(), pq, req);
+
+  std::promise<std::error_code> promise;
+  auto future = promise.get_future();
+  m_node.relayTransaction(result.tx, [&promise](std::error_code ec) { promise.set_value(ec); });
+  std::error_code ec = future.get();
+  if (ec) {
+    throw std::system_error(ec, "failed to relay PQ transaction");
+  }
+  return result;
+}
+
 uint64_t WalletLegacy::pendingBalance() {
   std::unique_lock<std::mutex> lock(m_cacheMutex);
   throwIfNotInitialised();

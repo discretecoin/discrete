@@ -45,6 +45,8 @@
 #include "PaymentServiceJsonRpcMessages.h"
 
 #include "Wallet/WalletGreen.h"
+#include "Wallet/PqRecipient.h"
+#include "Wallet/PqSender.h"
 #include "Wallet/LegacyKeysImporter.h"
 #include "AccountNumber.h"
 #include "CryptoNoteCore/CryptoNoteTools.h"
@@ -1604,6 +1606,29 @@ std::error_code WalletService::listPqDepositAddresses(std::vector<std::string>& 
 std::error_code WalletService::sendTransaction(const SendTransaction::Request& request, std::string& transactionHash, std::string& transactionSecretKey) {
   try {
     System::EventLock lk(readyEvent);
+
+    // PQ-native path: destinations are PQ addresses / account numbers, the build +
+    // relay go through the common sender, and ring/mixin params are not applicable.
+    auto* gw = dynamic_cast<CryptoNote::WalletGreen*>(&wallet);
+    if (gw != nullptr && gw->pqEnabled()) {
+      std::vector<CryptoNote::PqSendOutput> recipients;
+      recipients.reserve(request.transfers.size());
+      for (const auto& t : request.transfers) {
+        CryptoPQ::KemPublicKey viewPub;
+        CryptoPQ::DsaPublicKey spendPub;
+        uint64_t subaddrT = 0;
+        if (!CryptoNote::resolvePqRecipient(node, t.address, viewPub, spendPub, subaddrT)) {
+          logger(Logging::WARNING) << "Invalid PQ recipient: " << t.address;
+          return make_error_code(CryptoNote::error::BAD_ADDRESS);
+        }
+        recipients.push_back(CryptoNote::PqSendOutput{viewPub, spendPub, t.amount, subaddrT});
+      }
+      CryptoNote::PqSendResult r = gw->sendPqTransfer(recipients, request.fee, request.unlockHeight);
+      transactionHash = Common::podToHex(CryptoNote::getObjectHash(r.tx));
+      transactionSecretKey.clear();  // PQ transactions carry no per-tx secret key
+      logger(Logging::DEBUGGING) << "PQ transaction " << transactionHash << " has been sent";
+      return std::error_code();
+    }
 
     validateAddresses(request.sourceAddresses, currency, logger);
     validateAddresses(collectDestinationAddresses(request.transfers), currency, logger);
