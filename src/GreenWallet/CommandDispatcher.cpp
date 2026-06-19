@@ -24,11 +24,11 @@ bool handleCommand(const std::string command,
     }
     else if (command == "address")
     {
-        std::cout << SuccessMsg(walletInfo->walletAddress) << std::endl;
+        pqAddress(walletInfo);
     }
     else if (command == "balance")
     {
-        balance(node, walletInfo->wallet, walletInfo->viewWallet);
+        pqBalance(walletInfo);
     }
     else if (command == "backup")
     {
@@ -44,7 +44,7 @@ bool handleCommand(const std::string command,
     }
     else if (command == "transfer")
     {
-        transfer(walletInfo, node.getLastKnownBlockHeight(), false, node.feeAddress(), node.feeAmount());
+        pqTransfer(walletInfo, node);
     }
     /* Advanced commands */
     else if (command == "ab_add")
@@ -120,27 +120,15 @@ bool handleCommand(const std::string command,
     {
       verifyMessage(walletInfo->wallet);
     }
-    else if (command == "pq_address")
-    {
-        pqAddress(walletInfo);
-    }
-    else if (command == "pq_balance")
-    {
-        pqBalance(walletInfo);
-    }
-    else if (command == "pq_transfer")
-    {
-        pqTransfer(walletInfo, node);
-    }
-    else if (command == "pq_register")
+    else if (command == "register")
     {
         pqRegister(walletInfo, node);
     }
-    else if (command == "pq_register_paid")
+    else if (command == "register_paid")
     {
         pqRegisterPaid(walletInfo, node);
     }
-    else if (command == "pq_account")
+    else if (command == "account")
     {
         pqAccount(walletInfo, node);
     }

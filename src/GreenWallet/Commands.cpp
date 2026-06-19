@@ -39,12 +39,12 @@ std::vector<AdvancedCommand> allCommands()
     {
         /* Basic commands */
         AdvancedCommand("advanced", "List available advanced commands", true, false),
-        AdvancedCommand("address", "Display your payment address", true, false),
+        AdvancedCommand("address", "Display your address", true, false),
         AdvancedCommand("balance", "Display how much " + WalletConfig::ticker + " you have", true, false),
         AdvancedCommand("backup", "Backup your private keys and/or seed", true, false),
         AdvancedCommand("exit", "Exit and save your wallet", true, false),
         AdvancedCommand("help", "List this help message", true, false),
-        AdvancedCommand("transfer", "Send " + WalletConfig::ticker + " to someone", false, false),
+        AdvancedCommand("transfer", "Send " + WalletConfig::ticker + " to an address", false, false),
 
         /* Advanced commands */
         AdvancedCommand("ab_add", "Add a person to your address book", true, true),
@@ -66,12 +66,9 @@ std::vector<AdvancedCommand> allCommands()
         AdvancedCommand("tx_key", "Display transaction secret key if it's stored in wallet cache", false, true),
         AdvancedCommand("tx_proof", "Display proof of payment to specified address", false, true),
         AdvancedCommand("verify_message", "Verify signed message", true, true),
-        AdvancedCommand("pq_address", "Display your post-quantum (PQ) address", false, true),
-        AdvancedCommand("pq_balance", "Display your separate post-quantum (PQ) balance", false, true),
-        AdvancedCommand("pq_transfer", "Send PQ funds to a PQ address", false, true),
-        AdvancedCommand("pq_register", "Register a free post-quantum (PQ) account number", false, true),
-        AdvancedCommand("pq_register_paid", "Register a post-quantum (PQ) account number with a fee", false, true),
-        AdvancedCommand("pq_account", "Show your post-quantum (PQ) account number", false, true),
+        AdvancedCommand("register", "Register a free account number (anti-spam PoW, no fee)", false, true),
+        AdvancedCommand("register_paid", "Register an account number with a fee", false, true),
+        AdvancedCommand("account", "Show your account number", false, true),
     };
 }
 

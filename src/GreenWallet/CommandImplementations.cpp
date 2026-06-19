@@ -1294,7 +1294,7 @@ void pqRegister(std::shared_ptr<WalletInfo> walletInfo, CryptoNote::INode &node)
         std::cout << SuccessMsg("PQ registration submitted. Tx hash: "
                                 + Common::podToHex(CryptoNote::getObjectHash(tx)))
                   << std::endl
-                  << InformationMsg("Once confirmed, run 'pq_account' to see your account number.")
+                  << InformationMsg("Once confirmed, run 'account' to see your account number.")
                   << std::endl;
     }
     catch (const std::exception &e)
@@ -1415,8 +1415,8 @@ void pqAccount(std::shared_ptr<WalletInfo> walletInfo, CryptoNote::INode &node)
     }
     if (!registered)
     {
-        std::cout << InformationMsg("No PQ account number registered yet. Use 'pq_register', then "
-                                    "re-check with 'pq_account' once confirmed.")
+        std::cout << InformationMsg("No account number registered yet. Use 'register', then "
+                                    "re-check with 'account' once confirmed.")
                   << std::endl;
         return;
     }
