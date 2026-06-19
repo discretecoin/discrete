@@ -1866,6 +1866,10 @@ std::unique_ptr<CryptoNote::HttpClient> simple_wallet::createDaemonHttpClient() 
 bool simple_wallet::start_mining(const std::vector<std::string>& args) {
   COMMAND_RPC_START_MINING::request req;
 
+  // The daemon cannot read our wallet file (we keep it memory-mapped while
+  // running), so we hand it the spend secret directly over RPC. This is meant for
+  // a co-located daemon over loopback in a trusted local environment; the daemon
+  // mlocks and scrubs the secret as soon as it has derived the PQ mining identity.
   AccountKeys acc;
   m_wallet->getAccountKeys(acc);
   req.miner_spend_key = Common::podToHex(acc.spendSecretKey);

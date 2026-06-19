@@ -22,13 +22,17 @@
 #include "DaemonCommandsHandler.h"
 
 #include <ctime>
+#include <fstream>
 #include "P2p/NetNode.h"
 #include <Common/ColouredMsg.h>
+#include "Common/PasswordContainer.h"
 #include "CryptoNoteCore/Miner.h"
 #include "CryptoNoteCore/Core.h"
 #include "CryptoNoteCore/CryptoNoteFormatUtils.h"
 #include "CryptoNoteProtocol/CryptoNoteProtocolHandler.h"
 #include "Serialization/SerializationTools.h"
+#include "Common/SecureMemory.h"
+#include "Wallet/MiningKeyLoader.h"
 #include "version.h"
 #include <boost/format.hpp>
 #include "math.h"
@@ -44,6 +48,7 @@ namespace {
     std::cout << CryptoNote::storeToJson(obj) << ENDL;
     return true;
   }
+
 }
 
 
@@ -60,7 +65,7 @@ DaemonCommandsHandler::DaemonCommandsHandler(CryptoNote::Core& core, CryptoNote:
   //m_consoleHandler.setHandler("print_bc_outs", std::bind(&DaemonCommandsHandler::print_bc_outs, this, std::placeholders::_1));
   m_consoleHandler.setHandler("print_block", std::bind(&DaemonCommandsHandler::print_block, this, std::placeholders::_1), "Print block, print_block <block_hash> | <block_height>");
   m_consoleHandler.setHandler("print_tx", std::bind(&DaemonCommandsHandler::print_tx, this, std::placeholders::_1), "Print transaction, print_tx <transaction_hash>");
-  m_consoleHandler.setHandler("start_mining", std::bind(&DaemonCommandsHandler::start_mining, this, std::placeholders::_1), "Start mining to your own PQ identity, start_mining <spend key> [threads=1]");
+  m_consoleHandler.setHandler("start_mining", std::bind(&DaemonCommandsHandler::start_mining, this, std::placeholders::_1), "Start mining to your wallet's PQ identity, start_mining <wallet-file> [threads=1] [--mining-password-file <path>]");
   m_consoleHandler.setHandler("stop_mining", std::bind(&DaemonCommandsHandler::stop_mining, this, std::placeholders::_1), "Stop mining");
   m_consoleHandler.setHandler("print_pool", std::bind(&DaemonCommandsHandler::print_pool, this, std::placeholders::_1), "Print transaction pool (long format)");
   m_consoleHandler.setHandler("print_pool_sh", std::bind(&DaemonCommandsHandler::print_pool_sh, this, std::placeholders::_1), "Print transaction pool (short format)");
@@ -401,34 +406,90 @@ bool DaemonCommandsHandler::start_mining(const std::vector<std::string> &args) {
     std::cout << "Note: mining with no connected peers (solo)." << std::endl;
   }
 
-  if (!args.size()) {
-    std::cout << "Please specify the spend secret key to mine for: start_mining <spend key> [threads=1]" << std::endl;
+  // Usage: start_mining <wallet-file> [threads=1] [--mining-password-file <path>]
+  //
+  // The spend secret is NEVER passed on the command line: it is the one root
+  // secret from which the entire PQ mining identity is derived, far too sensitive
+  // to sit in argv/shell-history/process listings. Instead we read it from the
+  // encrypted wallet container, with the password supplied out of band — a
+  // no-echo console prompt (this command is interactive), a piped stdin, or a
+  // 0600 --mining-password-file for unattended/systemd starts.
+  std::string walletPath;
+  std::string passwordFile;
+  size_t threads_count = 1;
+  std::vector<std::string> positionals;
+  for (size_t i = 0; i < args.size(); ++i) {
+    if (args[i] == "--mining-password-file") {
+      if (i + 1 >= args.size()) {
+        std::cout << "--mining-password-file requires a path argument." << std::endl;
+        return true;
+      }
+      passwordFile = args[++i];
+    } else {
+      positionals.push_back(args[i]);
+    }
+  }
+
+  if (positionals.empty()) {
+    std::cout << "Usage: start_mining <wallet-file> [threads=1] [--mining-password-file <path>]" << std::endl;
+    return true;
+  }
+  walletPath = positionals[0];
+  if (positionals.size() > 1) {
+    bool ok = Common::fromString(positionals[1], threads_count);
+    threads_count = (ok && 0 < threads_count) ? threads_count : 1;
+  }
+
+  // Acquire the wallet password out of band.
+  Tools::PasswordContainer pwd;
+  if (!passwordFile.empty()) {
+    std::ifstream pf(passwordFile, std::ios_base::binary);
+    if (!pf) {
+      std::cout << "Could not open mining password file: " << passwordFile << std::endl;
+      return true;
+    }
+    std::string pw;
+    std::getline(pf, pw);
+    if (!pw.empty() && pw.back() == '\r') {
+      pw.pop_back();  // tolerate CRLF in a Windows-authored password file
+    }
+    pwd.password(std::move(pw));
+  } else if (!pwd.read_password(false, "Enter wallet password: ")) {
+    std::cout << "Failed to read wallet password." << std::endl;
     return true;
   }
 
   // Discrete: identity-bound mining. The reward goes to the miner's PQ identity
   // and the daemon signs each block with that identity's spend key, both derived
-  // from the classical spend secret key below.
-  Crypto::Hash private_key_hash;
-  size_t size;
-  if (!Common::fromHex(args.front(), &private_key_hash, sizeof(private_key_hash), size) || size != sizeof(private_key_hash)) {
-    logger(Logging::INFO) << "could not parse spend secret key";
-    return false;
+  // from the classical spend secret read (read-only) from the wallet file.
+  Crypto::SecretKey spendSecret;
+  try {
+    spendSecret = CryptoNote::loadMiningSpendSecret(walletPath, pwd.password(), m_logManager);
+  } catch (const std::exception& e) {
+    pwd.clear();
+    std::cout << "Could not load mining key: " << e.what() << std::endl;
+    return true;
   }
-  Crypto::SecretKey spendSecret = *(struct Crypto::SecretKey *) &private_key_hash;
+  pwd.clear();
 
   CryptoPQ::KemPublicKey pqViewPub;
   CryptoPQ::DsaPublicKey pqSpendPub;
   CryptoPQ::DsaSecretKey pqSpendSk;
-  CryptoNote::deriveMinerPqKeys(spendSecret, pqViewPub, pqSpendPub, pqSpendSk);
+  {
+    // Keep both the classical seed and the derived ML-DSA secret off swap and
+    // scrub them as soon as the miner has taken its own copy.
+    Tools::SecretLock seedGuard(&spendSecret, sizeof(spendSecret));
+    Tools::SecretLock pqGuard(pqSpendSk.data(), pqSpendSk.size());
+    CryptoNote::deriveMinerPqKeys(spendSecret, pqViewPub, pqSpendPub, pqSpendSk);
 
-  size_t threads_count = 1;
-  if (args.size() > 1) {
-    bool ok = Common::fromString(args[1], threads_count);
-    threads_count = (ok && 0 < threads_count) ? threads_count : 1;
+    if (!m_core.get_miner().startPq(pqViewPub, pqSpendPub, pqSpendSk, threads_count)) {
+      std::cout << "Failed to start mining (already mining?)." << std::endl;
+      return true;
+    }
   }
 
-  m_core.get_miner().startPq(pqViewPub, pqSpendPub, pqSpendSk, threads_count);
+  std::cout << "Mining started to the wallet's PQ identity with "
+            << threads_count << " thread(s)." << std::endl;
   return true;
 }
 //--------------------------------------------------------------------------------

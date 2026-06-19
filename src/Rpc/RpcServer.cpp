@@ -54,6 +54,7 @@
 #include "P2p/ConnectionContext.h"
 #include "P2p/NetNode.h"
 
+#include "Common/SecureMemory.h"
 #include "CoreRpcServerErrorCodes.h"
 #include "JsonRpc.h"
 
@@ -1764,11 +1765,15 @@ bool RpcServer::on_start_mining(const COMMAND_RPC_START_MINING::request& req, CO
   }
 
   // Discrete: identity-bound mining. The reward goes to the miner's PQ identity
-  // AND the miner signs each block with that identity's spend key, so the daemon
-  // derives the PQ keypair from the classical spend secret the wallet sent.
+  // AND the miner signs each block with that identity's spend key, both derived
+  // from the classical spend secret the (co-located) wallet sends over loopback
+  // RPC — the daemon cannot read the wallet's file itself because the wallet keeps
+  // it memory-mapped while running. The spend secret is mlocked and scrubbed as
+  // soon as the PQ keys are derived; it is never logged.
   Crypto::Hash key_hash;
   size_t size;
   if (!Common::fromHex(req.miner_spend_key, &key_hash, sizeof(key_hash), size) || size != sizeof(key_hash)) {
+    sodium_memzero(&key_hash, sizeof(key_hash));
     throw JsonRpc::JsonRpcError{ CORE_RPC_ERROR_CODE_WRONG_PARAM, "Failed to parse miner spend key" };
   }
   Crypto::SecretKey spendSecret = *(struct Crypto::SecretKey *) &key_hash;
@@ -1776,11 +1781,16 @@ bool RpcServer::on_start_mining(const COMMAND_RPC_START_MINING::request& req, CO
   CryptoPQ::KemPublicKey pqViewPub;
   CryptoPQ::DsaPublicKey pqSpendPub;
   CryptoPQ::DsaSecretKey pqSpendSk;
-  deriveMinerPqKeys(spendSecret, pqViewPub, pqSpendPub, pqSpendSk);
+  {
+    Tools::SecretLock hashGuard(&key_hash, sizeof(key_hash));
+    Tools::SecretLock seedGuard(&spendSecret, sizeof(spendSecret));
+    Tools::SecretLock pqGuard(pqSpendSk.data(), pqSpendSk.size());
+    deriveMinerPqKeys(spendSecret, pqViewPub, pqSpendPub, pqSpendSk);
 
-  if (!m_core.get_miner().startPq(pqViewPub, pqSpendPub, pqSpendSk, static_cast<size_t>(req.threads_count))) {
-    res.status = "Already mining";
-    return true;
+    if (!m_core.get_miner().startPq(pqViewPub, pqSpendPub, pqSpendSk, static_cast<size_t>(req.threads_count))) {
+      res.status = "Already mining";
+      return true;
+    }
   }
 
   res.status = CORE_RPC_STATUS_OK;

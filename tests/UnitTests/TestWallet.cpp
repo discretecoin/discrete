@@ -32,6 +32,7 @@
 #include "TestBlockchainGenerator.h"
 #include "TransactionApiHelpers.h"
 #include <Logging/ConsoleLogger.h>
+#include "Wallet/MiningKeyLoader.h"
 #include "Wallet/WalletErrors.h"
 #include "Wallet/WalletGreen.h"
 #include "Wallet/WalletSerializationV2.h"
@@ -651,6 +652,39 @@ TEST_F(WalletApi, addressPreservedEvenIfSaveWasNotCalled) {
 TEST_F(WalletApi, loadThrowsExceptionIfWalletFileDoesNotExist) {
   CryptoNote::WalletGreen bob(dispatcher, currency, node, logger, TRANSACTION_SOFTLOCK_TIME);
   ASSERT_THROW(bob.load(BOB_WALLET_PATH, "pass2"), std::system_error);
+}
+
+// loadMiningSpendSecret() recovers the primary address' spend secret from the
+// encrypted container, offline (no node, no synchronizer) and without mutating
+// the file — this is the secret start_mining derives the PQ mining identity from.
+TEST_F(WalletApi, miningKeyLoaderRecoversPrimarySpendSecret) {
+  CryptoNote::WalletGreen bob(dispatcher, currency, node, logger, TRANSACTION_SOFTLOCK_TIME);
+  bob.initialize(BOB_WALLET_PATH, "pass2");
+  bob.createAddress();
+  Crypto::SecretKey expected = bob.getAddressSpendKey(0).secretKey;
+  bob.shutdown();
+  wait(100);
+
+  Crypto::SecretKey got = CryptoNote::loadMiningSpendSecret(BOB_WALLET_PATH, "pass2", logger);
+  ASSERT_EQ(expected, got);
+
+  // The read is non-destructive: the container still opens normally afterwards.
+  CryptoNote::WalletGreen carol(dispatcher, currency, node, logger, TRANSACTION_SOFTLOCK_TIME);
+  carol.load(BOB_WALLET_PATH, "pass2");
+  ASSERT_EQ(expected, carol.getAddressSpendKey(0).secretKey);
+  carol.shutdown();
+  wait(100);
+}
+
+TEST_F(WalletApi, miningKeyLoaderRejectsWrongPassword) {
+  CryptoNote::WalletGreen bob(dispatcher, currency, node, logger, TRANSACTION_SOFTLOCK_TIME);
+  bob.initialize(BOB_WALLET_PATH, "pass2");
+  bob.createAddress();
+  bob.shutdown();
+  wait(100);
+
+  ASSERT_THROW(CryptoNote::loadMiningSpendSecret(BOB_WALLET_PATH, "wrong-password", logger),
+               std::system_error);
 }
 
 TEST_F(WalletApi, loadThrowsExceptionIfWalletFileHasInvalidVersion) {

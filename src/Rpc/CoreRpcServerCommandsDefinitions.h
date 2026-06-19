@@ -283,6 +283,11 @@ struct COMMAND_RPC_SEND_RAW_TRANSACTION {
 //-----------------------------------------------
 struct COMMAND_RPC_START_MINING {
   struct request {
+    // The classical spend secret the daemon derives the PQ mining identity from.
+    // Sent by a co-located wallet over (loopback) RPC: the wallet keeps its file
+    // memory-mapped while running, so the daemon cannot open it itself. Intended
+    // for a trusted local environment; the daemon mlocks + scrubs the secret
+    // immediately after deriving the PQ keys. See RpcServer::on_start_mining.
     std::string miner_spend_key;
     std::string miner_view_key;
     uint64_t threads_count;

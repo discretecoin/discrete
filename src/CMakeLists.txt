@@ -96,7 +96,9 @@ if (MINGW)
   target_link_libraries(System ws2_32)
 endif()
 
-target_link_libraries(Daemon Rpc Http P2P CryptoNoteCore Logging Serialization Crypto System Checkpoints CryptoNoteProtocol BlockchainExplorer Common upnpc-static ${Boost_LIBRARIES} ${LMDB_LIBRARY})
+# Wallet/Transfers/NodeRpcProxy/Mnemonics are linked for the read-only mining-key
+# loader (start_mining reads the encrypted wallet container; see MiningKeyLoader).
+target_link_libraries(Daemon Wallet Transfers NodeRpcProxy Mnemonics Rpc Http P2P CryptoNoteCore Logging Serialization Crypto System Checkpoints CryptoNoteProtocol BlockchainExplorer Common upnpc-static ${Boost_LIBRARIES} ${LMDB_LIBRARY})
 target_link_libraries(SimpleWallet Wallet Transfers NodeRpcProxy Rpc Http CryptoNoteCore Logging Serialization Crypto System Checkpoints Mnemonics Common ${Boost_LIBRARIES})
 target_link_libraries(GreenWallet Wallet Transfers NodeRpcProxy Rpc Http CryptoNoteCore Logging Serialization Crypto System Checkpoints Mnemonics Common ${Boost_LIBRARIES})
 target_link_libraries(PaymentGateService PaymentGate JsonRpcServer InProcessNode Wallet Transfers NodeRpcProxy Rpc Http P2P CryptoNoteCore Logging Serialization Crypto System Checkpoints

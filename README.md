@@ -89,7 +89,19 @@ is no second seed to store.
 | `verify_message "<msg>" <pq_address> <sig>` | Verify an ML-DSA message signature |
 
 Mine to your own PQ identity with the daemon's `start_mining` (the reward is
-bound to the mining identity — see identity-bound mining above).
+bound to the mining identity — see identity-bound mining above):
+
+```
+start_mining <wallet-file> [threads=1] [--mining-password-file <path>]
+```
+
+The spend secret is never passed on the command line — it is the one root secret
+the whole PQ mining identity is derived from. The daemon reads it (read-only,
+without modifying the file) from the encrypted wallet container, and takes the
+password out of band: a no-echo console prompt, a piped stdin, or a `0600`
+`--mining-password-file` for unattended/systemd starts. Legacy wallet files must
+be opened once in `simplewallet`/`greenwallet` to upgrade them to the current
+format before they can be used for mining.
 
 ## License
 
