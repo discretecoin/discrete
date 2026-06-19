@@ -1605,10 +1605,37 @@ void WalletGreen::deleteAddress(const std::string& address) {
   m_logger(INFO, BRIGHT_WHITE) << "Wallet deleted " << address;
 }
 
+namespace {
+// Build a native WalletTransaction from a PQ ledger history row. PqWalletState's
+// UNCONFIRMED_HEIGHT equals WALLET_UNCONFIRMED_TRANSACTION_HEIGHT (both uint32 max),
+// so the height maps through directly.
+WalletTransaction pqRowToWalletTx(const PqWalletTransaction& h) {
+  WalletTransaction tx;
+  tx.state = WalletTransactionState::SUCCEEDED;
+  tx.timestamp = h.timestamp;
+  tx.blockHeight = h.height;
+  tx.hash = h.txid;
+  tx.totalAmount = h.netAmount;
+  tx.fee = h.fee;
+  tx.creationTime = h.timestamp;
+  tx.unlockHeight = 0;
+  tx.extra.clear();
+  tx.isBase = false;
+  return tx;
+}
+}  // namespace
+
 uint64_t WalletGreen::getActualBalance() const {
   throwIfNotInitialized();
   throwIfStopped();
 
+  if (pqEnabled()) {
+    // PQ is the native ledger. "Actual" = confirmed (total minus still-in-mempool).
+    const auto& st = m_pqConsumer->state();
+    uint64_t total = st.balance();
+    uint64_t pending = st.pendingBalance();
+    return total >= pending ? total - pending : 0;
+  }
   return m_actualBalance;
 }
 
@@ -1624,6 +1651,9 @@ uint64_t WalletGreen::getPendingBalance() const {
   throwIfNotInitialized();
   throwIfStopped();
 
+  if (pqEnabled()) {
+    return m_pqConsumer->state().pendingBalance();
+  }
   return m_pendingBalance;
 }
 
@@ -1639,12 +1669,25 @@ size_t WalletGreen::getTransactionCount() const {
   throwIfNotInitialized();
   throwIfStopped();
 
+  if (pqEnabled()) {
+    return m_pqConsumer->state().historyCount();
+  }
   return m_transactions.get<RandomAccessIndex>().size();
 }
 
 WalletTransaction WalletGreen::getTransaction(size_t transactionIndex) const {
   throwIfNotInitialized();
   throwIfStopped();
+
+  if (pqEnabled()) {
+    const auto& hist = m_pqConsumer->state().history();
+    if (hist.size() <= transactionIndex) {
+      m_logger(ERROR, BRIGHT_RED) << "Failed to get PQ transaction: invalid index " << transactionIndex
+                                  << ". Number of transactions: " << hist.size();
+      throw std::system_error(make_error_code(CryptoNote::error::INDEX_OUT_OF_RANGE));
+    }
+    return pqRowToWalletTx(hist[transactionIndex]);
+  }
 
   if (m_transactions.size() <= transactionIndex) {
     m_logger(ERROR, BRIGHT_RED) << "Failed to get transaction: invalid index " << transactionIndex << ". Number of transactions: " << m_transactions.size();
@@ -2803,6 +2846,20 @@ WalletTransactionWithTransfers WalletGreen::getTransaction(const Crypto::Hash& t
   throwIfNotInitialized();
   throwIfStopped();
 
+  if (pqEnabled()) {
+    const auto* row = m_pqConsumer->state().historyByTxid(transactionHash);
+    if (row == nullptr) {
+      m_logger(ERROR, BRIGHT_RED) << "Failed to get PQ transaction: not found. Transaction hash " << transactionHash;
+      throw std::system_error(make_error_code(error::OBJECT_NOT_FOUND), "Transaction not found");
+    }
+    WalletTransactionWithTransfers w;
+    w.transaction = pqRowToWalletTx(*row);
+    // Counterparties aren't recoverable from owned-output scanning: report the net
+    // effect against this wallet's own address.
+    w.transfers.push_back(WalletTransfer{WalletTransferType::USUAL, getPqAddress(), row->netAmount});
+    return w;
+  }
+
   auto& hashIndex = m_transactions.get<TransactionIndex>();
   auto it = hashIndex.find(transactionHash);
   if (it == hashIndex.end()) {
@@ -2870,6 +2927,20 @@ std::vector<WalletTransactionWithTransfers> WalletGreen::getUnconfirmedTransacti
   throwIfStopped();
 
   std::vector<WalletTransactionWithTransfers> result;
+  if (pqEnabled()) {
+    std::string ownAddress = getPqAddress();
+    for (const auto& row : m_pqConsumer->state().history()) {
+      if (row.height != PqWalletState::UNCONFIRMED_HEIGHT) {
+        continue;
+      }
+      WalletTransactionWithTransfers w;
+      w.transaction = pqRowToWalletTx(row);
+      w.transfers.push_back(WalletTransfer{WalletTransferType::USUAL, ownAddress, row.netAmount});
+      result.push_back(std::move(w));
+    }
+    return result;
+  }
+
   auto lowerBound = m_transactions.get<BlockHeightIndex>().lower_bound(WALLET_UNCONFIRMED_TRANSACTION_HEIGHT);
   for (auto it = lowerBound; it != m_transactions.get<BlockHeightIndex>().end(); ++it) {
     if (it->state != WalletTransactionState::SUCCEEDED) {
