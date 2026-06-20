@@ -4023,3 +4023,106 @@ TEST(PqWalletIntegration, IncomingTransactionCreditsNativeBalance) {
   wallet.shutdown();
   boost::filesystem::remove(path);
 }
+
+// Persistence/resume: after a save + shutdown, a fresh WalletGreen that loads the
+// file must report the balance and history straight from the persisted PQ ledger
+// (the WalletLedgerConsumer cursor + WalletLedger blob), without rescanning.
+TEST(PqWalletIntegration, BalanceSurvivesSaveAndReload) {
+  System::Dispatcher dispatcher;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(1000000).upgradeHeightV6(1000000)
+      .currency();
+  TestBlockchainGenerator generator(currency);
+  INodeTrivialRefreshStub node(generator);
+
+  const std::string path = "pq_reload.wallet";
+  boost::filesystem::remove(path);
+
+  Crypto::Hash txHash;
+  {
+    CryptoNote::WalletGreen wallet(dispatcher, currency, node, logger);
+    wallet.initialize(path, "pass");
+    wallet.createAddress();
+    Crypto::SecretKey spend = wallet.getAddressSpendKey(0).secretKey;
+    CryptoNote::PqWalletKeys mine = CryptoNote::derivePqWalletKeys(spend);
+
+    Crypto::SecretKey otherSecret;
+    for (std::size_t i = 0; i < sizeof(otherSecret.data); ++i)
+      otherSecret.data[i] = static_cast<uint8_t>(i * 7 + 3);
+    CryptoNote::PqWalletKeys them = CryptoNote::derivePqWalletKeys(otherSecret);
+
+    CryptoNote::Transaction pqTx = makePqPayTo(them, mine, 1000000, 800000, 0x55);
+    txHash = CryptoNote::getObjectHash(pqTx);
+    generator.setTxFee(txHash, 1000000 - 800000);
+    generator.addTxToBlockchain(pqTx);
+    node.updateObservers();
+
+    pumpUntil(dispatcher, wallet, [&wallet]() { return wallet.getActualBalance() == 800000u; });
+    wallet.save();
+    wallet.shutdown();
+  }
+
+  {
+    CryptoNote::WalletGreen reloaded(dispatcher, currency, node, logger);
+    ASSERT_NO_THROW(reloaded.load(path, "pass"));
+    // Comes straight from the restored ledger, before any fresh sync work.
+    EXPECT_EQ(reloaded.getActualBalance(), 800000u);
+    ASSERT_EQ(reloaded.getTransactionCount(), 1u);
+    EXPECT_EQ(reloaded.getTransaction(0).hash, txHash);
+    reloaded.shutdown();
+  }
+
+  boost::filesystem::remove(path);
+}
+
+// Reorg/rollback through the real BlockchainSynchronizer: a credited transaction
+// whose block is orphaned must be rolled back (onBlockchainDetach ->
+// WalletLedger::rollbackToHeight), reversing the balance and history.
+TEST(PqWalletIntegration, ReorgDetachReversesCredit) {
+  System::Dispatcher dispatcher;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(1000000).upgradeHeightV6(1000000)
+      .currency();
+  TestBlockchainGenerator generator(currency);
+  INodeTrivialRefreshStub node(generator);
+  CryptoNote::WalletGreen wallet(dispatcher, currency, node, logger);
+
+  const std::string path = "pq_reorg.wallet";
+  boost::filesystem::remove(path);
+  wallet.initialize(path, "pass");
+  wallet.createAddress();
+  Crypto::SecretKey spend = wallet.getAddressSpendKey(0).secretKey;
+  CryptoNote::PqWalletKeys mine = CryptoNote::derivePqWalletKeys(spend);
+
+  Crypto::SecretKey otherSecret;
+  for (std::size_t i = 0; i < sizeof(otherSecret.data); ++i)
+    otherSecret.data[i] = static_cast<uint8_t>(i * 7 + 3);
+  CryptoNote::PqWalletKeys them = CryptoNote::derivePqWalletKeys(otherSecret);
+
+  CryptoNote::Transaction pqTx = makePqPayTo(them, mine, 1000000, 800000, 0x55);
+  generator.setTxFee(CryptoNote::getObjectHash(pqTx), 1000000 - 800000);
+  generator.addTxToBlockchain(pqTx);  // tx lands in block at height 1
+  node.updateObservers();
+  pumpUntil(dispatcher, wallet, [&wallet]() { return wallet.getActualBalance() == 800000u; });
+  ASSERT_EQ(wallet.getActualBalance(), 800000u);
+
+  // Orphan the block that carried the payment: reorg from height 1 (keep only
+  // genesis) and let a longer, payment-free chain win.
+  node.startAlternativeChain(1);
+  generator.generateEmptyBlocks(3);
+  node.updateObservers();
+  pumpUntil(dispatcher, wallet, [&wallet]() { return wallet.getActualBalance() == 0u; },
+            std::chrono::seconds(20));
+
+  EXPECT_EQ(wallet.getActualBalance(), 0u);
+  EXPECT_EQ(wallet.getTransactionCount(), 0u);
+
+  wallet.shutdown();
+  boost::filesystem::remove(path);
+}
