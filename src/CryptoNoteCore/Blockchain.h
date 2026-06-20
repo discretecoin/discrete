@@ -162,10 +162,6 @@ namespace CryptoNote {
     bool getPqAccountNumber(const Crypto::Hash& accountId,
                             uint32_t& blockHeight, uint32_t& txIndex);
 
-    template<class visitor_t>
-    bool scanOutputKeysForIndexes(const KeyInput& tx_in_to_key, visitor_t& vis,
-                                   uint32_t* pmax_related_block_height = nullptr);
-
     bool addMessageQueue(MessageQueue<BlockchainMessage>& messageQueue);
     bool removeMessageQueue(MessageQueue<BlockchainMessage>& messageQueue);
 
@@ -388,9 +384,6 @@ namespace CryptoNote {
     // Increment batch counter; commit if batch is full or we've caught up.
     void commitBatchOrBlock(bool forceSingle = false);
 
-    bool check_tx_input(const KeyInput& txin, const Crypto::Hash& tx_prefix_hash,
-                         const std::vector<Crypto::Signature>& sig,
-                         uint32_t* pmax_related_block_height = nullptr);
     bool checkTransactionInputs(const Transaction& tx, const Crypto::Hash& tx_prefix_hash,
                                  uint32_t* pmax_used_block_height = nullptr);
     bool checkTransactionInputs(const Transaction& tx, uint32_t* pmax_used_block_height = nullptr);
@@ -448,55 +441,5 @@ namespace CryptoNote {
     std::lock_guard<std::recursive_mutex> m_lock;
   };
 
-  template<class visitor_t>
-  bool Blockchain::scanOutputKeysForIndexes(const KeyInput& tx_in_to_key, visitor_t& vis,
-                                              uint32_t* pmax_related_block_height) {
-    std::lock_guard<std::recursive_mutex> lk(m_blockchain_lock);
-
-    uint32_t outputCount = m_db.getKeyOutputCount(tx_in_to_key.amount);
-    if (outputCount == 0 || tx_in_to_key.outputIndexes.empty())
-      return false;
-
-    std::vector<uint32_t> absolute_offsets =
-      relative_output_offsets_to_absolute(tx_in_to_key.outputIndexes);
-
-    size_t count = 0;
-    for (uint32_t i : absolute_offsets) {
-      if (i >= outputCount) {
-        logger(Logging::INFO) << "Wrong index in transaction inputs: " << i
-                              << ", expected maximum " << outputCount - 1;
-        return false;
-      }
-
-      uint32_t block; uint16_t txSlot, outIdx;
-      if (!m_db.getKeyOutput(tx_in_to_key.amount, i, block, txSlot, outIdx)) {
-        logger(Logging::ERROR, Logging::BRIGHT_RED)
-          << "Output not found in key_outputs for amount=" << tx_in_to_key.amount
-          << " globalIdx=" << i;
-        return false;
-      }
-
-      TransactionEntry te = transactionByIndex({block, txSlot});
-      if (outIdx >= te.tx.outputs.size()) {
-        logger(Logging::ERROR, Logging::BRIGHT_RED)
-          << "Wrong output index " << outIdx << " in tx with "
-          << te.tx.outputs.size() << " outputs";
-        return false;
-      }
-
-      if (!vis.handle_output(te.tx, te.tx.outputs[outIdx], outIdx)) {
-        logger(Logging::INFO) << "Failed to handle_output for output no = " << count
-                              << ", with absolute offset " << i;
-        return false;
-      }
-
-      if (count++ == absolute_offsets.size() - 1 && pmax_related_block_height) {
-        if (*pmax_related_block_height < block)
-          *pmax_related_block_height = block;
-      }
-    }
-
-    return true;
-  }
 
 } // namespace CryptoNote
