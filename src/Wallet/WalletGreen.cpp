@@ -515,7 +515,6 @@ void WalletGreen::load(const std::string& path, const std::string& password, std
     }
 
     loadContainerStorage(path);
-    subscribeWallets();
 
     if (m_containerStorage.suffixSize() > 0) {
       try {
@@ -526,7 +525,6 @@ void WalletGreen::load(const std::string& path, const std::string& password, std
         if (!addedSpendKeys.empty()) {
           m_logger(WARNING, BRIGHT_YELLOW) << "Found addresses not saved in container cache. Resynchronize container";
           clearCaches(false, true);
-          subscribeWallets();
         }
 
         if (!deletedSpendKeys.empty()) {
@@ -546,7 +544,6 @@ void WalletGreen::load(const std::string& path, const std::string& password, std
       } catch (const std::exception& e) {
         m_logger(ERROR, BRIGHT_RED) << "Failed to load cache: " << e.what() << ", reset wallet data";
         clearCaches(true, true);
-        subscribeWallets();
       }
     }
   }
@@ -820,13 +817,6 @@ void WalletGreen::loadSpendKeys() {
 
     m_walletsContainer.emplace_back(std::move(wallet));
   }
-}
-
-void WalletGreen::subscribeWallets() {
-  // No-op: the classical TransfersSyncronizer is no longer a sync driver. Scanning
-  // is done entirely by the PQ ledger consumer (created in initPqConsumer); each
-  // WalletRecord.container already holds its unique synthetic key from loadSpendKeys
-  // / clearCaches, and is never used as a real ITransfersContainer.
 }
 
 void WalletGreen::convertAndLoadWalletFile(const std::string& path, std::ifstream&& walletFileStream) {

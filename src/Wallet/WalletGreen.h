@@ -228,38 +228,7 @@ protected:
   uint64_t scanHeightToTimestamp(const uint32_t scanHeight);
   uint64_t getCurrentTimestampAdjusted();
 
-  struct InputInfo {
-    TransactionTypes::InputKeyInfo keyInfo;
-    WalletRecord* walletRecord = nullptr;
-    KeyPair ephKeys;
-  };
-
-  struct OutputToTransfer {
-    TransactionOutputInformation out;
-    WalletRecord* wallet;
-  };
-
-  struct ReceiverAmounts {
-    CryptoNote::AccountPublicAddress receiver;
-    std::vector<uint64_t> amounts;
-  };
-
-  struct WalletOuts {
-    WalletRecord* wallet;
-    std::vector<TransactionOutputInformation> outs;
-  };
-
   typedef std::pair<WalletTransfers::const_iterator, WalletTransfers::const_iterator> TransfersRange;
-
-  struct AddressAmounts {
-    int64_t input = 0;
-    int64_t output = 0;
-  };
-
-  struct ContainerAmounts {
-    ITransfersContainer* container;
-    AddressAmounts amounts;
-  };
 
 #pragma pack(push, 1)
   struct ContainerStoragePrefix {
@@ -268,8 +237,6 @@ protected:
     EncryptedWalletRecord encryptedViewKeys;
   };
 #pragma pack(pop)
-
-  typedef std::unordered_map<std::string, AddressAmounts> TransfersMap;
 
   virtual void synchronizationProgressUpdated(uint32_t processedBlockCount, uint32_t totalBlockCount) override;
   virtual void synchronizationCompleted(std::error_code result) override;
@@ -330,7 +297,6 @@ protected:
   void loadContainerStorage(const std::string& path);
   void loadWalletCache(std::unordered_set<Crypto::PublicKey>& addedKeys, std::unordered_set<Crypto::PublicKey>& deletedKeys, std::string& extra);
   void saveWalletCache(ContainerStorage& storage, const Crypto::chacha8_key& key, WalletSaveLevel saveLevel, const std::string& extra);
-  void subscribeWallets();
 
   enum class WalletState {
     INITIALIZED,
