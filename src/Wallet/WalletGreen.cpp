@@ -55,6 +55,8 @@
 #include "Wallet/TransactionBuilder.h"
 #include "Wallet/PqWallet.h"
 #include "Wallet/PqTransactionBuilder.h"
+#include "Wallet/PqRecipient.h"
+#include "Denominations.h"
 #include "AccountNumber.h"
 #include "CryptoNoteCore/CryptoNoteTools.h"
 #include "CryptoNoteCore/PqValidation.h"
@@ -3187,27 +3189,18 @@ std::string WalletGreen::signMessage(const std::string &message, const std::stri
   throwIfTrackingMode();
   throwIfStopped();
 
-  WalletRecord wallet;
-
-  if (!address.empty()) {
-    wallet = getWalletRecord(address);
+  // Discrete signs with the wallet's post-quantum (ML-DSA) spend key — the PQ
+  // identity its address publishes — not the (unused) classical ECC key. A PQ
+  // wallet has a single primary identity, so `address` (a per-address selector in
+  // the classical multi-address model) is not used.
+  (void)address;
+  Crypto::SecretKey spendSecret = getAddressSpendKey(0).secretKey;
+  if (spendSecret == NULL_SECRET_KEY) {
+    throw std::system_error(make_error_code(CryptoNote::error::BAD_ADDRESS),
+                            "wallet has no spend key to sign with");
   }
-  else {
-    if (!m_walletsContainer.empty()) {
-      wallet = m_walletsContainer.get<RandomAccessIndex>()[0];
-    }
-    else {
-      throw std::system_error(make_error_code(CryptoNote::error::BAD_ADDRESS));
-    }
-  }
-
-  CryptoNote::AccountKeys keys;
-  keys.spendSecretKey = wallet.spendSecretKey;
-  keys.viewSecretKey = m_viewSecretKey;
-  keys.address.viewPublicKey = m_viewPublicKey;
-  keys.address.spendPublicKey = wallet.spendPublicKey;
-
-  return CryptoNote::signMessage(message, keys);
+  PqWalletKeys keys = derivePqWalletKeys(spendSecret);
+  return CryptoNote::signMessagePq(message, keys.spendSk);
 }
 
 bool WalletGreen::verifyMessage(const std::string &message, const std::string& address, const std::string &signature) {
@@ -3215,9 +3208,17 @@ bool WalletGreen::verifyMessage(const std::string &message, const std::string& a
   throwIfStopped();
 
   try {
-    CryptoNote::AccountPublicAddress pubAddr = parseAddress(address);
-
-    return CryptoNote::verifyMessage(message, pubAddr, signature, m_logger.getLogger());
+    // The signer is identified by its PQ (ML-DSA) spend key. Accept a raw PQ
+    // address or an H-I-C / H-I-T-C account number (resolved via the node), the
+    // same surface simplewallet and greenwallet accept.
+    CryptoPQ::KemPublicKey viewPub;
+    CryptoPQ::DsaPublicKey spendPub;
+    uint64_t subaddrT = 0;
+    if (!CryptoNote::resolvePqRecipient(m_node, address, viewPub, spendPub, subaddrT)) {
+      m_logger(ERROR, BRIGHT_RED) << "Failed to verify message: not a PQ address / account number: " << address;
+      return false;
+    }
+    return CryptoNote::verifyMessagePq(message, spendPub, signature);
   }
   catch (const std::exception& e) {
     m_logger(ERROR, BRIGHT_RED) << "Failed to verify message: " << e.what();
@@ -3683,7 +3684,8 @@ bool WalletGreen::getPqRegistrationKeysHex(std::string& viewHex, std::string& sp
 }
 
 PqSendResult WalletGreen::sendPqTransfer(const std::vector<PqSendOutput>& recipients,
-                                         uint64_t fee, uint64_t unlockHeight) {
+                                         uint64_t fee, uint64_t unlockHeight,
+                                         const std::vector<uint8_t>& extra) {
   throwIfNotInitialized();
   throwIfStopped();
   if (!pqEnabled()) {
@@ -3699,6 +3701,7 @@ PqSendResult WalletGreen::sendPqTransfer(const std::vector<PqSendOutput>& recipi
   req.recipients = recipients;
   req.explicitFee = fee;
   req.unlockHeight = unlockHeight;
+  req.extra = extra;
   PqSendResult result = buildPqSend(m_pqConsumer->state().spendableInputs(), keys, req);
 
   std::promise<std::error_code> promise;
@@ -3709,6 +3712,27 @@ PqSendResult WalletGreen::sendPqTransfer(const std::vector<PqSendOutput>& recipi
     throw std::system_error(ec, "failed to relay PQ transaction");
   }
   return result;
+}
+
+PqSendResult WalletGreen::registerPqAccountPaid() {
+  throwIfNotInitialized();
+  throwIfStopped();
+  if (!pqEnabled()) {
+    throw std::runtime_error("PQ registration is unavailable for this wallet");
+  }
+  KeyPair primary = getAddressSpendKey(0);
+  if (primary.secretKey == NULL_SECRET_KEY) {
+    throw std::runtime_error("tracking wallet cannot register a PQ account");
+  }
+  PqWalletKeys keys = derivePqWalletKeys(primary.secretKey);
+
+  // A paid registration is a fee-paying TX_PQ whose extra holds the registration
+  // tag (consensus records it first-reg-wins). Pay the smallest denomination back
+  // to ourselves so the transaction has a real output + fee.
+  std::vector<uint8_t> extra;
+  addPqAccountRegistrationToExtra(extra, keys.viewPub, keys.spendPub);
+  PqSendOutput self{keys.viewPub, keys.spendPub, MIN_CT_DENOMINATION, 0 /*T*/, 0 /*unlock*/};
+  return sendPqTransfer({self}, 0 /*auto fee*/, 0 /*unlock*/, extra);
 }
 
 void WalletGreen::setPqDepositScheme(PqDepositScheme scheme) {

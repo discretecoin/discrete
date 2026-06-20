@@ -1418,14 +1418,24 @@ std::error_code WalletService::registerPqAccount(std::string& transactionHash) {
 }
 
 std::error_code WalletService::registerPqAccountPaid(std::string& transactionHash) {
-  // Paid registration must spend PQ funds + a fee via a TX_PQ carrying the
-  // registration extra. walletd has no PQ-send path yet, so rather than build a
-  // transaction consensus would reject, report this as unsupported. Use the free
-  // registerPqAccount (anti-spam PoW) instead. See docs/WALLETD-PQ.md.
-  (void)transactionHash;
-  logger(Logging::WARNING, Logging::BRIGHT_YELLOW)
-      << "registerPqAccountPaid is not supported over walletd yet (needs PQ-send); use registerPqAccount";
-  return make_error_code(std::errc::function_not_supported);
+  try {
+    System::EventLock lk(readyEvent);
+    auto* gw = dynamic_cast<CryptoNote::WalletGreen*>(&wallet);
+    if (gw == nullptr || !gw->pqEnabled()) {
+      return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
+    }
+    // A paid registration is a fee-paying TX_PQ carrying the registration tag.
+    CryptoNote::PqSendResult r = gw->registerPqAccountPaid();
+    transactionHash = Common::podToHex(CryptoNote::getObjectHash(r.tx));
+    logger(Logging::DEBUGGING) << "PQ paid registration tx " << transactionHash << " has been sent";
+  } catch (std::system_error& x) {
+    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error during paid PQ registration: " << x.what();
+    return x.code();
+  } catch (std::exception& x) {
+    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error during paid PQ registration: " << x.what();
+    return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
+  }
+  return std::error_code();
 }
 
 std::error_code WalletService::getPqAccountStatus(bool& registered, std::string& accountNumber,

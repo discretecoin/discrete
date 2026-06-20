@@ -57,7 +57,8 @@ Transaction buildPqTransaction(const std::vector<PqSpendInput>& inputs,
                                const std::vector<PqSendOutput>& outputs,
                                const CryptoPQ::DsaPublicKey& spendPub,
                                const CryptoPQ::DsaSecretKey& spendSk,
-                               uint64_t unlockHeight) {
+                               uint64_t unlockHeight,
+                               const std::vector<uint8_t>& extra) {
   if (inputs.empty()) {
     throw std::runtime_error("buildPqTransaction: no inputs");
   }
@@ -75,7 +76,7 @@ Transaction buildPqTransaction(const std::vector<PqSpendInput>& inputs,
   tx.version = TRANSACTION_VERSION_1;
   tx.txType = TX_PQ;
   tx.unlockHeight = unlockHeight;
-  tx.extra.clear();
+  tx.extra = extra;  // authorized below (set before the signing digest)
 
   // Inputs (unsigned for now): reveal the spender's long-term spend pubkey and
   // the per-output rho. spend_commit(spendPub, rho) must match the referenced

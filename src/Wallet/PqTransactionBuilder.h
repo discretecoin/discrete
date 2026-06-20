@@ -76,11 +76,16 @@ CryptoPQ::Hash256 pqTransactionInputsHash(const TransactionPrefix& tx);
 // Every input is authorized by an ML-DSA signature over the canonical signing
 // digest (pqSigningDigest). `spendSk` is used only here and should be derived on
 // demand and discarded by the caller after the call returns.
+// `extra` (default empty) is placed verbatim in tx.extra before the signing digest
+// is computed, so it is authorized along with the rest of the transaction. It is
+// used to carry a PQ account registration (a paid registration is a fee-paying
+// TX_PQ whose extra holds the registration tag).
 Transaction buildPqTransaction(const std::vector<PqSpendInput>& inputs,
                                const std::vector<PqSendOutput>& outputs,
                                const CryptoPQ::DsaPublicKey& spendPub,
                                const CryptoPQ::DsaSecretKey& spendSk,
-                               uint64_t unlockHeight = 0);
+                               uint64_t unlockHeight = 0,
+                               const std::vector<uint8_t>& extra = {});
 
 // Assemble a TX_FREE_REG (zero-fee account-number registration) given a PoW
 // solution: an empty-input/output v2 tx whose tx_extra is exactly the PQ

@@ -124,6 +124,19 @@ TEST(PqSender, CoarsensToOutputCap) {
     EXPECT_LE(toBinaryArray(r.tx).size(), P::MAX_PQ_TX_SIZE);
 }
 
+TEST(PqSender, CarriesExtraForPaidRegistration) {
+    PqWalletKeys me = derivePqWalletKeys(spendSecret(9, 1));
+    PqWalletKeys to = derivePqWalletKeys(spendSecret(7, 3));
+
+    std::vector<PqSpendInput> inputs = {mkInput(1000, 0x90)};
+    PqSendRequest req;
+    req.recipients.push_back(PqSendOutput{to.viewPub, to.spendPub, 100});
+    req.extra = {0x05, 0xAA, 0xBB, 0xCC};  // stand-in for a registration tag
+
+    PqSendResult r = buildPqSend(inputs, me, req);
+    EXPECT_EQ(r.tx.extra, req.extra);  // extra is preserved verbatim (and signed over)
+}
+
 TEST(PqSender, NoRecipientsThrows) {
     PqWalletKeys me = derivePqWalletKeys(spendSecret(9, 1));
     std::vector<PqSpendInput> inputs = {mkInput(100, 0x80)};

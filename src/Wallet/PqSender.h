@@ -40,6 +40,7 @@ struct PqSendRequest {
   std::vector<PqSendOutput> recipients;  // each .amount is the lump to that recipient
   uint64_t explicitFee = 0;              // 0 = auto (two-pass measured fee)
   uint64_t unlockHeight = 0;             // tx-level spend lock (0 = none)
+  std::vector<uint8_t> extra;            // tx.extra (e.g. a PQ account registration tag)
 };
 
 struct PqSendResult {

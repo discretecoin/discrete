@@ -72,7 +72,13 @@ public:
   // tracking wallet, insufficient funds, or relay failure. The single PQ spend path
   // shared with WalletLegacy/simplewallet.
   PqSendResult sendPqTransfer(const std::vector<PqSendOutput>& recipients,
-                              uint64_t fee = 0, uint64_t unlockHeight = 0);
+                              uint64_t fee = 0, uint64_t unlockHeight = 0,
+                              const std::vector<uint8_t>& extra = {});
+  // Register this wallet's PQ identity with a fee-paying TX_PQ: a self-payment of
+  // the smallest denomination whose tx.extra carries the account-registration tag.
+  // Returns the built+relayed result. Throws on a tracking wallet / insufficient
+  // funds. (The fee-free alternative is buildPqFreeRegTransaction.)
+  PqSendResult registerPqAccountPaid();
 
   // --- Deposit-wallet scheme (Spec 1 aggregated-multikey / Spec 2 single-key-index)
   // The scheme is chosen ONCE at container creation and persisted; it cannot be

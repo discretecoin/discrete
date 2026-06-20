@@ -115,12 +115,13 @@ std::vector<PqSendOutput> decomposeOutputs(const std::vector<PqSendOutput>& reci
 // serialized size is within MAX_PQ_TX_SIZE. Returns the signed transaction.
 Transaction buildFitting(const std::vector<PqSpendInput>& selected,
                          const std::vector<PqSendOutput>& recipients, uint64_t change,
-                         const PqWalletKeys& keys, uint64_t unlockHeight) {
+                         const PqWalletKeys& keys, uint64_t unlockHeight,
+                         const std::vector<uint8_t>& extra) {
   std::size_t numDest = recipients.size() + (change > 0 ? 1 : 0);
   std::size_t maxOut = P::MAX_PQ_OUTPUTS_PER_TX;
   for (;;) {
     std::vector<PqSendOutput> outs = decomposeOutputs(recipients, change, keys, maxOut);
-    Transaction tx = buildPqTransaction(selected, outs, keys.spendPub, keys.spendSk, unlockHeight);
+    Transaction tx = buildPqTransaction(selected, outs, keys.spendPub, keys.spendSk, unlockHeight, extra);
     if (toBinaryArray(tx).size() <= P::MAX_PQ_TX_SIZE) {
       return tx;
     }
@@ -175,7 +176,7 @@ PqSendResult buildPqSend(const std::vector<PqSpendInput>& available,
       }
     }
     uint64_t change = sumIn - sent - fee;
-    tx = buildFitting(selected, req.recipients, change, keys, req.unlockHeight);
+    tx = buildFitting(selected, req.recipients, change, keys, req.unlockHeight, req.extra);
     if (req.explicitFee != 0) {
       break;  // caller fixed the fee
     }

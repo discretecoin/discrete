@@ -94,11 +94,21 @@ curl -s -u :RPC -X POST http://127.0.0.1:8070/json_rpc -H 'Content-Type: applica
 
 ## `registerAccountPaid`
 
-**Not supported over walletd yet.** Paid registration must spend PQ funds + a fee
-via a `TX_PQ` carrying the registration tag, and walletd has no PQ-send path yet.
-The method is present for API completeness but returns a `function_not_supported`
-error rather than building a transaction consensus would reject. Use the free
-`registerAccount` instead.
+Registers this wallet's PQ identity with a **fee-paying** `TX_PQ` instead of the
+anti-spam PoW: a self-payment of the smallest denomination whose `tx.extra` carries
+the registration tag (consensus records it first-registration-wins). Requires a PQ
+balance to cover the fee; otherwise use the free `registerAccount`. Returns the
+transaction hash; poll `getAccountStatus` until it confirms.
+
+```
+curl -s -u :RPC -X POST http://127.0.0.1:8070/json_rpc -H 'Content-Type: application/json' -d '{
+  "jsonrpc": "2.0", "id": 1, "method": "registerAccountPaid", "params": {}
+}'
+```
+
+```json
+{ "jsonrpc": "2.0", "id": 1, "result": { "transactionHash": "<hex>" } }
+```
 
 ## `getAccountStatus`
 
