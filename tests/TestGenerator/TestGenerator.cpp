@@ -137,8 +137,15 @@ bool test_generator::constructBlock(CryptoNote::Block& blk, uint32_t height, con
   size_t txsSize = 0;
   for (auto& tx : txList) {
     uint64_t fee = 0;
-    bool r = get_tx_fee(tx, fee);
-    CHECK_AND_ASSERT_MES(r, false, "wrong transaction passed to construct_block");
+    Crypto::Hash txHash;
+    getObjectHash(tx, txHash);
+    auto feeIt = knownTxFees.find(txHash);
+    if (feeIt != knownTxFees.end()) {
+      fee = feeIt->second;  // TX_PQ (or any) fee the caller pre-registered
+    } else {
+      bool r = get_tx_fee(tx, fee);
+      CHECK_AND_ASSERT_MES(r, false, "wrong transaction passed to construct_block");
+    }
     totalFee += fee;
     txsSize += getObjectBinarySize(tx);
   }

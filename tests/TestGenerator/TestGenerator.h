@@ -83,6 +83,13 @@ public:
   uint8_t defaultMajorVersion;
   uint8_t defaultMinorVersion;
 
+  // Fee override by tx hash. A TX_PQ carries no inline input amounts, so the
+  // generic get_tx_fee cannot price it; a test that builds a TX_PQ knows its fee
+  // and registers it here so the block can be constructed (coinbase reward = base
+  // + these fees, which must match what consensus computes).
+  std::unordered_map<Crypto::Hash, uint64_t> knownTxFees;
+  void setTxFee(const Crypto::Hash& txHash, uint64_t fee) { knownTxFees[txHash] = fee; }
+
   const CryptoNote::Currency& currency() const { return m_currency; }
 
   void getBlockchain(std::vector<BlockInfo>& blockchain, const Crypto::Hash& head, size_t n) const;

@@ -439,6 +439,30 @@ bool runFunded() {
                  "tamper: input pointing at a wrong output index rejected (no such output)");
   }
 
+  // Block level: mine the (mempool-accepted) TX_PQ into a real block. The test
+  // registers the fee since a TX_PQ carries no inline input amounts; the coinbase
+  // reward (base + fee) must match what consensus recomputes, or the block is
+  // rejected — so a successful add also proves the PQ fee accounting is correct.
+  uint32_t heightBefore = core.getCurrentBlockchainHeight();
+  gen.setTxFee(spendHash, pqFee);
+  ok &= expect(mineBlockWithTxs(core, currency, gen, miner, ts, {spend}),
+               "funded: TX_PQ mined into a block (accepted by block validation)");
+  ts += step;
+  ok &= expect(core.getCurrentBlockchainHeight() == heightBefore + 1,
+               "funded: chain advanced by the block carrying the TX_PQ");
+
+  // Block-level double-spend: a block carrying a second spend of the same coinbase
+  // output (same nullifier, now recorded on-chain) must be rejected by block
+  // validation — not just at the mempool.
+  PqWalletKeys recip6 = pqKeysFromPattern(8, 8);
+  Transaction spend3 = buildPqTransaction(
+      spendIns, {PqSendOutput{recip6.viewPub, recip6.spendPub, inAmount - pqFee}},
+      miner.pqSpendPk(), miner.pqSpendSk());
+  gen.setTxFee(getObjectHash(spend3), pqFee);
+  bool blockRejected = !mineBlockWithTxs(core, currency, gen, miner, ts, {spend3});
+  ok &= expect(blockRejected,
+               "funded: block double-spending the now-spent coinbase rejected at block level");
+
   core.deinit();
   std::filesystem::remove_all(dataDir, ec);
   return ok;
