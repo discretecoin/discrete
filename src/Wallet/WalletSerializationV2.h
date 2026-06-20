@@ -28,7 +28,6 @@ namespace CryptoNote {
 class WalletSerializerV2 {
 public:
   WalletSerializerV2(
-    ITransfersObserver& transfersObserver,
     Crypto::PublicKey& viewPublicKey,
     Crypto::SecretKey& viewSecretKey,
     AddressGenerationMode& addressGenerationMode,
@@ -37,7 +36,6 @@ public:
     uint64_t& actualBalance,
     uint64_t& pendingBalance,
     WalletsContainer& walletsContainer,
-    TransfersSyncronizer& synchronizer,
     UnlockTransactionJobs& unlockTransactions,
     WalletTransactions& transactions,
     WalletTransfers& transfers,
@@ -82,14 +80,12 @@ private:
   void loadPqState(CryptoNote::ISerializer& serializer);
   void savePqState(CryptoNote::ISerializer& serializer);
 
-  ITransfersObserver& m_transfersObserver;
   AddressGenerationMode& m_addressGenerationMode;
   Crypto::SecretKey& m_deterministicSeed;
   uint32_t& m_nextDeterministicIndex;
   uint64_t& m_actualBalance;
   uint64_t& m_pendingBalance;
   WalletsContainer& m_walletsContainer;
-  TransfersSyncronizer& m_synchronizer;
   UnlockTransactionJobs& m_unlockTransactions;
   WalletTransactions& m_transactions;
   WalletTransfers& m_transfers;

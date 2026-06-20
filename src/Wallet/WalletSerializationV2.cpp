@@ -125,7 +125,6 @@ void serialize(WalletTransferDtoV2& value, CryptoNote::ISerializer& serializer) 
 namespace CryptoNote {
 
 WalletSerializerV2::WalletSerializerV2(
-  ITransfersObserver& transfersObserver,
   Crypto::PublicKey& viewPublicKey,
   Crypto::SecretKey& viewSecretKey,
   AddressGenerationMode& addressGenerationMode,
@@ -134,7 +133,6 @@ WalletSerializerV2::WalletSerializerV2(
   uint64_t& actualBalance,
   uint64_t& pendingBalance,
   WalletsContainer& walletsContainer,
-  TransfersSyncronizer& synchronizer,
   UnlockTransactionJobs& unlockTransactions,
   WalletTransactions& transactions,
   WalletTransfers& transfers,
@@ -143,14 +141,12 @@ WalletSerializerV2::WalletSerializerV2(
   uint32_t transactionSoftLockTime,
   std::string& pqState
 ) :
-  m_transfersObserver(transfersObserver),
   m_addressGenerationMode(addressGenerationMode),
   m_deterministicSeed(deterministicSeed),
   m_nextDeterministicIndex(nextDeterministicIndex),
   m_actualBalance(actualBalance),
   m_pendingBalance(pendingBalance),
   m_walletsContainer(walletsContainer),
-  m_synchronizer(synchronizer),
   m_unlockTransactions(unlockTransactions),
   m_transactions(transactions),
   m_transfers(transfers),
@@ -425,19 +421,16 @@ void WalletSerializerV2::saveTransfers(CryptoNote::ISerializer& serializer) {
 }
 
 void WalletSerializerV2::loadTransfersSynchronizer(CryptoNote::ISerializer& serializer) {
+  // The classical TransfersSyncronizer is gone; read and discard the legacy blob
+  // (kept in the wallet-file format for backward compatibility).
   std::string transfersSynchronizerData;
   serializer(transfersSynchronizerData, "transfersSynchronizer");
-
-  std::stringstream stream(transfersSynchronizerData);
-  m_synchronizer.load(stream);
 }
 
 void WalletSerializerV2::saveTransfersSynchronizer(CryptoNote::ISerializer& serializer) {
-  std::stringstream stream;
-  m_synchronizer.save(stream);
-  stream.flush();
-
-  std::string transfersSynchronizerData = stream.str();
+  // Write an empty blob: the classical sync state no longer exists, but the field
+  // is preserved so the wallet-file layout is unchanged (no version bump).
+  std::string transfersSynchronizerData;
   serializer(transfersSynchronizerData, "transfersSynchronizer");
 }
 

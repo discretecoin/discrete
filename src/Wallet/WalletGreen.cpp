@@ -162,7 +162,6 @@ WalletGreen::WalletGreen(System::Dispatcher& dispatcher, const Currency& currenc
   m_stopped(false),
   m_blockchainSynchronizerStarted(false),
   m_blockchainSynchronizer(node, logger, currency.genesisBlockHash()),
-  m_synchronizer(currency, logger, m_blockchainSynchronizer, node),
   m_eventOccurred(m_dispatcher),
   m_readyEvent(m_dispatcher),
   m_state(WalletState::NOT_INITIALIZED),
@@ -262,10 +261,6 @@ void WalletGreen::shutdown() {
 }
 
 void WalletGreen::doShutdown() {
-  if (m_walletsContainer.size() != 0) {
-    m_synchronizer.unsubscribeConsumerNotifications(m_viewPublicKey, this);
-  }
-
   stopBlockchainSynchronizer();
   m_blockchainSynchronizer.removeObserver(this);
 
@@ -307,10 +302,6 @@ void WalletGreen::clearCaches(bool clearTransactions, bool clearCachedData) {
         });
       }
     }
-
-    std::vector<AccountPublicAddress> subscriptions;
-    m_synchronizer.getSubscriptions(subscriptions);
-    std::for_each(subscriptions.begin(), subscriptions.end(), [this](const AccountPublicAddress& address) { m_synchronizer.removeSubscription(address); });
 
     if (m_pqConsumer) {
       m_blockchainSynchronizer.removeConsumer(m_pqConsumer.get());
@@ -564,35 +555,10 @@ void WalletGreen::load(const std::string& path, const std::string& password, std
 
   initPqConsumerForPrimary();
 
-  // Read all output keys cache
-  try {
-    std::vector<AccountPublicAddress> subscriptionList;
-    m_synchronizer.getSubscriptions(subscriptionList);
-    for (auto& addr : subscriptionList) {
-      auto sub = m_synchronizer.getSubscription(addr);
-      if (sub != nullptr) {
-         std::vector<TransactionOutputInformation> allTransfers;
-         ITransfersContainer* container = &sub->getContainer();
-         container->getOutputs(allTransfers, ITransfersContainer::IncludeAll);
-         m_logger(DEBUGGING, BRIGHT_WHITE) << "Known Transfers " << allTransfers.size();
-         for (auto& o : allTransfers) {
-             if (o.type != TransactionTypes::OutputType::Invalid) {
-                m_synchronizer.addPublicKeysSeen(addr, o.transactionHash, o.outputKey);
-             }
-         }
-      }
-    }
-  } catch (const std::exception& e) {
-    m_logger(ERROR, BRIGHT_RED) << "Failed to read output keys!! Continue without output keys: " << e.what();
-  }
-
   m_blockchainSynchronizer.addObserver(this);
-
-  initTransactionPool();
 
   assert(m_blockchain.empty());
   if (m_walletsContainer.get<RandomAccessIndex>().size() != 0) {
-    m_synchronizer.subscribeConsumerNotifications(m_viewPublicKey, this);
     initBlockchain(m_viewPublicKey);
 
     startBlockchainSynchronizer();
@@ -649,7 +615,6 @@ void WalletGreen::loadWalletCache(std::unordered_set<Crypto::PublicKey>& addedKe
   loadAndDecryptContainerData(m_containerStorage, m_key, contanerData);
 
   WalletSerializerV2 s(
-    *this,
     m_viewPublicKey,
     m_viewSecretKey,
     m_addressGenerationMode,
@@ -658,7 +623,6 @@ void WalletGreen::loadWalletCache(std::unordered_set<Crypto::PublicKey>& addedKe
     m_actualBalance,
     m_pendingBalance,
     m_walletsContainer,
-    m_synchronizer,
     m_unlockTransactionsJob,
     m_transactions,
     m_transfers,
@@ -711,7 +675,6 @@ void WalletGreen::saveWalletCache(ContainerStorage& storage, const Crypto::chach
   Common::StringOutputStream containerStream(containerData);
 
   WalletSerializerV2 s(
-    *this,
     m_viewPublicKey,
     m_viewSecretKey,
     m_addressGenerationMode,
@@ -720,7 +683,6 @@ void WalletGreen::saveWalletCache(ContainerStorage& storage, const Crypto::chach
     m_actualBalance,
     m_pendingBalance,
     m_walletsContainer,
-    m_synchronizer,
     m_unlockTransactionsJob,
     transactions,
     transfers,
@@ -820,15 +782,6 @@ void WalletGreen::loadAndDecryptContainerData(ContainerStorage& storage, const C
   chacha8(encryptedContainer.data(), encryptedContainer.size(), key, suffixIv, reinterpret_cast<char*>(containerData.data()));
 }
 
-void WalletGreen::initTransactionPool() {
-  std::unordered_set<Crypto::Hash> uncommitedTransactionsSet;
-  std::transform(m_uncommitedTransactions.begin(), m_uncommitedTransactions.end(), std::inserter(uncommitedTransactionsSet, uncommitedTransactionsSet.end()),
-    [](const UncommitedTransactions::value_type& pair) {
-      return getObjectHash(pair.second);
-    });
-  m_synchronizer.initTransactionPool(uncommitedTransactionsSet);
-}
-
 void WalletGreen::deleteOrphanTransactions(const std::unordered_set<Crypto::PublicKey>& deletedKeys) {
   for (auto spendPublicKey : deletedKeys) {
     AccountPublicAddress deletedAccountAddress;
@@ -880,78 +833,13 @@ void WalletGreen::subscribeWallets() {
 }
 
 void WalletGreen::convertAndLoadWalletFile(const std::string& path, std::ifstream&& walletFileStream) {
-  WalletSerializerV1 s(
-    *this,
-    m_viewPublicKey,
-    m_viewSecretKey,
-    m_actualBalance,
-    m_pendingBalance,
-    m_walletsContainer,
-    m_synchronizer,
-    m_unlockTransactionsJob,
-    m_transactions,
-    m_transfers,
-    m_uncommitedTransactions,
-    m_transactionSoftLockTime
-  );
-
-  StdInputStream stream(walletFileStream);
-  s.load(m_key, stream);
+  // Pre-v6 (classical Karbo) wallet files have no place on a post-quantum-from-genesis
+  // chain: they hold ECC keys and a classical TransfersSyncronizer cache that the PQ
+  // engine cannot use. The old WalletSerializerV1 import path is therefore retired.
   walletFileStream.close();
-
-  boost::filesystem::path bakPath = path + ".backup";
-  boost::filesystem::path tmpPath = boost::filesystem::unique_path(path + ".tmp.%%%%-%%%%");
-
-  if (boost::filesystem::exists(bakPath)) {
-    m_logger(INFO) << "Wallet backup already exists! Creating random file name backup.";
-    bakPath = boost::filesystem::unique_path(path + ".%%%%-%%%%" + ".backup");
-  }
-
-  Tools::ScopeExit tmpFileDeleter([&tmpPath] {
-    boost::system::error_code ignore;
-    boost::filesystem::remove(tmpPath, ignore);
-  });
-
-  m_containerStorage.open(tmpPath.string(), Common::FileMappedVectorOpenMode::CREATE, sizeof(ContainerStoragePrefix));
-  ContainerStoragePrefix* prefix = reinterpret_cast<ContainerStoragePrefix*>(m_containerStorage.prefix());
-  prefix->version = WalletSerializerV2::SERIALIZATION_VERSION;
-  prefix->nextIv = Crypto::randomChachaIV();
-
-#ifdef USE_LITE_WALLET
-  uint64_t creationTimestamp;
-  for (WalletRecord wallet : m_walletsContainer.get<RandomAccessIndex>()) {
-    boost::posix_time::ptime ts = boost::posix_time::from_time_t(wallet.creationTimestamp);
-    if (!ts.is_not_a_date_time()) {
-      creationTimestamp = wallet.creationTimestamp;
-      break;
-    }
-    creationTimestamp = time(nullptr);
-  }
-#else
-  uint64_t creationTimestamp = time(nullptr);
-#endif
-  prefix->encryptedViewKeys = encryptKeyPair(m_viewPublicKey, m_viewSecretKey, creationTimestamp);
-
-  for (auto spendKeys : m_walletsContainer.get<RandomAccessIndex>()) {
-    m_containerStorage.push_back(encryptKeyPair(spendKeys.spendPublicKey, spendKeys.spendSecretKey, spendKeys.creationTimestamp));
-    incNextIv();
-  }
-
-  saveWalletCache(m_containerStorage, m_key, WalletSaveLevel::SAVE_ALL, "");
-
-  boost::filesystem::rename(path, bakPath);
-  std::error_code ec;
-  m_containerStorage.rename(path, ec);
-  if (ec) {
-    m_logger(ERROR, BRIGHT_RED) << "Failed to rename " << tmpPath << " to " << path;
-
-    boost::system::error_code ignore;
-    boost::filesystem::rename(bakPath, path, ignore);
-    throw std::system_error(ec, "Failed to replace wallet file");
-  }
-
-  tmpFileDeleter.cancel();
-  m_logger(INFO, BRIGHT_WHITE) << "Wallet file converted! Previous version: " << bakPath;
+  m_logger(ERROR, BRIGHT_RED) << "Unsupported legacy wallet file: " << path;
+  throw std::system_error(make_error_code(error::WRONG_VERSION),
+    "Legacy (pre-v6) wallet files are not supported by the post-quantum wallet");
 }
 
 void WalletGreen::changePassword(const std::string& oldPassword, const std::string& newPassword) {
@@ -1469,7 +1357,6 @@ std::string WalletGreen::addWallet(const Crypto::PublicKey& spendPublicKey, cons
     m_logger(DEBUGGING) << "Wallet count " << m_walletsContainer.size();
 
     if (index.size() == 1) {
-      m_synchronizer.subscribeConsumerNotifications(m_viewPublicKey, this);
       // The PQ identity derives from the primary address's spend secret. Create the
       // consumer first so the block list (m_blockchain) can be seeded from it.
       initPqConsumer(spendSecretKey, sub.syncStart);
@@ -1639,8 +1526,6 @@ void WalletGreen::deleteAddress(const std::string& address) {
 #endif
 
   m_containerStorage.erase(std::next(m_containerStorage.begin(), addressIndex));
-
-  m_synchronizer.removeSubscription(pubAddr);
 
   deleteContainerFromUnlockTransactionJobs(it->container);
   std::vector<size_t> deletedTransactions;
@@ -4202,10 +4087,6 @@ size_t WalletGreen::getTxSize(const TransactionParameters& /*sendingTransaction*
 
 void WalletGreen::clearCacheAndShutdown()
 {
-  if (m_walletsContainer.size() != 0) {
-    m_synchronizer.unsubscribeConsumerNotifications(m_viewPublicKey, this);
-  }
-
   stopBlockchainSynchronizer();
   m_blockchainSynchronizer.removeObserver(this);
 

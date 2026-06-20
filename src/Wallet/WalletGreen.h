@@ -427,7 +427,6 @@ protected:
   void deleteOrphanTransactions(const std::unordered_set<Crypto::PublicKey>& deletedKeys);
   static void encryptAndSaveContainerData(ContainerStorage& storage, const Crypto::chacha8_key& key, const void* containerData, size_t containerDataSize);
   static void loadAndDecryptContainerData(ContainerStorage& storage, const Crypto::chacha8_key& key, BinaryArray& containerData);
-  void initTransactionPool();
   void loadSpendKeys();
   void loadContainerStorage(const std::string& path);
   void loadWalletCache(std::unordered_set<Crypto::PublicKey>& addedKeys, std::unordered_set<Crypto::PublicKey>& deletedKeys, std::string& extra);
@@ -475,9 +474,9 @@ protected:
 
   bool m_blockchainSynchronizerStarted;
   BlockchainSynchronizer m_blockchainSynchronizer;
-  TransfersSyncronizer m_synchronizer;
   // PQ output scanning consumer (created lazily for the primary address when a
-  // spend secret or PQ tracking credential is present).
+  // spend secret or PQ tracking credential is present). It is the sole consumer
+  // driving the BlockchainSynchronizer.
   std::unique_ptr<WalletLedgerConsumer> m_pqConsumer;
   std::unique_ptr<PqTrackingKeys> m_pqTrackingKeys;
   // Monotonic, never-reused token used only as the unique key of each WalletRecord
