@@ -35,11 +35,11 @@ namespace CryptoNote {
 //     (so it needs no INode / Dispatcher), and
 //   - NEVER mutates the wallet file: no legacy auto-conversion, no upgrade-save.
 //
-// Only the current FileMappedVector container format (WalletSerializerV2,
-// version >= MIN_VERSION) is supported. Legacy wallet files cannot be read here
-// without a live node, and converting them in place would mutate the user's
-// wallet — so they are refused: upgrade once with simplewallet/greenwallet
-// (which migrates to the current format), then mine against the upgraded file.
+// Both container formats are accepted, since all we need are the keys: the
+// current FileMappedVector format (WalletSerializerV2, version >= MIN_VERSION)
+// and the legacy single-blob format (the older simplewallet container). Legacy
+// files are read in place, read-only — they are NOT upgraded, so the user's
+// wallet is left byte-for-byte unchanged.
 //
 // Returns the spend secret of the primary address (index 0). Throws
 // std::system_error (error::WRONG_PASSWORD / WRONG_VERSION / WRONG_STATE / ...)

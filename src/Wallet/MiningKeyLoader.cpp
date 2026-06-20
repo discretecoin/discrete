@@ -23,6 +23,7 @@
 
 #include "Common/FileMappedVector.h"
 #include "Common/MemoryInputStream.h"
+#include "Common/StdInputStream.h"
 #include "CryptoNoteCore/CryptoNoteBasic.h"   // NULL_SECRET_KEY
 #include "Logging/LoggerRef.h"
 #include "Serialization/BinaryInputStreamSerializer.h"
@@ -32,6 +33,7 @@
 
 #include "WalletErrors.h"
 #include "WalletIndices.h"          // EncryptedWalletRecord, ContainerStorage
+#include "WalletLegacy/KeysStorage.h"  // legacy single-blob keypair DTO
 #include "WalletSerializationV2.h"  // version constants
 #include "WalletUtils.h"            // throwIfKeysMissmatch
 
@@ -68,6 +70,79 @@ void decryptKeyPair(const EncryptedWalletRecord& cipher, PublicKey& publicKey,
   sodium_memzero(buffer.data(), buffer.size());
 }
 
+// Read the spend secret from a legacy (pre-FileMappedVector) container. The
+// whole wallet is a single chacha8 blob holding a KeysStorage at its head; we
+// decrypt it, take the keypair, and ignore the transaction-history details that
+// follow. Mirrors WalletLegacySerializer::deserialize but is strictly read-only
+// (it never rewrites the file), so no in-place upgrade is forced on the user —
+// we only need the keys.
+Crypto::SecretKey loadLegacySpendSecret(const std::string& path,
+                                        const std::string& password) {
+  std::ifstream file(path, std::ios_base::binary);
+  if (!file) {
+    throw std::system_error(make_error_code(error::WRONG_STATE),
+                            "Failed to open wallet '" + path + "'");
+  }
+
+  // Outer envelope: version, chacha8 IV, encrypted blob.
+  uint32_t version = 0;
+  chacha8_iv iv;
+  std::string cipher;
+  {
+    Common::StdInputStream stdStream(file);
+    BinaryInputStreamSerializer envelope(stdStream);
+    envelope.beginObject("wallet");
+    envelope(version, "version");
+    envelope(iv, "iv");
+    envelope(cipher, "data");
+    envelope.endObject();
+  }
+
+  chacha8_key key;
+  {
+    cn_context cnContext;
+    generate_chacha8_key(cnContext, password, key);
+  }
+  std::string plain(cipher.size(), '\0');
+  chacha8(cipher.data(), cipher.size(), key, iv, &plain[0]);
+  sodium_memzero(&key, sizeof(key));
+
+  // Parse the keypair off the head of the decrypted blob. A wrong password
+  // decrypts to garbage, which here surfaces as a serializer runtime_error.
+  KeysStorage keys;
+  try {
+    Common::MemoryInputStream plainStream(plain.data(), plain.size());
+    BinaryInputStreamSerializer serializer(plainStream);
+    keys.serialize(serializer, "keys");
+  } catch (const std::exception&) {
+    sodium_memzero(&plain[0], plain.size());
+    sodium_memzero(&keys, sizeof(keys));
+    throw std::system_error(make_error_code(error::WRONG_PASSWORD),
+                            "Wrong password, or corrupt wallet");
+  }
+  sodium_memzero(&plain[0], plain.size());  // keypair extracted; drop the plaintext
+
+  Crypto::SecretKey spendSecret = keys.spendSecretKey;
+  try {
+    // A wrong password that happened to parse still yields a keypair that fails
+    // these scalar/point checks (throwIfKeysMissmatch -> WRONG_PASSWORD).
+    throwIfKeysMissmatch(keys.viewSecretKey, keys.viewPublicKey,
+        "View key check failed (wrong password, or corrupt wallet)");
+    if (spendSecret == NULL_SECRET_KEY) {
+      throw std::system_error(make_error_code(error::WRONG_STATE),
+          "Wallet is view-only (tracking) and has no spend key, so it cannot mine");
+    }
+    throwIfKeysMissmatch(spendSecret, keys.spendPublicKey,
+        "Spend key check failed (wrong password, or corrupt wallet)");
+  } catch (...) {
+    sodium_memzero(&spendSecret, sizeof(spendSecret));
+    sodium_memzero(&keys, sizeof(keys));
+    throw;
+  }
+  sodium_memzero(&keys, sizeof(keys));
+  return spendSecret;
+}
+
 }  // namespace
 
 Crypto::SecretKey loadMiningSpendSecret(const std::string& path,
@@ -75,9 +150,11 @@ Crypto::SecretKey loadMiningSpendSecret(const std::string& path,
                                         Logging::ILogger& log) {
   Logging::LoggerRef logger(log, "mining-key");
 
-  // Screen the format before doing any crypto. Legacy (< MIN_VERSION) files would
-  // need an on-disk conversion or a live node to read; we refuse rather than
-  // mutate the user's wallet.
+  // The on-disk version byte selects the parser: legacy (pre-FileMappedVector)
+  // containers hold the keypair in a single chacha8 blob, the current WalletGreen
+  // container uses a FileMappedVector. We only need the spend secret, so read
+  // whichever is present — both paths are strictly read-only and never rewrite
+  // the file, so no in-place upgrade is forced on the user.
   {
     std::ifstream probe(path, std::ios_base::binary);
     int peeked = probe.peek();
@@ -87,9 +164,7 @@ Crypto::SecretKey loadMiningSpendSecret(const std::string& path,
     }
     uint8_t version = static_cast<uint8_t>(peeked);
     if (version < WalletSerializerV2::MIN_VERSION) {
-      throw std::system_error(make_error_code(error::WRONG_VERSION),
-          "Legacy wallet format. Open it once in simplewallet/greenwallet to "
-          "upgrade it to the current format, then use it for mining.");
+      return loadLegacySpendSecret(path, password);
     }
     if (version > WalletSerializerV2::SERIALIZATION_VERSION) {
       throw std::system_error(make_error_code(error::WRONG_VERSION),
