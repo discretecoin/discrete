@@ -19,6 +19,8 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with Karbo.  If not, see <http://www.gnu.org/licenses/>.
 
+#include <fstream>
+
 #include <boost/filesystem.hpp>
 #include <boost/program_options.hpp>
 
@@ -30,12 +32,17 @@
 #include "Common/StringTools.h"
 #include "Common/PathTools.h"
 #include "Common/ColouredMsg.h"
+#include "Common/PasswordContainer.h"
+#include "Common/SecureMemory.h"
 #include "Checkpoints/CheckpointsData.h"
 #include "CryptoNoteCore/CryptoNoteTools.h"
+#include "CryptoNoteCore/CryptoNoteFormatUtils.h"
 #include "CryptoNoteCore/Core.h"
 #include "CryptoNoteCore/CoreConfig.h"
 #include "CryptoNoteCore/Currency.h"
+#include "CryptoNoteCore/Miner.h"
 #include "CryptoNoteCore/MinerConfig.h"
+#include "Wallet/MiningKeyLoader.h"
 #include "CryptoNoteProtocol/CryptoNoteProtocolHandler.h"
 #include "CryptoNoteProtocol/ICryptoNoteProtocolQuery.h"
 #include "Logging/LoggerManager.h"
@@ -353,6 +360,58 @@ int main(int argc, char* argv[])
           return 1;
         }
         m_core.rollbackBlockchain(_index);
+      }
+    }
+
+    // Headless solo mining: if a mining wallet was supplied on the command line,
+    // derive its PQ identity (read-only, off the encrypted container) and start
+    // mining+signing to it — the same identity-bound path as the console/RPC
+    // start_mining, but with no interactive console. Useful for testnet bring-up.
+    if (!minerConfig.miningWallet.empty()) {
+      Tools::PasswordContainer pwd;
+      if (!minerConfig.miningPasswordFile.empty()) {
+        std::ifstream pf(minerConfig.miningPasswordFile, std::ios_base::binary);
+        if (!pf) {
+          logger(ERROR, BRIGHT_RED) << "Could not open mining password file: " << minerConfig.miningPasswordFile;
+          return 1;
+        }
+        std::string pw;
+        std::getline(pf, pw);
+        if (!pw.empty() && pw.back() == '\r') {
+          pw.pop_back();  // tolerate CRLF in a Windows-authored password file
+        }
+        pwd.password(std::move(pw));
+      } else if (!pwd.read_password(false, "Enter mining wallet password: ")) {
+        logger(ERROR, BRIGHT_RED) << "Failed to read mining wallet password.";
+        return 1;
+      }
+
+      Crypto::SecretKey spendSecret;
+      try {
+        spendSecret = CryptoNote::loadMiningSpendSecret(minerConfig.miningWallet, pwd.password(), logManager);
+      } catch (const std::exception& e) {
+        pwd.clear();
+        logger(ERROR, BRIGHT_RED) << "Could not load mining key: " << e.what();
+        return 1;
+      }
+      pwd.clear();
+
+      CryptoPQ::KemPublicKey pqViewPub;
+      CryptoPQ::DsaPublicKey pqSpendPub;
+      CryptoPQ::DsaSecretKey pqSpendSk;
+      {
+        // Keep the classical seed and the derived ML-DSA secret off swap and
+        // scrub them as soon as the miner has taken its own copy.
+        Tools::SecretLock seedGuard(&spendSecret, sizeof(spendSecret));
+        Tools::SecretLock pqGuard(pqSpendSk.data(), pqSpendSk.size());
+        CryptoNote::deriveMinerPqKeys(spendSecret, pqViewPub, pqSpendPub, pqSpendSk);
+
+        size_t threads = minerConfig.miningThreads > 0 ? static_cast<size_t>(minerConfig.miningThreads) : 1;
+        if (!m_core.get_miner().startPq(pqViewPub, pqSpendPub, pqSpendSk, threads)) {
+          logger(ERROR, BRIGHT_RED) << "Failed to start headless mining.";
+        } else {
+          logger(INFO) << "Headless mining started to the wallet's PQ identity with " << threads << " thread(s).";
+        }
       }
     }
 

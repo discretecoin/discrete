@@ -33,8 +33,8 @@ public:
   void init(const boost::program_options::variables_map& options);
 
   std::string extraMessages;
-  std::string miningSpendKey;
-  std::string miningViewKey;
+  std::string miningWallet;        // wallet container whose PQ identity mines+signs headless blocks
+  std::string miningPasswordFile;  // file holding the miningWallet password (read out of band)
   uint32_t miningThreads;
   bool printHashrate = false;
   bool logHashrate = false;

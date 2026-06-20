@@ -217,26 +217,11 @@ namespace CryptoNote
       logger(INFO) << "Loaded " << m_extra_messages.size() << " extra messages, current index " << m_config.current_extra_message_index;
     }
 
-    if (!config.miningSpendKey.empty() && !config.miningViewKey.empty()) {
-      Crypto::Hash private_key_hash;
-      size_t size;
-      if (!Common::fromHex(config.miningSpendKey, &private_key_hash, sizeof(private_key_hash), size) || size != sizeof(private_key_hash)) {
-        logger(Logging::INFO) << "Could not parse private spend key";
-        return false;
-      }
-      m_mine_account.spendSecretKey = *(struct Crypto::SecretKey *) &private_key_hash;
-      if (!Common::fromHex(config.miningViewKey, &private_key_hash, sizeof(private_key_hash), size) || size != sizeof(private_key_hash)) {
-        logger(Logging::INFO) << "Could not parse private view key";
-        return false;
-      }
-      m_mine_account.viewSecretKey = *(struct Crypto::SecretKey *) &private_key_hash;
-
-      Crypto::secret_key_to_public_key(m_mine_account.spendSecretKey, m_mine_account.address.spendPublicKey);
-      Crypto::secret_key_to_public_key(m_mine_account.viewSecretKey, m_mine_account.address.viewPublicKey);
-
-      m_do_mining = true;
-    }
-
+    // Headless mining is armed from Daemon.cpp (it derives the PQ identity from
+    // the --mining-wallet container and calls startPq); init() only carries the
+    // thread/hashrate knobs. The classical spend/view-key flags are gone — a raw
+    // 32-byte secret on the command line never derived the PQ keys, so it could
+    // not sign blocks and silently failed.
     m_threads_total = 1;
     if (config.miningThreads > 0) {
       m_threads_total = config.miningThreads;
