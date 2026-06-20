@@ -3971,15 +3971,11 @@ void pumpUntil(System::Dispatcher& dispatcher, CryptoNote::WalletGreen& wallet,
 // (INodeTrivialRefreshStub -> BlockchainSynchronizer -> WalletLedgerConsumer) and
 // asserts the NATIVE IWallet getters reflect the PQ ledger.
 //
-// DISABLED: TestBlockchainGenerator cannot build Discrete's yespower (v5+) PoW blocks
-// without a real Core sink (it throws "block hash wasn't found" during block
-// construction) — the same limitation that leaves the classical UnitTests
-// runtime-broken on this fork. Enable once the real-node harness exists
-// (completion-plan Phase 6.1). NOTE: running this test already proved its worth — it
-// surfaced the classical TransfersConsumer stalling PQ sync (fixed in
-// TransfersConsumer::onNewBlocks: PQ-only blocks now count as empty instead of
-// detaching).
-TEST(PqWalletIntegration, DISABLED_IncomingTransactionCreditsNativeBalance) {
+// The in-memory TestBlockchainGenerator builds V1 blocks whose PoW comes from the
+// standalone long-hash (the wallet never validates PoW — it trusts its node), so no
+// real Core sink is needed here. This test also guards the F1 fix: the classical
+// TransfersConsumer must count PQ-only blocks as empty instead of stalling PQ sync.
+TEST(PqWalletIntegration, IncomingTransactionCreditsNativeBalance) {
   System::Dispatcher dispatcher;
   Logging::ConsoleLogger logger(Logging::ERROR);
   CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
@@ -4007,6 +4003,9 @@ TEST(PqWalletIntegration, DISABLED_IncomingTransactionCreditsNativeBalance) {
   CryptoNote::PqWalletKeys them = CryptoNote::derivePqWalletKeys(otherSecret);
 
   CryptoNote::Transaction pqTx = makePqPayTo(them, mine, 1000000, 800000, 0x55);
+  // TX_PQ has no inline input amounts; register its fee (in − out) so the block
+  // constructor doesn't try to value it via the classical get_tx_fee path.
+  generator.setTxFee(CryptoNote::getObjectHash(pqTx), 1000000 - 800000);
   generator.addTxToBlockchain(pqTx);
   node.updateObservers();
 

@@ -234,4 +234,8 @@ add_test(PqConsumerTests pq_consumer_tests)
 add_test(PqGenesisTests pq_genesis_tests)
 add_test(DenominationsTests denominations_tests)
 add_test(PqSenderTests pq_sender_tests)
+# Wallet-sync E2E lives in unit_tests; expose just the PQ integration case under a
+# Pq* name so it joins the regression gate (ctest -R "Pq|Denomination") without
+# pulling in the runtime-broken classical UnitTests suites.
+add_test(NAME PqWalletSyncE2E COMMAND unit_tests --gtest_filter=PqWalletIntegration.*)
 add_test(LMDBReorgTests lmdb_reorg_tests)

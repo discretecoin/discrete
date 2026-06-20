@@ -42,6 +42,10 @@ public:
   bool generateTransactionsInOneBlock(const CryptoNote::AccountPublicAddress& address, size_t n);
   bool getSingleOutputTransaction(const CryptoNote::AccountPublicAddress& address, uint64_t amount);
   void addTxToBlockchain(const CryptoNote::Transaction& transaction);
+  // Pre-register a TX_PQ's fee: a TX_PQ carries no inline input amounts, so the
+  // block constructor's classical get_tx_fee can't value it. Mirrors the
+  // test_generator::setTxFee path used by the real-Core PqChainTests.
+  void setTxFee(const Crypto::Hash& txHash, uint64_t fee) { generator.setTxFee(txHash, fee); }
   bool getTransactionByHash(const Crypto::Hash& hash, CryptoNote::Transaction& tx, bool checkTxPool = false);
   const CryptoNote::AccountBase& getMinerAccount() const;
   bool generateFromBaseTx(const CryptoNote::AccountBase& address);

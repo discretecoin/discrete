@@ -53,6 +53,14 @@ bool computeBlockLongHashForTest(Crypto::cn_context& context,
                                  Crypto::Hash& res,
                                  CryptoNote::Blockchain* blockchain) {
   if (blockchain == nullptr) {
+    // No chain sink. This is the in-memory generator (TestBlockchainGenerator) that
+    // feeds blocks to a WalletGreen through the node stub, where PoW is NEVER
+    // validated (the wallet trusts its node) and difficulty is 1. Fall back to the
+    // standalone long-hash, which covers V1–V4 via cn_slow_hash; only V5+ yespower
+    // needs the real chain context (and those tests wire setBlockchain()).
+    if (CryptoNote::get_block_longhash(context, blk, res)) {
+      return true;
+    }
     static bool warned = false;
     if (!warned) {
       std::cerr << "[test_generator] yespower PoW requested but no Blockchain sink wired — "
