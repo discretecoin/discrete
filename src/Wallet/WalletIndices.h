@@ -42,7 +42,6 @@ const uint32_t WALLET_INVALID_HD_INDEX = std::numeric_limits<uint32_t>::max();
 struct WalletRecord {
   Crypto::PublicKey spendPublicKey;
   Crypto::SecretKey spendSecretKey;
-  CryptoNote::ITransfersContainer* container = nullptr;
   uint64_t pendingBalance = 0;
   uint64_t actualBalance = 0;
   time_t creationTimestamp;
@@ -59,7 +58,6 @@ struct EncryptedWalletRecord {
 
 struct RandomAccessIndex {};
 struct KeysIndex {};
-struct TransfersContainerIndex {};
 
 struct WalletIndex {};
 struct TransactionOutputIndex {};
@@ -74,15 +72,12 @@ typedef boost::multi_index_container <
   boost::multi_index::indexed_by <
     boost::multi_index::random_access < boost::multi_index::tag <RandomAccessIndex> >,
     boost::multi_index::hashed_unique < boost::multi_index::tag <KeysIndex>,
-    BOOST_MULTI_INDEX_MEMBER(WalletRecord, Crypto::PublicKey, spendPublicKey)>,
-    boost::multi_index::hashed_unique < boost::multi_index::tag <TransfersContainerIndex>,
-      BOOST_MULTI_INDEX_MEMBER(WalletRecord, CryptoNote::ITransfersContainer*, container) >
+    BOOST_MULTI_INDEX_MEMBER(WalletRecord, Crypto::PublicKey, spendPublicKey)>
   >
 > WalletsContainer;
 
 struct UnlockTransactionJob {
   uint32_t blockHeight;
-  CryptoNote::ITransfersContainer* container;
   Crypto::Hash transactionHash;
 };
 

@@ -435,49 +435,23 @@ void WalletSerializerV2::saveTransfersSynchronizer(CryptoNote::ISerializer& seri
 }
 
 void WalletSerializerV2::loadUnlockTransactionsJobs(CryptoNote::ISerializer& serializer) {
-  auto& index = m_unlockTransactions.get<TransactionHashIndex>();
-  auto& walletsIndex = m_walletsContainer.get<KeysIndex>();
-
+  // Unlock-transaction jobs are a classical-only feature (they tracked per-output
+  // soft-lock maturity on ECC outputs). Read and discard any persisted jobs; the
+  // count field is kept for wallet-file backward compatibility.
   uint64_t jobsCount = 0;
   serializer(jobsCount, "unlockTransactionsJobsCount");
 
   for (uint64_t i = 0; i < jobsCount; ++i) {
     UnlockTransactionJobDtoV2 dto;
     serializer(dto, "unlockTransactionsJob");
-
-    auto walletIt = walletsIndex.find(dto.walletSpendPublicKey);
-    if (walletIt != walletsIndex.end()) {
-      UnlockTransactionJob job;
-      job.blockHeight = dto.blockHeight;
-      job.transactionHash = dto.transactionHash;
-      job.container = walletIt->container;
-
-      index.emplace(std::move(job));
-    }
   }
 }
 
 void WalletSerializerV2::saveUnlockTransactionsJobs(CryptoNote::ISerializer& serializer) {
-  auto& index = m_unlockTransactions.get<TransactionHashIndex>();
-  auto& wallets = m_walletsContainer.get<TransfersContainerIndex>();
-
-  uint64_t jobsCount = index.size();
+  // The PQ wallet never creates unlock jobs (per-output unlock heights live in the
+  // WalletLedger), so persist an empty set, preserving the field for compatibility.
+  uint64_t jobsCount = 0;
   serializer(jobsCount, "unlockTransactionsJobsCount");
-
-  for (const auto& j : index) {
-    auto containerIt = wallets.find(j.container);
-    assert(containerIt != wallets.end());
-
-    auto keyIt = m_walletsContainer.project<KeysIndex>(containerIt);
-    assert(keyIt != m_walletsContainer.get<KeysIndex>().end());
-
-    UnlockTransactionJobDtoV2 dto;
-    dto.blockHeight = j.blockHeight;
-    dto.transactionHash = j.transactionHash;
-    dto.walletSpendPublicKey = keyIt->spendPublicKey;
-
-    serializer(dto, "unlockTransactionsJob");
-  }
 }
 
 } //namespace CryptoNote

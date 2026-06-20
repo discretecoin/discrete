@@ -40,9 +40,7 @@
 namespace CryptoNote {
 
 class WalletGreen : public IWallet,
-                    ITransfersObserver,
                     IBlockchainSynchronizerObserver,
-                    ITransfersSynchronizerObserver,
                     IBlockchainConsumerObserver {
 public:
   WalletGreen(System::Dispatcher& dispatcher, const Currency& currency, INode& node, Logging::ILogger& logger, uint32_t transactionSoftLockTime = CryptoNote::parameters::CRYPTONOTE_TX_SPENDABLE_AGE);
@@ -273,26 +271,13 @@ protected:
 
   typedef std::unordered_map<std::string, AddressAmounts> TransfersMap;
 
-  virtual void onError(ITransfersSubscription* object, uint32_t height, std::error_code ec) override;
-
-  virtual void onTransactionUpdated(ITransfersSubscription* object, const Crypto::Hash& transactionHash) override;
-  virtual void onTransactionUpdated(const Crypto::PublicKey& viewPublicKey, const Crypto::Hash& transactionHash,
-    const std::vector<ITransfersContainer*>& containers) override;
-  void transactionUpdated(const TransactionInformation& transactionInfo, const std::vector<ContainerAmounts>& containerAmountsList);
-
-  virtual void onTransactionDeleted(ITransfersSubscription* object, const Crypto::Hash& transactionHash) override;
-  void transactionDeleted(ITransfersSubscription* object, const Crypto::Hash& transactionHash);
-
   virtual void synchronizationProgressUpdated(uint32_t processedBlockCount, uint32_t totalBlockCount) override;
   virtual void synchronizationCompleted(std::error_code result) override;
 
   void onSynchronizationProgressUpdated(uint32_t processedBlockCount, uint32_t totalBlockCount);
   void onSynchronizationCompleted();
 
-  virtual void onBlocksAdded(const Crypto::PublicKey& viewPublicKey, const std::vector<Crypto::Hash>& blockHashes) override;
   void blocksAdded(const std::vector<Crypto::Hash>& blockHashes);
-
-  virtual void onBlockchainDetach(const Crypto::PublicKey& viewPublicKey, uint32_t blockIndex) override;
   void blocksRollback(uint32_t blockIndex);
 
   // IBlockchainConsumerObserver: the PQ ledger consumer is the sole sync driver, so
@@ -300,107 +285,21 @@ protected:
   virtual void onBlocksAdded(IBlockchainConsumer* consumer, const std::vector<Crypto::Hash>& blockHashes) override;
   virtual void onBlockchainDetach(IBlockchainConsumer* consumer, uint32_t blockIndex) override;
 
-  virtual void onTransactionDeleteBegin(const Crypto::PublicKey& viewPublicKey, Crypto::Hash transactionHash) override;
-  void transactionDeleteBegin(Crypto::Hash transactionHash);
-
-  virtual void onTransactionDeleteEnd(const Crypto::PublicKey& viewPublicKey, Crypto::Hash transactionHash) override;
-  void transactionDeleteEnd(Crypto::Hash transactionHash);
-
-  std::vector<WalletOuts> pickWalletsWithMoney() const;
-  WalletOuts pickWallet(const std::string& address) const;
-  std::vector<WalletOuts> pickWallets(const std::vector<std::string>& addresses) const;
-
-  void updateBalance(CryptoNote::ITransfersContainer* container);
-  void unlockBalances(uint32_t height);
-
   const WalletRecord& getWalletRecord(const Crypto::PublicKey& key) const;
   const WalletRecord& getWalletRecord(const std::string& address) const;
-  const WalletRecord& getWalletRecord(CryptoNote::ITransfersContainer* container) const;
 
   CryptoNote::AccountPublicAddress parseAddress(const std::string& address) const;
   std::string addWallet(const Crypto::PublicKey& spendPublicKey, const Crypto::SecretKey& spendSecretKey, uint64_t creationTimestamp, uint32_t hdIndex = WALLET_INVALID_HD_INDEX);
-  AccountKeys makeAccountKeys(const WalletRecord& wallet) const;
   size_t getTransactionId(const Crypto::Hash& transactionHash) const;
   void pushEvent(const WalletEvent& event);
 
-  struct PreparedTransaction {
-    std::unique_ptr<ITransaction> transaction;
-    std::vector<WalletTransfer> destinations;
-    uint64_t neededMoney;
-    uint64_t changeAmount;
-  };
-
-  void prepareTransaction(std::vector<WalletOuts>&& wallets,
-    const std::vector<WalletOrder>& orders,
-    uint64_t fee,
-    uint64_t mixIn,
-    const std::string& extra,
-    uint64_t unlockHeightstamp,
-    const DonationSettings& donation,
-    const CryptoNote::AccountPublicAddress& changeDestinationAddress,
-    PreparedTransaction& preparedTransaction,
-    Crypto::SecretKey& txSecretKey);
-
-  size_t doTransfer(const TransactionParameters& transactionParameters, Crypto::SecretKey& txSecretKey);
-
-  void checkIfEnoughMixins(std::vector<CryptoNote::COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::outs_for_amount>& mixinResult, uint64_t mixIn) const;
-  std::vector<WalletTransfer> convertOrdersToTransfers(const std::vector<WalletOrder>& orders) const;
-  uint64_t countNeededMoney(const std::vector<CryptoNote::WalletTransfer>& destinations, uint64_t fee) const;
   CryptoNote::AccountPublicAddress parseAccountAddressString(const std::string& addressString) const;
-  uint64_t pushDonationTransferIfPossible(const DonationSettings& donation, uint64_t freeAmount, uint64_t dustThreshold, std::vector<WalletTransfer>& destinations) const;
-  void validateAddresses(const std::vector<std::string>& addresses) const;
-  void validateOrders(const std::vector<WalletOrder>& orders) const;
-  void validateChangeDestination(const std::vector<std::string>& sourceAddresses, const std::string& changeDestination) const;
-  void validateSourceAddresses(const std::vector<std::string>& sourceAddresses) const;
-  void validateTransactionParameters(const TransactionParameters& transactionParameters) const;
 
-  void requestMixinOuts(const std::vector<OutputToTransfer>& selectedTransfers,
-    uint64_t mixIn,
-    std::vector<CryptoNote::COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::outs_for_amount>& mixinResult);
-
-  void prepareInputs(const std::vector<OutputToTransfer>& selectedTransfers,
-    std::vector<CryptoNote::COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::outs_for_amount>& mixinResult,
-    uint64_t mixIn,
-    std::vector<InputInfo>& keysInfo);
-
-  uint64_t selectTransfers(uint64_t needeMoney,
-    bool dust,
-    uint64_t dustThreshold,
-    std::vector<WalletOuts>&& wallets,
-    std::vector<OutputToTransfer>& selectedTransfers);
-
-  std::vector<ReceiverAmounts> splitDestinations(const std::vector<WalletTransfer>& destinations,
-    uint64_t dustThreshold, const Currency& currency);
-  ReceiverAmounts splitAmount(uint64_t amount, const AccountPublicAddress& destination, uint64_t dustThreshold);
-
-  std::unique_ptr<CryptoNote::ITransaction> makeTransaction(const std::vector<ReceiverAmounts>& decomposedOutputs,
-    std::vector<InputInfo>& keysInfo, const std::string& extra, uint64_t unlockHeightstamp, Crypto::SecretKey& txSecretKey);
-
-  void sendTransaction(const CryptoNote::Transaction& cryptoNoteTransaction);
-  size_t validateSaveAndSendTransaction(const ITransactionReader& transaction, const std::vector<WalletTransfer>& destinations, bool send);
-
-  size_t insertBlockchainTransaction(const TransactionInformation& info, int64_t txBalance);
-  size_t insertOutgoingTransactionAndPushEvent(const Crypto::Hash& transactionHash, uint64_t fee, const BinaryArray& extra, uint64_t unlockHeightstamp, Crypto::SecretKey& txSecretKey);
   // Scan a just-built+relayed PQ transaction into the ledger so it gets a native
   // history row/id immediately, and return that id (WALLET_INVALID_TRANSACTION_ID
   // if the wallet has no PQ consumer).
   size_t registerSentPqTransaction(const CryptoNote::Transaction& tx);
   void updateTransactionStateAndPushEvent(size_t transactionId, WalletTransactionState state);
-  bool updateWalletTransactionInfo(size_t transactionId, const CryptoNote::TransactionInformation& info, int64_t totalAmount);
-  bool updateTransactionTransfers(size_t transactionId, const std::vector<ContainerAmounts>& containerAmountsList,
-    int64_t allInputsAmount, int64_t allOutputsAmount);
-  TransfersMap getKnownTransfersMap(size_t transactionId, size_t firstTransferIdx) const;
-  bool updateAddressTransfers(size_t transactionId, size_t firstTransferIdx, const std::string& address, int64_t knownAmount, int64_t targetAmount);
-  bool updateUnknownTransfers(size_t transactionId, size_t firstTransferIdx, const std::unordered_set<std::string>& myAddresses,
-    int64_t knownAmount, int64_t myAmount, int64_t totalAmount, bool isOutput);
-  void appendTransfer(size_t transactionId, size_t firstTransferIdx, const std::string& address, int64_t amount);
-  bool adjustTransfer(size_t transactionId, size_t firstTransferIdx, const std::string& address, int64_t amount);
-  bool eraseTransfers(size_t transactionId, size_t firstTransferIdx, std::function<bool(bool, const std::string&)>&& predicate);
-  bool eraseTransfersByAddress(size_t transactionId, size_t firstTransferIdx, const std::string& address, bool eraseOutputTransfers);
-  bool eraseForeignTransfers(size_t transactionId, size_t firstTransferIdx, const std::unordered_set<std::string>& knownAddresses, bool eraseOutputTransfers);
-  void pushBackOutgoingTransfers(size_t txId, const std::vector<WalletTransfer>& destinations);
-  void insertUnlockTransactionJob(const Crypto::Hash& transactionHash, uint32_t blockHeight, CryptoNote::ITransfersContainer* container);
-  void deleteUnlockTransactionJob(const Crypto::Hash& transactionHash);
   void startBlockchainSynchronizer();
   void stopBlockchainSynchronizer();
   // Create + register the PQ scanning consumer for the primary address. Full
@@ -453,9 +352,7 @@ protected:
   std::vector<WalletTransfer> getTransactionTransfers(const WalletTransaction& transaction) const;
   void filterOutTransactions(WalletTransactions& transactions, WalletTransfers& transfers, std::function<bool (const WalletTransaction&)>&& pred) const;
   void initBlockchain(const Crypto::PublicKey& viewPublicKey);
-  CryptoNote::AccountPublicAddress getChangeDestination(const std::string& changeDestinationAddress, const std::vector<std::string>& sourceAddresses) const;
 
-  void deleteContainerFromUnlockTransactionJobs(const ITransfersContainer* container);
   std::vector<size_t> deleteTransfersForAddress(const std::string& address, std::vector<size_t>& deletedTransactions);
   void deleteFromUncommitedTransactions(const std::vector<size_t>& deletedTransactions);
 
@@ -479,10 +376,6 @@ protected:
   // driving the BlockchainSynchronizer.
   std::unique_ptr<WalletLedgerConsumer> m_pqConsumer;
   std::unique_ptr<PqTrackingKeys> m_pqTrackingKeys;
-  // Monotonic, never-reused token used only as the unique key of each WalletRecord
-  // in the wallet container, now that the classical per-address TransfersContainer
-  // is gone (the field is never dereferenced).
-  uintptr_t m_containerIdSeq = 0;
 
   System::Event m_eventOccurred;
   std::queue<WalletEvent> m_events;
