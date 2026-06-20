@@ -111,7 +111,8 @@ public:
   // recipients via the common sender — the same deterministic path WalletGreen uses.
   // Throws on a tracking wallet, insufficient funds, or relay failure.
   PqSendResult sendPqTransfer(const std::vector<PqSendOutput>& recipients,
-                              uint64_t fee = 0, uint64_t unlockHeight = 0);
+                              uint64_t fee = 0, uint64_t unlockHeight = 0,
+                              const std::vector<uint8_t>& extra = {});
 
   virtual size_t getTransactionCount() override;
   virtual size_t getTransferCount() override;
