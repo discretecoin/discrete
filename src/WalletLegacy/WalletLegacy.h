@@ -200,15 +200,12 @@ private:
   std::atomic<uint64_t> m_lastNotifiedUnmixableBalance;
 
   BlockchainSynchronizer m_blockchainSync;
-  TransfersSyncronizer m_transfersSync;
-  ITransfersContainer* m_transferDetails;
-  // PQ (post-quantum) output scanning runs as a second consumer on the same
-  // synchronizer. Tracking wallets use m_pqTrackingKeys instead of a spend secret.
+  // PQ output scanning is the sole sync driver. Tracking wallets use
+  // m_pqTrackingKeys instead of a spend secret.
   std::unique_ptr<WalletLedgerConsumer> m_pqConsumer;
   std::unique_ptr<PqTrackingKeys> m_pqTrackingKeys;
 
   WalletUserTransactionsCache m_transactionsCache;
-  std::unique_ptr<WalletTransactionSender> m_sender;
 
   WalletAsyncContextCounter m_asyncContextCounter;
   Tools::ObserverManager<CryptoNote::IWalletLegacyObserver> m_observerManager;

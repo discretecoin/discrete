@@ -244,10 +244,7 @@ WalletLegacy::WalletLegacy(const CryptoNote::Currency& currency, INode& node, Lo
   m_lastNotifiedPendingBalance(0),
   m_lastNotifiedUnmixableBalance(0),
   m_blockchainSync(node, m_logger.getLogger(), currency.genesisBlockHash()),
-  m_transfersSync(currency, m_logger.getLogger(), m_blockchainSync, node),
-  m_transferDetails(nullptr),
   m_transactionsCache(m_currency.mempoolTxLiveTime()),
-  m_sender(nullptr),
   m_onInitSyncStarter(new SyncStarter(m_blockchainSync))
 {
   addObserver(m_onInitSyncStarter.get());
@@ -259,7 +256,6 @@ WalletLegacy::~WalletLegacy() {
   {
     std::unique_lock<std::mutex> lock(m_cacheMutex);
     if (m_state != NOT_INITIALIZED) {
-      m_sender->stop();
       m_isStopping = true;
     }
   }
@@ -270,7 +266,6 @@ WalletLegacy::~WalletLegacy() {
     m_blockchainSync.removeConsumer(m_pqConsumer.get());
   }
   m_asyncContextCounter.waitAsyncContextsFinish();
-  m_sender.reset();
 }
 
 void WalletLegacy::addObserver(IWalletLegacyObserver* observer) {
@@ -457,27 +452,20 @@ void WalletLegacy::initAndLoad(std::istream& source, const std::string& password
 }
 
 void WalletLegacy::initSync() {
-  AccountSubscription sub;
-  sub.keys = reinterpret_cast<const AccountKeys&>(m_account.getAccountKeys());
-  sub.transactionSpendableAge = CryptoNote::parameters::CRYPTONOTE_TX_SPENDABLE_AGE;
-  sub.syncStart.height = 0;
-  sub.syncStart.timestamp = std::max(m_account.get_createtime(), ACCOUNT_CREATE_TIME_ACCURACY) - ACCOUNT_CREATE_TIME_ACCURACY;
-  
-  auto& subObject = m_transfersSync.addSubscription(sub);
-  m_transferDetails = &subObject.getContainer();
-  subObject.addObserver(this);
+  SynchronizationStart syncStart;
+  syncStart.height = 0;
+  syncStart.timestamp = std::max(m_account.get_createtime(), ACCOUNT_CREATE_TIME_ACCURACY) - ACCOUNT_CREATE_TIME_ACCURACY;
 
-  m_sender.reset(new WalletTransactionSender(m_currency, m_transactionsCache, m_account.getAccountKeys(), *m_transferDetails, m_node));
-
-  // PQ scanning consumer. Full wallets derive the PQ identity from the spend
-  // secret; tracking wallets use a persisted view-only PQ audit credential.
+  // PQ scanning consumer is the sole sync driver. Full wallets derive the PQ
+  // identity from the spend secret; tracking wallets use a persisted view-only
+  // PQ audit credential.
   const auto& keys = m_account.getAccountKeys();
   if (keys.spendSecretKey != NULL_SECRET_KEY) {
     PqWalletKeys pqKeys = derivePqWalletKeys(keys.spendSecretKey);
-    m_pqConsumer.reset(new WalletLedgerConsumer(pqKeys, sub.syncStart, m_logger.getLogger()));
+    m_pqConsumer.reset(new WalletLedgerConsumer(pqKeys, syncStart, m_logger.getLogger()));
     m_blockchainSync.addConsumer(m_pqConsumer.get());
   } else if (m_pqTrackingKeys) {
-    m_pqConsumer.reset(new WalletLedgerConsumer(*m_pqTrackingKeys, sub.syncStart, m_logger.getLogger()));
+    m_pqConsumer.reset(new WalletLedgerConsumer(*m_pqTrackingKeys, syncStart, m_logger.getLogger()));
     m_blockchainSync.addConsumer(m_pqConsumer.get());
   }
 
@@ -507,38 +495,20 @@ void WalletLegacy::doLoad(std::istream& source) {
     initSync();
 
     try {
-      if (!cache.empty()) {
-        if (pqSections.framed) {
-          if (!pqSections.transfersCache.empty()) {
-            std::stringstream ts(pqSections.transfersCache);
-            m_transfersSync.load(ts);
-          }
-          if (m_pqConsumer && !pqSections.consumerState.empty()) {
-            std::stringstream cs(pqSections.consumerState);
-            m_blockchainSync.getConsumerState(m_pqConsumer.get())->load(cs);
-          }
-          if (m_pqConsumer && !pqSections.pqState.empty()) {
-            std::stringstream ps(pqSections.pqState);
-            m_pqConsumer->state().load(ps);
-          }
-        } else {
-          // Legacy (pre-PQ) cache: the whole blob is the transfers cache.
-          std::stringstream legacy(cache);
-          m_transfersSync.load(legacy);
+      // Only the PQ sections are loaded now; the legacy transfers-cache section (if
+      // present in an older file) is ignored. The classical sync stack is gone.
+      if (!cache.empty() && pqSections.framed) {
+        if (m_pqConsumer && !pqSections.consumerState.empty()) {
+          std::stringstream cs(pqSections.consumerState);
+          m_blockchainSync.getConsumerState(m_pqConsumer.get())->load(cs);
+        }
+        if (m_pqConsumer && !pqSections.pqState.empty()) {
+          std::stringstream ps(pqSections.pqState);
+          m_pqConsumer->state().load(ps);
         }
       }
     } catch (const std::exception&) {
       // ignore cache loading errors
-    }
-
-    // Read all output keys cache
-    std::vector<TransactionOutputInformation> allTransfers;
-    m_transferDetails->getOutputs(allTransfers, ITransfersContainer::IncludeAll);
-    m_logger(Logging::INFO) << "Loaded " + std::to_string(allTransfers.size()) + " known transfer(s)";
-    for (auto& o : allTransfers) {
-      if (o.type != TransactionTypes::OutputType::Invalid) {
-        m_transfersSync.addPublicKeysSeen(m_account.getAccountKeys().address, o.transactionHash, o.outputKey);
-      }
     }
 
   } catch (std::system_error& e) {
@@ -571,8 +541,6 @@ void WalletLegacy::shutdown() {
 
     if (m_state != INITIALIZED)
       throwNotDefined();
-
-    m_sender->stop();
   }
 
   m_blockchainSync.removeObserver(this);
@@ -583,19 +551,10 @@ void WalletLegacy::shutdown() {
   }
   m_asyncContextCounter.waitAsyncContextsFinish();
 
-  m_sender.reset();
-   
   {
     std::unique_lock<std::mutex> lock(m_cacheMutex);
     m_isStopping = false;
     m_state = NOT_INITIALIZED;
-
-    const auto& accountAddress = m_account.getAccountKeys().address;
-    auto subObject = m_transfersSync.getSubscription(accountAddress);
-    assert(subObject != nullptr);
-    subObject->removeObserver(this);
-    m_transfersSync.removeSubscription(accountAddress);
-    m_transferDetails = nullptr;
 
     m_transactionsCache.reset();
     m_lastNotifiedActualBalance = 0;
@@ -657,15 +616,10 @@ void WalletLegacy::doSave(std::ostream& destination, bool saveDetailed, bool sav
     std::string cache;
 
     if (saveCache || m_pqTrackingKeys) {
-      std::stringstream transfersStream;
-      if (saveCache) {
-        m_transfersSync.save(transfersStream);
-      }
-      std::string transfersCache = transfersStream.str();
-
       // Framed cache: magic || [u64 len || bytes] x4 (transfers, PQ consumer
-      // cursor, PQ wallet state, PQ tracking credential). The fourth section is
-      // optional for full wallets and absent in older framed caches.
+      // cursor, PQ wallet state, PQ tracking credential). The classical transfers
+      // section is now always empty (kept for wallet-file byte-compatibility); the
+      // fourth section is optional for full wallets.
       std::stringstream combined;
       combined.write(PQ_CACHE_MAGIC, PQ_CACHE_MAGIC_LEN);
       auto writeSection = [&combined](const std::string& s) {
@@ -673,7 +627,7 @@ void WalletLegacy::doSave(std::ostream& destination, bool saveDetailed, bool sav
         combined.write(reinterpret_cast<const char*>(&len), sizeof(len));
         if (len) combined.write(s.data(), s.size());
       };
-      writeSection(transfersCache);
+      writeSection(std::string());  // empty classical transfers cache
 
       std::string consumerState, pqState;
       if (saveCache && m_pqConsumer) {
@@ -924,32 +878,26 @@ bool WalletLegacy::getTransfer(TransferId /*transferId*/, WalletLegacyTransfer& 
   return false;  // no per-destination transfer detail on the PQ ledger
 }
 
+// Classical per-output enumeration is gone; PQ outputs live in the WalletLedger
+// (TransactionOutputInformation describes ECC KeyOutputs, which a PQ wallet has none of).
 size_t WalletLegacy::getUnlockedOutputsCount() {
-  std::vector<TransactionOutputInformation> outputs;
-  m_transferDetails->getOutputs(outputs, ITransfersContainer::IncludeKeyUnlocked);
-  return outputs.size();
+  return 0;
 }
 
 std::vector<TransactionOutputInformation> WalletLegacy::getOutputs() {
-  std::vector<TransactionOutputInformation> outputs;
-  m_transferDetails->getOutputs(outputs, ITransfersContainer::IncludeAll);
-  return outputs;
+  return {};
 }
 
 std::vector<TransactionOutputInformation> WalletLegacy::getLockedOutputs() {
-  std::vector<TransactionOutputInformation> outputs;
-  m_transferDetails->getOutputs(outputs, ITransfersContainer::IncludeAllLocked);
-  return outputs;
+  return {};
 }
 
 std::vector<TransactionOutputInformation> WalletLegacy::getUnlockedOutputs() {
-  std::vector<TransactionOutputInformation> outputs;
-  m_transferDetails->getOutputs(outputs, ITransfersContainer::IncludeAllUnlocked);
-  return outputs;
+  return {};
 }
 
 std::vector<TransactionSpentOutputInformation> WalletLegacy::getSpentOutputs() {
-  return m_transferDetails->getSpentOutputs();
+  return {};
 }
 
 TransactionId WalletLegacy::sendTransaction(const WalletLegacyTransfer& transfer, uint64_t fee, const std::string& extra, uint64_t mixIn, uint64_t unlockHeightstamp) {
@@ -1135,40 +1083,18 @@ void WalletLegacy::synchronizationCompleted(std::error_code result) {
   notifyIfBalanceChanged();
 }
 
-void WalletLegacy::onTransactionUpdated(ITransfersSubscription* object, const Hash& transactionHash) {
-  std::shared_ptr<WalletLegacyEvent> event;
-
-  TransactionInformation txInfo;
-  uint64_t amountIn;
-  uint64_t amountOut;
-  if (m_transferDetails->getTransactionInformation(transactionHash, txInfo, &amountIn, &amountOut)) {
-    std::unique_lock<std::mutex> lock(m_cacheMutex);
-    event = m_transactionsCache.onTransactionUpdated(txInfo, static_cast<int64_t>(amountOut) - static_cast<int64_t>(amountIn));
-  }
-
-  if (event.get()) {
-    event->notify(m_observerManager);
-  }
+// ITransfersObserver callbacks came from the classical subscription, which no
+// longer exists; PQ transaction state is tracked by the WalletLedger consumer.
+void WalletLegacy::onTransactionUpdated(ITransfersSubscription* /*object*/, const Hash& /*transactionHash*/) {
 }
 
-void WalletLegacy::onTransactionDeleted(ITransfersSubscription* object, const Hash& transactionHash) {
-  std::shared_ptr<WalletLegacyEvent> event;
-
-  {
-  std::unique_lock<std::mutex> lock(m_cacheMutex);
-    event = m_transactionsCache.onTransactionDeleted(transactionHash);
-  }
-
-  if (event.get()) {
-    event->notify(m_observerManager);
-  }
+void WalletLegacy::onTransactionDeleted(ITransfersSubscription* /*object*/, const Hash& /*transactionHash*/) {
 }
 
 void WalletLegacy::throwIfNotInitialised() {
   if (m_state == NOT_INITIALIZED || m_state == LOADING) {
     throw std::system_error(make_error_code(CryptoNote::error::NOT_INITIALIZED));
   }
-  assert(m_transferDetails);
 }
 
 void WalletLegacy::notifyClients(std::deque<std::shared_ptr<WalletLegacyEvent> >& events) {
@@ -1276,17 +1202,19 @@ bool WalletLegacy::getTxProof(Crypto::Hash& txid, CryptoNote::AccountPublicAddre
   return getTransactionProof(txid, address, tx_key, sig_str, m_logger.getLogger());
 }
 
-bool WalletLegacy::getTransactionInformation(const Crypto::Hash& transactionHash, TransactionInformation& info,
-                                             uint64_t* amountIn, uint64_t* amountOut) const {
-  return m_transferDetails->getTransactionInformation(transactionHash, info, amountIn, amountOut);
+// Classical container introspection is gone; these described ECC KeyOutputs/inputs,
+// which a PQ wallet does not have.
+bool WalletLegacy::getTransactionInformation(const Crypto::Hash& /*transactionHash*/, TransactionInformation& /*info*/,
+                                             uint64_t* /*amountIn*/, uint64_t* /*amountOut*/) const {
+  return false;
 };
 
-std::vector<TransactionOutputInformation> WalletLegacy::getTransactionOutputs(const Crypto::Hash& transactionHash, uint32_t flags) const {
-  return m_transferDetails->getTransactionOutputs(transactionHash, flags);
+std::vector<TransactionOutputInformation> WalletLegacy::getTransactionOutputs(const Crypto::Hash& /*transactionHash*/, uint32_t /*flags*/) const {
+  return {};
 };
 
-std::vector<TransactionOutputInformation> WalletLegacy::getTransactionInputs(const Crypto::Hash& transactionHash, uint32_t flags) const {
-  return m_transferDetails->getTransactionInputs(transactionHash, flags);
+std::vector<TransactionOutputInformation> WalletLegacy::getTransactionInputs(const Crypto::Hash& /*transactionHash*/, uint32_t /*flags*/) const {
+  return {};
 };
 
 } //namespace CryptoNote
