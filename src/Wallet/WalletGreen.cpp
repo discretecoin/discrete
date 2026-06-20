@@ -1674,8 +1674,9 @@ WalletGreen::TransfersRange WalletGreen::getTransactionTransfersRange(size_t tra
 }
 
 size_t WalletGreen::transfer(const TransactionParameters& transactionParameters, Crypto::SecretKey& txSecretKey) {
-  System::EventLock lk(m_readyEvent);
-
+  // Note: no wallet lock is held here. Recipient resolution hits the node (for
+  // account numbers) and must not pin the wallet's event loop, and sendPqTransfer
+  // does its own short-lived locking around the ledger read + reservation.
   throwIfNotInitialized();
   throwIfTrackingMode();
   throwIfStopped();
@@ -1706,7 +1707,9 @@ size_t WalletGreen::transfer(const TransactionParameters& transactionParameters,
                                        transactionParameters.unlockHeightstamp, extra);
   txSecretKey = NULL_SECRET_KEY;  // PQ transactions carry no per-tx secret key
 
-  size_t id = registerSentPqTransaction(result.tx);
+  // The tx was registered in the ledger (as unconfirmed) by sendPqTransfer; return
+  // its native history index.
+  size_t id = pqHistoryIndex(getObjectHash(result.tx));
   m_logger(INFO, BRIGHT_WHITE) << "PQ transaction sent, hash " << getObjectHash(result.tx) <<
     ", amount " << m_currency.formatAmount(result.sent) <<
     ", fee " << m_currency.formatAmount(result.fee);
@@ -2421,26 +2424,42 @@ PqSendResult WalletGreen::sendPqTransfer(const std::vector<PqSendOutput>& recipi
   req.explicitFee = fee;
   req.unlockHeight = unlockHeight;
   req.extra = extra;
-  PqSendResult result = buildPqSend(m_pqConsumer->state().spendableInputs(), keys, req);
 
+  // Build + reserve under the wallet lock: reading the spendable set and registering
+  // the tx (which marks its inputs spent and records the change/history) must be
+  // atomic w.r.t. the sync thread, which mutates the ledger under the same lock.
+  // Registering before relay also reserves the inputs so a second send can't reuse
+  // them, mirroring the classical addUnconfirmedTransaction-before-relay.
+  PqSendResult result;
+  Crypto::Hash txid;
+  {
+    System::EventLock lk(m_readyEvent);
+    result = buildPqSend(m_pqConsumer->state().spendableInputs(), keys, req);
+    txid = getObjectHash(result.tx);
+    auto reader = createTransactionPrefix(result.tx);
+    m_pqConsumer->addUnconfirmedTransaction(*reader);
+  }
+
+  // Relay OUTSIDE the lock: the network round-trip must not pin the wallet's event
+  // loop / sync. On failure, roll the reservation back (un-spend inputs, drop the
+  // unconfirmed change + history) — the classical add-before-relay / delete-on-fail.
   std::promise<std::error_code> promise;
   auto future = promise.get_future();
   m_node.relayTransaction(result.tx, [&promise](std::error_code ec) { promise.set_value(ec); });
   std::error_code ec = future.get();
   if (ec) {
+    System::EventLock lk(m_readyEvent);
+    m_pqConsumer->removeUnconfirmedTransaction(txid);
     throw std::system_error(ec, "failed to relay transaction");
   }
   return result;
 }
 
-size_t WalletGreen::registerSentPqTransaction(const Transaction& tx) {
+size_t WalletGreen::pqHistoryIndex(const Crypto::Hash& txid) const {
   if (!m_pqConsumer) {
     return WALLET_INVALID_TRANSACTION_ID;
   }
-  auto reader = createTransactionPrefix(tx);
-  m_pqConsumer->addUnconfirmedTransaction(*reader);
-
-  Crypto::Hash txid = getObjectHash(tx);
+  System::EventLock lk(m_readyEvent);
   const auto& hist = m_pqConsumer->state().history();
   for (size_t i = 0; i < hist.size(); ++i) {
     if (hist[i].txid == txid) {

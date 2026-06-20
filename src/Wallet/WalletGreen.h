@@ -262,10 +262,9 @@ protected:
 
   CryptoNote::AccountPublicAddress parseAccountAddressString(const std::string& addressString) const;
 
-  // Scan a just-built+relayed PQ transaction into the ledger so it gets a native
-  // history row/id immediately, and return that id (WALLET_INVALID_TRANSACTION_ID
-  // if the wallet has no PQ consumer).
-  size_t registerSentPqTransaction(const CryptoNote::Transaction& tx);
+  // Native history index (transaction id) of a PQ transaction by hash, or
+  // WALLET_INVALID_TRANSACTION_ID if it is not in the ledger. Takes the wallet lock.
+  size_t pqHistoryIndex(const Crypto::Hash& txid) const;
   void updateTransactionStateAndPushEvent(size_t transactionId, WalletTransactionState state);
   void startBlockchainSynchronizer();
   void stopBlockchainSynchronizer();
