@@ -28,6 +28,10 @@ WalletLedgerConsumer::WalletLedgerConsumer(const PqWalletKeys& keys, const Synch
                        Logging::ILogger& logger)
     : m_state(keys), m_syncStart(syncStart), m_logger(logger, "WalletLedgerConsumer") {}
 
+WalletLedgerConsumer::WalletLedgerConsumer(const PqTrackingKeys& keys, const SynchronizationStart& syncStart,
+                       Logging::ILogger& logger)
+    : m_state(keys), m_syncStart(syncStart), m_logger(logger, "WalletLedgerConsumer") {}
+
 SynchronizationStart WalletLedgerConsumer::getSyncStart() {
   return m_syncStart;
 }

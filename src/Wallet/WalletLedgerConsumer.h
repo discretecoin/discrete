@@ -42,6 +42,8 @@ class WalletLedgerConsumer : public IObservableImpl<IBlockchainConsumerObserver,
 public:
   WalletLedgerConsumer(const PqWalletKeys& keys, const SynchronizationStart& syncStart,
              Logging::ILogger& logger);
+  WalletLedgerConsumer(const PqTrackingKeys& keys, const SynchronizationStart& syncStart,
+             Logging::ILogger& logger);
 
   WalletLedger& state() { return m_state; }
   const WalletLedger& state() const { return m_state; }

@@ -19,6 +19,7 @@
 
 #include <algorithm>
 
+#include "Common/StringTools.h"
 #include "crypto_pq/PqHash.h"
 
 namespace CryptoNote {
@@ -29,6 +30,26 @@ namespace {
 // rejects classical strings before any decode work; it sits comfortably below
 // the shortest real PQ address.
 constexpr std::size_t kMinPqAddressChars = 300;
+
+template <typename ArrayT>
+void appendHex(std::string& out, const ArrayT& bytes) {
+  out += Common::toHex(bytes.data(), bytes.size());
+}
+
+template <typename ArrayT>
+bool readHexField(const std::string& hex, std::size_t& offset, ArrayT& bytes) {
+  const std::size_t hexLen = bytes.size() * 2;
+  if (offset + hexLen > hex.size()) {
+    return false;
+  }
+  size_t decoded = 0;
+  if (!Common::fromHex(hex.substr(offset, hexLen), bytes.data(), bytes.size(), decoded) ||
+      decoded != bytes.size()) {
+    return false;
+  }
+  offset += hexLen;
+  return true;
+}
 }  // namespace
 
 CryptoPQ::SeedMaster pqSeedMasterFromSpendSecret(const Crypto::SecretKey& spendSecretKey) noexcept {
@@ -58,7 +79,19 @@ PqWalletKeys derivePqWalletKeys(const Crypto::SecretKey& spendSecretKey) {
   return keys;
 }
 
+PqTrackingKeys pqTrackingKeys(const PqWalletKeys& keys) {
+  PqTrackingKeys tracking;
+  tracking.viewPub = keys.viewPub;
+  tracking.viewSk = keys.viewSk;
+  tracking.spendPub = keys.spendPub;
+  return tracking;
+}
+
 PqAddress pqWalletAddress(const PqWalletKeys& keys, uint64_t networkPrefix) {
+  return makePqAddress(networkPrefix, keys.viewPub, keys.spendPub);
+}
+
+PqAddress pqWalletAddress(const PqTrackingKeys& keys, uint64_t networkPrefix) {
   return makePqAddress(networkPrefix, keys.viewPub, keys.spendPub);
 }
 
@@ -68,6 +101,45 @@ PqAddress pqWalletAddress(const Crypto::SecretKey& spendSecretKey, uint64_t netw
 
 CryptoPQ::PqScanKeys pqScanKeys(const PqWalletKeys& keys) {
   return CryptoPQ::PqScanKeys{ keys.viewSk, keys.spendPub };
+}
+
+CryptoPQ::PqScanKeys pqScanKeys(const PqTrackingKeys& keys) {
+  return CryptoPQ::PqScanKeys{ keys.viewSk, keys.spendPub };
+}
+
+std::string encodePqTrackingKey(const PqTrackingKeys& keys) {
+  std::string out = kPqTrackingKeyPrefix;
+  out.reserve(out.size() + (keys.viewPub.size() + keys.spendPub.size() + keys.viewSk.size()) * 2);
+  appendHex(out, keys.viewPub);
+  appendHex(out, keys.spendPub);
+  appendHex(out, keys.viewSk);
+  return out;
+}
+
+bool decodePqTrackingKey(const std::string& encoded, PqTrackingKeys& keys) {
+  const std::string prefix(kPqTrackingKeyPrefix);
+  if (encoded.compare(0, prefix.size(), prefix) != 0) {
+    return false;
+  }
+
+  const std::string hex = encoded.substr(prefix.size());
+  const std::size_t expectedHex =
+      (keys.viewPub.size() + keys.spendPub.size() + keys.viewSk.size()) * 2;
+  if (hex.size() != expectedHex) {
+    return false;
+  }
+
+  PqTrackingKeys parsed;
+  std::size_t offset = 0;
+  if (!readHexField(hex, offset, parsed.viewPub) ||
+      !readHexField(hex, offset, parsed.spendPub) ||
+      !readHexField(hex, offset, parsed.viewSk) ||
+      offset != hex.size()) {
+    return false;
+  }
+
+  keys = parsed;
+  return true;
 }
 
 bool isPqAddressString(const std::string& s) {

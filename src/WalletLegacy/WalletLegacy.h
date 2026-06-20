@@ -82,6 +82,8 @@ public:
   virtual void initAndLoad(std::istream& source, const std::string& password) override;
   virtual void initWithKeys(const AccountKeys& accountKeys, const std::string& password) override;
   virtual void initWithKeys(const AccountKeys& accountKeys, const std::string& password, const uint32_t scanHeight) override;
+  void initWithPqTrackingKeys(const AccountKeys& accountKeys, const PqTrackingKeys& pqTrackingKeys, const std::string& password);
+  void initWithPqTrackingKeys(const AccountKeys& accountKeys, const PqTrackingKeys& pqTrackingKeys, const std::string& password, const uint32_t scanHeight);
   virtual void shutdown() override;
   virtual void reset() override;
   virtual bool tryLoadWallet(std::istream& source, const std::string& password) override;
@@ -97,12 +99,14 @@ public:
   virtual uint64_t unmixableBalance() override;
 
   // --- PQ (post-quantum) balance / spend, concrete (not on IWalletLegacy) ----
-  // Available only for full wallets (a spend secret is required to derive the
-  // PQ identity). Tracking wallets return false / 0 / empty.
+  // Full wallets derive the PQ identity from the spend secret. PQ tracking
+  // wallets instead hold a view-only PqTrackingKeys credential.
   bool pqEnabled() const { return static_cast<bool>(m_pqConsumer); }
   uint64_t pqActualBalance() const;
   std::vector<PqSpendInput> pqSpendableInputs() const;
   uint32_t pqSyncedHeight() const;
+  bool getPqTrackingKeys(PqTrackingKeys& keys) const;
+  std::string getPqAddress() const;
   // Build (denominate, two-pass fee, sign) and relay a PQ transfer to already-resolved
   // recipients via the common sender — the same deterministic path WalletGreen uses.
   // Throws on a tracking wallet, insufficient funds, or relay failure.
@@ -198,8 +202,9 @@ private:
   TransfersSyncronizer m_transfersSync;
   ITransfersContainer* m_transferDetails;
   // PQ (post-quantum) output scanning runs as a second consumer on the same
-  // synchronizer. Null for tracking wallets (no spend secret -> no PQ identity).
+  // synchronizer. Tracking wallets use m_pqTrackingKeys instead of a spend secret.
   std::unique_ptr<WalletLedgerConsumer> m_pqConsumer;
+  std::unique_ptr<PqTrackingKeys> m_pqTrackingKeys;
 
   WalletUserTransactionsCache m_transactionsCache;
   std::unique_ptr<WalletTransactionSender> m_sender;

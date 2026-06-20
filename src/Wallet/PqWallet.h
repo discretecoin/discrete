@@ -74,14 +74,26 @@ struct PqWalletKeys {
   CryptoPQ::DsaSecretKey spendSk{};
 };
 
+// View-only PQ audit credential. This can scan the primary PQ address and detect
+// spends, but it cannot sign transactions.
+struct PqTrackingKeys {
+  CryptoPQ::KemPublicKey viewPub{};
+  CryptoPQ::KemSecretKey viewSk{};
+  CryptoPQ::DsaPublicKey spendPub{};
+};
+
 // seed_master from the classical account spend secret key (see file header).
 CryptoPQ::SeedMaster pqSeedMasterFromSpendSecret(const Crypto::SecretKey& spendSecretKey) noexcept;
 
 // Full PQ identity (view + spend keypairs) for a classical wallet.
 PqWalletKeys derivePqWalletKeys(const Crypto::SecretKey& spendSecretKey);
 
+// Strip a full wallet identity down to the view-only audit credential.
+PqTrackingKeys pqTrackingKeys(const PqWalletKeys& keys);
+
 // The wallet's own PQ address for the given network prefix.
 PqAddress pqWalletAddress(const PqWalletKeys& keys, uint64_t networkPrefix);
+PqAddress pqWalletAddress(const PqTrackingKeys& keys, uint64_t networkPrefix);
 
 // Convenience: derive the wallet's PQ address straight from the spend secret.
 PqAddress pqWalletAddress(const Crypto::SecretKey& spendSecretKey, uint64_t networkPrefix);
@@ -89,6 +101,14 @@ PqAddress pqWalletAddress(const Crypto::SecretKey& spendSecretKey, uint64_t netw
 // The scan credential (view-only capable): viewSk decapsulates, spendPub
 // recomputes the ownership commitment. A tracking wallet holds exactly this.
 CryptoPQ::PqScanKeys pqScanKeys(const PqWalletKeys& keys);
+CryptoPQ::PqScanKeys pqScanKeys(const PqTrackingKeys& keys);
+
+// User-facing PQ tracking key format:
+//   pqview1:<hex(viewPub || spendPub || viewSk)>
+// `viewSk` is secret audit authority; `spendPub` is public and cannot spend.
+constexpr char kPqTrackingKeyPrefix[] = "pqview1:";
+std::string encodePqTrackingKey(const PqTrackingKeys& keys);
+bool decodePqTrackingKey(const std::string& encoded, PqTrackingKeys& keys);
 
 // --- Address parsing / detection (shared by both front-ends) ---------------
 

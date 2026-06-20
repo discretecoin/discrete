@@ -1299,7 +1299,7 @@ std::error_code WalletService::getAddressesCount(size_t& addressesCount) {
 std::error_code WalletService::getPqAddress(std::string& pqAddress, bool& pqEnabled) {
   try {
     System::EventLock lk(readyEvent);
-    logger(Logging::DEBUGGING) << "Getting PQ address";
+    logger(Logging::DEBUGGING) << "Getting address";
 
     // The PQ surface is concrete on WalletGreen, not on the IWallet interface.
     auto* greenWallet = dynamic_cast<CryptoNote::WalletGreen*>(&wallet);
@@ -1311,10 +1311,10 @@ std::error_code WalletService::getPqAddress(std::string& pqAddress, bool& pqEnab
     pqEnabled = greenWallet->pqEnabled();
     pqAddress = greenWallet->getPqAddress();
   } catch (std::system_error& x) {
-    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while getting PQ address: " << x.what();
+    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while getting address: " << x.what();
     return x.code();
   } catch (std::exception& e) {
-    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while getting PQ address: " << e.what();
+    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while getting address: " << e.what();
     return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
   }
 
@@ -1324,7 +1324,7 @@ std::error_code WalletService::getPqAddress(std::string& pqAddress, bool& pqEnab
 std::error_code WalletService::getPqBalance(uint64_t& availableBalance, uint32_t& scannedHeight, bool& pqEnabled) {
   try {
     System::EventLock lk(readyEvent);
-    logger(Logging::DEBUGGING) << "Getting PQ balance";
+    logger(Logging::DEBUGGING) << "Getting balance";
 
     auto* greenWallet = dynamic_cast<CryptoNote::WalletGreen*>(&wallet);
     if (greenWallet == nullptr) {
@@ -1337,25 +1337,27 @@ std::error_code WalletService::getPqBalance(uint64_t& availableBalance, uint32_t
     availableBalance = greenWallet->pqActualBalance();
     scannedHeight = greenWallet->pqSyncedHeight();
   } catch (std::system_error& x) {
-    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while getting PQ balance: " << x.what();
+    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while getting balance: " << x.what();
     return x.code();
   } catch (std::exception& e) {
-    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while getting PQ balance: " << e.what();
+    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while getting balance: " << e.what();
     return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
   }
 
-  logger(Logging::DEBUGGING) << "PQ available balance: " << availableBalance << ", scanned height: " << scannedHeight;
+  logger(Logging::DEBUGGING) << "Available balance: " << availableBalance << ", scanned height: " << scannedHeight;
   return std::error_code();
 }
 
 std::error_code WalletService::registerPqAccount(std::string& transactionHash) {
   try {
     System::EventLock lk(readyEvent);
-    logger(Logging::DEBUGGING) << "Registering PQ account (free, anti-spam PoW)";
+    logger(Logging::DEBUGGING) << "Registering account number (free, anti-spam PoW)";
 
     auto* greenWallet = dynamic_cast<CryptoNote::WalletGreen*>(&wallet);
-    if (greenWallet == nullptr || !greenWallet->pqEnabled()) {
-      logger(Logging::WARNING) << "PQ registration unavailable (tracking wallet or no spend key)";
+    std::string viewHex, spendHex;
+    if (greenWallet == nullptr || !greenWallet->pqEnabled() ||
+        !greenWallet->getPqRegistrationKeysHex(viewHex, spendHex)) {
+      logger(Logging::WARNING) << "Registration unavailable (no spend authority)";
       return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
     }
 
@@ -1378,20 +1380,20 @@ std::error_code WalletService::registerPqAccount(std::string& transactionHash) {
     });
     std::error_code relayError = relayFuture.get();
     if (relayError) {
-      logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Failed to relay PQ registration: " << relayError.message();
+      logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Failed to relay registration: " << relayError.message();
       return relayError;
     }
 
     transactionHash = Common::podToHex(CryptoNote::getObjectHash(tx));
   } catch (std::system_error& x) {
-    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while registering PQ account: " << x.what();
+    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while registering account number: " << x.what();
     return x.code();
   } catch (std::exception& e) {
-    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while registering PQ account: " << e.what();
+    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while registering account number: " << e.what();
     return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
   }
 
-  logger(Logging::DEBUGGING) << "PQ registration submitted, tx hash: " << transactionHash;
+  logger(Logging::DEBUGGING) << "Registration submitted, tx hash: " << transactionHash;
   return std::error_code();
 }
 
@@ -1399,18 +1401,19 @@ std::error_code WalletService::registerPqAccountPaid(std::string& transactionHas
   try {
     System::EventLock lk(readyEvent);
     auto* gw = dynamic_cast<CryptoNote::WalletGreen*>(&wallet);
-    if (gw == nullptr || !gw->pqEnabled()) {
+    std::string viewHex, spendHex;
+    if (gw == nullptr || !gw->pqEnabled() || !gw->getPqRegistrationKeysHex(viewHex, spendHex)) {
       return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
     }
     // A paid registration is a fee-paying TX_PQ carrying the registration tag.
     CryptoNote::PqSendResult r = gw->registerPqAccountPaid();
     transactionHash = Common::podToHex(CryptoNote::getObjectHash(r.tx));
-    logger(Logging::DEBUGGING) << "PQ paid registration tx " << transactionHash << " has been sent";
+    logger(Logging::DEBUGGING) << "Paid registration tx " << transactionHash << " has been sent";
   } catch (std::system_error& x) {
-    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error during paid PQ registration: " << x.what();
+    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error during paid registration: " << x.what();
     return x.code();
   } catch (std::exception& x) {
-    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error during paid PQ registration: " << x.what();
+    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error during paid registration: " << x.what();
     return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
   }
   return std::error_code();
@@ -1420,7 +1423,7 @@ std::error_code WalletService::getPqAccountStatus(bool& registered, std::string&
                                                   uint32_t& blockHeight, uint32_t& txIndex) {
   try {
     System::EventLock lk(readyEvent);
-    logger(Logging::DEBUGGING) << "Getting PQ account status";
+    logger(Logging::DEBUGGING) << "Getting account status";
 
     registered = false;
     accountNumber.clear();
@@ -1433,7 +1436,7 @@ std::error_code WalletService::getPqAccountStatus(bool& registered, std::string&
     }
     std::string viewHex, spendHex;
     if (!greenWallet->getPqRegistrationKeysHex(viewHex, spendHex)) {
-      // Tracking wallet / no PQ identity: nothing to register, not registered.
+      // No spend authority: account-number registration is not available.
       return std::error_code();
     }
 
@@ -1446,7 +1449,7 @@ std::error_code WalletService::getPqAccountStatus(bool& registered, std::string&
                       });
     std::error_code statusError = statusFuture.get();
     if (statusError) {
-      logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Failed to query PQ account: " << statusError.message();
+      logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Failed to query account: " << statusError.message();
       return statusError;
     }
 
@@ -1454,10 +1457,10 @@ std::error_code WalletService::getPqAccountStatus(bool& registered, std::string&
       accountNumber = CryptoNote::AccountNumber{blockHeight, txIndex}.toString();
     }
   } catch (std::system_error& x) {
-    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while getting PQ account status: " << x.what();
+    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while getting account status: " << x.what();
     return x.code();
   } catch (std::exception& e) {
-    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while getting PQ account status: " << e.what();
+    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while getting account status: " << e.what();
     return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
   }
 
@@ -1471,7 +1474,7 @@ const char* depositSchemeName(CryptoNote::PqDepositScheme s) {
 }
 
 // Resolve this wallet's OWN PQ account registration coords (H, I) via the node.
-// `registered` is false (with H=I=0) for a tracking wallet or an unregistered one.
+// `registered` is false (with H=I=0) when the wallet has no PQ identity or is unregistered.
 std::error_code resolveOwnPqRegistration(CryptoNote::INode& node, CryptoNote::WalletGreen& gw,
                                          bool& registered, uint32_t& blockHeight, uint32_t& txIndex) {
   registered = false;
@@ -1479,7 +1482,7 @@ std::error_code resolveOwnPqRegistration(CryptoNote::INode& node, CryptoNote::Wa
   txIndex = 0;
   std::string viewHex, spendHex;
   if (!gw.getPqRegistrationKeysHex(viewHex, spendHex)) {
-    return std::error_code();  // tracking wallet: nothing registered
+    return std::error_code();  // no spend authority: nothing registered
   }
   auto completed = std::promise<std::error_code>();
   auto fut = completed.get_future();
@@ -1515,7 +1518,7 @@ std::error_code WalletService::getPqDepositScheme(std::string& scheme, uint32_t&
 std::error_code WalletService::createPqDepositAddress(std::string& address, uint32_t& index) {
   try {
     System::EventLock lk(readyEvent);
-    logger(Logging::DEBUGGING) << "Creating PQ deposit address";
+    logger(Logging::DEBUGGING) << "Creating deposit address";
 
     auto* gw = dynamic_cast<CryptoNote::WalletGreen*>(&wallet);
     if (gw == nullptr || !gw->pqEnabled()) {
@@ -1606,7 +1609,7 @@ std::error_code WalletService::sendTransaction(const SendTransaction::Request& r
         CryptoPQ::DsaPublicKey spendPub;
         uint64_t subaddrT = 0;
         if (!CryptoNote::resolvePqRecipient(node, t.address, viewPub, spendPub, subaddrT)) {
-          logger(Logging::WARNING) << "Invalid PQ recipient: " << t.address;
+          logger(Logging::WARNING) << "Invalid recipient: " << t.address;
           return make_error_code(CryptoNote::error::BAD_ADDRESS);
         }
         recipients.push_back(CryptoNote::PqSendOutput{viewPub, spendPub, t.amount, subaddrT});
@@ -1614,7 +1617,7 @@ std::error_code WalletService::sendTransaction(const SendTransaction::Request& r
       CryptoNote::PqSendResult r = gw->sendPqTransfer(recipients, request.fee, request.unlockHeight);
       transactionHash = Common::podToHex(CryptoNote::getObjectHash(r.tx));
       transactionSecretKey.clear();  // PQ transactions carry no per-tx secret key
-      logger(Logging::DEBUGGING) << "PQ transaction " << transactionHash << " has been sent";
+      logger(Logging::DEBUGGING) << "Transaction " << transactionHash << " has been sent";
       return std::error_code();
     }
 

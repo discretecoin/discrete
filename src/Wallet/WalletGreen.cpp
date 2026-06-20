@@ -229,6 +229,29 @@ void WalletGreen::initializeWithViewKey(const std::string& path, const std::stri
   m_logger(INFO, BRIGHT_WHITE) << "Container initialized with view secret key, public view key " << viewPublicKey;
 }
 
+void WalletGreen::initializeWithPqTrackingKey(const std::string& path, const std::string& password,
+                                              const PqTrackingKeys& pqTrackingKeys) {
+  initializeWithPqTrackingKey(path, password, pqTrackingKeys, static_cast<uint64_t>(time(nullptr)));
+}
+
+void WalletGreen::initializeWithPqTrackingKey(const std::string& path, const std::string& password,
+                                              const PqTrackingKeys& pqTrackingKeys,
+                                              const uint64_t& creationTimestamp) {
+  Crypto::PublicKey viewPublicKey;
+  Crypto::SecretKey viewSecretKey;
+  Crypto::generate_keys(viewPublicKey, viewSecretKey);
+
+  initWithKeys(path, password, viewPublicKey, viewSecretKey, creationTimestamp);
+  m_pqTrackingKeys.reset(new PqTrackingKeys(pqTrackingKeys));
+
+  Crypto::PublicKey placeholderSpendPublicKey;
+  Crypto::SecretKey placeholderSpendSecretKey;
+  Crypto::generate_keys(placeholderSpendPublicKey, placeholderSpendSecretKey);
+  createAddress(placeholderSpendPublicKey, creationTimestamp);
+
+  m_logger(INFO, BRIGHT_WHITE) << "Container initialized with tracking key";
+}
+
 void WalletGreen::shutdown() {
   throwIfNotInitialized();
   doShutdown();
@@ -251,6 +274,8 @@ void WalletGreen::doShutdown() {
   m_addressGenerationMode = AddressGenerationMode::INDEPENDENT_SPEND_KEYS;
   m_deterministicSeed = NULL_SECRET_KEY;
   m_nextDeterministicIndex = 0;
+  m_pqTrackingKeys.reset();
+  m_pqState.clear();
   clearCaches(true, true);
 
   std::queue<WalletEvent> noEvents;
@@ -537,6 +562,8 @@ void WalletGreen::load(const std::string& path, const std::string& password, std
       }
     }
   }
+
+  initPqConsumerForPrimary();
 
   // Read all output keys cache
   try {
@@ -1760,7 +1787,7 @@ WalletTransaction WalletGreen::getTransaction(size_t transactionIndex) const {
   if (pqEnabled()) {
     const auto& hist = m_pqConsumer->state().history();
     if (hist.size() <= transactionIndex) {
-      m_logger(ERROR, BRIGHT_RED) << "Failed to get PQ transaction: invalid index " << transactionIndex
+      m_logger(ERROR, BRIGHT_RED) << "Failed to get transaction: invalid index " << transactionIndex
                                   << ". Number of transactions: " << hist.size();
       throw std::system_error(make_error_code(CryptoNote::error::INDEX_OUT_OF_RANGE));
     }
@@ -2927,7 +2954,7 @@ WalletTransactionWithTransfers WalletGreen::getTransaction(const Crypto::Hash& t
   if (pqEnabled()) {
     const auto* row = m_pqConsumer->state().historyByTxid(transactionHash);
     if (row == nullptr) {
-      m_logger(ERROR, BRIGHT_RED) << "Failed to get PQ transaction: not found. Transaction hash " << transactionHash;
+      m_logger(ERROR, BRIGHT_RED) << "Failed to get transaction: not found. Transaction hash " << transactionHash;
       throw std::system_error(make_error_code(error::OBJECT_NOT_FOUND), "Transaction not found");
     }
     WalletTransactionWithTransfers w;
@@ -3162,7 +3189,7 @@ bool WalletGreen::verifyMessage(const std::string &message, const std::string& a
     CryptoPQ::DsaPublicKey spendPub;
     uint64_t subaddrT = 0;
     if (!CryptoNote::resolvePqRecipient(m_node, address, viewPub, spendPub, subaddrT)) {
-      m_logger(ERROR, BRIGHT_RED) << "Failed to verify message: not a PQ address / account number: " << address;
+      m_logger(ERROR, BRIGHT_RED) << "Failed to verify message: not an address / account number: " << address;
       return false;
     }
     return CryptoNote::verifyMessagePq(message, spendPub, signature);
@@ -3494,12 +3521,38 @@ void WalletGreen::initPqConsumer(const Crypto::SecretKey& spendSecretKey,
     return;  // already created
   }
   if (spendSecretKey == NULL_SECRET_KEY) {
-    return;  // tracking wallet: no PQ identity
+    if (m_pqTrackingKeys) {
+      initPqConsumer(*m_pqTrackingKeys, syncStart);
+    }
+    return;
   }
   PqWalletKeys pqKeys = derivePqWalletKeys(spendSecretKey);
   m_pqConsumer.reset(new WalletLedgerConsumer(pqKeys, syncStart, m_logger.getLogger()));
   m_blockchainSynchronizer.addConsumer(m_pqConsumer.get());
   syncPqDepositConfigToState();
+}
+
+void WalletGreen::initPqConsumer(const PqTrackingKeys& pqTrackingKeys,
+                                 const SynchronizationStart& syncStart) {
+  if (m_pqConsumer) {
+    return;
+  }
+  m_pqConsumer.reset(new WalletLedgerConsumer(pqTrackingKeys, syncStart, m_logger.getLogger()));
+  m_blockchainSynchronizer.addConsumer(m_pqConsumer.get());
+  syncPqDepositConfigToState();
+}
+
+void WalletGreen::initPqConsumerForPrimary() {
+  if (m_pqConsumer || m_walletsContainer.get<RandomAccessIndex>().empty()) {
+    return;
+  }
+
+  const auto& primary = m_walletsContainer.get<RandomAccessIndex>().front();
+  SynchronizationStart syncStart;
+  syncStart.height = 0;
+  syncStart.timestamp = std::max(static_cast<uint64_t>(primary.creationTimestamp),
+                                 ACCOUNT_CREATE_TIME_ACCURACY) - ACCOUNT_CREATE_TIME_ACCURACY;
+  initPqConsumer(primary.spendSecretKey, syncStart);
 }
 
 void WalletGreen::syncPqDepositConfigToState() {
@@ -3510,23 +3563,27 @@ void WalletGreen::syncPqDepositConfigToState() {
 
 void WalletGreen::buildPqStateBlob() {
   m_pqState.clear();
-  if (!m_pqConsumer) {
+  if (!m_pqConsumer && !m_pqTrackingKeys) {
     return;
   }
   std::string consumerBlob;
-  if (auto* consumerState = m_blockchainSynchronizer.getConsumerState(m_pqConsumer.get())) {
-    std::stringstream consumerStream;
-    consumerState->save(consumerStream);
-    consumerBlob = consumerStream.str();
+  if (m_pqConsumer) {
+    if (auto* consumerState = m_blockchainSynchronizer.getConsumerState(m_pqConsumer.get())) {
+      std::stringstream consumerStream;
+      consumerState->save(consumerStream);
+      consumerBlob = consumerStream.str();
+    }
   }
 
   std::stringstream stateStream;
-  m_pqConsumer->state().save(stateStream);
+  if (m_pqConsumer) {
+    m_pqConsumer->state().save(stateStream);
+  }
   std::string stateBlob = stateStream.str();
 
-  // Frame: [u64 len || bytes] x3 (consumer sync cursor, WalletLedger, deposit
-  // metadata). The third section is append-only, so old 2-section blobs still load
-  // (the deposit reader below treats its absence as "defaults").
+  // Frame: [u64 len || bytes] x4 (consumer sync cursor, WalletLedger, deposit
+  // metadata, PQ tracking credential). The third and fourth sections are
+  // append-only, so older blobs still load with defaults.
   std::stringstream out;
   auto writeSection = [&out](const std::string& s) {
     uint64_t len = s.size();
@@ -3543,12 +3600,14 @@ void WalletGreen::buildPqStateBlob() {
     depositBlob.push_back(static_cast<char>((m_pqDepositCount >> (8 * i)) & 0xFF));
   }
   writeSection(depositBlob);
+  writeSection(m_pqTrackingKeys ? encodePqTrackingKey(*m_pqTrackingKeys) : std::string());
 
   m_pqState = out.str();
 }
 
 void WalletGreen::restorePqStateBlob() {
-  if (!m_pqConsumer || m_pqState.empty()) {
+  if (m_pqState.empty()) {
+    initPqConsumerForPrimary();
     return;
   }
   std::stringstream in(m_pqState);
@@ -3560,18 +3619,37 @@ void WalletGreen::restorePqStateBlob() {
     if (len) in.read(&s[0], static_cast<std::streamsize>(len));
     return static_cast<bool>(in);
   };
-  std::string consumerBlob, stateBlob, depositBlob;
+  std::string consumerBlob, stateBlob, depositBlob, trackingBlob;
   try {
-    if (readSection(consumerBlob) && !consumerBlob.empty()) {
+    if (!readSection(consumerBlob)) {
+      initPqConsumerForPrimary();
+      return;
+    }
+    readSection(stateBlob);
+    readSection(depositBlob);
+    if (readSection(trackingBlob) && !trackingBlob.empty()) {
+      PqTrackingKeys trackingKeys;
+      if (decodePqTrackingKey(trackingBlob, trackingKeys)) {
+        m_pqTrackingKeys.reset(new PqTrackingKeys(trackingKeys));
+      }
+    }
+
+    initPqConsumerForPrimary();
+
+    if (!m_pqConsumer) {
+      return;
+    }
+
+    if (!consumerBlob.empty()) {
       std::stringstream cs(consumerBlob);
       m_blockchainSynchronizer.getConsumerState(m_pqConsumer.get())->load(cs);
     }
-    if (readSection(stateBlob) && !stateBlob.empty()) {
+    if (!stateBlob.empty()) {
       std::stringstream ss(stateBlob);
       m_pqConsumer->state().load(ss);
     }
     // Deposit metadata (third section; absent on pre-deposit containers).
-    if (readSection(depositBlob) && depositBlob.size() >= 5) {
+    if (depositBlob.size() >= 5) {
       m_pqDepositScheme = static_cast<PqDepositScheme>(static_cast<uint8_t>(depositBlob[0]));
       uint32_t count = 0;
       for (int i = 0; i < 4; ++i) {
@@ -3602,16 +3680,30 @@ uint32_t WalletGreen::pqSyncedHeight() const {
 std::string WalletGreen::getPqAddress() const {
   throwIfNotInitialized();
   throwIfStopped();
-  if (getAddressCount() == 0) {
+  PqTrackingKeys keys;
+  if (!getPqTrackingKeys(keys)) {
     return std::string();
+  }
+  PqAddress addr = pqWalletAddress(keys, CryptoNote::parameters::CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX);
+  return encodePqAddress(addr, PqAddressEncoding::Base58);
+}
+
+bool WalletGreen::getPqTrackingKeys(PqTrackingKeys& keys) const {
+  throwIfNotInitialized();
+  throwIfStopped();
+  if (m_pqTrackingKeys) {
+    keys = *m_pqTrackingKeys;
+    return true;
+  }
+  if (getAddressCount() == 0) {
+    return false;
   }
   KeyPair primary = getAddressSpendKey(0);
   if (primary.secretKey == NULL_SECRET_KEY) {
-    return std::string();  // tracking wallet: no PQ identity
+    return false;
   }
-  PqWalletKeys keys = derivePqWalletKeys(primary.secretKey);
-  PqAddress addr = pqWalletAddress(keys, CryptoNote::parameters::CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX);
-  return encodePqAddress(addr, PqAddressEncoding::Base58);
+  keys = pqTrackingKeys(derivePqWalletKeys(primary.secretKey));
+  return true;
 }
 
 bool WalletGreen::getPqRegistrationKeysHex(std::string& viewHex, std::string& spendHex) const {
@@ -3622,7 +3714,7 @@ bool WalletGreen::getPqRegistrationKeysHex(std::string& viewHex, std::string& sp
   }
   KeyPair primary = getAddressSpendKey(0);
   if (primary.secretKey == NULL_SECRET_KEY) {
-    return false;  // tracking wallet: no PQ identity
+    return false;
   }
   PqWalletKeys keys = derivePqWalletKeys(primary.secretKey);
   viewHex = Common::toHex(keys.viewPub.data(), keys.viewPub.size());
@@ -3636,7 +3728,7 @@ PqSendResult WalletGreen::sendPqTransfer(const std::vector<PqSendOutput>& recipi
   throwIfNotInitialized();
   throwIfStopped();
   if (!pqEnabled()) {
-    throw std::runtime_error("PQ spending is unavailable for this wallet");
+    throw std::runtime_error("Spending is unavailable for this wallet");
   }
   KeyPair primary = getAddressSpendKey(0);
   if (primary.secretKey == NULL_SECRET_KEY) {
@@ -3656,7 +3748,7 @@ PqSendResult WalletGreen::sendPqTransfer(const std::vector<PqSendOutput>& recipi
   m_node.relayTransaction(result.tx, [&promise](std::error_code ec) { promise.set_value(ec); });
   std::error_code ec = future.get();
   if (ec) {
-    throw std::system_error(ec, "failed to relay PQ transaction");
+    throw std::system_error(ec, "failed to relay transaction");
   }
   return result;
 }
@@ -3665,11 +3757,11 @@ PqSendResult WalletGreen::registerPqAccountPaid() {
   throwIfNotInitialized();
   throwIfStopped();
   if (!pqEnabled()) {
-    throw std::runtime_error("PQ registration is unavailable for this wallet");
+    throw std::runtime_error("Registration is unavailable for this wallet");
   }
   KeyPair primary = getAddressSpendKey(0);
   if (primary.secretKey == NULL_SECRET_KEY) {
-    throw std::runtime_error("tracking wallet cannot register a PQ account");
+    throw std::runtime_error("tracking wallet cannot register account numbers");
   }
   PqWalletKeys keys = derivePqWalletKeys(primary.secretKey);
 
@@ -3719,7 +3811,7 @@ std::string WalletGreen::pqDepositAddress(uint32_t index, uint32_t regBlockHeigh
   }
   KeyPair primary = getAddressSpendKey(0);
   if (primary.secretKey == NULL_SECRET_KEY) {
-    return std::string();  // tracking wallet: no PQ identity
+    return std::string();  // tracking wallet: cannot derive deposit spend keys
   }
   PqWalletKeys base = derivePqWalletKeys(primary.secretKey);
 
@@ -3752,7 +3844,7 @@ Transaction WalletGreen::buildPqFreeRegTransaction(const Crypto::Hash& refBlockH
   }
   KeyPair primary = getAddressSpendKey(0);
   if (primary.secretKey == NULL_SECRET_KEY) {
-    throw std::runtime_error("tracking wallet cannot register a PQ account");
+    throw std::runtime_error("tracking wallet cannot register account numbers");
   }
   PqWalletKeys keys = derivePqWalletKeys(primary.secretKey);
   // Shared anti-spam PoW grind (same helper simplewallet uses → same target).

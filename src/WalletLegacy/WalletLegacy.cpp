@@ -31,6 +31,7 @@
 #include "WalletLegacy.h"
 
 #include <algorithm>
+#include <cstring>
 #include <future>
 #include <limits>
 #include <numeric>
@@ -70,6 +71,91 @@ const uint64_t ACCOUNT_CREATE_TIME_ACCURACY = 24 * 60 * 60;
 // (pre-PQ) caches, which were a bare transfers-sync blob.
 constexpr char PQ_CACHE_MAGIC[] = {'K', 'P', 'Q', 'C', 'A', 'C', 'H', '1'};
 constexpr int  PQ_CACHE_MAGIC_LEN = 8;
+constexpr char PQ_TRACKING_MAGIC[] = {'K', 'P', 'Q', 'T', 'R', 'K', '1'};
+constexpr int  PQ_TRACKING_MAGIC_LEN = 7;
+
+template <typename ArrayT>
+void appendArray(std::string& out, const ArrayT& bytes) {
+  out.append(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+}
+
+template <typename ArrayT>
+bool readArray(const std::string& in, std::size_t& offset, ArrayT& bytes) {
+  if (offset + bytes.size() > in.size()) {
+    return false;
+  }
+  std::memcpy(bytes.data(), in.data() + offset, bytes.size());
+  offset += bytes.size();
+  return true;
+}
+
+std::string serializePqTrackingKeys(const CryptoNote::PqTrackingKeys& keys) {
+  std::string out;
+  out.reserve(PQ_TRACKING_MAGIC_LEN + keys.viewPub.size() + keys.viewSk.size() + keys.spendPub.size());
+  out.append(PQ_TRACKING_MAGIC, PQ_TRACKING_MAGIC_LEN);
+  appendArray(out, keys.viewPub);
+  appendArray(out, keys.viewSk);
+  appendArray(out, keys.spendPub);
+  return out;
+}
+
+bool deserializePqTrackingKeys(const std::string& blob, CryptoNote::PqTrackingKeys& keys) {
+  const std::size_t expectedSize = PQ_TRACKING_MAGIC_LEN +
+      keys.viewPub.size() + keys.viewSk.size() + keys.spendPub.size();
+  if (blob.size() != expectedSize ||
+      std::memcmp(blob.data(), PQ_TRACKING_MAGIC, PQ_TRACKING_MAGIC_LEN) != 0) {
+    return false;
+  }
+
+  CryptoNote::PqTrackingKeys parsed;
+  std::size_t offset = PQ_TRACKING_MAGIC_LEN;
+  if (!readArray(blob, offset, parsed.viewPub) ||
+      !readArray(blob, offset, parsed.viewSk) ||
+      !readArray(blob, offset, parsed.spendPub) ||
+      offset != blob.size()) {
+    return false;
+  }
+
+  keys = parsed;
+  return true;
+}
+
+struct PqCacheSections {
+  bool framed = false;
+  std::string transfersCache;
+  std::string consumerState;
+  std::string pqState;
+  std::string pqTrackingKeys;
+};
+
+bool readPqCacheSections(const std::string& cache, PqCacheSections& sections) {
+  if (cache.empty()) {
+    return false;
+  }
+  std::stringstream stream(cache);
+  char magic[PQ_CACHE_MAGIC_LEN] = {0};
+  stream.read(magic, PQ_CACHE_MAGIC_LEN);
+  if (stream.gcount() != PQ_CACHE_MAGIC_LEN ||
+      std::memcmp(magic, PQ_CACHE_MAGIC, PQ_CACHE_MAGIC_LEN) != 0) {
+    return false;
+  }
+
+  sections.framed = true;
+  auto readSection = [&stream](std::string& out) -> bool {
+    uint64_t len = 0;
+    stream.read(reinterpret_cast<char*>(&len), sizeof(len));
+    if (!stream) return false;
+    out.resize(static_cast<std::size_t>(len));
+    if (len) stream.read(&out[0], static_cast<std::streamsize>(len));
+    return static_cast<bool>(stream);
+  };
+
+  if (!readSection(sections.transfersCache)) return true;
+  if (!readSection(sections.consumerState)) return true;
+  if (!readSection(sections.pqState)) return true;
+  readSection(sections.pqTrackingKeys);  // optional fourth section
+  return true;
+}
 
 void throwNotDefined() {
   throw std::runtime_error("The behavior is not defined!");
@@ -202,6 +288,7 @@ void WalletLegacy::initAndGenerateNonDeterministic(const std::string& password) 
 
     m_account.generate();
     m_password = password;
+    m_pqTrackingKeys.reset();
 
     initSync();
   }
@@ -219,6 +306,7 @@ void WalletLegacy::initAndGenerateDeterministic(const std::string& password) {
 
     m_account.generateDeterministic();
     m_password = password;
+    m_pqTrackingKeys.reset();
 
     initSync();
   }
@@ -314,6 +402,35 @@ void WalletLegacy::initWithKeys(const AccountKeys& accountKeys, const std::strin
     m_account.setAccountKeys(accountKeys);
     m_account.set_createtime(scanHeightToTimestamp(scanHeight));
     m_password = password;
+    m_pqTrackingKeys.reset();
+
+    initSync();
+  }
+
+  m_observerManager.notify(&IWalletLegacyObserver::initCompleted, std::error_code());
+}
+
+void WalletLegacy::initWithPqTrackingKeys(const AccountKeys& accountKeys, const PqTrackingKeys& pqTrackingKeys,
+                                          const std::string& password) {
+  initWithPqTrackingKeys(accountKeys, pqTrackingKeys, password, 0);
+}
+
+void WalletLegacy::initWithPqTrackingKeys(const AccountKeys& accountKeys, const PqTrackingKeys& pqTrackingKeys,
+                                          const std::string& password, const uint32_t scanHeight) {
+  {
+    std::unique_lock<std::mutex> stateLock(m_cacheMutex);
+
+    if (m_state != NOT_INITIALIZED) {
+      throw std::system_error(make_error_code(error::ALREADY_INITIALIZED));
+    }
+    if (accountKeys.spendSecretKey != NULL_SECRET_KEY) {
+      throw std::system_error(make_error_code(error::WRONG_PARAMETERS));
+    }
+
+    m_account.setAccountKeys(accountKeys);
+    m_account.set_createtime(scanHeightToTimestamp(scanHeight));
+    m_password = password;
+    m_pqTrackingKeys.reset(new PqTrackingKeys(pqTrackingKeys));
 
     initSync();
   }
@@ -349,15 +466,15 @@ void WalletLegacy::initSync() {
 
   m_sender.reset(new WalletTransactionSender(m_currency, m_transactionsCache, m_account.getAccountKeys(), *m_transferDetails, m_node));
 
-  // PQ scanning consumer. PQ is active from genesis in Discrete, so the only gate
-  // is having a spend secret (the PQ identity is derived from it); tracking
-  // wallets have none, so they get no PQ balance.
+  // PQ scanning consumer. Full wallets derive the PQ identity from the spend
+  // secret; tracking wallets use a persisted view-only PQ audit credential.
   const auto& keys = m_account.getAccountKeys();
   if (keys.spendSecretKey != NULL_SECRET_KEY) {
     PqWalletKeys pqKeys = derivePqWalletKeys(keys.spendSecretKey);
-    // TODO(pq): persist the PQ consumer cursor + WalletLedger so the wallet does
-    // not rescan PQ outputs from genesis on each load.
     m_pqConsumer.reset(new WalletLedgerConsumer(pqKeys, sub.syncStart, m_logger.getLogger()));
+    m_blockchainSync.addConsumer(m_pqConsumer.get());
+  } else if (m_pqTrackingKeys) {
+    m_pqConsumer.reset(new WalletLedgerConsumer(*m_pqTrackingKeys, sub.syncStart, m_logger.getLogger()));
     m_blockchainSync.addConsumer(m_pqConsumer.get());
   }
 
@@ -375,34 +492,30 @@ void WalletLegacy::doLoad(std::istream& source) {
     WalletLegacySerializer serializer(m_account, m_transactionsCache);
     serializer.deserialize(source, m_password, cache);
 
+    m_pqTrackingKeys.reset();
+    PqCacheSections pqSections;
+    if (readPqCacheSections(cache, pqSections) && !pqSections.pqTrackingKeys.empty()) {
+      PqTrackingKeys trackingKeys;
+      if (deserializePqTrackingKeys(pqSections.pqTrackingKeys, trackingKeys)) {
+        m_pqTrackingKeys.reset(new PqTrackingKeys(trackingKeys));
+      }
+    }
+
     initSync();
 
     try {
       if (!cache.empty()) {
-        std::stringstream stream(cache);
-        char magic[PQ_CACHE_MAGIC_LEN] = {0};
-        stream.read(magic, PQ_CACHE_MAGIC_LEN);
-        if (stream.gcount() == PQ_CACHE_MAGIC_LEN &&
-            std::memcmp(magic, PQ_CACHE_MAGIC, PQ_CACHE_MAGIC_LEN) == 0) {
-          auto readSection = [&stream](std::string& out) -> bool {
-            uint64_t len = 0;
-            stream.read(reinterpret_cast<char*>(&len), sizeof(len));
-            if (!stream) return false;
-            out.resize(len);
-            if (len) stream.read(&out[0], static_cast<std::streamsize>(len));
-            return static_cast<bool>(stream);
-          };
-          std::string transfersCache, consumerState, pqState;
-          if (readSection(transfersCache)) {
-            std::stringstream ts(transfersCache);
+        if (pqSections.framed) {
+          if (!pqSections.transfersCache.empty()) {
+            std::stringstream ts(pqSections.transfersCache);
             m_transfersSync.load(ts);
           }
-          if (readSection(consumerState) && m_pqConsumer && !consumerState.empty()) {
-            std::stringstream cs(consumerState);
+          if (m_pqConsumer && !pqSections.consumerState.empty()) {
+            std::stringstream cs(pqSections.consumerState);
             m_blockchainSync.getConsumerState(m_pqConsumer.get())->load(cs);
           }
-          if (readSection(pqState) && m_pqConsumer && !pqState.empty()) {
-            std::stringstream ps(pqState);
+          if (m_pqConsumer && !pqSections.pqState.empty()) {
+            std::stringstream ps(pqSections.pqState);
             m_pqConsumer->state().load(ps);
           }
         } else {
@@ -461,6 +574,10 @@ void WalletLegacy::shutdown() {
 
   m_blockchainSync.removeObserver(this);
   m_blockchainSync.stop();
+  if (m_pqConsumer) {
+    m_blockchainSync.removeConsumer(m_pqConsumer.get());
+    m_pqConsumer.reset();
+  }
   m_asyncContextCounter.waitAsyncContextsFinish();
 
   m_sender.reset();
@@ -536,14 +653,16 @@ void WalletLegacy::doSave(std::ostream& destination, bool saveDetailed, bool sav
     WalletLegacySerializer serializer(m_account, m_transactionsCache);
     std::string cache;
 
-    if (saveCache) {
+    if (saveCache || m_pqTrackingKeys) {
       std::stringstream transfersStream;
-      m_transfersSync.save(transfersStream);
+      if (saveCache) {
+        m_transfersSync.save(transfersStream);
+      }
       std::string transfersCache = transfersStream.str();
 
-      // Framed cache: magic || [u64 len || bytes] x3 (transfers, PQ consumer
-      // cursor, PQ wallet state). The magic lets older/legacy caches (which were
-      // a bare transfers blob) be detected and loaded on the fallback path.
+      // Framed cache: magic || [u64 len || bytes] x4 (transfers, PQ consumer
+      // cursor, PQ wallet state, PQ tracking credential). The fourth section is
+      // optional for full wallets and absent in older framed caches.
       std::stringstream combined;
       combined.write(PQ_CACHE_MAGIC, PQ_CACHE_MAGIC_LEN);
       auto writeSection = [&combined](const std::string& s) {
@@ -554,7 +673,7 @@ void WalletLegacy::doSave(std::ostream& destination, bool saveDetailed, bool sav
       writeSection(transfersCache);
 
       std::string consumerState, pqState;
-      if (m_pqConsumer) {
+      if (saveCache && m_pqConsumer) {
         std::stringstream cs;
         m_blockchainSync.getConsumerState(m_pqConsumer.get())->save(cs);
         consumerState = cs.str();
@@ -564,6 +683,7 @@ void WalletLegacy::doSave(std::ostream& destination, bool saveDetailed, bool sav
       }
       writeSection(consumerState);
       writeSection(pqState);
+      writeSection(m_pqTrackingKeys ? serializePqTrackingKeys(*m_pqTrackingKeys) : std::string());
       cache = combined.str();
     }
 
@@ -664,10 +784,35 @@ uint32_t WalletLegacy::pqSyncedHeight() const {
   return m_pqConsumer->state().lastScannedHeight();
 }
 
+bool WalletLegacy::getPqTrackingKeys(PqTrackingKeys& keys) const {
+  std::unique_lock<std::mutex> lock(m_cacheMutex);
+  if (m_pqTrackingKeys) {
+    keys = *m_pqTrackingKeys;
+    return true;
+  }
+
+  const AccountKeys& accountKeys = m_account.getAccountKeys();
+  if (accountKeys.spendSecretKey == NULL_SECRET_KEY) {
+    return false;
+  }
+
+  keys = pqTrackingKeys(derivePqWalletKeys(accountKeys.spendSecretKey));
+  return true;
+}
+
+std::string WalletLegacy::getPqAddress() const {
+  PqTrackingKeys keys;
+  if (!getPqTrackingKeys(keys)) {
+    return std::string();
+  }
+  PqAddress addr = pqWalletAddress(keys, CryptoNote::parameters::CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX);
+  return encodePqAddress(addr, PqAddressEncoding::Base58);
+}
+
 PqSendResult WalletLegacy::sendPqTransfer(const std::vector<PqSendOutput>& recipients,
                                           uint64_t fee, uint64_t unlockHeight) {
   if (!pqEnabled()) {
-    throw std::runtime_error("PQ spending is unavailable for this wallet");
+    throw std::runtime_error("Spending is unavailable for this wallet");
   }
   AccountKeys keys;
   getAccountKeys(keys);
@@ -687,7 +832,7 @@ PqSendResult WalletLegacy::sendPqTransfer(const std::vector<PqSendOutput>& recip
   m_node.relayTransaction(result.tx, [&promise](std::error_code ec) { promise.set_value(ec); });
   std::error_code ec = future.get();
   if (ec) {
-    throw std::system_error(ec, "failed to relay PQ transaction");
+    throw std::system_error(ec, "failed to relay transaction");
   }
   return result;
 }

@@ -83,6 +83,7 @@ struct PqWalletTransaction {
 class WalletLedger {
 public:
   explicit WalletLedger(const PqWalletKeys& keys);
+  explicit WalletLedger(const PqTrackingKeys& keys);
 
   // Scan one transaction seen at `height` (use UNCONFIRMED_HEIGHT for mempool).
   // Credits owned PQ outputs and marks owned outputs spent when their nullifier
@@ -147,6 +148,7 @@ private:
   CryptoPQ::PqScanKeys   m_scanKeys;
   CryptoPQ::DsaPublicKey m_spendPub;
   CryptoPQ::SeedMaster   m_seedMaster;  // to derive deposit spend keys on demand
+  bool                   m_hasSeedMaster = false;
 
   PqDepositScheme m_depositScheme = PqDepositScheme::AggregatedMultikey;
   uint32_t        m_depositCount = 0;

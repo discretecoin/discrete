@@ -848,7 +848,7 @@ bool wallet_rpc_server::on_register_pq_account(const wallet_rpc::COMMAND_RPC_REG
   m_wallet.getAccountKeys(keys);
   if (keys.spendSecretKey == CryptoNote::NULL_SECRET_KEY) {
     throw JsonRpc::JsonRpcError(WALLET_RPC_ERROR_CODE_GENERIC_TRANSFER_ERROR,
-      "Tracking wallet cannot register a PQ account");
+      "Tracking wallets cannot register account numbers");
   }
 
   CryptoNote::PqWalletKeys pq = CryptoNote::derivePqWalletKeys(keys.spendSecretKey);
@@ -865,12 +865,12 @@ bool wallet_rpc_server::on_register_pq_account(const wallet_rpc::COMMAND_RPC_REG
     auto ec = future.get();
     if (ec) {
       throw JsonRpc::JsonRpcError(WALLET_RPC_ERROR_CODE_GENERIC_TRANSFER_ERROR,
-        "Failed to check existing PQ account: " + ec.message());
+        "Failed to check existing account: " + ec.message());
     }
     if (registered) {
       CryptoNote::AccountNumber acct{blockHeight, txIndex};
       throw JsonRpc::JsonRpcError(WALLET_RPC_ERROR_CODE_GENERIC_TRANSFER_ERROR,
-        "This PQ identity already has account number: " + acct.toString());
+        "This identity already has account number: " + acct.toString());
     }
   }
 
@@ -889,7 +889,7 @@ bool wallet_rpc_server::on_register_pq_account(const wallet_rpc::COMMAND_RPC_REG
 
     CryptoNote::TransactionId tx = m_wallet.sendTransaction(transfer, m_node.getMinimalFee(), extraString, 0, 0);
     if (tx == WALLET_LEGACY_INVALID_TRANSACTION_ID)
-      throw std::runtime_error("Couldn't send PQ registration transaction");
+      throw std::runtime_error("Couldn't send registration transaction");
 
     std::error_code sendError = sent.wait(tx);
     removeGuard.removeObserver();

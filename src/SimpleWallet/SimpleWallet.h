@@ -48,6 +48,7 @@
 #include "NodeRpcProxy/NodeRpcProxy.h"
 #include "crypto_pq/PqKem.h"
 #include "crypto_pq/PqDsa.h"
+#include "Wallet/PqWallet.h"
 #include "WalletLegacy/WalletHelper.h"
 #include "WalletLegacy/WalletLegacy.h"
 #include "Logging/LoggerRef.h"
@@ -100,7 +101,7 @@ namespace CryptoNote
     bool new_wallet(const std::string &wallet_file, const std::string& password, bool two_random = false); // Create deterministic wallets by default
     bool new_wallet(const std::string &wallet_file, const std::string& password, const Crypto::SecretKey& spend_secret_key, const Crypto::SecretKey& view_secret_key);
     bool new_wallet(const std::string &wallet_file, const std::string& password, const AccountKeys& private_keys);
-    bool new_tracking_wallet(AccountKeys &tracking_key, const std::string &wallet_file, const std::string& password);
+    bool new_tracking_wallet(AccountKeys &tracking_key, const PqTrackingKeys& pqTrackingKeys, const std::string &wallet_file, const std::string& password);
     bool close_wallet();
 
     bool help(const std::vector<std::string> &args = std::vector<std::string>());

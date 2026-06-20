@@ -98,13 +98,22 @@ std::string getGUIPrivateKey(CryptoNote::WalletGreen &wallet)
 void printPrivateKeys(CryptoNote::WalletGreen &wallet, bool viewWallet)
 {
     auto privateViewKey = wallet.getViewKey().secretKey;
+    CryptoNote::PqTrackingKeys pqTrackingKeys;
 
     if (viewWallet)
     {
-        std::cout << SuccessMsg("Private view key:")
-                  << std::endl
-                  << SuccessMsg(Common::podToHex(privateViewKey))
-                  << std::endl;
+        if (wallet.getPqTrackingKeys(pqTrackingKeys))
+        {
+            std::cout << SuccessMsg("Tracking key:")
+                      << std::endl
+                      << SuccessMsg(CryptoNote::encodePqTrackingKey(pqTrackingKeys))
+                      << std::endl;
+        }
+        else
+        {
+            std::cout << WarningMsg("Tracking key is unavailable for this wallet.")
+                      << std::endl;
+        }
         return;
     }
 
@@ -148,6 +157,15 @@ void printPrivateKeys(CryptoNote::WalletGreen &wallet, bool viewWallet)
               << std::endl
               << SuccessMsg(getGUIPrivateKey(wallet))
               << std::endl;
+
+    if (wallet.getPqTrackingKeys(pqTrackingKeys))
+    {
+        std::cout << std::endl
+                  << SuccessMsg("Tracking key:")
+                  << std::endl
+                  << SuccessMsg(CryptoNote::encodePqTrackingKey(pqTrackingKeys))
+                  << std::endl;
+    }
 }
 
 void balance(CryptoNote::INode &node, CryptoNote::WalletGreen &wallet,
@@ -171,11 +189,10 @@ void balance(CryptoNote::INode &node, CryptoNote::WalletGreen &wallet,
     if (viewWallet)
     {
         std::cout << std::endl
-                  << InformationMsg("Please note that view only wallets "
-                                    "can only track incoming transactions,")
+                  << InformationMsg("Please note that tracking wallets "
+                                    "can audit transactions,")
                   << std::endl
-                  << InformationMsg("and so your wallet balance may appear "
-                                    "inflated.") << std::endl;
+                  << InformationMsg("but cannot create or sign spends.") << std::endl;
     }
 
     if (localHeight < remoteHeight)
@@ -855,7 +872,7 @@ void verifyMessage(CryptoNote::WalletGreen &wallet)
 
     while (true)
     {
-        std::cout << InformationMsg("Enter PQ address: ");
+        std::cout << InformationMsg("Enter address: ");
 
         std::getline(std::cin, addrStr);
         boost::algorithm::trim(addrStr);
@@ -863,7 +880,7 @@ void verifyMessage(CryptoNote::WalletGreen &wallet)
         // Discrete verifies against the PQ address's ML-DSA spend key.
         if (!CryptoNote::parsePqAddress(addrStr, pqAddr))
         {
-            std::cout << WarningMsg("Failed to parse PQ address") << std::endl;
+            std::cout << WarningMsg("Failed to parse address") << std::endl;
         }
         else
         {
@@ -940,39 +957,35 @@ void verifyMessage(CryptoNote::WalletGreen &wallet)
 
 void pqAddress(std::shared_ptr<WalletInfo> walletInfo)
 {
-    if (walletInfo->viewWallet)
+    std::string b58 = walletInfo->wallet.getPqAddress();
+    if (b58.empty())
     {
-        std::cout << WarningMsg("View-only wallets have no spend key, so no PQ address can be derived.")
+        std::cout << WarningMsg("Address is unavailable for this wallet.")
                   << std::endl;
         return;
     }
 
-    Crypto::SecretKey spendSecret = walletInfo->wallet.getAddressSpendKey(0).secretKey;
-    CryptoNote::PqAddress addr = CryptoNote::pqWalletAddress(
-        spendSecret, CryptoNote::parameters::CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX);
-    std::string b58 = CryptoNote::encodePqAddress(addr, CryptoNote::PqAddressEncoding::Base58);
-
-    std::cout << InformationMsg("Your post-quantum (PQ) address (" + std::to_string(b58.size())
+    std::cout << InformationMsg("Your address (" + std::to_string(b58.size())
                                 + " chars):")
               << std::endl
               << SuccessMsg(b58) << std::endl
-              << InformationMsg("Anyone can pay this; only your seed can spend it.") << std::endl;
+              << InformationMsg("Anyone can pay this; a tracking wallet can audit it but cannot spend.")
+              << std::endl;
 }
 
 void pqBalance(std::shared_ptr<WalletInfo> walletInfo)
 {
     if (!walletInfo->wallet.pqEnabled())
     {
-        std::cout << WarningMsg("PQ balance is unavailable (view wallet or no spend key).")
+        std::cout << WarningMsg("Balance is unavailable for this wallet.")
                   << std::endl;
         return;
     }
 
-    std::cout << "PQ available balance: "
+    std::cout << "Available balance: "
               << SuccessMsg(formatAmount(walletInfo->wallet.pqActualBalance())) << std::endl
-              << "PQ scanned to height: "
+              << "Scanned to height: "
               << InformationMsg(std::to_string(walletInfo->wallet.pqSyncedHeight())) << std::endl
-              << InformationMsg("PQ and legacy balances are separate and are never combined.")
               << std::endl;
 }
 
@@ -991,11 +1004,11 @@ void pqTransfer(std::shared_ptr<WalletInfo> walletInfo, CryptoNote::INode &node)
     CryptoNote::WalletGreen &wallet = walletInfo->wallet;
     if (walletInfo->viewWallet || !wallet.pqEnabled())
     {
-        std::cout << WarningMsg("PQ spending is unavailable for this wallet.") << std::endl;
+        std::cout << WarningMsg("Spending is unavailable for this wallet.") << std::endl;
         return;
     }
 
-    std::cout << InformationMsg("PQ recipient (address or account number): ");
+    std::cout << InformationMsg("Recipient (address or account number): ");
     std::string addrStr;
     std::getline(std::cin, addrStr);
     CryptoPQ::KemPublicKey destView;
@@ -1003,7 +1016,7 @@ void pqTransfer(std::shared_ptr<WalletInfo> walletInfo, CryptoNote::INode &node)
     uint64_t destSubaddrT = 0;  // non-zero only for an H-I-T-C deposit subaddress
     if (!resolvePqRecipientGreen(node, addrStr, destView, destSpend, destSubaddrT))
     {
-        std::cout << WarningMsg("Not a valid PQ address or account number.") << std::endl;
+        std::cout << WarningMsg("Not a valid address or account number.") << std::endl;
         return;
     }
 
@@ -1026,13 +1039,13 @@ void pqTransfer(std::shared_ptr<WalletInfo> walletInfo, CryptoNote::INode &node)
         std::cout << InformationMsg("Sent " + formatAmount(r.sent) + " (fee "
                                     + formatAmount(r.fee) + ")...")
                   << std::endl;
-        std::cout << SuccessMsg("PQ transaction hash: "
+        std::cout << SuccessMsg("Transaction hash: "
                                 + Common::podToHex(CryptoNote::getObjectHash(r.tx)))
                   << std::endl;
     }
     catch (const std::exception &e)
     {
-        std::cout << WarningMsg(std::string("Failed to send PQ transaction: ") + e.what())
+        std::cout << WarningMsg(std::string("Failed to send transaction: ") + e.what())
                   << std::endl;
     }
 }
@@ -1042,7 +1055,7 @@ void pqRegister(std::shared_ptr<WalletInfo> walletInfo, CryptoNote::INode &node)
     CryptoNote::WalletGreen &wallet = walletInfo->wallet;
     if (walletInfo->viewWallet)
     {
-        std::cout << WarningMsg("View-only wallets cannot register a PQ account.") << std::endl;
+        std::cout << WarningMsg("Tracking wallets cannot register account numbers.") << std::endl;
         return;
     }
 
@@ -1056,7 +1069,7 @@ void pqRegister(std::shared_ptr<WalletInfo> walletInfo, CryptoNote::INode &node)
         return;
     }
 
-    std::cout << InformationMsg("Assigning your PQ account number (solving anti-spam PoW)...")
+    std::cout << InformationMsg("Assigning your account number (solving anti-spam PoW)...")
               << std::endl;
     uint64_t nonce = 0;
     while (!CryptoNote::checkFreeRegPow(pq.viewPub, refBlockHash, nonce))
@@ -1078,7 +1091,7 @@ void pqRegister(std::shared_ptr<WalletInfo> walletInfo, CryptoNote::INode &node)
             std::cout << WarningMsg("Failed to relay registration: " + ec.message()) << std::endl;
             return;
         }
-        std::cout << SuccessMsg("PQ registration submitted. Tx hash: "
+        std::cout << SuccessMsg("Registration submitted. Tx hash: "
                                 + Common::podToHex(CryptoNote::getObjectHash(tx)))
                   << std::endl
                   << InformationMsg("Once confirmed, run 'account' to see your account number.")
@@ -1096,7 +1109,7 @@ void pqRegisterPaid(std::shared_ptr<WalletInfo> walletInfo, CryptoNote::INode &n
     CryptoNote::WalletGreen &wallet = walletInfo->wallet;
     if (walletInfo->viewWallet)
     {
-        std::cout << WarningMsg("View-only wallets cannot register a PQ account.") << std::endl;
+        std::cout << WarningMsg("Tracking wallets cannot register account numbers.") << std::endl;
         return;
     }
 
@@ -1115,7 +1128,7 @@ void pqRegisterPaid(std::shared_ptr<WalletInfo> walletInfo, CryptoNote::INode &n
         std::error_code ec = future.get();
         if (ec)
         {
-            std::cout << WarningMsg("Failed to check existing PQ account: " + ec.message())
+            std::cout << WarningMsg("Failed to check existing account: " + ec.message())
                       << std::endl;
             return;
         }
@@ -1123,12 +1136,12 @@ void pqRegisterPaid(std::shared_ptr<WalletInfo> walletInfo, CryptoNote::INode &n
     if (registered)
     {
         CryptoNote::AccountNumber acct{blockHeight, txIndex};
-        std::cout << WarningMsg("This PQ identity already has account number: ")
+        std::cout << WarningMsg("This identity already has account number: ")
                   << SuccessMsg(acct.toString()) << std::endl;
         return;
     }
 
-    std::cout << InformationMsg("Register a PQ account number with a normal fee-paying transaction?")
+    std::cout << InformationMsg("Register an account number with a normal fee-paying transaction?")
               << std::endl;
     std::cout << "Proceed? (Y/n): ";
 
@@ -1156,21 +1169,21 @@ void pqRegisterPaid(std::shared_ptr<WalletInfo> walletInfo, CryptoNote::INode &n
         size_t txId = wallet.transfer(params, txSecretKey);
 
         auto txHash = wallet.getTransaction(txId).hash;
-        std::cout << SuccessMsg("PQ account registration transaction sent!")
+        std::cout << SuccessMsg("Account registration transaction sent!")
                   << std::endl
                   << SuccessMsg("Transaction hash: ")
                   << Common::podToHex(txHash) << std::endl
-                  << InformationMsg("Your PQ account number will be available once the transaction is confirmed.")
+                  << InformationMsg("Your account number will be available once the transaction is confirmed.")
                   << std::endl;
     }
     catch (const std::system_error &e)
     {
-        std::cout << WarningMsg("Failed to send PQ registration transaction: ")
+        std::cout << WarningMsg("Failed to send registration transaction: ")
                   << WarningMsg(e.what()) << std::endl;
     }
     catch (const std::exception &e)
     {
-        std::cout << WarningMsg("Failed to send PQ registration transaction: ")
+        std::cout << WarningMsg("Failed to send registration transaction: ")
                   << WarningMsg(e.what()) << std::endl;
     }
 }
@@ -1180,13 +1193,17 @@ void pqAccount(std::shared_ptr<WalletInfo> walletInfo, CryptoNote::INode &node)
     CryptoNote::WalletGreen &wallet = walletInfo->wallet;
     if (walletInfo->viewWallet)
     {
-        std::cout << WarningMsg("View-only wallets have no PQ identity.") << std::endl;
+        std::cout << WarningMsg("Tracking wallets cannot use account-number registration.") << std::endl;
         return;
     }
-    Crypto::SecretKey spendSecret = wallet.getAddressSpendKey(0).secretKey;
-    CryptoNote::PqWalletKeys pq = CryptoNote::derivePqWalletKeys(spendSecret);
-    std::string viewHex = Common::toHex(pq.viewPub.data(), pq.viewPub.size());
-    std::string spendHex = Common::toHex(pq.spendPub.data(), pq.spendPub.size());
+
+    std::string viewHex;
+    std::string spendHex;
+    if (!wallet.getPqRegistrationKeysHex(viewHex, spendHex))
+    {
+        std::cout << WarningMsg("Identity is unavailable for this wallet.") << std::endl;
+        return;
+    }
 
     bool registered = false;
     uint32_t blockHeight = 0, txIndex = 0;
@@ -1197,7 +1214,7 @@ void pqAccount(std::shared_ptr<WalletInfo> walletInfo, CryptoNote::INode &node)
     std::error_code ec = future.get();
     if (ec)
     {
-        std::cout << WarningMsg("Failed to query PQ account: " + ec.message()) << std::endl;
+        std::cout << WarningMsg("Failed to query account: " + ec.message()) << std::endl;
         return;
     }
     if (!registered)
@@ -1208,5 +1225,5 @@ void pqAccount(std::shared_ptr<WalletInfo> walletInfo, CryptoNote::INode &node)
         return;
     }
     CryptoNote::AccountNumber acct{blockHeight, txIndex};
-    std::cout << SuccessMsg("Your PQ account number: " + acct.toString()) << std::endl;
+    std::cout << SuccessMsg("Your account number: " + acct.toString()) << std::endl;
 }

@@ -21,6 +21,7 @@
 #include "IWallet.h"
 
 #include <map>
+#include <memory>
 #include <queue>
 #include <unordered_map>
 
@@ -49,19 +50,20 @@ public:
   INode& getNode() { return m_node; }
 
   // --- PQ (post-quantum) balance / spend (concrete; not on IWallet) ----------
-  // Mirrors WalletLegacy. PQ is active from genesis, so the only requirement is
-  // that the wallet holds a spend secret (the PQ identity derives from the
-  // primary address's spend key). Tracking wallets return false / 0 / empty.
+  // Mirrors WalletLegacy. PQ is active from genesis. Full wallets derive this
+  // state from the primary spend secret; tracking wallets hold a view-only audit
+  // key that can scan balance/history but cannot spend or register account numbers.
   bool pqEnabled() const { return static_cast<bool>(m_pqConsumer); }
   uint64_t pqActualBalance() const;
   std::vector<PqSpendInput> pqSpendableInputs() const;
   uint32_t pqSyncedHeight() const;
-  // The wallet's PQ address (base58), derived from the primary address's spend
-  // secret — the same address simplewallet's `pq_address` prints. Empty string
-  // for a tracking wallet (no spend secret → no PQ identity).
+  // The wallet's address (base58). Full wallets derive it from the primary spend
+  // secret; tracking wallets use their imported audit key.
   std::string getPqAddress() const;
-  // Hex-encode this wallet's PQ identity pubkeys (view, spend) for node PQ-account
-  // queries. Returns false (and leaves the strings untouched) for a tracking wallet.
+  bool getPqTrackingKeys(PqTrackingKeys& keys) const;
+  // Hex-encode this wallet's identity pubkeys (view, spend) for account-number
+  // registration queries. Returns false for tracking wallets because registration
+  // is intentionally spend-authority-only.
   bool getPqRegistrationKeysHex(std::string& viewHex, std::string& spendHex) const;
   // Build a signed TX_FREE_REG registering this wallet's PQ identity, grinding the
   // anti-spam PoW against `refBlockHash` (a recent main-chain block). The caller
@@ -107,6 +109,8 @@ public:
   virtual void initializeWithViewKey(const std::string& path, const std::string& password, const Crypto::SecretKey& viewSecretKey) override;
   virtual void initializeWithViewKey(const std::string& path, const std::string& password, const Crypto::SecretKey& viewSecretKey, const uint64_t& creationTimestamp) override;
   virtual void initializeWithViewKey(const std::string& path, const std::string& password, const Crypto::SecretKey& viewSecretKey, const uint32_t scanHeight) override;
+  void initializeWithPqTrackingKey(const std::string& path, const std::string& password, const PqTrackingKeys& pqTrackingKeys);
+  void initializeWithPqTrackingKey(const std::string& path, const std::string& password, const PqTrackingKeys& pqTrackingKeys, const uint64_t& creationTimestamp);
   virtual void load(const std::string& path, const std::string& password, std::string& extra) override;
   virtual void load(const std::string& path, const std::string& password) override;
   virtual void shutdown() override;
@@ -389,10 +393,11 @@ protected:
   void deleteUnlockTransactionJob(const Crypto::Hash& transactionHash);
   void startBlockchainSynchronizer();
   void stopBlockchainSynchronizer();
-  // Create + register the PQ scanning consumer for the primary address, gated on
-  // a spend secret being present (PQ is active from genesis). No-op if already
-  // created or the gate fails.
+  // Create + register the PQ scanning consumer for the primary address. Full
+  // wallets derive from a spend secret; tracking wallets use a PQ audit key.
   void initPqConsumer(const Crypto::SecretKey& spendSecretKey, const SynchronizationStart& syncStart);
+  void initPqConsumer(const PqTrackingKeys& pqTrackingKeys, const SynchronizationStart& syncStart);
+  void initPqConsumerForPrimary();
   // Serialize the PQ consumer's sync cursor + WalletLedger into m_pqState (for
   // save), and restore them from m_pqState into a live consumer (after load).
   void buildPqStateBlob();
@@ -462,8 +467,9 @@ protected:
   BlockchainSynchronizer m_blockchainSynchronizer;
   TransfersSyncronizer m_synchronizer;
   // PQ output scanning consumer (created lazily for the primary address when a
-  // spend secret is present). Null otherwise. See initPqConsumer.
+  // spend secret or PQ tracking credential is present).
   std::unique_ptr<WalletLedgerConsumer> m_pqConsumer;
+  std::unique_ptr<PqTrackingKeys> m_pqTrackingKeys;
 
   System::Event m_eventOccurred;
   std::queue<WalletEvent> m_events;

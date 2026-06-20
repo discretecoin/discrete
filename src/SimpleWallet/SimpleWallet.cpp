@@ -203,6 +203,20 @@ inline std::string interpret_rpc_response(const std::string& status) {
   return err;
 }
 
+CryptoNote::AccountKeys makeTrackingPlaceholderAccountKeys() {
+  CryptoNote::AccountBase placeholder;
+  placeholder.generateDeterministic();
+  CryptoNote::AccountKeys keys = placeholder.getAccountKeys();
+  keys.spendSecretKey = CryptoNote::NULL_SECRET_KEY;
+  return keys;
+}
+
+std::string encodePqTrackingAddress(const CryptoNote::PqTrackingKeys& keys) {
+  CryptoNote::PqAddress addr = CryptoNote::pqWalletAddress(
+      keys, CryptoNote::parameters::CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX);
+  return CryptoNote::encodePqAddress(addr, CryptoNote::PqAddressEncoding::Base58);
+}
+
 template <typename IterT, typename ValueT = typename IterT::value_type>
 class ArgumentReader {
 public:
@@ -680,7 +694,7 @@ simple_wallet::simple_wallet(System::Dispatcher& dispatcher, const CryptoNote::C
   m_consoleHandler.setHandler("show_keys", std::bind(&simple_wallet::show_keys, this, std::placeholders::_1), "Show the secret keys and mnemonic phrase (for deterministic wallet)");
   m_consoleHandler.setHandler("restore_seed", std::bind(&simple_wallet::restore_seed, this, std::placeholders::_1), "Restore wallet from 25-word mnemonic seed phrase");
   m_consoleHandler.setHandler("export_keys", std::bind(&simple_wallet::export_keys_to_file, this, std::placeholders::_1), "Save current wallet private keys to file");
-  m_consoleHandler.setHandler("tracking_key", std::bind(&simple_wallet::show_tracking_key, this, std::placeholders::_1), "Show the tracking key (192 hex chars) - import into a view-only wallet for audit");
+  m_consoleHandler.setHandler("tracking_key", std::bind(&simple_wallet::show_tracking_key, this, std::placeholders::_1), "Show the tracking key - import into a tracking wallet for audit");
   m_consoleHandler.setHandler("balance", std::bind(&simple_wallet::pq_balance, this, std::placeholders::_1), "Show current wallet balance");
   m_consoleHandler.setHandler("incoming_transfers", std::bind(&simple_wallet::show_incoming_transfers, this, std::placeholders::_1), "Show incoming transfers");
   m_consoleHandler.setHandler("outgoing_transfers", std::bind(&simple_wallet::show_outgoing_transfers, this, std::placeholders::_1), "Show outgoing transfers");
@@ -689,7 +703,7 @@ simple_wallet::simple_wallet(System::Dispatcher& dispatcher, const CryptoNote::C
   m_consoleHandler.setHandler("outputs", std::bind(&simple_wallet::show_unlocked_outputs_count, this, std::placeholders::_1), "Show the number of unlocked outputs available for a transaction");
   m_consoleHandler.setHandler("bc_height", std::bind(&simple_wallet::show_blockchain_height, this, std::placeholders::_1), "Show blockchain height");
   m_consoleHandler.setHandler("transfer", std::bind(&simple_wallet::pq_transfer, this, std::placeholders::_1),
-    "transfer <address> <amount> - Send funds to a post-quantum address (or account number)");
+    "transfer <address> <amount> - Send funds to an address (or account number)");
   m_consoleHandler.setHandler("prepare", std::bind(&simple_wallet::prepare_tx, this, std::placeholders::_1),
     "Prepare raw transaction in hex format but do not relay, e.g. for manual relay <addr_1> <amount_1> ... <addr_N> <amount_N> [-p payment_id] [-f fee] [-m ring_size]"
     " - Transfer <amount_1>,... <amount_N> to <address_1>,... <address_N>, respectively. ");
@@ -1017,7 +1031,7 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
   {
     do
     {
-      std::cout << "Tracking Key (192 hex chars - spendPublicKey + viewPublicKey + viewSecretKey): ";
+      std::cout << "Tracking key (pqview1:<hex view public + spend public + view secret>): ";
       std::getline(std::cin, tracking_key_string);
       boost::algorithm::trim(tracking_key_string);
     } while (tracking_key_string.empty());
@@ -1329,7 +1343,6 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
   }
   else if (!m_track_new.empty())
   {
-    // Tracking key format: spendPublicKey(64) | viewPublicKey(64) | viewSecretKey(64) = 192 hex chars.
     std::string walletAddressFile = prepareWalletAddressFilename(m_track_new);
     boost::system::error_code ignore;
     if (boost::filesystem::exists(walletAddressFile, ignore))
@@ -1338,36 +1351,22 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
       return false;
     }
 
-    if (tracking_key_string.length() != 192)
+    PqTrackingKeys pqTrackingKeys;
+    if (!decodePqTrackingKey(tracking_key_string, pqTrackingKeys))
     {
-      logger(ERROR, BRIGHT_RED) << "Wrong key length (expected 192 hex characters).";
+      logger(ERROR, BRIGHT_RED) << "Wrong tracking key format (expected pqview1:<hex view public + spend public + view secret>).";
       return false;
     }
 
-    AccountKeys keys;
-
-    std::string public_spend_key_string = tracking_key_string.substr(0, 64);
-    std::string public_view_key_string  = tracking_key_string.substr(64, 64);
-    std::string view_secret_key_string  = tracking_key_string.substr(128, 64);
-
-    Crypto::Hash public_spend_key_hash, public_view_key_hash, view_secret_key_hash;
-    size_t size;
-    if (!Common::fromHex(public_spend_key_string, &public_spend_key_hash, sizeof(public_spend_key_hash), size) || size != sizeof(public_spend_key_hash)) return false;
-    if (!Common::fromHex(public_view_key_string,  &public_view_key_hash,  sizeof(public_view_key_hash),  size) || size != sizeof(public_view_key_hash))  return false;
-    if (!Common::fromHex(view_secret_key_string,  &view_secret_key_hash,  sizeof(view_secret_key_hash),  size) || size != sizeof(view_secret_key_hash))  return false;
-
-    keys.address.spendPublicKey = *(struct Crypto::PublicKey*)&public_spend_key_hash;
-    keys.address.viewPublicKey  = *(struct Crypto::PublicKey*)&public_view_key_hash;
-    keys.viewSecretKey          = *(struct Crypto::SecretKey*)&view_secret_key_hash;
-    keys.spendSecretKey         = boost::value_initialized<Crypto::SecretKey>();
-
-    if (!new_tracking_wallet(keys, walletFileName, pwd_container.password()))
+    AccountKeys keys = makeTrackingPlaceholderAccountKeys();
+    if (!new_tracking_wallet(keys, pqTrackingKeys, walletFileName, pwd_container.password()))
     {
       logger(ERROR, BRIGHT_RED) << "account creation failed";
       return false;
     }
 
-    if (!writeToFile(walletAddressFile, m_wallet->getAddress()))
+    const std::string pqAddress = encodePqTrackingAddress(pqTrackingKeys);
+    if (!writeToFile(walletAddressFile, pqAddress))
     {
       logger(WARNING, BRIGHT_RED) << "Couldn't write wallet address file: " + walletAddressFile;
     }
@@ -1658,7 +1657,7 @@ bool simple_wallet::new_wallet(const std::string &wallet_file, const std::string
     return true;
 }
 //----------------------------------------------------------------------------------------------------
-bool simple_wallet::new_tracking_wallet(AccountKeys &tracking_key, const std::string &wallet_file, const std::string& password) {
+bool simple_wallet::new_tracking_wallet(AccountKeys &tracking_key, const PqTrackingKeys& pqTrackingKeys, const std::string &wallet_file, const std::string& password) {
     m_wallet_file = wallet_file;
 
     m_wallet.reset(new WalletLegacy(m_currency, *m_node.get(), m_logManager));
@@ -1668,11 +1667,17 @@ bool simple_wallet::new_tracking_wallet(AccountKeys &tracking_key, const std::st
         m_initResultPromise.reset(new std::promise<std::error_code>());
         std::future<std::error_code> f_initError = m_initResultPromise->get_future();
 
+        auto* wallet = dynamic_cast<WalletLegacy*>(m_wallet.get());
+        if (!wallet) {
+          fail_msg_writer() << "failed to initialize tracking wallet backend";
+          return false;
+        }
+
         if (m_scan_height != 0) {
-          m_wallet->initWithKeys(tracking_key, password, m_scan_height);
+          wallet->initWithPqTrackingKeys(tracking_key, pqTrackingKeys, password, m_scan_height);
         }
         else {
-          m_wallet->initWithKeys(tracking_key, password);
+          wallet->initWithPqTrackingKeys(tracking_key, pqTrackingKeys, password);
         }
 
         auto initError = f_initError.get();
@@ -1694,7 +1699,7 @@ bool simple_wallet::new_tracking_wallet(AccountKeys &tracking_key, const std::st
         m_wallet->getAccountKeys(keys);
 
         logger(INFO, BRIGHT_WHITE) <<
-            "Imported wallet: " << m_wallet->getAddress() << std::endl;
+            "Imported tracking wallet: " << encodePqTrackingAddress(pqTrackingKeys) << std::endl;
 
         m_trackingWallet = true;
     }
@@ -1705,7 +1710,7 @@ bool simple_wallet::new_tracking_wallet(AccountKeys &tracking_key, const std::st
 
     success_msg_writer() <<
         "**********************************************************************\n" <<
-        "Your tracking wallet has been imported. It does not allow spending.\n" <<
+        "Your tracking wallet has been imported. It cannot spend or register account numbers.\n" <<
         "It allows to audit incoming and outgoing transactions.\n" <<
         "Use \"help\" command to see the list of available commands.\n" <<
         "Always use \"exit\" command when closing simplewallet to save\n" <<
@@ -2014,17 +2019,17 @@ bool simple_wallet::export_keys_to_file(const std::vector<std::string>& args/* =
 }
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::show_tracking_key(const std::vector<std::string>& args/* = std::vector<std::string>()*/) {
-  AccountKeys keys;
-  m_wallet->getAccountKeys(keys);
+  auto* wallet = dynamic_cast<CryptoNote::WalletLegacy*>(m_wallet.get());
+  PqTrackingKeys keys;
+  if (!wallet || !wallet->getPqTrackingKeys(keys)) {
+    fail_msg_writer() << "Tracking key is unavailable for this wallet.";
+    return true;
+  }
 
-  // Tracking key format (view-only wallet):
-  // spendPublicKey(32) | viewPublicKey(32) | viewSecretKey(32) = 192 hex chars.
-  success_msg_writer(true) << "Tracking key: "
-    << Common::podToHex(keys.address.spendPublicKey)
-    << Common::podToHex(keys.address.viewPublicKey)
-    << Common::podToHex(keys.viewSecretKey);
-  success_msg_writer() << "This tracking key allows viewing and auditing transactions.\n"
-                       << "Share this key ONLY with a TRUSTED party.";
+  success_msg_writer(true) << "Tracking key: " << encodePqTrackingKey(keys);
+  success_msg_writer() << "Address: " << encodePqTrackingAddress(keys);
+  success_msg_writer() << "This key allows full view-only audit of this address, including spends.\n"
+                       << "Share it only with an auditor you trust.";
 
   return true;
 }
@@ -2331,8 +2336,7 @@ void simple_wallet::stop() {
 }
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::print_address(const std::vector<std::string> &args/* = std::vector<std::string>()*/) {
-  success_msg_writer() << m_wallet->getAddress();
-  return true;
+  return pq_address(args);
 }
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::save_address_to_file(const std::vector<std::string> &args/* = std::vector<std::string>()*/) {
@@ -2344,7 +2348,13 @@ bool simple_wallet::save_address_to_file(const std::vector<std::string> &args/* 
     fail_msg_writer() << "Address file already exists: " + walletAddressFile;
     return true;
   }
-  if (writeToFile(walletAddressFile, m_wallet->getAddress())) {
+  auto* wallet = dynamic_cast<CryptoNote::WalletLegacy*>(m_wallet.get());
+  PqTrackingKeys keys;
+  if (!wallet || !wallet->getPqTrackingKeys(keys)) {
+    fail_msg_writer() << "Wallet has no tracking identity.";
+    return true;
+  }
+  if (writeToFile(walletAddressFile, encodePqTrackingAddress(keys))) {
     success_msg_writer() << "Wallet address saved to file: " + walletAddressFile;
   } else {
     fail_msg_writer() << "Couldn't write wallet address to file: " + walletAddressFile;
@@ -2391,7 +2401,7 @@ bool simple_wallet::verify_message(const std::vector<std::string> &args) {
   CryptoPQ::DsaPublicKey spendPub;
   uint64_t ignoredT = 0;  // message verification needs only the spend key, not T
   if (!resolvePqRecipient(address_string, viewPub, spendPub, ignoredT)) {
-    fail_msg_writer() << "failed to parse PQ address / account number " << address_string;
+    fail_msg_writer() << "failed to parse address / account number " << address_string;
     return true;
   }
 
@@ -2405,24 +2415,17 @@ bool simple_wallet::verify_message(const std::vector<std::string> &args) {
 }
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::pq_address(const std::vector<std::string> &args) {
-  if (m_trackingWallet) {
-    fail_msg_writer() << "This is a tracking wallet; it has no spend key, so a PQ "
-                         "address cannot be derived.";
+  auto* wallet = dynamic_cast<CryptoNote::WalletLegacy*>(m_wallet.get());
+  PqTrackingKeys keys;
+  if (!wallet || !wallet->getPqTrackingKeys(keys)) {
+    fail_msg_writer() << "Wallet has no tracking identity.";
     return true;
   }
 
-  CryptoNote::AccountKeys keys;
-  m_wallet->getAccountKeys(keys);
-  if (keys.spendSecretKey == boost::value_initialized<Crypto::SecretKey>()) {
-    fail_msg_writer() << "Wallet has no spend secret key; cannot derive a PQ address.";
-    return true;
-  }
-
-  // The PQ identity is derived from the same spend secret the 25-word mnemonic
-  // backs up, so no extra seed to store. Network prefix follows the classical
-  // one (mainnet/testnet) until the dedicated PQ network byte is finalized.
+  // Full wallets derive this from the mnemonic-backed spend secret. Tracking
+  // wallets store the public address keys plus view secret directly.
   const uint64_t networkPrefix = CryptoNote::parameters::CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX;
-  CryptoNote::PqAddress addr = CryptoNote::pqWalletAddress(keys.spendSecretKey, networkPrefix);
+  CryptoNote::PqAddress addr = CryptoNote::pqWalletAddress(keys, networkPrefix);
 
   bool bech32 = !args.empty() &&
                 (args[0] == "bech32" || args[0] == "bech32m" || args[0] == "qr");
@@ -2431,24 +2434,24 @@ bool simple_wallet::pq_address(const std::vector<std::string> &args) {
 
   std::string encoded = CryptoNote::encodePqAddress(addr, enc);
   if (encoded.empty()) {
-    fail_msg_writer() << "Failed to encode PQ address.";
+    fail_msg_writer() << "Failed to encode address.";
     return true;
   }
 
-  success_msg_writer() << "Post-quantum address (" << (bech32 ? "bech32m" : "base58")
+  success_msg_writer() << "Address (" << (bech32 ? "bech32m" : "base58")
                        << ", " << encoded.size() << " chars):";
   success_msg_writer(true) << encoded;
   if (!bech32) {
     logger(INFO) << "Tip: 'address bech32' prints the QR-friendlier encoding.";
   }
-  logger(INFO) << "Anyone can pay this address; only this wallet's seed can spend it.";
+  logger(INFO) << "Anyone can pay this address; a tracking wallet can audit it but cannot spend.";
   return true;
 }
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::pq_balance(const std::vector<std::string> &args) {
   auto* wl = dynamic_cast<CryptoNote::WalletLegacy*>(m_wallet.get());
   if (!wl || !wl->pqEnabled()) {
-    fail_msg_writer() << "PQ balance is unavailable for this wallet (tracking wallet or no spend key).";
+    fail_msg_writer() << "Balance is unavailable for this wallet.";
     return true;
   }
   success_msg_writer() << "Available balance: " << m_currency.formatAmount(wl->pqActualBalance());
@@ -2467,7 +2470,7 @@ bool simple_wallet::pq_transfer(const std::vector<std::string> &args) {
   }
   auto* wl = dynamic_cast<CryptoNote::WalletLegacy*>(m_wallet.get());
   if (!wl || !wl->pqEnabled()) {
-    fail_msg_writer() << "PQ spending is unavailable for this wallet.";
+    fail_msg_writer() << "Spending is unavailable for this wallet.";
     return true;
   }
 
@@ -2475,7 +2478,7 @@ bool simple_wallet::pq_transfer(const std::vector<std::string> &args) {
   CryptoPQ::DsaPublicKey destSpend;
   uint64_t destSubaddrT = 0;  // non-zero only when paying an H-I-T-C deposit subaddress
   if (!resolvePqRecipient(args[0], destView, destSpend, destSubaddrT)) {
-    fail_msg_writer() << "Recipient is not a valid PQ address or account number.";
+    fail_msg_writer() << "Recipient is not a valid address or account number.";
     return true;
   }
 
@@ -2493,19 +2496,19 @@ bool simple_wallet::pq_transfer(const std::vector<std::string> &args) {
     success_msg_writer() << "Sent " << m_currency.formatAmount(r.sent) << " (fee "
                          << m_currency.formatAmount(r.fee) << ", " << r.selected.size()
                          << " input(s)).";
-    success_msg_writer(true) << "PQ transaction hash: "
+    success_msg_writer(true) << "Transaction hash: "
                              << Common::podToHex(CryptoNote::getObjectHash(r.tx));
   } catch (const CryptoNote::PqSendError& e) {
     fail_msg_writer() << "Cannot send: " << e.what();
   } catch (const std::exception& e) {
-    fail_msg_writer() << "Failed to send PQ transaction: " << e.what();
+    fail_msg_writer() << "Failed to send transaction: " << e.what();
   }
   return true;
 }
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::pq_register(const std::vector<std::string> &args) {
   if (m_trackingWallet) {
-    fail_msg_writer() << "This is a tracking wallet and cannot register a PQ account.";
+    fail_msg_writer() << "Tracking wallets cannot register account numbers.";
     return true;
   }
   CryptoNote::AccountKeys keys;
@@ -2527,7 +2530,7 @@ bool simple_wallet::pq_register(const std::vector<std::string> &args) {
   // Anti-spam PoW grind (shared helper — walletd grinds the same way). Instant
   // under the current placeholder target; if the target is lowered this is the
   // call that would move to a background thread.
-  success_msg_writer() << "Assigning your PQ account number (solving anti-spam PoW)...";
+  success_msg_writer() << "Assigning your account number (solving anti-spam PoW)...";
   uint64_t nonce = CryptoNote::grindFreeRegPow(pq.viewPub, refBlockHash);
 
   try {
@@ -2541,7 +2544,7 @@ bool simple_wallet::pq_register(const std::vector<std::string> &args) {
       fail_msg_writer() << "Failed to relay registration: " << ec.message();
       return true;
     }
-    success_msg_writer(true) << "PQ registration submitted. Tx hash: "
+    success_msg_writer(true) << "Registration submitted. Tx hash: "
                              << Common::podToHex(CryptoNote::getObjectHash(tx));
     logger(INFO) << "Once the transaction is confirmed, run 'account' to see your account number.";
   } catch (const std::exception& e) {
@@ -2556,7 +2559,7 @@ bool simple_wallet::pq_register_paid(const std::vector<std::string> &args) {
     return true;
   }
   if (m_trackingWallet) {
-    fail_msg_writer() << "This is a tracking wallet and cannot register a PQ account.";
+    fail_msg_writer() << "Tracking wallets cannot register account numbers.";
     return true;
   }
   CryptoNote::AccountKeys keys;
@@ -2578,17 +2581,17 @@ bool simple_wallet::pq_register_paid(const std::vector<std::string> &args) {
                          [&promise](std::error_code ec) { promise.set_value(ec); });
     std::error_code ec = future.get();
     if (ec) {
-      fail_msg_writer() << "Failed to check existing PQ account: " << ec.message();
+      fail_msg_writer() << "Failed to check existing account: " << ec.message();
       return true;
     }
   }
   if (registered) {
     CryptoNote::AccountNumber acct{blockHeight, txIndex};
-    fail_msg_writer() << "This PQ identity already has account number: " << acct.toString();
+    fail_msg_writer() << "This identity already has account number: " << acct.toString();
     return true;
   }
 
-  std::cout << "Register a PQ account number with a normal fee-paying transaction? (Y/n): ";
+  std::cout << "Register an account number with a normal fee-paying transaction? (Y/n): ";
   std::string confirm;
   std::getline(std::cin, confirm);
   if (!confirm.empty() && confirm[0] != 'y' && confirm[0] != 'Y') {
@@ -2610,7 +2613,7 @@ bool simple_wallet::pq_register_paid(const std::vector<std::string> &args) {
 
     CryptoNote::TransactionId tx = m_wallet->sendTransaction(transfer, m_node->getMinimalFee(), extraString, 0, 0);
     if (tx == WALLET_LEGACY_INVALID_TRANSACTION_ID) {
-      fail_msg_writer() << "Can't send PQ registration transaction";
+      fail_msg_writer() << "Can't send registration transaction";
       return true;
     }
 
@@ -2624,11 +2627,11 @@ bool simple_wallet::pq_register_paid(const std::vector<std::string> &args) {
 
     CryptoNote::WalletLegacyTransaction txInfo;
     m_wallet->getTransaction(tx, txInfo);
-    success_msg_writer(true) << "PQ account registration transaction sent!";
+    success_msg_writer(true) << "Account registration transaction sent!";
     success_msg_writer(true) << "Transaction hash: " << Common::podToHex(txInfo.hash);
-    logger(INFO) << "Your PQ account number will be available once the transaction is confirmed.";
+    logger(INFO) << "Your account number will be available once the transaction is confirmed.";
   } catch (const std::exception& e) {
-    fail_msg_writer() << "Failed to send PQ registration transaction: " << e.what();
+    fail_msg_writer() << "Failed to send registration transaction: " << e.what();
   }
 
   return true;
@@ -2636,7 +2639,7 @@ bool simple_wallet::pq_register_paid(const std::vector<std::string> &args) {
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::pq_account(const std::vector<std::string> &args) {
   if (m_trackingWallet) {
-    fail_msg_writer() << "This is a tracking wallet; it has no PQ identity.";
+    fail_msg_writer() << "Tracking wallets cannot use account-number registration.";
     return true;
   }
   CryptoNote::AccountKeys keys;
@@ -2657,7 +2660,7 @@ bool simple_wallet::pq_account(const std::vector<std::string> &args) {
                        [&promise](std::error_code ec) { promise.set_value(ec); });
   std::error_code ec = future.get();
   if (ec) {
-    fail_msg_writer() << "Failed to query PQ account: " << ec.message();
+    fail_msg_writer() << "Failed to query account: " << ec.message();
     return true;
   }
   if (!registered) {
@@ -2666,7 +2669,7 @@ bool simple_wallet::pq_account(const std::vector<std::string> &args) {
     return true;
   }
   CryptoNote::AccountNumber acct{blockHeight, txIndex};
-  success_msg_writer(true) << "Your PQ account number: " << acct.toString();
+  success_msg_writer(true) << "Your account number: " << acct.toString();
   return true;
 }
 //----------------------------------------------------------------------------------------------------

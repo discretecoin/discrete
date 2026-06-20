@@ -253,7 +253,7 @@ struct GetPqAddress {
   };
 
   struct Response {
-    std::string pqAddress;  // empty if the wallet has no PQ identity (tracking)
+    std::string pqAddress;  // empty only if the wallet has no PQ identity
     bool pqEnabled;
 
     void serialize(CryptoNote::ISerializer& serializer);

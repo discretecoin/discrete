@@ -55,10 +55,19 @@ constexpr uint8_t kPqStateFormatVersion = 4;
 }  // namespace
 
 WalletLedger::WalletLedger(const PqWalletKeys& keys)
-    : m_scanKeys(pqScanKeys(keys)), m_spendPub(keys.spendPub), m_seedMaster(keys.seedMaster) {}
+    : m_scanKeys(pqScanKeys(keys)), m_spendPub(keys.spendPub), m_seedMaster(keys.seedMaster),
+      m_hasSeedMaster(true) {}
+
+WalletLedger::WalletLedger(const PqTrackingKeys& keys)
+    : m_scanKeys(pqScanKeys(keys)), m_spendPub(keys.spendPub), m_seedMaster{},
+      m_hasSeedMaster(false) {}
 
 void WalletLedger::ensureDepositKeys(uint32_t count) {
   if (m_depositScheme != PqDepositScheme::AggregatedMultikey) {
+    return;
+  }
+  if (!m_hasSeedMaster) {
+    m_depositSpendPubs.clear();
     return;
   }
   for (uint32_t i = static_cast<uint32_t>(m_depositSpendPubs.size()); i < count; ++i) {
@@ -165,7 +174,9 @@ bool WalletLedger::processTransaction(const TransactionPrefix& tx, const Crypto:
       owned = CryptoPQ::scanPqOutput(m_scanKeys, ih, so, 0);
       if (!owned && m_depositCount > 0) {
         ensureDepositKeys(m_depositCount);
-        auto agg = CryptoPQ::scanPqOutputAggregate(m_scanKeys.viewSk, m_depositSpendPubs, ih, so);
+        auto agg = m_depositSpendPubs.empty()
+            ? std::optional<CryptoPQ::PqAggregateOwned>{}
+            : CryptoPQ::scanPqOutputAggregate(m_scanKeys.viewSk, m_depositSpendPubs, ih, so);
         if (agg) {
           owned = agg->record;
           depositIndex = static_cast<uint32_t>(agg->spendPubIndex);
