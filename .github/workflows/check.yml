@@ -52,6 +52,8 @@ jobs:
           cmake -G "Visual Studio 17 2022" -A x64 `
             -DCMAKE_BUILD_TYPE=Release `
             -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded `
+            -DBUILD_TESTS=ON `
+            -DOQS_BUILD_ONLY_LIB=ON `
             -DBOOST_ROOT="$env:BOOST_ROOT" `
             -DBOOST_INCLUDE_DIRS="$env:BOOST_ROOT/include" `
             ..
@@ -71,6 +73,14 @@ jobs:
           echo "asset_path=${asset_path}" >> $env:GITHUB_OUTPUT
           echo "krb_ver=${krb_ver}" >> $env:GITHUB_OUTPUT
           echo "artifact_path=$build_folder/src/Release/$release_name" >> $env:GITHUB_OUTPUT
+
+      - name: Run PQ test suite
+        shell: powershell
+        run: |
+          # The post-quantum suites are the regression gate. The classical wallet
+          # suites are runtime-broken on this PQ-only fork (the test block generator
+          # can't build yespower blocks), so they are intentionally NOT run here.
+          ctest --test-dir build -C Release -R "Pq|Denomination" --output-on-failure
 
       - name: Upload To GH Artifacts
         uses: actions/upload-artifact@v4
