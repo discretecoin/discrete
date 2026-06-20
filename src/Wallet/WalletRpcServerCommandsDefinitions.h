@@ -463,31 +463,6 @@ using CryptoNote::ISerializer;
     };
   };
 
-  struct COMMAND_RPC_GET_BALANCE_PROOF
-  {
-    struct request
-    {
-      uint64_t amount = 0;
-      std::string message;
-
-      void serialize(ISerializer& s)
-      {
-        KV_MEMBER(amount);
-        KV_MEMBER(message);
-      }
-    };
-
-    struct response
-    {
-      std::string signature;
-
-      void serialize(ISerializer& s)
-      {
-        KV_MEMBER(signature);
-      }
-    };
-  };
-
   struct COMMAND_RPC_VALIDATE_ADDRESS {
     struct request {
       std::string address;

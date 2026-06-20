@@ -1257,37 +1257,6 @@ struct COMMAND_RPC_GET_RAW_TRANSACTIONS_POOL {
   };
 };
 
-//-----------------------------------------------
-struct reserve_proof_entry
-{
-  Crypto::Hash transaction_id;
-  uint64_t index_in_transaction;
-  Crypto::PublicKey shared_secret;
-  Crypto::KeyImage key_image;
-  Crypto::Signature shared_secret_sig;
-  Crypto::Signature key_image_sig;
-
-  void serialize(ISerializer& s)
-  {
-    KV_MEMBER(transaction_id)
-    KV_MEMBER(index_in_transaction)
-    KV_MEMBER(shared_secret)
-    KV_MEMBER(key_image)
-    KV_MEMBER(shared_secret_sig)
-    KV_MEMBER(key_image_sig)
-  }
-};
-
-struct reserve_proof {
-  std::vector<reserve_proof_entry> proofs;
-  Crypto::Signature signature;
-
-  void serialize(ISerializer &s) {
-    KV_MEMBER(proofs)
-    KV_MEMBER(signature)
-  }
-};
-
 struct COMMAND_RPC_CHECK_TRANSACTION_PROOF {
   struct request {
     std::string transaction_id;
@@ -1317,37 +1286,6 @@ struct COMMAND_RPC_CHECK_TRANSACTION_PROOF {
     }
   };
 };
-
-struct COMMAND_RPC_CHECK_RESERVE_PROOF {
-  struct request {
-    std::string address;
-    std::string message;
-    std::string signature;
-    uint32_t height = 0;
-
-    void serialize(ISerializer &s) {
-      KV_MEMBER(address)
-      KV_MEMBER(message)
-      KV_MEMBER(signature)
-      KV_MEMBER(height)
-    }
-  };
-
-  struct response {
-    bool good;
-    uint64_t total;
-    uint64_t spent;
-    uint64_t locked;
-
-    void serialize(ISerializer &s) {
-      KV_MEMBER(good)
-      KV_MEMBER(total)
-      KV_MEMBER(spent)
-      KV_MEMBER(locked)
-    }
-  };
-};
-
 
 struct block_stats_entry {
   uint32_t height;

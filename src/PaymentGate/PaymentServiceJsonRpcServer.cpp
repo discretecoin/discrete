@@ -72,7 +72,6 @@ PaymentServiceJsonRpcServer::PaymentServiceJsonRpcServer(System::Dispatcher* sys
   handlers.emplace("createDepositAddress", jsonHandler<CreatePqDepositAddress::Request, CreatePqDepositAddress::Response>(std::bind(&PaymentServiceJsonRpcServer::handleCreatePqDepositAddress, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("listDepositAddresses", jsonHandler<ListPqDepositAddresses::Request, ListPqDepositAddresses::Response>(std::bind(&PaymentServiceJsonRpcServer::handleListPqDepositAddresses, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("validateAddress", jsonHandler<ValidateAddress::Request, ValidateAddress::Response>(std::bind(&PaymentServiceJsonRpcServer::handleValidateAddress, this, std::placeholders::_1, std::placeholders::_2)));
-  handlers.emplace("getReserveProof", jsonHandler<GetReserveProof::Request, GetReserveProof::Response>(std::bind(&PaymentServiceJsonRpcServer::handleGetReserveProof, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("signMessage", jsonHandler<SignMessage::Request, SignMessage::Response>(std::bind(&PaymentServiceJsonRpcServer::handleSignMessage, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("verifyMessage", jsonHandler<VerifyMessage::Request, VerifyMessage::Response>(std::bind(&PaymentServiceJsonRpcServer::handleVerifyMessage, this, std::placeholders::_1, std::placeholders::_2)));
 
@@ -116,7 +115,6 @@ void PaymentServiceJsonRpcServer::processJsonRpcRequest(const Common::JsonValue&
     makeGenericErrorReponse(resp, e.what());
   }
 }
-
 std::error_code PaymentServiceJsonRpcServer::handleSave(const Save::Request& /*request*/, Save::Response& /*response*/) {
   return service.saveWalletNoThrow();
 }
@@ -223,10 +221,6 @@ std::error_code PaymentServiceJsonRpcServer::handleGetTransactionProof(const Get
   return service.getTransactionProof(request.transactionHash, request.destinationAddress, request.transactionSecretKey, response.transactionProof);
 }
 
-std::error_code PaymentServiceJsonRpcServer::handleGetReserveProof(const GetReserveProof::Request& request, GetReserveProof::Response& response) {
-  return service.getReserveProof(response.reserveProof, request.address, request.message, request.amount);
-}
-
 std::error_code PaymentServiceJsonRpcServer::handleSignMessage(const SignMessage::Request& request, SignMessage::Response& response) {
   if (request.address.empty()) {
     std::vector<std::string> addresses;
@@ -321,4 +315,3 @@ std::error_code PaymentServiceJsonRpcServer::handleListPqDepositAddresses(const 
 }
 
 }
-  

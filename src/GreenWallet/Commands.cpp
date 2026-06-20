@@ -56,7 +56,6 @@ std::vector<AdvancedCommand> allCommands()
         AdvancedCommand("incoming_transfers", "Show incoming transfers", true, true),
         AdvancedCommand("list_transfers", "Show all transfers", false, true),
         AdvancedCommand("outgoing_transfers", "Show outgoing transfers", false, true),
-        AdvancedCommand("reserve_proof", "Get proof of balance", false, true),
         AdvancedCommand("reset", "Recheck the chain from zero for transactions", true, true),
         AdvancedCommand("save", "Save your wallet state", true, true),
         AdvancedCommand("save_csv", "Save all wallet transactions to a CSV file", true, true),

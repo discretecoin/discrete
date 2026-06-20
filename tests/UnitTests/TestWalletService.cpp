@@ -110,7 +110,6 @@ struct IWalletBaseStub : public CryptoNote::IWallet {
   virtual std::vector<size_t> getDelayedTransactionIds() const override { return {}; }
   virtual std::vector<TransactionOutputInformation> getTransfers(size_t index, uint32_t flags) const override { return {}; }
 
-  virtual std::string getReserveProof(const uint64_t &reserve, const std::string& address, const std::string &message) override { return ""; }
   virtual std::string signMessage(const std::string &message, const std::string& address) override { return ""; }
   virtual bool verifyMessage(const std::string &message, const std::string& address, const std::string &signature) override { return false; }
 
@@ -1058,4 +1057,3 @@ TEST_F(WalletServiceTest_getUnconfirmedTransactionHashes, wrongAddressFilter) {
 
   ASSERT_EQ(make_error_code(CryptoNote::error::BAD_ADDRESS), ec);
 }
-

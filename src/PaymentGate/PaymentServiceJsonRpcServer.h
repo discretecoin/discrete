@@ -110,7 +110,6 @@ private:
   std::error_code handleCreatePqDepositAddress(const CreatePqDepositAddress::Request& request, CreatePqDepositAddress::Response& response);
   std::error_code handleListPqDepositAddresses(const ListPqDepositAddresses::Request& request, ListPqDepositAddresses::Response& response);
   std::error_code handleValidateAddress(const ValidateAddress::Request& request, ValidateAddress::Response& response);
-  std::error_code handleGetReserveProof(const GetReserveProof::Request& request, GetReserveProof::Response& response);
   std::error_code handleSignMessage(const SignMessage::Request& request, SignMessage::Response& response);
   std::error_code handleVerifyMessage(const VerifyMessage::Request& request, VerifyMessage::Response& response);
 };

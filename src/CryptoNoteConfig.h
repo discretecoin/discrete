@@ -32,7 +32,6 @@ const size_t   CRYPTONOTE_MAX_BLOCK_BLOB_SIZE                = 500000000;
 const size_t   CRYPTONOTE_MAX_TX_SIZE                        = 1000000000;
 const uint64_t CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX       = 0x3445db; // disc
 const uint64_t CRYPTONOTE_TX_PROOF_BASE58_PREFIX             = 3576968;
-const uint64_t CRYPTONOTE_RESERVE_PROOF_BASE58_PREFIX        = 44907175188;
 const uint64_t CRYPTONOTE_KEYS_SIGNATURE_BASE58_PREFIX       = 176103705;
 const size_t   CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW          = 10;
 const size_t   CRYPTONOTE_TX_SPENDABLE_AGE                   = 3;
@@ -288,7 +287,6 @@ const char* const SEED_NODES[] = {
 };
 
 } // CryptoNote
-
 
 
 

@@ -702,8 +702,6 @@ simple_wallet::simple_wallet(System::Dispatcher& dispatcher, const CryptoNote::C
   m_consoleHandler.setHandler("password", std::bind(&simple_wallet::change_password, this, std::placeholders::_1), "Change password");
   m_consoleHandler.setHandler("get_tx_key", std::bind(&simple_wallet::get_tx_key, this, std::placeholders::_1), "Get secret transaction key for a given <txid>");
   m_consoleHandler.setHandler("get_tx_proof", std::bind(&simple_wallet::get_tx_proof, this, std::placeholders::_1), "Generate a signature to prove payment: <txid> <address> [<txkey>]");
-  m_consoleHandler.setHandler("get_reserve_proof", std::bind(&simple_wallet::get_reserve_proof, this, std::placeholders::_1), "all|<amount> [<message>] - Generate a signature proving that you own at least <amount>, optionally with a challenge string <message>. "
-    "If 'all' is specified, you prove the entire accounts' balance.\n");
   m_consoleHandler.setHandler("sign_message", std::bind(&simple_wallet::sign_message, this, std::placeholders::_1), "Sign the message");
   m_consoleHandler.setHandler("verify_message", std::bind(&simple_wallet::verify_message, this, std::placeholders::_1), "Verify a signature of the message");
   m_consoleHandler.setHandler("register", std::bind(&simple_wallet::pq_register, this, std::placeholders::_1), "Register a free account number (anti-spam PoW, no fee)");
@@ -834,55 +832,6 @@ bool simple_wallet::get_tx_proof(const std::vector<std::string> &args)
 
 //----------------------------------------------------------------------------------------------------
 
-bool simple_wallet::get_reserve_proof(const std::vector<std::string> &args)
-{
-  if (args.size() != 1 && args.size() != 2) {
-    fail_msg_writer() << "Usage: get_reserve_proof (all|<amount>) [<message>]";
-    return true;
-  }
-
-  if (m_trackingWallet) {
-    fail_msg_writer() << "This is tracking wallet. The reserve proof can be generated only by a full wallet.";
-    return true;
-  }
-
-  uint64_t reserve = 0;
-  if (args[0] != "all") {
-    if (!m_currency.parseAmount(args[0], reserve)) {
-      fail_msg_writer() << "amount is wrong: " << args[0];
-      return true;
-    }
-  } else {
-    reserve = m_wallet->actualBalance();
-  }
-
-  try {
-    const std::string sig_str = m_wallet->getReserveProof(reserve, args.size() == 2 ? args[1] : "");
-
-    //logger(INFO, BRIGHT_WHITE) << "\n\n" << sig_str << "\n\n" << std::endl;
-
-    const std::string filename = "reserve_proof_" + args[0] + CryptoNote::CRYPTONOTE_TICKER + ".txt";
-    boost::system::error_code ec;
-    if (boost::filesystem::exists(filename, ec)) {
-      boost::filesystem::remove(filename, ec);
-    }
-
-    std::ofstream proofFile(filename, std::ios::out | std::ios::trunc | std::ios::binary);
-    if (!proofFile.good()) {
-      return false;
-    }
-    proofFile << sig_str;
-
-    success_msg_writer() << "signature saved to file: " << filename;
-
-  } catch (const std::exception &e) {
-    fail_msg_writer() << e.what();
-  }
-
-  return true;
-}
-
-//----------------------------------------------------------------------------------------------------
 bool simple_wallet::init(const boost::program_options::variables_map& vm)
 {
   handle_command_line(vm);

@@ -374,18 +374,6 @@ void GetTransactionProof::Response::serialize(CryptoNote::ISerializer& serialize
   serializer(transactionProof, "transactionProof");
 }
 
-void GetReserveProof::Request::serialize(CryptoNote::ISerializer& serializer) {
-  if (!serializer(address, "address")) {
-    throw RequestSerializationError();
-  }
-  serializer(amount, "amount");
-  serializer(message, "message");
-}
-
-void GetReserveProof::Response::serialize(CryptoNote::ISerializer& serializer) {
-  serializer(reserveProof, "reserveProof");
-}
-
 void WalletRpcOrder::serialize(CryptoNote::ISerializer& serializer) {
   bool r = serializer(address, "address");
   r &= serializer(amount, "amount");

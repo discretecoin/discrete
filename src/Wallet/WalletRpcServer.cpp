@@ -268,7 +268,6 @@ void wallet_rpc_server::processRequest(const CryptoNote::HttpRequest& request, C
             { "get_paymentid"     , makeMemberMethod(&wallet_rpc_server::on_gen_paymentid)     },
             { "get_tx_key"        , makeMemberMethod(&wallet_rpc_server::on_get_tx_key)        },
             { "get_tx_proof"      , makeMemberMethod(&wallet_rpc_server::on_get_tx_proof)      },
-            { "get_reserve_proof" , makeMemberMethod(&wallet_rpc_server::on_get_reserve_proof) },
             { "sign_message"      , makeMemberMethod(&wallet_rpc_server::on_sign_message)      },
             { "verify_message"    , makeMemberMethod(&wallet_rpc_server::on_verify_message)    },
             { "change_password"   , makeMemberMethod(&wallet_rpc_server::on_change_password)   },
@@ -795,24 +794,6 @@ bool wallet_rpc_server::on_get_tx_proof(const wallet_rpc::COMMAND_RPC_GET_TX_PRO
   return true;
 }
 
-bool wallet_rpc_server::on_get_reserve_proof(const wallet_rpc::COMMAND_RPC_GET_BALANCE_PROOF::request& req,
-  wallet_rpc::COMMAND_RPC_GET_BALANCE_PROOF::response& res) {
-
-  if (m_wallet.isTrackingWallet()) {
-    throw JsonRpc::JsonRpcError(WALLET_RPC_ERROR_CODE_UNKNOWN_ERROR, std::string("This is tracking wallet. The reserve proof can be generated only by a full wallet."));
-  }
-
-  try {
-    res.signature = m_wallet.getReserveProof(req.amount != 0 ? req.amount : m_wallet.actualBalance(), !req.message.empty() ? req.message : "");
-  }
-  catch (const std::exception &e) {
-    throw JsonRpc::JsonRpcError(WALLET_RPC_ERROR_CODE_UNKNOWN_ERROR, e.what());
-  }
-
-  return true;
-}
-
-//------------------------------------------------------------------------------------------------------------------------------
 bool wallet_rpc_server::on_sign_message(const wallet_rpc::COMMAND_RPC_SIGN_MESSAGE::request& req, wallet_rpc::COMMAND_RPC_SIGN_MESSAGE::response& res)
 {
   res.signature = m_wallet.sign_message(req.message);

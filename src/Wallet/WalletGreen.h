@@ -163,8 +163,6 @@ public:
   virtual std::vector<size_t> getDelayedTransactionIds() const override;
   virtual std::vector<TransactionOutputInformation> getTransfers(size_t index, uint32_t flags) const override;
 
-  virtual std::string getReserveProof(const uint64_t &reserve, const std::string& address, const std::string &message) override;
-
   virtual std::string signMessage(const std::string &message, const std::string& address) override;
   virtual bool verifyMessage(const std::string &message, const std::string& address, const std::string &signature) override;
 

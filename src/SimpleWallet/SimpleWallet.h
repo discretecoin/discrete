@@ -129,7 +129,6 @@ namespace CryptoNote
     bool change_password(const std::vector<std::string> &args);
     bool get_tx_key(const std::vector<std::string> &args);
     bool get_tx_proof(const std::vector<std::string> &args);
-    bool get_reserve_proof(const std::vector<std::string> &args);
     bool sign_message(const std::vector<std::string> &args);
     bool verify_message(const std::vector<std::string> &args);
     bool pq_address(const std::vector<std::string> &args = std::vector<std::string>());

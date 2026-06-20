@@ -519,22 +519,6 @@ struct GetTransactionProof {
   };
 };
 
-struct GetReserveProof {
-  struct Request {
-    std::string address;
-    std::string message;
-    uint64_t amount = 0;
-
-    void serialize(CryptoNote::ISerializer& serializer);
-  };
-
-  struct Response {
-    std::string reserveProof;
-
-    void serialize(CryptoNote::ISerializer& serializer);
-  };
-};
-
 struct SignMessage {
   struct Request {
     std::string address;

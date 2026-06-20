@@ -3131,59 +3131,6 @@ bool WalletGreen::getTransactionProof(const Crypto::Hash& transactionHash, const
   return CryptoNote::getTransactionProof(transactionHash, destinationAddress, txKey, transactionProof, m_logger.getLogger());
 }
 
-std::string WalletGreen::getReserveProof(const uint64_t &reserve, const std::string& address, const std::string &message) {
-  throwIfNotInitialized();
-  throwIfTrackingMode();
-  throwIfStopped();
-
-  if (getActualBalance() == 0) {
-    throw std::runtime_error("Zero balance");
-  }
-
-  std::vector<OutputToTransfer> selectedOutputsToTransfers;
-  std::vector<WalletOuts> wallets;
-
-  // determine which outputs to include in the proof
-  // if account is provided use it, otherwise try to find account with sufficient balance
-  if (!address.empty()) {
-    WalletOuts wallet = pickWallet(address);
-    wallets.push_back(wallet);	
-  }
-  else {
-    std::vector<WalletOuts> walletsWithMoney = pickWalletsWithMoney();
-    for (const auto& w : walletsWithMoney) {
-      if (w.wallet->actualBalance >= reserve) {
-        wallets.push_back(w);
-        break;
-      }
-    }
-  }
-
-  uint64_t found = selectTransfers(reserve, true, m_currency.defaultDustThreshold(), std::move(wallets), selectedOutputsToTransfers);
-
-  if (found < reserve) {
-    throw std::runtime_error("Not enough balance for the requested minimum reserve amount");
-  }
-
-  std::vector<TransactionOutputInformation> selectedTransfers;
-  for (const auto& ott : selectedOutputsToTransfers) {
-    selectedTransfers.push_back(ott.out);
-  }
-
-  CryptoNote::AccountKeys keys;
-  keys.spendSecretKey = wallets[0].wallet->spendSecretKey;
-  keys.viewSecretKey = m_viewSecretKey;
-  keys.address = { wallets[0].wallet->spendPublicKey, m_viewPublicKey };
-
-  std::string reserveProof = "";
-  bool r = CryptoNote::getReserveProof(selectedTransfers, keys, reserve, message, reserveProof, m_logger.getLogger());
-  if (!r) {
-    throw std::runtime_error("Failed to get reserve proof");
-  }
-
-  return reserveProof;
-}
-
 std::string WalletGreen::signMessage(const std::string &message, const std::string& address) {
   throwIfNotInitialized();
   throwIfTrackingMode();
