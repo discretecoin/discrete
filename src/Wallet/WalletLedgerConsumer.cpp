@@ -109,6 +109,9 @@ std::error_code WalletLedgerConsumer::onPoolUpdated(
   }
   for (const auto& h : deletedTransactions) {
     m_poolTxs.erase(h);
+    // A tx that left the pool without being mined: undo its unconfirmed effects.
+    // (If it was mined, its outputs/spends already carry a real height and are kept.)
+    m_state.removeUnconfirmedTransaction(h);
   }
   return std::error_code();
 }
@@ -126,6 +129,7 @@ std::error_code WalletLedgerConsumer::addUnconfirmedTransaction(const ITransacti
 
 void WalletLedgerConsumer::removeUnconfirmedTransaction(const Crypto::Hash& transactionHash) {
   m_poolTxs.erase(transactionHash);
+  m_state.removeUnconfirmedTransaction(transactionHash);
 }
 
 }  // namespace CryptoNote

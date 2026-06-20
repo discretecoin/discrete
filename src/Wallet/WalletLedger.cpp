@@ -48,9 +48,11 @@ void readPod(std::istream& is, T& v) {
 }
 
 // v2 added PqWalletOutput::unlockHeight. v3 added PqWalletOutput::depositIndex.
-// v4 appended the PqWalletTransaction history. Older blobs load with empty history
-// (it repopulates on the next rescan) and depositIndex = PQ_PRIMARY_DEPOSIT.
-constexpr uint8_t kPqStateFormatVersion = 4;
+// v4 appended the PqWalletTransaction history. v5 appended PqWalletOutput::spentTxid
+// (the tx that spent each output, so a dropped/rejected spend can be undone). Older
+// blobs load with the missing fields defaulted (history empty / depositIndex primary
+// / spentTxid zero) and repopulate on the next rescan.
+constexpr uint8_t kPqStateFormatVersion = 5;
 
 }  // namespace
 
@@ -121,7 +123,15 @@ bool WalletLedger::processTransaction(const TransactionPrefix& tx, const Crypto:
       if (!o.spent) {
         o.spent = true;
         o.spentHeight = height;
+        o.spentTxid = txid;       // remember which tx spent it (to undo on drop/reorg)
         debited += o.amount;
+        affected = true;
+      } else if (o.spentHeight == UNCONFIRMED_HEIGHT && height != UNCONFIRMED_HEIGHT &&
+                 o.spentTxid == txid) {
+        // Same spend, first seen in the mempool, now confirmed: promote its height
+        // so reorg accounting (rollbackToHeight) treats it correctly. Do not touch
+        // `debited` here — the history row already exists and is upserted below.
+        o.spentHeight = height;
         affected = true;
       }
     }
@@ -349,6 +359,7 @@ void WalletLedger::rollbackToHeight(uint32_t h) {
     if (o.spent && o.spentHeight >= h) {
       o.spent = false;
       o.spentHeight = 0;
+      o.spentTxid = Crypto::Hash{};
     }
   }
   // Drop confirmed outputs received at or above the rollback height, rebuilding
@@ -387,6 +398,52 @@ void WalletLedger::rollbackToHeight(uint32_t h) {
   }
 }
 
+void WalletLedger::removeUnconfirmedTransaction(const Crypto::Hash& txid) {
+  // A transaction that left the mempool WITHOUT being mined (evicted, rejected,
+  // replaced, double-spent) must have its still-UNCONFIRMED effects undone.
+  // Confirmed effects are permanent and untouched: a mined tx is also removed from
+  // the pool, but by then its outputs/spends carry a real height, so the guards
+  // below (== UNCONFIRMED_HEIGHT) skip them. Mirrors the classical
+  // TransfersContainer::deleteUnconfirmedTransaction.
+
+  // 1. Un-spend any owned outputs this tx spent while it was unconfirmed.
+  for (auto& o : m_outputs) {
+    if (o.spent && o.spentHeight == UNCONFIRMED_HEIGHT && o.spentTxid == txid) {
+      o.spent = false;
+      o.spentHeight = 0;
+      o.spentTxid = Crypto::Hash{};
+    }
+  }
+
+  // 2. Drop unconfirmed received outputs this tx created (e.g. an incoming payment
+  //    still in the pool, or the change of our own now-dropped send).
+  std::vector<PqWalletOutput> kept;
+  kept.reserve(m_outputs.size());
+  for (auto& o : m_outputs) {
+    if (o.height == UNCONFIRMED_HEIGHT && o.txid == txid) {
+      continue;  // orphaned mempool receive
+    }
+    kept.push_back(o);
+  }
+  if (kept.size() != m_outputs.size()) {
+    m_outputs = std::move(kept);
+    m_byNullifier.clear();
+    for (std::size_t i = 0; i < m_outputs.size(); ++i) {
+      m_byNullifier.emplace(m_outputs[i].nullifier, i);
+    }
+  }
+
+  // 3. Drop the history row only if it is still unconfirmed.
+  auto hit = m_historyByTxid.find(txid);
+  if (hit != m_historyByTxid.end() && m_history[hit->second].height == UNCONFIRMED_HEIGHT) {
+    m_history.erase(m_history.begin() + static_cast<std::ptrdiff_t>(hit->second));
+    m_historyByTxid.clear();
+    for (std::size_t i = 0; i < m_history.size(); ++i) {
+      m_historyByTxid.emplace(m_history[i].txid, i);
+    }
+  }
+}
+
 void WalletLedger::save(std::ostream& os) const {
   writePod(os, kPqStateFormatVersion);
   writePod(os, m_lastScannedHeight);
@@ -404,6 +461,7 @@ void WalletLedger::save(std::ostream& os) const {
     writePod(os, spent);
     writePod(os, o.spentHeight);
     writePod(os, o.depositIndex);
+    os.write(reinterpret_cast<const char*>(o.spentTxid.data), 32);  // v5
   }
   // v4: transaction history.
   uint64_t hcount = m_history.size();
@@ -428,10 +486,10 @@ void WalletLedger::load(std::istream& is) {
 
   uint8_t version = 0;
   readPod(is, version);
-  // Accept v2 (no depositIndex), v3 (no history), and the current v4. v2 outputs
-  // load with depositIndex = PQ_PRIMARY_DEPOSIT; v2/v3 load with empty history (it
-  // repopulates on rescan). Anything older/unknown -> start empty.
-  if (!is || (version != 2 && version != 3 && version != kPqStateFormatVersion)) {
+  // Accept v2 (no depositIndex), v3 (no history), v4 (no spentTxid), and the current
+  // v5. Missing fields default (depositIndex = PQ_PRIMARY_DEPOSIT, empty history,
+  // spentTxid = zero) and repopulate on rescan. Anything older/unknown -> start empty.
+  if (!is || (version != 2 && version != 3 && version != 4 && version != kPqStateFormatVersion)) {
     m_outputs.clear();
     m_byNullifier.clear();
     m_history.clear();
@@ -459,6 +517,11 @@ void WalletLedger::load(std::istream& is) {
       readPod(is, o.depositIndex);
     } else {
       o.depositIndex = PQ_PRIMARY_DEPOSIT;  // v2 had no deposits
+    }
+    if (version >= 5) {
+      is.read(reinterpret_cast<char*>(o.spentTxid.data), 32);
+    } else {
+      o.spentTxid = Crypto::Hash{};  // pre-v5 did not record the spending tx
     }
     if (!is) break;
     m_byNullifier.emplace(o.nullifier, m_outputs.size());

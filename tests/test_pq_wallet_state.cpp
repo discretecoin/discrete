@@ -164,6 +164,79 @@ TEST(WalletLedger, DetectsSpendOfOwnedOutput) {
     EXPECT_EQ(st.unspentCount(), 0u);
 }
 
+// A receive seen only in the mempool, then evicted (never mined), must be dropped.
+TEST(WalletLedger, RemoveUnconfirmedDropsEvictedReceive) {
+    PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
+    PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
+
+    WalletLedger st(me);
+    Funded f = payTo(them, me, 1000000, 800000, 0x12);
+
+    ASSERT_TRUE(st.processTransaction(f.tx, f.txid, WalletLedger::UNCONFIRMED_HEIGHT));
+    ASSERT_EQ(st.pendingBalance(), 800000u);
+    ASSERT_EQ(st.historyCount(), 1u);
+
+    st.removeUnconfirmedTransaction(f.txid);
+    EXPECT_EQ(st.balance(), 0u);
+    EXPECT_EQ(st.pendingBalance(), 0u);
+    EXPECT_EQ(st.unspentCount(), 0u);
+    EXPECT_EQ(st.historyCount(), 0u);
+}
+
+// Our own send, seen unconfirmed (marks our input spent), then rejected/dropped:
+// the input must return to the spendable set.
+TEST(WalletLedger, RemoveUnconfirmedRestoresDroppedSendInputs) {
+    PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
+    PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
+    PqWalletKeys dest = derivePqWalletKeys(spendSecret(4, 4));
+
+    WalletLedger st(me);
+    Funded recv = payTo(them, me, 1000000, 900000, 0x31);
+    ASSERT_TRUE(st.processTransaction(recv.tx, recv.txid, 100));
+    ASSERT_EQ(st.balance(), 900000u);
+
+    std::vector<PqSpendInput> ins = st.spendableInputs();
+    ASSERT_EQ(ins.size(), 1u);
+    PqSendOutput pay{dest.viewPub, dest.spendPub, 850000};
+    Transaction spend = buildPqTransaction(ins, {pay}, me.spendPub, me.spendSk);
+    Crypto::Hash spendId = getObjectHash(spend);
+
+    ASSERT_TRUE(st.processTransaction(spend, spendId, WalletLedger::UNCONFIRMED_HEIGHT));
+    ASSERT_EQ(st.balance(), 0u);                  // input now (unconfirmed) spent
+    ASSERT_EQ(st.spendableInputs().size(), 0u);
+
+    st.removeUnconfirmedTransaction(spendId);
+    EXPECT_EQ(st.balance(), 900000u);             // input restored
+    EXPECT_EQ(st.spendableInputs().size(), 1u);
+}
+
+// A spend first seen in the pool then mined must record its real height, so a
+// reorg ABOVE the spend does not wrongly un-spend it.
+TEST(WalletLedger, ConfirmedSpendSurvivesReorgAboveIt) {
+    PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
+    PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
+    PqWalletKeys dest = derivePqWalletKeys(spendSecret(4, 4));
+
+    WalletLedger st(me);
+    Funded recv = payTo(them, me, 1000000, 900000, 0x32);
+    ASSERT_TRUE(st.processTransaction(recv.tx, recv.txid, 100));
+
+    std::vector<PqSpendInput> ins = st.spendableInputs();
+    PqSendOutput pay{dest.viewPub, dest.spendPub, 850000};
+    Transaction spend = buildPqTransaction(ins, {pay}, me.spendPub, me.spendSk);
+    Crypto::Hash spendId = getObjectHash(spend);
+
+    ASSERT_TRUE(st.processTransaction(spend, spendId, WalletLedger::UNCONFIRMED_HEIGHT));
+    ASSERT_TRUE(st.processTransaction(spend, spendId, 105));  // mined
+    ASSERT_EQ(st.balance(), 0u);
+
+    st.rollbackToHeight(106);          // detach blocks above the spend
+    EXPECT_EQ(st.balance(), 0u);       // spend at 105 must survive
+
+    st.rollbackToHeight(105);          // detach the spend's own block
+    EXPECT_EQ(st.balance(), 900000u);  // input restored
+}
+
 TEST(WalletLedger, ReorgRestoresSpentAndDropsOrphanedOutputs) {
     PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
     PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));

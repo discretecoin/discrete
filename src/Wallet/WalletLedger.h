@@ -61,6 +61,7 @@ struct PqWalletOutput {
                                   // rejects spends before this height
   bool          spent = false;
   uint32_t      spentHeight = 0;  // height the spend was seen at (when spent)
+  Crypto::Hash  spentTxid{};      // the tx that spent it (to undo a dropped/reorged spend)
   // Which deposit this output was attributed to. PQ_PRIMARY_DEPOSIT = the
   // wallet's own primary address. For AggregatedMultikey it is the deposit
   // spend-key index; for SingleKeyIndex it is the subaddress index T.
@@ -129,6 +130,12 @@ public:
   // Reorg support: drop outputs received at height >= h, and un-spend outputs
   // whose spend was seen at height >= h.
   void rollbackToHeight(uint32_t h);
+
+  // Undo the still-unconfirmed effects of a transaction that left the mempool
+  // without being mined (evicted / rejected / replaced / double-spent): drop the
+  // unconfirmed received outputs it created and un-spend any owned outputs it spent
+  // while unconfirmed. Confirmed effects are left untouched.
+  void removeUnconfirmedTransaction(const Crypto::Hash& txid);
 
   uint32_t lastScannedHeight() const { return m_lastScannedHeight; }
   void setLastScannedHeight(uint32_t h) { m_lastScannedHeight = h; }
