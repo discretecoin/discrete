@@ -4193,39 +4193,11 @@ bool WalletGreen::txIsTooLarge(const TransactionParameters& sendingTransaction)
   return getTxSize(sendingTransaction) > getMaxTxSize();
 }
 
-size_t WalletGreen::getTxSize(const TransactionParameters &sendingTransaction)
+size_t WalletGreen::getTxSize(const TransactionParameters& /*sendingTransaction*/)
 {
-  System::EventLock lk(m_readyEvent);
-
-  throwIfNotInitialized();
-  throwIfTrackingMode();
-  throwIfStopped();
-
-  CryptoNote::AccountPublicAddress changeDestination = getChangeDestination(sendingTransaction.changeDestination, sendingTransaction.sourceAddresses);
-
-  std::vector<WalletOuts> wallets;
-  if (!sendingTransaction.sourceAddresses.empty()) {
-    wallets = pickWallets(sendingTransaction.sourceAddresses);
-  } else {
-    wallets = pickWalletsWithMoney();
-  }
-
-  PreparedTransaction preparedTransaction;
-  Crypto::SecretKey txSecretKey;
-  prepareTransaction(
-    std::move(wallets),
-    sendingTransaction.destinations,
-    sendingTransaction.fee,
-    sendingTransaction.mixIn,
-    sendingTransaction.extra,
-    sendingTransaction.unlockHeightstamp,
-    sendingTransaction.donation,
-    changeDestination,
-    preparedTransaction,
-    txSecretKey);
-
-  BinaryArray transactionData = preparedTransaction.transaction->getTransactionData();
-  return transactionData.size();
+  // PQ transactions are built and size/count-coarsened internally by buildPqSend,
+  // so the front-end never needs to pre-split by size: report 0 (never "too large").
+  return 0;
 }
 
 void WalletGreen::clearCacheAndShutdown()
