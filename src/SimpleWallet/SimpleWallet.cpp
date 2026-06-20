@@ -2041,15 +2041,6 @@ bool simple_wallet::restore_seed(const std::vector<std::string>& args/* = std::v
   return true;
 }
 //----------------------------------------------------------------------------------------------------
-bool simple_wallet::show_balance(const std::vector<std::string>& args/* = std::vector<std::string>()*/) {
-  success_msg_writer() << "available: " << m_currency.formatAmount(m_wallet->actualBalance());
-  success_msg_writer() << "pending: " << m_currency.formatAmount(m_wallet->pendingBalance());
-  success_msg_writer() << "unmixable: " << m_currency.formatAmount(m_wallet->unmixableBalance());
-  success_msg_writer() << "total balance: " << m_currency.formatAmount(m_wallet->actualBalance() + m_wallet->pendingBalance());
-
-  return true;
-}
-//----------------------------------------------------------------------------------------------------
 bool simple_wallet::show_incoming_transfers(const std::vector<std::string>& args) {
   bool hasTransfers = false;
   size_t transactionsCount = m_wallet->getTransactionCount();

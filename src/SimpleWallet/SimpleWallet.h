@@ -108,7 +108,6 @@ namespace CryptoNote
     bool exit(const std::vector<std::string> &args);
     bool start_mining(const std::vector<std::string> &args);
     bool stop_mining(const std::vector<std::string> &args);
-    bool show_balance(const std::vector<std::string> &args = std::vector<std::string>());
     bool show_keys(const std::vector<std::string> &args = std::vector<std::string>());
     bool export_keys_to_file(const std::vector<std::string>& args = std::vector<std::string>());
     bool show_tracking_key(const std::vector<std::string> &args = std::vector<std::string>());
