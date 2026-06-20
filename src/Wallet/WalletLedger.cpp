@@ -195,7 +195,17 @@ bool WalletLedger::processTransaction(const TransactionPrefix& tx, const Crypto:
     CryptoPQ::Hash256 ownTxid;
     std::memcpy(ownTxid.data(), txid.data, 32);
     Crypto::Hash nf = toHash(CryptoPQ::nullifier(ownerSpendPub, owned->rho, ownTxid, i));
-    if (m_byNullifier.count(nf)) {
+    auto existing = m_byNullifier.find(nf);
+    if (existing != m_byNullifier.end()) {
+      // Already recorded (idempotent re-scan). If we first saw this output in the
+      // mempool and now see its transaction confirmed, promote its height so it
+      // moves out of the pending balance into the confirmed (spendable) balance.
+      PqWalletOutput& o = m_outputs[existing->second];
+      if (o.height == UNCONFIRMED_HEIGHT && height != UNCONFIRMED_HEIGHT) {
+        o.height = height;
+        o.unlockHeight = out.unlockHeight;
+        affected = true;
+      }
       continue;
     }
 

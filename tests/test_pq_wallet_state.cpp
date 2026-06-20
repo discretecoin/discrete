@@ -111,6 +111,26 @@ TEST(WalletLedger, CreditsOwnedOutput) {
     EXPECT_EQ(st.balance(), 800000u);
 }
 
+TEST(WalletLedger, PoolThenConfirmPromotesOutputToConfirmed) {
+    PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
+    PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
+
+    WalletLedger st(me);
+    Funded f = payTo(them, me, 1000000, 800000, 0x11);
+
+    // First seen in the mempool: the output is pending, not yet confirmed.
+    EXPECT_TRUE(st.processTransaction(f.tx, f.txid, WalletLedger::UNCONFIRMED_HEIGHT));
+    EXPECT_EQ(st.balance(), 800000u);
+    EXPECT_EQ(st.pendingBalance(), 800000u);
+
+    // Its transaction is then mined: the same output must move from pending to
+    // confirmed, otherwise received funds would never become available to spend.
+    EXPECT_TRUE(st.processTransaction(f.tx, f.txid, 100));
+    EXPECT_EQ(st.balance(), 800000u);     // total unchanged
+    EXPECT_EQ(st.pendingBalance(), 0u);   // no longer pending
+    EXPECT_EQ(st.unspentCount(), 1u);     // exactly one output, not duplicated
+}
+
 TEST(WalletLedger, IgnoresOutputsForOtherWallets) {
     PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
     PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
