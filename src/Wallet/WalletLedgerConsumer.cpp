@@ -60,6 +60,8 @@ uint32_t WalletLedgerConsumer::onNewBlocks(const CompleteBlock* blocks, uint32_t
   }
 
   uint32_t processed = 0;
+  std::vector<Crypto::Hash> blockHashes;
+  blockHashes.reserve(count);
   try {
     for (uint32_t i = 0; i < count; ++i) {
       const CompleteBlock& cb = blocks[i];
@@ -72,12 +74,20 @@ uint32_t WalletLedgerConsumer::onNewBlocks(const CompleteBlock* blocks, uint32_t
           }
         }
       }
+      blockHashes.push_back(cb.blockHash);
       ++processed;
       m_state.setLastScannedHeight(height);
     }
   } catch (const std::exception& e) {
     m_logger(Logging::ERROR, Logging::BRIGHT_RED)
         << "PQ scan failed at block " << (startHeight + processed) << ": " << e.what();
+  }
+
+  // Feed the wallet's block-hash list (the front-end's m_blockchain). Previously
+  // this came from the classical TransfersConsumer's onBlocksAdded; the PQ consumer
+  // is now the sole sync driver, so it must emit the block hashes it processed.
+  if (!blockHashes.empty()) {
+    m_observerManager.notify(&IBlockchainConsumerObserver::onBlocksAdded, this, blockHashes);
   }
   return processed;
 }

@@ -291,12 +291,11 @@ void WalletGreen::clearCaches(bool clearTransactions, bool clearCachedData) {
   }
 
   if (clearCachedData) {
-    size_t walletIndex = 0;
     for (auto it = m_walletsContainer.begin(); it != m_walletsContainer.end(); ++it) {
-      m_walletsContainer.modify(it, [&walletIndex](WalletRecord& wallet) {
+      m_walletsContainer.modify(it, [this](WalletRecord& wallet) {
         wallet.actualBalance = 0;
         wallet.pendingBalance = 0;
-        wallet.container = reinterpret_cast<CryptoNote::ITransfersContainer*>(walletIndex++); //dirty hack. container field must be unique
+        wallet.container = reinterpret_cast<CryptoNote::ITransfersContainer*>(++m_containerIdSeq); // unique synthetic key
       });
     }
 
@@ -867,45 +866,17 @@ void WalletGreen::loadSpendKeys() {
 
     wallet.actualBalance = 0;
     wallet.pendingBalance = 0;
-    wallet.container = reinterpret_cast<CryptoNote::ITransfersContainer*>(i); //dirty hack. container field must be unique
+    wallet.container = reinterpret_cast<CryptoNote::ITransfersContainer*>(++m_containerIdSeq); // unique synthetic key
 
     m_walletsContainer.emplace_back(std::move(wallet));
   }
 }
 
 void WalletGreen::subscribeWallets() {
-  try {
-    auto& index = m_walletsContainer.get<RandomAccessIndex>();
-
-    for (auto it = index.begin(); it != index.end(); ++it) {
-      const auto& wallet = *it;
-
-      AccountSubscription sub;
-      sub.keys.address.viewPublicKey = m_viewPublicKey;
-      sub.keys.address.spendPublicKey = wallet.spendPublicKey;
-      sub.keys.viewSecretKey = m_viewSecretKey;
-      sub.keys.spendSecretKey = wallet.spendSecretKey;
-      sub.transactionSpendableAge = m_transactionSoftLockTime;
-      sub.syncStart.height = 0;
-      sub.syncStart.timestamp = std::max(static_cast<uint64_t>(wallet.creationTimestamp), ACCOUNT_CREATE_TIME_ACCURACY) - ACCOUNT_CREATE_TIME_ACCURACY;
-
-      auto& subscription = m_synchronizer.addSubscription(sub);
-      bool r = index.modify(it, [&subscription](WalletRecord& rec) { rec.container = &subscription.getContainer(); });
-      assert(r);
-
-      subscription.addObserver(this);
-    }
-  } catch (const std::exception& e) {
-    m_logger(ERROR, BRIGHT_RED) << "Failed to subscribe wallets: " << e.what();
-
-    std::vector<AccountPublicAddress> subscriptionList;
-    m_synchronizer.getSubscriptions(subscriptionList);
-    for (auto& subscription : subscriptionList) {
-      m_synchronizer.removeSubscription(subscription);
-    }
-
-    throw;
-  }
+  // No-op: the classical TransfersSyncronizer is no longer a sync driver. Scanning
+  // is done entirely by the PQ ledger consumer (created in initPqConsumer); each
+  // WalletRecord.container already holds its unique synthetic key from loadSpendKeys
+  // / clearCaches, and is never used as a real ITransfersContainer.
 }
 
 void WalletGreen::convertAndLoadWalletFile(const std::string& path, std::ifstream&& walletFileStream) {
@@ -1487,25 +1458,22 @@ std::string WalletGreen::addWallet(const Crypto::PublicKey& spendPublicKey, cons
     sub.syncStart.height = 0;
     sub.syncStart.timestamp = std::max(creationTimestamp, ACCOUNT_CREATE_TIME_ACCURACY) - ACCOUNT_CREATE_TIME_ACCURACY;
 
-    auto& trSubscription = m_synchronizer.addSubscription(sub);
-    ITransfersContainer* container = &trSubscription.getContainer();
-
     WalletRecord wallet;
     wallet.spendPublicKey = spendPublicKey;
     wallet.spendSecretKey = spendSecretKey;
-    wallet.container = container;
+    wallet.container = reinterpret_cast<ITransfersContainer*>(++m_containerIdSeq); // unique synthetic key
     wallet.creationTimestamp = static_cast<time_t>(creationTimestamp);
     wallet.hdIndex = hdIndex;
-    trSubscription.addObserver(this);
 
     index.insert(insertIt, std::move(wallet));
     m_logger(DEBUGGING) << "Wallet count " << m_walletsContainer.size();
 
     if (index.size() == 1) {
       m_synchronizer.subscribeConsumerNotifications(m_viewPublicKey, this);
-      initBlockchain(m_viewPublicKey);
-      // The PQ identity derives from the primary address's spend secret.
+      // The PQ identity derives from the primary address's spend secret. Create the
+      // consumer first so the block list (m_blockchain) can be seeded from it.
       initPqConsumer(spendSecretKey, sub.syncStart);
+      initBlockchain(m_viewPublicKey);
     }
 
     auto address = m_currency.accountAddressAsString({ spendPublicKey, m_viewPublicKey });
@@ -3244,6 +3212,15 @@ void WalletGreen::blocksRollback(uint32_t blockIndex) {
   blockHeightIndex.erase(std::next(blockHeightIndex.begin(), blockIndex), blockHeightIndex.end());
 }
 
+// IBlockchainConsumerObserver: block list + reorgs straight from the PQ consumer.
+void WalletGreen::onBlocksAdded(IBlockchainConsumer* /*consumer*/, const std::vector<Crypto::Hash>& blockHashes) {
+  m_dispatcher.remoteSpawn([this, blockHashes] () { blocksAdded(blockHashes); } );
+}
+
+void WalletGreen::onBlockchainDetach(IBlockchainConsumer* /*consumer*/, uint32_t blockIndex) {
+  m_dispatcher.remoteSpawn([this, blockIndex] () { blocksRollback(blockIndex); } );
+}
+
 void WalletGreen::onTransactionDeleteBegin(const Crypto::PublicKey& viewPublicKey, Crypto::Hash transactionHash) {
   m_dispatcher.remoteSpawn([=]() { transactionDeleteBegin(transactionHash); });
 }
@@ -3466,6 +3443,7 @@ void WalletGreen::initPqConsumer(const Crypto::SecretKey& spendSecretKey,
   PqWalletKeys pqKeys = derivePqWalletKeys(spendSecretKey);
   m_pqConsumer.reset(new WalletLedgerConsumer(pqKeys, syncStart, m_logger.getLogger()));
   m_blockchainSynchronizer.addConsumer(m_pqConsumer.get());
+  m_pqConsumer->addObserver(this);  // m_blockchain (block list) is fed from here
   syncPqDepositConfigToState();
 }
 
@@ -3476,6 +3454,7 @@ void WalletGreen::initPqConsumer(const PqTrackingKeys& pqTrackingKeys,
   }
   m_pqConsumer.reset(new WalletLedgerConsumer(pqTrackingKeys, syncStart, m_logger.getLogger()));
   m_blockchainSynchronizer.addConsumer(m_pqConsumer.get());
+  m_pqConsumer->addObserver(this);  // m_blockchain (block list) is fed from here
   syncPqDepositConfigToState();
 }
 
@@ -4071,8 +4050,14 @@ void WalletGreen::filterOutTransactions(WalletTransactions& transactions, Wallet
   }
 }
 
-void WalletGreen::initBlockchain(const Crypto::PublicKey& viewPublicKey) {
-  std::vector<Crypto::Hash> blockchain = m_synchronizer.getViewKeyKnownBlocks(m_viewPublicKey);
+void WalletGreen::initBlockchain(const Crypto::PublicKey& /*viewPublicKey*/) {
+  if (!m_pqConsumer) {
+    return;
+  }
+  // The PQ consumer owns the wallet's sync cursor; its known block hashes seed the
+  // local block list. Duplicate hashes (e.g. a genesis already pushed by initWithKeys)
+  // are skipped by the container's unique block-hash index.
+  std::vector<Crypto::Hash> blockchain = m_blockchainSynchronizer.getConsumerKnownBlocks(*m_pqConsumer);
   m_blockchain.insert(m_blockchain.end(), blockchain.begin(), blockchain.end());
 }
 

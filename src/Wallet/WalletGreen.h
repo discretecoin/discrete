@@ -42,7 +42,8 @@ namespace CryptoNote {
 class WalletGreen : public IWallet,
                     ITransfersObserver,
                     IBlockchainSynchronizerObserver,
-                    ITransfersSynchronizerObserver {
+                    ITransfersSynchronizerObserver,
+                    IBlockchainConsumerObserver {
 public:
   WalletGreen(System::Dispatcher& dispatcher, const Currency& currency, INode& node, Logging::ILogger& logger, uint32_t transactionSoftLockTime = CryptoNote::parameters::CRYPTONOTE_TX_SPENDABLE_AGE);
   virtual ~WalletGreen();
@@ -294,6 +295,11 @@ protected:
   virtual void onBlockchainDetach(const Crypto::PublicKey& viewPublicKey, uint32_t blockIndex) override;
   void blocksRollback(uint32_t blockIndex);
 
+  // IBlockchainConsumerObserver: the PQ ledger consumer is the sole sync driver, so
+  // the block list (m_blockchain) and reorg notifications come straight from it.
+  virtual void onBlocksAdded(IBlockchainConsumer* consumer, const std::vector<Crypto::Hash>& blockHashes) override;
+  virtual void onBlockchainDetach(IBlockchainConsumer* consumer, uint32_t blockIndex) override;
+
   virtual void onTransactionDeleteBegin(const Crypto::PublicKey& viewPublicKey, Crypto::Hash transactionHash) override;
   void transactionDeleteBegin(Crypto::Hash transactionHash);
 
@@ -474,6 +480,10 @@ protected:
   // spend secret or PQ tracking credential is present).
   std::unique_ptr<WalletLedgerConsumer> m_pqConsumer;
   std::unique_ptr<PqTrackingKeys> m_pqTrackingKeys;
+  // Monotonic, never-reused token used only as the unique key of each WalletRecord
+  // in the wallet container, now that the classical per-address TransfersContainer
+  // is gone (the field is never dereferenced).
+  uintptr_t m_containerIdSeq = 0;
 
   System::Event m_eventOccurred;
   std::queue<WalletEvent> m_events;
