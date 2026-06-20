@@ -375,6 +375,10 @@ protected:
 
   size_t insertBlockchainTransaction(const TransactionInformation& info, int64_t txBalance);
   size_t insertOutgoingTransactionAndPushEvent(const Crypto::Hash& transactionHash, uint64_t fee, const BinaryArray& extra, uint64_t unlockHeightstamp, Crypto::SecretKey& txSecretKey);
+  // Scan a just-built+relayed PQ transaction into the ledger so it gets a native
+  // history row/id immediately, and return that id (WALLET_INVALID_TRANSACTION_ID
+  // if the wallet has no PQ consumer).
+  size_t registerSentPqTransaction(const CryptoNote::Transaction& tx);
   void updateTransactionStateAndPushEvent(size_t transactionId, WalletTransactionState state);
   bool updateWalletTransactionInfo(size_t transactionId, const CryptoNote::TransactionInformation& info, int64_t totalAmount);
   bool updateTransactionTransfers(size_t transactionId, const std::vector<ContainerAmounts>& containerAmountsList,

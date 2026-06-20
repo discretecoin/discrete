@@ -1836,21 +1836,6 @@ WalletGreen::TransfersRange WalletGreen::getTransactionTransfersRange(size_t tra
 }
 
 size_t WalletGreen::transfer(const TransactionParameters& transactionParameters, Crypto::SecretKey& txSecretKey) {
-  size_t id = WALLET_INVALID_TRANSACTION_ID;
-  Tools::ScopeExit releaseContext([this, &id] {
-    //m_dispatcher.yield();
-
-    if (id != WALLET_INVALID_TRANSACTION_ID) {
-      auto& tx = m_transactions[id];
-      m_logger(INFO, BRIGHT_WHITE) << "Transaction created and sent, ID " << id <<
-        ", hash " << m_transactions[id].hash <<
-        ", state " << tx.state <<
-        ", totalAmount " << m_currency.formatAmount(tx.totalAmount) <<
-        ", fee " << m_currency.formatAmount(tx.fee) <<
-        ", transfers: " << TransferListFormatter(m_currency, getTransactionTransfersRange(id));
-    }
-  });
-
   System::EventLock lk(m_readyEvent);
 
   throwIfNotInitialized();
@@ -1858,34 +1843,43 @@ size_t WalletGreen::transfer(const TransactionParameters& transactionParameters,
   throwIfStopped();
 
   m_logger(INFO, BRIGHT_WHITE) << "transfer" <<
-    ", from " << Common::makeContainerFormatter(transactionParameters.sourceAddresses) <<
     ", to " << WalletOrderListFormatter(m_currency, transactionParameters.destinations) <<
-    ", change address '" << transactionParameters.changeDestination << '\'' <<
     ", fee " << m_currency.formatAmount(transactionParameters.fee) <<
-    ", mixin " << transactionParameters.mixIn <<
     ", unlockHeightstamp " << transactionParameters.unlockHeightstamp;
 
-  id = doTransfer(transactionParameters, txSecretKey);
+  // PQ is the native ledger: resolve the destinations as PQ recipients and build,
+  // sign and relay through the common sender. The classical ECC coin-selection path
+  // is gone (every output on this chain is post-quantum).
+  std::vector<PqSendOutput> recipients;
+  recipients.reserve(transactionParameters.destinations.size());
+  for (const auto& dst : transactionParameters.destinations) {
+    CryptoPQ::KemPublicKey viewPub;
+    CryptoPQ::DsaPublicKey spendPub;
+    uint64_t subaddrT = 0;
+    if (!resolvePqRecipient(m_node, dst.address, viewPub, spendPub, subaddrT)) {
+      m_logger(ERROR, BRIGHT_RED) << "Invalid recipient: " << dst.address;
+      throw std::system_error(make_error_code(error::BAD_ADDRESS));
+    }
+    recipients.push_back(PqSendOutput{viewPub, spendPub, dst.amount, subaddrT});
+  }
+
+  std::vector<uint8_t> extra(transactionParameters.extra.begin(), transactionParameters.extra.end());
+  PqSendResult result = sendPqTransfer(recipients, transactionParameters.fee,
+                                       transactionParameters.unlockHeightstamp, extra);
+  txSecretKey = NULL_SECRET_KEY;  // PQ transactions carry no per-tx secret key
+
+  size_t id = registerSentPqTransaction(result.tx);
+  m_logger(INFO, BRIGHT_WHITE) << "PQ transaction sent, hash " << getObjectHash(result.tx) <<
+    ", amount " << m_currency.formatAmount(result.sent) <<
+    ", fee " << m_currency.formatAmount(result.fee);
   return id;
 }
 
-uint64_t WalletGreen::getBalanceMinusDust(const std::vector<std::string>& addresses)
+uint64_t WalletGreen::getBalanceMinusDust(const std::vector<std::string>& /*addresses*/)
 {
-  std::vector<WalletOuts> wallets = addresses.empty() ? pickWalletsWithMoney() : pickWallets(addresses);
-  std::vector<OutputToTransfer> unused;
-
-  /* We want to get the full balance, so don't stop getting outputs early */
-  uint64_t needed = std::numeric_limits<uint64_t>::max();
-
-  return selectTransfers
-  (
-    needed,
-    /* Don't include dust outputs */
-    false,
-    m_currency.defaultDustThreshold(),
-    std::move(wallets),
-    unused
-  );
+  // PQ output amounts are drawn from the fixed canonical denomination table, so
+  // there is no unspendable "dust"; the full confirmed balance is spendable.
+  return getActualBalance();
 }
 
 void WalletGreen::prepareTransaction(std::vector<WalletOuts>&& wallets,
@@ -2149,63 +2143,15 @@ size_t WalletGreen::doTransfer(const TransactionParameters& transactionParameter
   return validateSaveAndSendTransaction(*preparedTransaction.transaction, preparedTransaction.destinations, true);
 }
 
-size_t WalletGreen::makeTransaction(const TransactionParameters& sendingTransaction) {
-  size_t id = WALLET_INVALID_TRANSACTION_ID;
-  Tools::ScopeExit releaseContext([this, &id] {
-    //m_dispatcher.yield();
-
-    if (id != WALLET_INVALID_TRANSACTION_ID) {
-      auto& tx = m_transactions[id];
-      m_logger(INFO, BRIGHT_WHITE) << "Delayed transaction created, ID " << id <<
-        ", hash " << m_transactions[id].hash <<
-        ", state " << tx.state <<
-        ", totalAmount " << m_currency.formatAmount(tx.totalAmount) <<
-        ", fee " << m_currency.formatAmount(tx.fee) <<
-        ", transfers: " << TransferListFormatter(m_currency, getTransactionTransfersRange(id));
-    }
-  });
-
-  System::EventLock lk(m_readyEvent);
-
+size_t WalletGreen::makeTransaction(const TransactionParameters& /*sendingTransaction*/) {
   throwIfNotInitialized();
   throwIfTrackingMode();
   throwIfStopped();
 
-  m_logger(INFO, BRIGHT_WHITE) << "makeTransaction" <<
-    ", from " << Common::makeContainerFormatter(sendingTransaction.sourceAddresses) <<
-    ", to " << WalletOrderListFormatter(m_currency, sendingTransaction.destinations) <<
-    ", change address '" << sendingTransaction.changeDestination << '\'' <<
-    ", fee " << m_currency.formatAmount(sendingTransaction.fee) <<
-    ", mixin " << sendingTransaction.mixIn <<
-    ", unlockHeightstamp " << sendingTransaction.unlockHeightstamp;
-
-  validateTransactionParameters(sendingTransaction);
-  CryptoNote::AccountPublicAddress changeDestination = getChangeDestination(sendingTransaction.changeDestination, sendingTransaction.sourceAddresses);
-  m_logger(DEBUGGING) << "Change address " << m_currency.accountAddressAsString(changeDestination);
-
-  std::vector<WalletOuts> wallets;
-  if (!sendingTransaction.sourceAddresses.empty()) {
-    wallets = pickWallets(sendingTransaction.sourceAddresses);
-  } else {
-    wallets = pickWalletsWithMoney();
-  }
-
-  PreparedTransaction preparedTransaction;
-  Crypto::SecretKey txSecretKey;
-  prepareTransaction(
-    std::move(wallets),
-    sendingTransaction.destinations,
-    sendingTransaction.fee,
-    sendingTransaction.mixIn,
-    sendingTransaction.extra,
-    sendingTransaction.unlockHeightstamp,
-    sendingTransaction.donation,
-    changeDestination,
-    preparedTransaction,
-    txSecretKey);
-
-  id = validateSaveAndSendTransaction(*preparedTransaction.transaction, preparedTransaction.destinations, false);
-  return id;
+  // Delayed (uncommitted) transactions relied on the classical build-without-relay
+  // path. The PQ sender always builds-and-relays; a deferred PQ flow is not wired.
+  throw std::system_error(make_error_code(std::errc::function_not_supported),
+    "Delayed transactions are not supported on the post-quantum wallet");
 }
 
 void WalletGreen::commitTransaction(size_t transactionId) {
@@ -3077,23 +3023,14 @@ std::vector<size_t> WalletGreen::getDelayedTransactionIds() const {
   return result;
 }
 
-std::vector<TransactionOutputInformation> WalletGreen::getTransfers(size_t index, uint32_t flags) const {
+std::vector<TransactionOutputInformation> WalletGreen::getTransfers(size_t /*index*/, uint32_t /*flags*/) const {
   throwIfNotInitialized();
   throwIfStopped();
   throwIfTrackingMode();
 
-  std::vector<TransactionOutputInformation> allTransfers;
-  auto& walletsIndex = m_walletsContainer.get<RandomAccessIndex>();
-  for (const auto& wallet: walletsIndex) {
-    if (wallet.actualBalance == 0) {
-      continue;
-    }
-
-    ITransfersContainer* container = wallet.container;
-    container->getOutputs(allTransfers, flags /*ITransfersContainer::IncludeKeyUnlocked*/);
-  };
-
-  return allTransfers;
+  // Classical per-address output enumeration is gone; PQ outputs live in the
+  // WalletLedger (queried via pqSpendableInputs / the deposit-balance accessors).
+  return std::vector<TransactionOutputInformation>();
 }
 
 Crypto::SecretKey WalletGreen::getTransactionDeterministicSecretKey(Crypto::Hash& transactionHash) const {
@@ -3751,6 +3688,23 @@ PqSendResult WalletGreen::sendPqTransfer(const std::vector<PqSendOutput>& recipi
     throw std::system_error(ec, "failed to relay transaction");
   }
   return result;
+}
+
+size_t WalletGreen::registerSentPqTransaction(const Transaction& tx) {
+  if (!m_pqConsumer) {
+    return WALLET_INVALID_TRANSACTION_ID;
+  }
+  auto reader = createTransactionPrefix(tx);
+  m_pqConsumer->addUnconfirmedTransaction(*reader);
+
+  Crypto::Hash txid = getObjectHash(tx);
+  const auto& hist = m_pqConsumer->state().history();
+  for (size_t i = 0; i < hist.size(); ++i) {
+    if (hist[i].txid == txid) {
+      return i;
+    }
+  }
+  return WALLET_INVALID_TRANSACTION_ID;
 }
 
 PqSendResult WalletGreen::registerPqAccountPaid() {
