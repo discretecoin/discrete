@@ -76,7 +76,12 @@ TEST_F(PaymentGateTest, createWallet) {
   auto service = createWalletService(cfg);
 }
 
-TEST_F(PaymentGateTest, addTransaction) {
+// DISABLED: this is a classical-era test. On the PQ-only chain createAddress()
+// returns a PQ address (not a classical one parseAccountAddressString accepts),
+// and getBlockRewardForAddress mines classical coinbases the PQ ledger never
+// credits. The wallet-side balance flow is covered by PqWalletSyncE2E
+// (TestWallet.cpp PqWalletIntegration), which drives a real WalletGreen sync.
+TEST_F(PaymentGateTest, DISABLED_addTransaction) {
   auto cfg = createWalletConfiguration();
   generateWallet(cfg);
   auto service = createWalletService(cfg);
@@ -104,6 +109,34 @@ TEST_F(PaymentGateTest, addTransaction) {
   ASSERT_NE(0, actual);
 
   ASSERT_EQ(pending * 2, actual);
+}
+
+// Regression: once the PQ ledger is live (which happens as soon as the primary
+// address exists), getAddresses() hands back the wallet's PQ address -- a
+// non-classical encoding. getSpendKeys must accept that exact address and
+// return the underlying classical spend keypair, instead of rejecting it as a
+// "Bad address" because parseAddress() only decodes classical addresses.
+TEST_F(PaymentGateTest, getSpendKeysAcceptsOwnAddress) {
+  auto cfg = createWalletConfiguration();
+  generateWallet(cfg);
+  auto service = createWalletService(cfg);
+
+  std::vector<std::string> addresses;
+  ASSERT_FALSE(service->getAddresses(addresses));
+  ASSERT_FALSE(addresses.empty());
+
+  // The address getAddresses() advertises is exactly what an RPC client feeds
+  // back into getSpendKeys, so this round-trip must succeed.
+  std::string spendPublicKey;
+  std::string spendSecretKey;
+  std::error_code ec = service->getSpendkeys(addresses[0], spendPublicKey, spendSecretKey);
+  ASSERT_FALSE(ec) << "getSpendkeys rejected its own address: " << ec.message();
+
+  // A full (non-tracking) wallet must surface the classical spend secret that
+  // mining keys are derived from.
+  ASSERT_EQ(64u, spendPublicKey.size());
+  ASSERT_EQ(64u, spendSecretKey.size());
+  ASSERT_NE(spendSecretKey, std::string(64, '0'));
 }
 
 /*

@@ -252,15 +252,9 @@ protected:
   virtual void onBlocksAdded(IBlockchainConsumer* consumer, const std::vector<Crypto::Hash>& blockHashes) override;
   virtual void onBlockchainDetach(IBlockchainConsumer* consumer, uint32_t blockIndex) override;
 
-  const WalletRecord& getWalletRecord(const Crypto::PublicKey& key) const;
-  const WalletRecord& getWalletRecord(const std::string& address) const;
-
-  CryptoNote::AccountPublicAddress parseAddress(const std::string& address) const;
   std::string addWallet(const Crypto::PublicKey& spendPublicKey, const Crypto::SecretKey& spendSecretKey, uint64_t creationTimestamp, uint32_t hdIndex = WALLET_INVALID_HD_INDEX);
   size_t getTransactionId(const Crypto::Hash& transactionHash) const;
   void pushEvent(const WalletEvent& event);
-
-  CryptoNote::AccountPublicAddress parseAccountAddressString(const std::string& addressString) const;
 
   // Native history index (transaction id) of a PQ transaction by hash, or
   // WALLET_INVALID_TRANSACTION_ID if it is not in the ledger. Takes the wallet lock.

@@ -691,10 +691,12 @@ bool WalletLegacy::getSeed(std::string& electrum_words)
 }
 
 std::string WalletLegacy::getAddress() {
-  std::unique_lock<std::mutex> lock(m_cacheMutex);
   throwIfNotInitialised();
 
-  return m_currency.accountAddressAsString(m_account);
+  // PQ-native: expose the wallet's post-quantum address, matching greenwallet and
+  // walletd. getPqAddress() locks m_cacheMutex internally (via getPqTrackingKeys),
+  // so this must NOT hold the lock itself.
+  return getPqAddress();
 }
 
 std::string WalletLegacy::sign_message(const std::string &message) {

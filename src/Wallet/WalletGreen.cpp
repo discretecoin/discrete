@@ -894,11 +894,12 @@ size_t WalletGreen::getAddressCount() const {
   throwIfNotInitialized();
   throwIfStopped();
 
-  if (pqEnabled()) {
-    // PQ-native address space: the primary address plus every issued deposit.
-    return static_cast<size_t>(1) + m_pqDepositCount;
+  // PQ-native address space: the primary address plus every issued deposit. A
+  // container with no PQ identity yet (no consumer) exposes no addresses.
+  if (!m_pqConsumer) {
+    return 0;
   }
-  return m_walletsContainer.get<RandomAccessIndex>().size();
+  return static_cast<size_t>(1) + m_pqDepositCount;
 }
 
 AccountPublicAddress WalletGreen::getAccountPublicAddress(size_t index) const {
@@ -915,25 +916,22 @@ AccountPublicAddress WalletGreen::getAccountPublicAddress(size_t index) const {
 }
 
 std::string WalletGreen::getAddress(size_t index) const {
-  if (pqEnabled()) {
-    // Index 0 is the wallet's own PQ address; index i>0 is deposit i-1.
-    if (index == 0) {
-      return getPqAddress();
-    }
-    uint32_t depositIndex = static_cast<uint32_t>(index - 1);
-    if (depositIndex >= m_pqDepositCount) {
-      m_logger(ERROR, BRIGHT_RED) << "Failed to get address: invalid address index " << index;
-      throw std::system_error(make_error_code(std::errc::invalid_argument));
-    }
-    uint32_t regH = 0, regI = 0;
-    if (m_pqDepositScheme == PqDepositScheme::SingleKeyIndex && !pqRegistrationCoords(regH, regI)) {
-      // H-I-T-C needs the account's on-chain coords; surface that it isn't ready.
-      throw std::system_error(make_error_code(error::INTERNAL_WALLET_ERROR),
-                              "single-key-index deposit address requires a confirmed registration");
-    }
-    return pqDepositAddress(depositIndex, regH, regI);
+  // PQ-native: index 0 is the wallet's own PQ address; index i>0 is deposit i-1.
+  if (index == 0) {
+    return getPqAddress();
   }
-  return m_currency.accountAddressAsString(getAccountPublicAddress(index));
+  uint32_t depositIndex = static_cast<uint32_t>(index - 1);
+  if (depositIndex >= m_pqDepositCount) {
+    m_logger(ERROR, BRIGHT_RED) << "Failed to get address: invalid address index " << index;
+    throw std::system_error(make_error_code(std::errc::invalid_argument));
+  }
+  uint32_t regH = 0, regI = 0;
+  if (m_pqDepositScheme == PqDepositScheme::SingleKeyIndex && !pqRegistrationCoords(regH, regI)) {
+    // H-I-T-C needs the account's on-chain coords; surface that it isn't ready.
+    throw std::system_error(make_error_code(error::INTERNAL_WALLET_ERROR),
+                            "single-key-index deposit address requires a confirmed registration");
+  }
+  return pqDepositAddress(depositIndex, regH, regI);
 }
 
 KeyPair WalletGreen::getAddressSpendKey(size_t index) const {
@@ -953,15 +951,22 @@ KeyPair WalletGreen::getAddressSpendKey(const std::string& address) const {
   throwIfNotInitialized();
   throwIfStopped();
 
-  CryptoNote::AccountPublicAddress pubAddr = parseAddress(address);
-
-  auto it = m_walletsContainer.get<KeysIndex>().find(pubAddr.spendPublicKey);
-  if (it == m_walletsContainer.get<KeysIndex>().end()) {
-    m_logger(ERROR, BRIGHT_RED) << "Failed to get address spend key: address not found " << address;
-    throw std::system_error(make_error_code(error::OBJECT_NOT_FOUND));
+  // PQ addresses are not classical CryptoNote addresses. The wallet's PQ identity
+  // and every deposit subaddress derive from the single classical spend key at
+  // index 0, so map any of our own PQ addresses back to it.
+  if (m_pqConsumer) {
+    if (address == getPqAddress()) {
+      return getAddressSpendKey(0);
+    }
+    for (uint32_t i = 0; i < m_pqDepositCount; ++i) {
+      if (address == getAddress(static_cast<size_t>(i) + 1)) {
+        return getAddressSpendKey(0);
+      }
+    }
   }
 
-  return {it->spendPublicKey, it->spendSecretKey};
+  m_logger(ERROR, BRIGHT_RED) << "Failed to get address spend key: address not found " << address;
+  throw std::system_error(make_error_code(error::OBJECT_NOT_FOUND));
 }
 
 KeyPair WalletGreen::getViewKey() const {
@@ -1084,11 +1089,11 @@ WalletGreen::NewAddressData WalletGreen::createHdAddressData(uint64_t creationTi
 }
 
 std::string WalletGreen::createAddress() {
-  // PQ-native: "create address" mints a new deposit (a fresh ML-DSA spend key under
-  // AggregatedMultikey, or the next subaddress index T under SingleKeyIndex) and
-  // returns its address. The classical key-record path is used only for non-PQ
-  // (tracking) containers.
-  if (pqEnabled()) {
+  // The first address bootstraps the wallet's primary spend secret (the seed the
+  // PQ identity derives from); once that exists (the PQ consumer is live) every
+  // further "create address" mints a PQ deposit (a fresh ML-DSA spend key under
+  // AggregatedMultikey, or the next subaddress index T under SingleKeyIndex).
+  if (m_pqConsumer) {
     uint32_t depositIndex = reservePqDepositIndex();
     return getAddress(static_cast<size_t>(depositIndex) + 1);
   }
@@ -1105,7 +1110,8 @@ std::string WalletGreen::createAddress() {
 }
 
 std::string WalletGreen::createAddress(uint32_t scanHeight) {
-  if (pqEnabled()) {
+  // See createAddress(): bootstrap the primary, or mint a deposit once it exists.
+  if (m_pqConsumer) {
     uint32_t depositIndex = reservePqDepositIndex();
     return getAddress(static_cast<size_t>(depositIndex) + 1);
   }
@@ -1481,57 +1487,13 @@ void WalletGreen::deleteAddress(const std::string& address) {
   throwIfNotInitialized();
   throwIfStopped();
 
-  CryptoNote::AccountPublicAddress pubAddr = parseAddress(address);
-
-  auto it = m_walletsContainer.get<KeysIndex>().find(pubAddr.spendPublicKey);
-  if (it == m_walletsContainer.get<KeysIndex>().end()) {
-    m_logger(ERROR, BRIGHT_RED) << "Failed to delete wallet: address not found " << address;
-    throw std::system_error(make_error_code(error::OBJECT_NOT_FOUND));
-  }
-
-  stopBlockchainSynchronizer();
-
-  m_actualBalance -= it->actualBalance;
-  m_pendingBalance -= it->pendingBalance;
-
-  if (it->actualBalance != 0 || it->pendingBalance != 0) {
-    m_logger(INFO, BRIGHT_WHITE) << "Container balance updated, actual " << m_currency.formatAmount(m_actualBalance) <<
-      ", pending " << m_currency.formatAmount(m_pendingBalance);
-  }
-
-  auto addressIndex = std::distance(m_walletsContainer.get<RandomAccessIndex>().begin(), m_walletsContainer.project<RandomAccessIndex>(it));
-
-#if !defined(NDEBUG)
-  Crypto::PublicKey publicKey;
-  Crypto::SecretKey secretKey;
-  uint64_t creationTimestamp;
-  decryptKeyPair(m_containerStorage[addressIndex], publicKey, secretKey, creationTimestamp);
-  assert(publicKey == it->spendPublicKey);
-  assert(secretKey == it->spendSecretKey);
-  assert(creationTimestamp == static_cast<uint64_t>(it->creationTimestamp));
-#endif
-
-  m_containerStorage.erase(std::next(m_containerStorage.begin(), addressIndex));
-
-  std::vector<size_t> deletedTransactions;
-  std::vector<size_t> updatedTransactions = deleteTransfersForAddress(address, deletedTransactions);
-  deleteFromUncommitedTransactions(deletedTransactions);
-
-  m_walletsContainer.get<KeysIndex>().erase(it);
-  m_logger(DEBUGGING) << "Wallet count " << m_walletsContainer.size();
-
-  if (m_walletsContainer.get<RandomAccessIndex>().size() != 0) {
-    startBlockchainSynchronizer();
-  } else {
-    m_blockchain.clear();
-    m_blockchain.push_back(m_currency.genesisBlockHash());
-  }
-
-  for (auto transactionId: updatedTransactions) {
-    pushEvent(makeTransactionUpdatedEvent(transactionId));
-  }
-
-  m_logger(INFO, BRIGHT_WHITE) << "Wallet deleted " << address;
+  // PQ addresses (the primary identity and every deposit subaddress) are derived
+  // from the wallet's single spend secret, not independent records that can be
+  // individually removed. There is nothing to delete.
+  (void)address;
+  m_logger(ERROR, BRIGHT_RED) << "deleteAddress is not supported on a post-quantum wallet";
+  throw std::system_error(make_error_code(std::errc::function_not_supported),
+                          "Deleting addresses is not supported on the post-quantum wallet");
 }
 
 namespace {
@@ -1558,86 +1520,73 @@ uint64_t WalletGreen::getActualBalance() const {
   throwIfNotInitialized();
   throwIfStopped();
 
-  if (pqEnabled()) {
-    // PQ is the native ledger. "Actual" = confirmed (total minus still-in-mempool).
-    const auto& st = m_pqConsumer->state();
-    uint64_t total = st.balance();
-    uint64_t pending = st.pendingBalance();
-    return total >= pending ? total - pending : 0;
+  // PQ is the native ledger. "Actual" = confirmed (total minus still-in-mempool).
+  if (!m_pqConsumer) {
+    return 0;
   }
-  return m_actualBalance;
+  const auto& st = m_pqConsumer->state();
+  uint64_t total = st.balance();
+  uint64_t pending = st.pendingBalance();
+  return total >= pending ? total - pending : 0;
 }
 
 uint64_t WalletGreen::getActualBalance(const std::string& address) const {
   throwIfNotInitialized();
   throwIfStopped();
 
-  if (pqEnabled()) {
-    // Map a PQ address back to its deposit bucket. Primary -> primary balance;
-    // a deposit address -> that deposit's balance; unknown -> 0.
-    if (address == getPqAddress()) {
-      return m_pqConsumer->state().depositBalance(PQ_PRIMARY_DEPOSIT);
-    }
-    for (uint32_t i = 0; i < m_pqDepositCount; ++i) {
-      if (address == getAddress(static_cast<size_t>(i) + 1)) {
-        return m_pqConsumer->state().depositBalance(i);
-      }
-    }
+  if (!m_pqConsumer) {
     return 0;
   }
-
-  const auto& wallet = getWalletRecord(address);
-  return wallet.actualBalance;
+  // Map a PQ address back to its deposit bucket. Primary -> primary balance;
+  // a deposit address -> that deposit's balance; unknown -> 0.
+  if (address == getPqAddress()) {
+    return m_pqConsumer->state().depositBalance(PQ_PRIMARY_DEPOSIT);
+  }
+  for (uint32_t i = 0; i < m_pqDepositCount; ++i) {
+    if (address == getAddress(static_cast<size_t>(i) + 1)) {
+      return m_pqConsumer->state().depositBalance(i);
+    }
+  }
+  return 0;
 }
 
 uint64_t WalletGreen::getPendingBalance() const {
   throwIfNotInitialized();
   throwIfStopped();
 
-  if (pqEnabled()) {
-    return m_pqConsumer->state().pendingBalance();
-  }
-  return m_pendingBalance;
+  return m_pqConsumer ? m_pqConsumer->state().pendingBalance() : 0;
 }
 
 uint64_t WalletGreen::getPendingBalance(const std::string& address) const {
   throwIfNotInitialized();
   throwIfStopped();
 
-  const auto& wallet = getWalletRecord(address);
-  return wallet.pendingBalance;
+  // Per-address pending isn't tracked per deposit; report the wallet's pending
+  // against its primary PQ address (deposits / unknown addresses -> 0).
+  if (m_pqConsumer && address == getPqAddress()) {
+    return m_pqConsumer->state().pendingBalance();
+  }
+  return 0;
 }
 
 size_t WalletGreen::getTransactionCount() const {
   throwIfNotInitialized();
   throwIfStopped();
 
-  if (pqEnabled()) {
-    return m_pqConsumer->state().historyCount();
-  }
-  return m_transactions.get<RandomAccessIndex>().size();
+  return m_pqConsumer ? m_pqConsumer->state().historyCount() : 0;
 }
 
 WalletTransaction WalletGreen::getTransaction(size_t transactionIndex) const {
   throwIfNotInitialized();
   throwIfStopped();
 
-  if (pqEnabled()) {
-    const auto& hist = m_pqConsumer->state().history();
-    if (hist.size() <= transactionIndex) {
-      m_logger(ERROR, BRIGHT_RED) << "Failed to get transaction: invalid index " << transactionIndex
-                                  << ". Number of transactions: " << hist.size();
-      throw std::system_error(make_error_code(CryptoNote::error::INDEX_OUT_OF_RANGE));
-    }
-    return pqRowToWalletTx(hist[transactionIndex]);
-  }
-
-  if (m_transactions.size() <= transactionIndex) {
-    m_logger(ERROR, BRIGHT_RED) << "Failed to get transaction: invalid index " << transactionIndex << ". Number of transactions: " << m_transactions.size();
+  const auto* hist = m_pqConsumer ? &m_pqConsumer->state().history() : nullptr;
+  if (hist == nullptr || hist->size() <= transactionIndex) {
+    m_logger(ERROR, BRIGHT_RED) << "Failed to get transaction: invalid index " << transactionIndex
+                                << ". Number of transactions: " << (hist ? hist->size() : 0);
     throw std::system_error(make_error_code(CryptoNote::error::INDEX_OUT_OF_RANGE));
   }
-
-  return m_transactions.get<RandomAccessIndex>()[transactionIndex];
+  return pqRowToWalletTx((*hist)[transactionIndex]);
 }
 
 size_t WalletGreen::getTransactionTransferCount(size_t transactionIndex) const {
@@ -1721,17 +1670,6 @@ uint64_t WalletGreen::getBalanceMinusDust(const std::vector<std::string>& /*addr
   // PQ output amounts are drawn from the fixed canonical denomination table, so
   // there is no unspendable "dust"; the full confirmed balance is spendable.
   return getActualBalance();
-}
-
-CryptoNote::AccountPublicAddress WalletGreen::parseAccountAddressString(const std::string& addressString) const {
-  CryptoNote::AccountPublicAddress address;
-
-  if (!m_currency.parseAccountAddressString(addressString, address)) {
-    m_logger(ERROR, BRIGHT_RED) << "Bad address: " << addressString;
-    throw std::system_error(make_error_code(CryptoNote::error::BAD_ADDRESS));
-  }
-
-  return address;
 }
 
 size_t WalletGreen::makeTransaction(const TransactionParameters& /*sendingTransaction*/) {
@@ -1836,32 +1774,17 @@ WalletTransactionWithTransfers WalletGreen::getTransaction(const Crypto::Hash& t
   throwIfNotInitialized();
   throwIfStopped();
 
-  if (pqEnabled()) {
-    const auto* row = m_pqConsumer->state().historyByTxid(transactionHash);
-    if (row == nullptr) {
-      m_logger(ERROR, BRIGHT_RED) << "Failed to get transaction: not found. Transaction hash " << transactionHash;
-      throw std::system_error(make_error_code(error::OBJECT_NOT_FOUND), "Transaction not found");
-    }
-    WalletTransactionWithTransfers w;
-    w.transaction = pqRowToWalletTx(*row);
-    // Counterparties aren't recoverable from owned-output scanning: report the net
-    // effect against this wallet's own address.
-    w.transfers.push_back(WalletTransfer{WalletTransferType::USUAL, getPqAddress(), row->netAmount});
-    return w;
-  }
-
-  auto& hashIndex = m_transactions.get<TransactionIndex>();
-  auto it = hashIndex.find(transactionHash);
-  if (it == hashIndex.end()) {
+  const auto* row = m_pqConsumer ? m_pqConsumer->state().historyByTxid(transactionHash) : nullptr;
+  if (row == nullptr) {
     m_logger(ERROR, BRIGHT_RED) << "Failed to get transaction: not found. Transaction hash " << transactionHash;
     throw std::system_error(make_error_code(error::OBJECT_NOT_FOUND), "Transaction not found");
   }
-
-  WalletTransactionWithTransfers walletTransaction;
-  walletTransaction.transaction = *it;
-  walletTransaction.transfers = getTransactionTransfers(*it);
-
-  return walletTransaction;
+  WalletTransactionWithTransfers w;
+  w.transaction = pqRowToWalletTx(*row);
+  // Counterparties aren't recoverable from owned-output scanning: report the net
+  // effect against this wallet's own address.
+  w.transfers.push_back(WalletTransfer{WalletTransferType::USUAL, getPqAddress(), row->netAmount});
+  return w;
 }
 
 std::vector<TransactionsInBlockInfo> WalletGreen::getTransactions(const Crypto::Hash& blockHash, size_t count) const {
@@ -1917,33 +1840,19 @@ std::vector<WalletTransactionWithTransfers> WalletGreen::getUnconfirmedTransacti
   throwIfStopped();
 
   std::vector<WalletTransactionWithTransfers> result;
-  if (pqEnabled()) {
-    std::string ownAddress = getPqAddress();
-    for (const auto& row : m_pqConsumer->state().history()) {
-      if (row.height != WalletLedger::UNCONFIRMED_HEIGHT) {
-        continue;
-      }
-      WalletTransactionWithTransfers w;
-      w.transaction = pqRowToWalletTx(row);
-      w.transfers.push_back(WalletTransfer{WalletTransferType::USUAL, ownAddress, row.netAmount});
-      result.push_back(std::move(w));
-    }
+  if (!m_pqConsumer) {
     return result;
   }
-
-  auto lowerBound = m_transactions.get<BlockHeightIndex>().lower_bound(WALLET_UNCONFIRMED_TRANSACTION_HEIGHT);
-  for (auto it = lowerBound; it != m_transactions.get<BlockHeightIndex>().end(); ++it) {
-    if (it->state != WalletTransactionState::SUCCEEDED) {
+  std::string ownAddress = getPqAddress();
+  for (const auto& row : m_pqConsumer->state().history()) {
+    if (row.height != WalletLedger::UNCONFIRMED_HEIGHT) {
       continue;
     }
-
-    WalletTransactionWithTransfers transaction;
-    transaction.transaction = *it;
-    transaction.transfers = getTransactionTransfers(*it);
-
-    result.push_back(transaction);
+    WalletTransactionWithTransfers w;
+    w.transaction = pqRowToWalletTx(row);
+    w.transfers.push_back(WalletTransfer{WalletTransferType::USUAL, ownAddress, row.netAmount});
+    result.push_back(std::move(w));
   }
-
   return result;
 }
 
@@ -2613,32 +2522,6 @@ void WalletGreen::removeUnconfirmedTransaction(const Crypto::Hash& transactionHa
   m_logger(DEBUGGING) << "Unconfirmed transaction removed from BlockchainSynchronizer, hash " << transactionHash;
 }
 
-const WalletRecord& WalletGreen::getWalletRecord(const PublicKey& key) const {
-  auto it = m_walletsContainer.get<KeysIndex>().find(key);
-  if (it == m_walletsContainer.get<KeysIndex>().end()) {
-    m_logger(ERROR, BRIGHT_RED) << "Failed to get wallet: not found. Spend public key " << key;
-    throw std::system_error(make_error_code(error::WALLET_NOT_FOUND));
-  }
-
-  return *it;
-}
-
-const WalletRecord& WalletGreen::getWalletRecord(const std::string& address) const {
-  CryptoNote::AccountPublicAddress pubAddr = parseAddress(address);
-  return getWalletRecord(pubAddr.spendPublicKey);
-}
-
-CryptoNote::AccountPublicAddress WalletGreen::parseAddress(const std::string& address) const {
-  CryptoNote::AccountPublicAddress pubAddr;
-
-  if (!m_currency.parseAccountAddressString(address, pubAddr)) {
-    m_logger(ERROR, BRIGHT_RED) << "Failed to parse address: " << address;
-    throw std::system_error(make_error_code(error::BAD_ADDRESS));
-  }
-
-  return pubAddr;
-}
-
 void WalletGreen::throwIfStopped() const {
   if (m_stopped) {
     m_logger(DEBUGGING, BRIGHT_RED) << "WalletGreen is already stopped";
@@ -2676,54 +2559,30 @@ std::vector<TransactionsInBlockInfo> WalletGreen::getTransactionsInBlocks(uint32
 
   uint32_t stopIndex = static_cast<uint32_t>(std::min(m_blockchain.size(), blockIndex + count));
 
-  if (pqEnabled()) {
-    // PQ-native: group the ledger's confirmed history rows by block height. The
-    // wallet's block-hash list (m_blockchain) still tracks the chain, so heights
-    // map to hashes the same way. Counterparties aren't recoverable, so each tx
-    // carries one net WalletTransfer against the wallet's own address.
-    const auto& hist = m_pqConsumer->state().history();
-    std::string ownAddress = getPqAddress();
-    for (uint32_t height = blockIndex; height < stopIndex; ++height) {
-      TransactionsInBlockInfo info;
-      info.blockHash = m_blockchain[height];
-      for (const auto& row : hist) {
-        if (row.height != height) {
-          continue;
-        }
-        WalletTransactionWithTransfers w;
-        w.transaction = pqRowToWalletTx(row);
-        w.transfers.push_back(WalletTransfer{WalletTransferType::USUAL, ownAddress, row.netAmount});
-        info.transactions.push_back(std::move(w));
-      }
-      result.push_back(std::move(info));
-    }
+  if (!m_pqConsumer) {
     return result;
   }
 
-  auto& blockHeightIndex = m_transactions.get<BlockHeightIndex>();
-
+  // PQ-native: group the ledger's confirmed history rows by block height. The
+  // wallet's block-hash list (m_blockchain) still tracks the chain, so heights
+  // map to hashes the same way. Counterparties aren't recoverable, so each tx
+  // carries one net WalletTransfer against the wallet's own address.
+  const auto& hist = m_pqConsumer->state().history();
+  std::string ownAddress = getPqAddress();
   for (uint32_t height = blockIndex; height < stopIndex; ++height) {
     TransactionsInBlockInfo info;
     info.blockHash = m_blockchain[height];
-
-    auto lowerBound = blockHeightIndex.lower_bound(height);
-    auto upperBound = blockHeightIndex.upper_bound(height);
-    for (auto it = lowerBound; it != upperBound; ++it) {
-      if (it->state != WalletTransactionState::SUCCEEDED) {
+    for (const auto& row : hist) {
+      if (row.height != height) {
         continue;
       }
-
-      WalletTransactionWithTransfers transaction;
-      transaction.transaction = *it;
-
-      transaction.transfers = getTransactionTransfers(*it);
-
-      info.transactions.emplace_back(std::move(transaction));
+      WalletTransactionWithTransfers w;
+      w.transaction = pqRowToWalletTx(row);
+      w.transfers.push_back(WalletTransfer{WalletTransferType::USUAL, ownAddress, row.netAmount});
+      info.transactions.push_back(std::move(w));
     }
-
-    result.emplace_back(std::move(info));
+    result.push_back(std::move(info));
   }
-
   return result;
 }
 
@@ -2791,8 +2650,20 @@ void WalletGreen::initBlockchain(const Crypto::PublicKey& /*viewPublicKey*/) {
 }
 
 bool WalletGreen::isMyAddress(const std::string& addressString) const {
-  CryptoNote::AccountPublicAddress address = parseAccountAddressString(addressString);
-  return m_viewPublicKey == address.viewPublicKey && m_walletsContainer.get<KeysIndex>().count(address.spendPublicKey) != 0;
+  // PQ-native: an address is ours if it matches our primary PQ address or one of
+  // our issued deposit subaddresses.
+  if (!m_pqConsumer || addressString.empty()) {
+    return false;
+  }
+  if (addressString == getPqAddress()) {
+    return true;
+  }
+  for (uint32_t i = 0; i < m_pqDepositCount; ++i) {
+    if (addressString == getAddress(static_cast<size_t>(i) + 1)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 std::vector<size_t> WalletGreen::deleteTransfersForAddress(const std::string& /*address*/, std::vector<size_t>& /*deletedTransactions*/) {
