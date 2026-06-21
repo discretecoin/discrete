@@ -93,19 +93,37 @@ A second `transfer` re-spending the same funds must fail (no double-spend).
 
 ## 7. walletd in both deposit modes
 
+`walletd`'s `--daemon-address` takes the host ONLY; the port is a separate
+`--daemon-port` (unlike `simplewallet`, which accepts `host:port`). `-g`
+*generates the container and exits* — run it once to create, then again WITHOUT
+`-g` to serve.
+
 Aggregated-multikey (Spec 1, default — custodial web wallet):
 ```
+# create (exits):
 walletd --testnet -g --container-file web.wallet --container-password pw \
-        --bind-port 19335 --rpc-password RPC --daemon-address 127.0.0.1:19331 \
-        --aggregated-multikey
+        --aggregated-multikey \
+        --daemon-address 127.0.0.1 --daemon-port 19331
+# serve:
+walletd --testnet --container-file web.wallet --container-password pw \
+        --bind-address 127.0.0.1 --bind-port 19335 --rpc-password RPC \
+        --daemon-address 127.0.0.1 --daemon-port 19331
 ```
 
 Single-key-index (Spec 2 — exchange, H-I-T-C deposits):
 ```
 walletd --testnet -g --container-file ex.wallet --container-password pw \
-        --bind-port 19336 --rpc-password RPC --daemon-address 127.0.0.1:19341 \
-        --single-key-index
+        --single-key-index \
+        --daemon-address 127.0.0.1 --daemon-port 19341
+walletd --testnet --container-file ex.wallet --container-password pw \
+        --bind-address 127.0.0.1 --bind-port 19336 --rpc-password RPC \
+        --daemon-address 127.0.0.1 --daemon-port 19341
 ```
+
+The JSON-RPC is at `POST /json_rpc` with HTTP Basic auth (empty user, the
+`--rpc-password`), e.g. `curl -u :RPC ...`. PQ is the default: `getAddress`/
+`getBalance` return the PQ address/balance; `getStatus`, `registerAccount`,
+`createDepositAddress`, `sendTransaction` work as expected.
 Then, against each (see [WALLETD-PQ.md](WALLETD-PQ.md) for full request bodies):
 `getAddress`, `getBalance`, `registerAccount` (single-key-index requires this before
 `createDepositAddress`), `createDepositAddress` ×3, fund each from Alice's wallet, and
