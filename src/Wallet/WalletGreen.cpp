@@ -167,8 +167,6 @@ WalletGreen::WalletGreen(System::Dispatcher& dispatcher, const Currency& currenc
   m_addressGenerationMode(AddressGenerationMode::INDEPENDENT_SPEND_KEYS),
   m_deterministicSeed(NULL_SECRET_KEY),
   m_nextDeterministicIndex(0),
-  m_actualBalance(0),
-  m_pendingBalance(0),
   m_transactionSoftLockTime(transactionSoftLockTime)
 {
   m_upperTransactionSizeLimit = m_currency.maxTransactionSizeLimit();
@@ -278,38 +276,15 @@ void WalletGreen::doShutdown() {
   m_state = WalletState::NOT_INITIALIZED;
 }
 
-void WalletGreen::clearCaches(bool clearTransactions, bool clearCachedData) {
-  if (clearTransactions) {
-    m_transactions.clear();
-    m_transfers.clear();
-  }
-
+void WalletGreen::clearCaches(bool /*clearTransactions*/, bool clearCachedData) {
   if (clearCachedData) {
-    for (auto it = m_walletsContainer.begin(); it != m_walletsContainer.end(); ++it) {
-      m_walletsContainer.modify(it, [](WalletRecord& wallet) {
-        wallet.actualBalance = 0;
-        wallet.pendingBalance = 0;
-      });
-    }
-
-    if (!clearTransactions) {
-      for (auto it = m_transactions.begin(); it != m_transactions.end(); ++it) {
-        m_transactions.modify(it, [](WalletTransaction& tx) {
-          tx.state = WalletTransactionState::CANCELLED;
-          tx.blockHeight = WALLET_UNCONFIRMED_TRANSACTION_HEIGHT;
-        });
-      }
-    }
-
+    // Drop the PQ ledger + block list so the next sync rescans from scratch. The
+    // consumer is recreated by initPqConsumerForPrimary() on the following load.
     if (m_pqConsumer) {
       m_blockchainSynchronizer.removeConsumer(m_pqConsumer.get());
       m_pqConsumer.reset();
     }
 
-    m_uncommitedTransactions.clear();
-    m_unlockTransactionsJob.clear();
-    m_actualBalance = 0;
-    m_pendingBalance = 0;
     m_blockchain.clear();
   }
 }
@@ -569,8 +544,7 @@ void WalletGreen::load(const std::string& path, const std::string& password, std
   m_state = WalletState::INITIALIZED;
   m_logger(INFO, BRIGHT_WHITE) << "Container loaded, view public key " << m_viewPublicKey <<
     ", wallet count " << m_walletsContainer.size() <<
-    ", actual balance " << m_currency.formatAmount(m_actualBalance) <<
-    ", pending balance " << m_currency.formatAmount(m_pendingBalance);
+    ", balance " << m_currency.formatAmount(getActualBalance());
 }
 
 void WalletGreen::load(const std::string& path, const std::string& password) {
@@ -615,13 +589,7 @@ void WalletGreen::loadWalletCache(std::unordered_set<Crypto::PublicKey>& addedKe
     m_addressGenerationMode,
     m_deterministicSeed,
     m_nextDeterministicIndex,
-    m_actualBalance,
-    m_pendingBalance,
     m_walletsContainer,
-    m_unlockTransactionsJob,
-    m_transactions,
-    m_transfers,
-    m_uncommitedTransactions,
     extra,
     m_transactionSoftLockTime,
     m_pqState
@@ -643,26 +611,6 @@ void WalletGreen::loadWalletCache(std::unordered_set<Crypto::PublicKey>& addedKe
 void WalletGreen::saveWalletCache(ContainerStorage& storage, const Crypto::chacha8_key& key, WalletSaveLevel saveLevel, const std::string& extra) {
   m_logger(DEBUGGING) << "Saving cache...";
 
-  WalletTransactions transactions;
-  WalletTransfers transfers;
-
-  if (saveLevel == WalletSaveLevel::SAVE_KEYS_AND_TRANSACTIONS) {
-    filterOutTransactions(transactions, transfers, [](const WalletTransaction& tx) {
-      return tx.state == WalletTransactionState::CREATED || tx.state == WalletTransactionState::DELETED;
-    });
-
-    for (auto it = transactions.begin(); it != transactions.end(); ++it) {
-      transactions.modify(it, [](WalletTransaction& tx) {
-        tx.state = WalletTransactionState::CANCELLED;
-        tx.blockHeight = WALLET_UNCONFIRMED_TRANSACTION_HEIGHT;
-      });
-    }
-  } else if (saveLevel == WalletSaveLevel::SAVE_ALL) {
-    filterOutTransactions(transactions, transfers, [](const WalletTransaction& tx) {
-      return tx.state == WalletTransactionState::DELETED;
-    });
-  }
-
   // Capture the current PQ consumer cursor + owned outputs so they persist.
   buildPqStateBlob();
 
@@ -675,13 +623,7 @@ void WalletGreen::saveWalletCache(ContainerStorage& storage, const Crypto::chach
     m_addressGenerationMode,
     m_deterministicSeed,
     m_nextDeterministicIndex,
-    m_actualBalance,
-    m_pendingBalance,
     m_walletsContainer,
-    m_unlockTransactionsJob,
-    transactions,
-    transfers,
-    m_uncommitedTransactions,
     const_cast<std::string&>(extra),
     m_transactionSoftLockTime,
     m_pqState
@@ -777,17 +719,9 @@ void WalletGreen::loadAndDecryptContainerData(ContainerStorage& storage, const C
   chacha8(encryptedContainer.data(), encryptedContainer.size(), key, suffixIv, reinterpret_cast<char*>(containerData.data()));
 }
 
-void WalletGreen::deleteOrphanTransactions(const std::unordered_set<Crypto::PublicKey>& deletedKeys) {
-  for (auto spendPublicKey : deletedKeys) {
-    AccountPublicAddress deletedAccountAddress;
-    deletedAccountAddress.spendPublicKey = spendPublicKey;
-    deletedAccountAddress.viewPublicKey = m_viewPublicKey;
-    auto deletedAddressString = m_currency.accountAddressAsString(deletedAccountAddress);
-
-    std::vector<size_t> deletedTransactions;
-    std::vector<size_t> updatedTransactions = deleteTransfersForAddress(deletedAddressString, deletedTransactions);
-    deleteFromUncommitedTransactions(deletedTransactions);
-  }
+void WalletGreen::deleteOrphanTransactions(const std::unordered_set<Crypto::PublicKey>& /*deletedKeys*/) {
+  // No classical per-address transaction/transfer state exists on a PQ chain, so
+  // there are no orphaned transactions to prune when a key is removed.
 }
 
 void WalletGreen::loadSpendKeys() {
@@ -1593,33 +1527,26 @@ size_t WalletGreen::getTransactionTransferCount(size_t transactionIndex) const {
   throwIfNotInitialized();
   throwIfStopped();
 
-  auto bounds = getTransactionTransfersRange(transactionIndex);
-  return static_cast<size_t>(std::distance(bounds.first, bounds.second));
+  // A PQ history row is reported as a single net transfer against our own address;
+  // counterparties aren't recoverable from owned-output scanning.
+  if (!m_pqConsumer) {
+    return 0;
+  }
+  return m_pqConsumer->state().history().size() > transactionIndex ? 1 : 0;
 }
 
 WalletTransfer WalletGreen::getTransactionTransfer(size_t transactionIndex, size_t transferIndex) const {
   throwIfNotInitialized();
   throwIfStopped();
 
-  auto bounds = getTransactionTransfersRange(transactionIndex);
-
-  if (transferIndex >= static_cast<size_t>(std::distance(bounds.first, bounds.second))) {
-    m_logger(ERROR, BRIGHT_RED) << "Failed to get transfer: invalid transfer index " << transferIndex << ". Transaction index " << transactionIndex <<
-      " transfer count " << std::distance(bounds.first, bounds.second);
+  const auto* hist = m_pqConsumer ? &m_pqConsumer->state().history() : nullptr;
+  if (hist == nullptr || transactionIndex >= hist->size() || transferIndex != 0) {
+    m_logger(ERROR, BRIGHT_RED) << "Failed to get transfer: invalid transfer index " << transferIndex
+                                << ". Transaction index " << transactionIndex;
     throw std::system_error(make_error_code(std::errc::invalid_argument));
   }
 
-  return std::next(bounds.first, transferIndex)->second;
-}
-
-WalletGreen::TransfersRange WalletGreen::getTransactionTransfersRange(size_t transactionIndex) const {
-  auto val = std::make_pair(transactionIndex, WalletTransfer());
-
-  auto bounds = std::equal_range(m_transfers.begin(), m_transfers.end(), val, [] (const TransactionTransferPair& a, const TransactionTransferPair& b) {
-    return a.first < b.first;
-  });
-
-  return bounds;
+  return WalletTransfer{WalletTransferType::USUAL, getPqAddress(), (*hist)[transactionIndex].netAmount};
 }
 
 size_t WalletGreen::transfer(const TransactionParameters& transactionParameters, Crypto::SecretKey& txSecretKey) {
@@ -1683,91 +1610,24 @@ size_t WalletGreen::makeTransaction(const TransactionParameters& /*sendingTransa
     "Delayed transactions are not supported on the post-quantum wallet");
 }
 
-void WalletGreen::commitTransaction(size_t transactionId) {
-  System::EventLock lk(m_readyEvent);
-
+void WalletGreen::commitTransaction(size_t /*transactionId*/) {
   throwIfNotInitialized();
   throwIfStopped();
   throwIfTrackingMode();
 
-  if (transactionId >= m_transactions.size()) {
-    m_logger(ERROR, BRIGHT_RED) << "Failed to commit transaction: invalid index " << transactionId << ". Number of transactions: " << m_transactions.size();
-    throw std::system_error(make_error_code(CryptoNote::error::INDEX_OUT_OF_RANGE));
-  }
-
-  auto txIt = std::next(m_transactions.get<RandomAccessIndex>().begin(), transactionId);
-  if (m_uncommitedTransactions.count(transactionId) == 0 || txIt->state != WalletTransactionState::CREATED) {
-    m_logger(ERROR, BRIGHT_RED) << "Failed to commit transaction: bad transaction state. Transaction index " << transactionId << ", state " << txIt->state;
-    throw std::system_error(make_error_code(error::TX_TRANSFER_IMPOSSIBLE));
-  }
-
-  std::error_code ec;
-
-  try {
-    auto relayTransactionCompleted = std::promise<std::error_code>();
-    auto relayTransactionWaitFuture = relayTransactionCompleted.get_future();
-
-    m_node.relayTransaction(m_uncommitedTransactions[transactionId], [&ec, &relayTransactionCompleted, this](std::error_code error) {
-      auto detachedPromise = std::move(relayTransactionCompleted);
-      detachedPromise.set_value(ec);
-      });
-    ec = relayTransactionWaitFuture.get();
-  }
-  catch (const std::exception& e) {
-    m_logger(ERROR, BRIGHT_RED) << "Failed to relay uncommited transaction: " << e.what();
-  }
-
-  if (!ec) {
-    updateTransactionStateAndPushEvent(transactionId, WalletTransactionState::SUCCEEDED);
-    m_uncommitedTransactions.erase(transactionId);
-  } else {
-    m_logger(ERROR, BRIGHT_RED) << "Failed to relay transaction: " << ec << ", " << ec.message() << ". Transaction index " << transactionId;
-    throw std::system_error(ec);
-  }
-
-  m_logger(INFO, BRIGHT_WHITE) << "Delayed transaction sent, ID " << transactionId << ", hash " << m_transactions[transactionId].hash;
+  // Delayed/uncommitted transactions are a classical-only flow (makeTransaction
+  // is unsupported on the PQ wallet, which always builds-and-relays).
+  throw std::system_error(make_error_code(std::errc::function_not_supported),
+    "Delayed transactions are not supported on the post-quantum wallet");
 }
 
-void WalletGreen::rollbackUncommitedTransaction(size_t transactionId) {
-  Tools::ScopeExit releaseContext([this] {
-    m_dispatcher.yield();
-  });
-
-  System::EventLock lk(m_readyEvent);
-
+void WalletGreen::rollbackUncommitedTransaction(size_t /*transactionId*/) {
   throwIfNotInitialized();
   throwIfStopped();
   throwIfTrackingMode();
 
-  if (transactionId >= m_transactions.size()) {
-    m_logger(ERROR, BRIGHT_RED) << "Failed to rollback transaction: invalid index " << transactionId << ". Number of transactions: " << m_transactions.size();
-    throw std::system_error(make_error_code(CryptoNote::error::INDEX_OUT_OF_RANGE));
-  }
-
-  auto txIt = m_transactions.get<RandomAccessIndex>().begin();
-  std::advance(txIt, transactionId);
-  if (m_uncommitedTransactions.count(transactionId) == 0 || txIt->state != WalletTransactionState::CREATED) {
-    m_logger(ERROR, BRIGHT_RED) << "Failed to rollback transaction: bad transaction state. Transaction index " << transactionId << ", state " << txIt->state;
-    throw std::system_error(make_error_code(error::TX_CANCEL_IMPOSSIBLE));
-  }
-
-  removeUnconfirmedTransaction(getObjectHash(m_uncommitedTransactions[transactionId]));
-  m_uncommitedTransactions.erase(transactionId);
-
-  m_logger(INFO, BRIGHT_WHITE) << "Delayed transaction rolled back, ID " << transactionId << ", hash " << m_transactions[transactionId].hash;
-}
-
-void WalletGreen::updateTransactionStateAndPushEvent(size_t transactionId, WalletTransactionState state) {
-  auto it = std::next(m_transactions.get<RandomAccessIndex>().begin(), transactionId);
-
-  if (it->state != state) {
-    m_transactions.get<RandomAccessIndex>().modify(it, [state](WalletTransaction& tx) {
-      tx.state = state;
-    });
-
-    pushEvent(makeTransactionUpdatedEvent(transactionId));
-    m_logger(DEBUGGING) << "Transaction state changed, ID " << transactionId << ", hash " << it->hash << ", new state " << it->state;
-  }
+  throw std::system_error(make_error_code(std::errc::function_not_supported),
+    "Delayed transactions are not supported on the post-quantum wallet");
 }
 
 WalletTransactionWithTransfers WalletGreen::getTransaction(const Crypto::Hash& transactionHash) const {
@@ -1861,14 +1721,8 @@ std::vector<size_t> WalletGreen::getDelayedTransactionIds() const {
   throwIfStopped();
   throwIfTrackingMode();
 
-  std::vector<size_t> result;
-  result.reserve(m_uncommitedTransactions.size());
-
-  for (const auto& kv: m_uncommitedTransactions) {
-    result.push_back(kv.first);
-  }
-
-  return result;
+  // Delayed (uncommitted) transactions are unsupported on the PQ wallet.
+  return std::vector<size_t>();
 }
 
 std::vector<TransactionOutputInformation> WalletGreen::getTransfers(size_t /*index*/, uint32_t /*flags*/) const {
@@ -1881,62 +1735,22 @@ std::vector<TransactionOutputInformation> WalletGreen::getTransfers(size_t /*ind
   return std::vector<TransactionOutputInformation>();
 }
 
-Crypto::SecretKey WalletGreen::getTransactionDeterministicSecretKey(Crypto::Hash& transactionHash) const {
-  throwIfNotInitialized();
-  throwIfStopped();
-
-  auto getTransactionCompleted = std::promise<std::error_code>();
-  auto getTransactionWaitFuture = getTransactionCompleted.get_future();
-  CryptoNote::Transaction tx;
-  m_node.getTransaction(std::move(transactionHash), std::ref(tx),
-    [&getTransactionCompleted](std::error_code ec) {
-    auto detachedPromise = std::move(getTransactionCompleted);
-    detachedPromise.set_value(ec);
-  });
-  std::error_code ec = getTransactionWaitFuture.get();
-  if (ec) {
-    m_logger(ERROR) << "Failed to get tx: " << ec << ", " << ec.message();
-    return CryptoNote::NULL_SECRET_KEY;
-  }
-
-  Crypto::PublicKey txPubKey = getTransactionPublicKeyFromExtra(tx.extra);
-  KeyPair deterministicTxKeys;
-  bool ok = generateDeterministicTransactionKeys(tx, m_viewSecretKey, deterministicTxKeys)
-    && deterministicTxKeys.publicKey == txPubKey;
-
-  return ok ? deterministicTxKeys.secretKey : CryptoNote::NULL_SECRET_KEY;
-}
-
 Crypto::SecretKey WalletGreen::getTransactionSecretKey(size_t transactionIndex) const {
   throwIfNotInitialized();
   throwIfStopped();
 
-  if (m_transactions.size() <= transactionIndex) {
-    m_logger(ERROR, BRIGHT_RED) << "Failed to get transaction: invalid index " << transactionIndex << ". Number of transactions: " << m_transactions.size();
-    throw std::system_error(make_error_code(CryptoNote::error::INDEX_OUT_OF_RANGE));
-  }
-
-  Crypto::SecretKey txKey = m_transactions.get<RandomAccessIndex>()[transactionIndex].secretKey.get_value_or(CryptoNote::NULL_SECRET_KEY);
-  if (txKey == CryptoNote::NULL_SECRET_KEY) {
-    Crypto::Hash transactionHash = m_transactions.get<RandomAccessIndex>()[transactionIndex].hash;
-    txKey = getTransactionDeterministicSecretKey(transactionHash);
-  }
-
-  return txKey;
+  // PQ transactions carry no per-tx secret key (stealth delivery is ML-KEM based),
+  // so there is nothing to return for transaction proofs.
+  (void)transactionIndex;
+  return CryptoNote::NULL_SECRET_KEY;
 }
 
 Crypto::SecretKey WalletGreen::getTransactionSecretKey(Crypto::Hash& transactionHash) const {
   throwIfNotInitialized();
   throwIfStopped();
 
-  auto txInfo = getTransaction(transactionHash);
-  Crypto::SecretKey txKey = txInfo.transaction.secretKey.get_value_or(CryptoNote::NULL_SECRET_KEY);
-
-  if (txKey == CryptoNote::NULL_SECRET_KEY) {
-    txKey = getTransactionDeterministicSecretKey(transactionHash);
-  }
-
-  return txKey;
+  (void)transactionHash;
+  return CryptoNote::NULL_SECRET_KEY;
 }
 
 bool WalletGreen::getTransactionProof(const Crypto::Hash& transactionHash, const CryptoNote::AccountPublicAddress& destinationAddress, const Crypto::SecretKey& txKey, std::string& transactionProof) {
@@ -2089,20 +1903,6 @@ void WalletGreen::onBlockchainDetach(IBlockchainConsumer* /*consumer*/, uint32_t
 void WalletGreen::pushEvent(const WalletEvent& event) {
   m_events.push(event);
   m_eventOccurred.set();
-}
-
-size_t WalletGreen::getTransactionId(const Hash& transactionHash) const {
-  auto it = m_transactions.get<TransactionIndex>().find(transactionHash);
-
-  if (it == m_transactions.get<TransactionIndex>().end()) {
-    m_logger(ERROR, BRIGHT_RED) << "Failed to get transaction ID: hash not found. Transaction hash " << transactionHash;
-    throw std::system_error(make_error_code(std::errc::invalid_argument));
-  }
-
-  auto rndIt = m_transactions.project<RandomAccessIndex>(it);
-  auto txId = std::distance(m_transactions.get<RandomAccessIndex>().begin(), rndIt);
-
-  return txId;
 }
 
 void WalletGreen::initPqConsumer(const Crypto::SecretKey& spendSecretKey,
@@ -2591,53 +2391,6 @@ Crypto::Hash WalletGreen::getBlockHashByIndex(uint32_t blockIndex) const {
   return m_blockchain.get<BlockHeightIndex>()[blockIndex];
 }
 
-std::vector<WalletTransfer> WalletGreen::getTransactionTransfers(const WalletTransaction& transaction) const {
-  auto& transactionIdIndex = m_transactions.get<RandomAccessIndex>();
-
-  auto it = transactionIdIndex.iterator_to(transaction);
-  assert(it != transactionIdIndex.end());
-
-  size_t transactionId = std::distance(transactionIdIndex.begin(), it);
-  auto bounds = getTransactionTransfersRange(transactionId);
-
-  std::vector<WalletTransfer> result;
-  result.reserve(std::distance(bounds.first, bounds.second));
-
-  for (auto it = bounds.first; it != bounds.second; ++it) {
-    result.emplace_back(it->second);
-  }
-
-  return result;
-}
-
-void WalletGreen::filterOutTransactions(WalletTransactions& transactions, WalletTransfers& transfers, std::function<bool (const WalletTransaction&)>&& pred) const {
-  size_t cancelledTransactions = 0;
-
-  transactions.reserve(m_transactions.size());
-  transfers.reserve(m_transfers.size());
-
-  auto& index = m_transactions.get<RandomAccessIndex>();
-  size_t transferIdx = 0;
-  for (size_t i = 0; i < m_transactions.size(); ++i) {
-    const WalletTransaction& transaction = index[i];
-
-    if (pred(transaction)) {
-      ++cancelledTransactions;
-
-      while (transferIdx < m_transfers.size() && m_transfers[transferIdx].first == i) {
-        ++transferIdx;
-      }
-    } else {
-      transactions.emplace_back(transaction);
-
-      while (transferIdx < m_transfers.size() && m_transfers[transferIdx].first == i) {
-        transfers.emplace_back(i - cancelledTransactions, m_transfers[transferIdx].second);
-        ++transferIdx;
-      }
-    }
-  }
-}
-
 void WalletGreen::initBlockchain(const Crypto::PublicKey& /*viewPublicKey*/) {
   if (!m_pqConsumer) {
     return;
@@ -2664,18 +2417,6 @@ bool WalletGreen::isMyAddress(const std::string& addressString) const {
     }
   }
   return false;
-}
-
-std::vector<size_t> WalletGreen::deleteTransfersForAddress(const std::string& /*address*/, std::vector<size_t>& /*deletedTransactions*/) {
-  // The classical per-address transfer tracking (m_transfers / m_transactions) is no
-  // longer populated on a PQ chain, so there is nothing to delete here.
-  return {};
-}
-
-void WalletGreen::deleteFromUncommitedTransactions(const std::vector<size_t>& deletedTransactions) {
-  for (auto transactionId: deletedTransactions) {
-    m_uncommitedTransactions.erase(transactionId);
-  }
 }
 
 /* The blockchain events are sent to us from the blockchain synchronizer,

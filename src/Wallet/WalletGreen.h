@@ -222,13 +222,9 @@ protected:
   std::string doCreateAddress(const Crypto::PublicKey& spendPublicKey, const Crypto::SecretKey& spendSecretKey, uint64_t creationTimestamp, uint32_t hdIndex = WALLET_INVALID_HD_INDEX);
   std::vector<std::string> doCreateAddressList(const std::vector<NewAddressData>& addressDataList);
 
-  Crypto::SecretKey getTransactionDeterministicSecretKey(Crypto::Hash& transactionHash) const;
-
   uint64_t getBlockTimestamp(const uint32_t blockHeight);
   uint64_t scanHeightToTimestamp(const uint32_t scanHeight);
   uint64_t getCurrentTimestampAdjusted();
-
-  typedef std::pair<WalletTransfers::const_iterator, WalletTransfers::const_iterator> TransfersRange;
 
 #pragma pack(push, 1)
   struct ContainerStoragePrefix {
@@ -253,13 +249,11 @@ protected:
   virtual void onBlockchainDetach(IBlockchainConsumer* consumer, uint32_t blockIndex) override;
 
   std::string addWallet(const Crypto::PublicKey& spendPublicKey, const Crypto::SecretKey& spendSecretKey, uint64_t creationTimestamp, uint32_t hdIndex = WALLET_INVALID_HD_INDEX);
-  size_t getTransactionId(const Crypto::Hash& transactionHash) const;
   void pushEvent(const WalletEvent& event);
 
   // Native history index (transaction id) of a PQ transaction by hash, or
   // WALLET_INVALID_TRANSACTION_ID if it is not in the ledger. Takes the wallet lock.
   size_t pqHistoryIndex(const Crypto::Hash& txid) const;
-  void updateTransactionStateAndPushEvent(size_t transactionId, WalletTransactionState state);
   void startBlockchainSynchronizer();
   void stopBlockchainSynchronizer();
   // Create + register the PQ scanning consumer for the primary address. Full
@@ -304,16 +298,10 @@ protected:
 
   WalletTrackingMode getTrackingMode() const;
 
-  TransfersRange getTransactionTransfersRange(size_t transactionIndex) const;
   std::vector<TransactionsInBlockInfo> getTransactionsInBlocks(uint32_t blockIndex, size_t count) const;
   Crypto::Hash getBlockHashByIndex(uint32_t blockIndex) const;
 
-  std::vector<WalletTransfer> getTransactionTransfers(const WalletTransaction& transaction) const;
-  void filterOutTransactions(WalletTransactions& transactions, WalletTransfers& transfers, std::function<bool (const WalletTransaction&)>&& pred) const;
   void initBlockchain(const Crypto::PublicKey& viewPublicKey);
-
-  std::vector<size_t> deleteTransfersForAddress(const std::string& address, std::vector<size_t>& deletedTransactions);
-  void deleteFromUncommitedTransactions(const std::vector<size_t>& deletedTransactions);
 
   System::Dispatcher& m_dispatcher;
   const Currency& m_currency;
@@ -323,10 +311,6 @@ protected:
 
   WalletsContainer m_walletsContainer;
   ContainerStorage m_containerStorage;
-  UnlockTransactionJobs m_unlockTransactionsJob;
-  WalletTransactions m_transactions;
-  WalletTransfers m_transfers; //sorted
-  UncommitedTransactions m_uncommitedTransactions;
 
   bool m_blockchainSynchronizerStarted;
   BlockchainSynchronizer m_blockchainSynchronizer;
@@ -366,9 +350,6 @@ protected:
   Crypto::SecretKey m_deterministicSeed;
   uint32_t m_nextDeterministicIndex;
 
-  uint64_t m_actualBalance;
-  uint64_t m_pendingBalance;
-
   uint64_t m_upperTransactionSizeLimit;
   uint32_t m_transactionSoftLockTime;
 
@@ -376,7 +357,6 @@ protected:
 
   friend std::ostream& operator<<(std::ostream& os, CryptoNote::WalletGreen::WalletState state);
   friend std::ostream& operator<<(std::ostream& os, CryptoNote::WalletGreen::WalletTrackingMode mode);
-  friend class TransferListFormatter;
 };
 
 } //namespace CryptoNote

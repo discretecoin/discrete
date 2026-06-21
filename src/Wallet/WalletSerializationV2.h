@@ -33,13 +33,7 @@ public:
     AddressGenerationMode& addressGenerationMode,
     Crypto::SecretKey& deterministicSeed,
     uint32_t& nextDeterministicIndex,
-    uint64_t& actualBalance,
-    uint64_t& pendingBalance,
     WalletsContainer& walletsContainer,
-    UnlockTransactionJobs& unlockTransactions,
-    WalletTransactions& transactions,
-    WalletTransfers& transfers,
-    UncommitedTransactions& uncommitedTransactions,
     std::string& extra,
     uint32_t transactionSoftLockTime,
     std::string& pqState
@@ -52,44 +46,37 @@ public:
   std::unordered_set<Crypto::PublicKey>& deletedKeys();
 
   static const uint8_t MIN_VERSION = 6;
-  static const uint8_t SERIALIZATION_VERSION = 7;
+  // v8 drops the classical balance/transaction/transfer/unlock/uncommitted
+  // sections. Files with version <= LAST_CLASSICAL_VERSION still carry them and
+  // are read-then-discarded for backward compatibility.
+  static const uint8_t SERIALIZATION_VERSION = 8;
+  static const uint8_t LAST_CLASSICAL_VERSION = 7;
+  // hdIndex + the address-generation state were introduced at this version.
+  static const uint8_t HD_FIELDS_VERSION = 7;
 
 private:
   void loadAddressGenerationState(CryptoNote::ISerializer& serializer, uint8_t version);
   void saveAddressGenerationState(CryptoNote::ISerializer& serializer);
   void normalizeAddressGenerationState();
 
-  void loadKeyListAndBalances(CryptoNote::ISerializer& serializer, bool saveCache, uint8_t version);
-  void saveKeyListAndBalances(CryptoNote::ISerializer& serializer, bool saveCache);
-    
-  void loadTransactions(CryptoNote::ISerializer& serializer);
-  void saveTransactions(CryptoNote::ISerializer& serializer);
+  void loadKeyList(CryptoNote::ISerializer& serializer, bool hadBalances, uint8_t version);
+  void saveKeyList(CryptoNote::ISerializer& serializer);
 
-  void loadTransfers(CryptoNote::ISerializer& serializer);
-  void saveTransfers(CryptoNote::ISerializer& serializer);
-
-  void loadTransfersSynchronizer(CryptoNote::ISerializer& serializer);
-  void saveTransfersSynchronizer(CryptoNote::ISerializer& serializer);
-
-  void loadUnlockTransactionsJobs(CryptoNote::ISerializer& serializer);
-  void saveUnlockTransactionsJobs(CryptoNote::ISerializer& serializer);
+  // Legacy (version <= LAST_CLASSICAL_VERSION) classical sections: read and
+  // discard so older wallet files still load. v8 never writes them.
+  void skipLegacyTransactions(CryptoNote::ISerializer& serializer);
+  void skipLegacyTransfers(CryptoNote::ISerializer& serializer);
+  void skipLegacyUnlockTransactionsJobs(CryptoNote::ISerializer& serializer);
 
   // Opaque PQ-wallet state blob (WalletLedgerConsumer sync cursor + WalletLedger),
-  // produced/consumed by WalletGreen. Optional field: absent in pre-PQ wallet
-  // files, which load as an empty blob (no version bump needed).
+  // produced/consumed by WalletGreen.
   void loadPqState(CryptoNote::ISerializer& serializer);
   void savePqState(CryptoNote::ISerializer& serializer);
 
   AddressGenerationMode& m_addressGenerationMode;
   Crypto::SecretKey& m_deterministicSeed;
   uint32_t& m_nextDeterministicIndex;
-  uint64_t& m_actualBalance;
-  uint64_t& m_pendingBalance;
   WalletsContainer& m_walletsContainer;
-  UnlockTransactionJobs& m_unlockTransactions;
-  WalletTransactions& m_transactions;
-  WalletTransfers& m_transfers;
-  UncommitedTransactions& m_uncommitedTransactions;
   std::string& m_extra;
   uint32_t m_transactionSoftLockTime;
   std::string& m_pqState;

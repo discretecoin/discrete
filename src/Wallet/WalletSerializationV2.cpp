@@ -130,13 +130,7 @@ WalletSerializerV2::WalletSerializerV2(
   AddressGenerationMode& addressGenerationMode,
   Crypto::SecretKey& deterministicSeed,
   uint32_t& nextDeterministicIndex,
-  uint64_t& actualBalance,
-  uint64_t& pendingBalance,
   WalletsContainer& walletsContainer,
-  UnlockTransactionJobs& unlockTransactions,
-  WalletTransactions& transactions,
-  WalletTransfers& transfers,
-  UncommitedTransactions& uncommitedTransactions,
   std::string& extra,
   uint32_t transactionSoftLockTime,
   std::string& pqState
@@ -144,17 +138,15 @@ WalletSerializerV2::WalletSerializerV2(
   m_addressGenerationMode(addressGenerationMode),
   m_deterministicSeed(deterministicSeed),
   m_nextDeterministicIndex(nextDeterministicIndex),
-  m_actualBalance(actualBalance),
-  m_pendingBalance(pendingBalance),
   m_walletsContainer(walletsContainer),
-  m_unlockTransactions(unlockTransactions),
-  m_transactions(transactions),
-  m_transfers(transfers),
-  m_uncommitedTransactions(uncommitedTransactions),
   m_extra(extra),
   m_transactionSoftLockTime(transactionSoftLockTime),
   m_pqState(pqState)
 {
+  // The view keys are decrypted/verified from the container prefix elsewhere; the
+  // wallet cache neither stores nor needs them.
+  (void)viewPublicKey;
+  (void)viewSecretKey;
 }
 
 void WalletSerializerV2::load(Common::IInputStream& source, uint8_t version) {
@@ -165,18 +157,26 @@ void WalletSerializerV2::load(Common::IInputStream& source, uint8_t version) {
   WalletSaveLevel saveLevel = static_cast<WalletSaveLevel>(saveLevelValue);
 
   loadAddressGenerationState(s, version);
-  loadKeyListAndBalances(s, saveLevel == WalletSaveLevel::SAVE_ALL, version);
+  loadKeyList(s, saveLevel == WalletSaveLevel::SAVE_ALL, version);
   normalizeAddressGenerationState();
 
-  if (saveLevel == WalletSaveLevel::SAVE_KEYS_AND_TRANSACTIONS || saveLevel == WalletSaveLevel::SAVE_ALL) {
-    loadTransactions(s);
-    loadTransfers(s);
+  if (version <= LAST_CLASSICAL_VERSION) {
+    // Classical sections present in older (<= v7) wallet files: read and discard.
+    if (saveLevel == WalletSaveLevel::SAVE_KEYS_AND_TRANSACTIONS || saveLevel == WalletSaveLevel::SAVE_ALL) {
+      skipLegacyTransactions(s);
+      skipLegacyTransfers(s);
+    }
+
+    if (saveLevel == WalletSaveLevel::SAVE_ALL) {
+      std::string legacyTransfersSynchronizer;
+      s(legacyTransfersSynchronizer, "transfersSynchronizer");
+      skipLegacyUnlockTransactionsJobs(s);
+      UncommitedTransactions legacyUncommited;
+      s(legacyUncommited, "uncommitedTransactions");
+    }
   }
 
   if (saveLevel == WalletSaveLevel::SAVE_ALL) {
-    loadTransfersSynchronizer(s);
-    loadUnlockTransactionsJobs(s);
-    s(m_uncommitedTransactions, "uncommitedTransactions");
     loadPqState(s);
   }
 
@@ -189,18 +189,12 @@ void WalletSerializerV2::save(Common::IOutputStream& destination, WalletSaveLeve
   uint8_t saveLevelValue = static_cast<uint8_t>(saveLevel);
   s(saveLevelValue, "saveLevel");
 
+  // v8 lean format: keys + address-gen state + PQ state + extra. No classical
+  // balances/transactions/transfers/unlock-jobs/uncommitted sections.
   saveAddressGenerationState(s);
-  saveKeyListAndBalances(s, saveLevel == WalletSaveLevel::SAVE_ALL);
-
-  if (saveLevel == WalletSaveLevel::SAVE_KEYS_AND_TRANSACTIONS || saveLevel == WalletSaveLevel::SAVE_ALL) {
-    saveTransactions(s);
-    saveTransfers(s);
-  }
+  saveKeyList(s);
 
   if (saveLevel == WalletSaveLevel::SAVE_ALL) {
-    saveTransfersSynchronizer(s);
-    saveUnlockTransactionsJobs(s);
-    s(m_uncommitedTransactions, "uncommitedTransactions");
     savePqState(s);
   }
 
@@ -226,7 +220,7 @@ std::unordered_set<Crypto::PublicKey>& WalletSerializerV2::deletedKeys() {
 }
 
 void WalletSerializerV2::loadAddressGenerationState(CryptoNote::ISerializer& serializer, uint8_t version) {
-  if (version < SERIALIZATION_VERSION) {
+  if (version < HD_FIELDS_VERSION) {
     m_addressGenerationMode = AddressGenerationMode::INDEPENDENT_SPEND_KEYS;
     m_deterministicSeed = NULL_SECRET_KEY;
     m_nextDeterministicIndex = 0;
@@ -279,27 +273,29 @@ void WalletSerializerV2::normalizeAddressGenerationState() {
   }
 }
 
-void WalletSerializerV2::loadKeyListAndBalances(CryptoNote::ISerializer& serializer, bool saveCache, uint8_t version) {
+void WalletSerializerV2::loadKeyList(CryptoNote::ISerializer& serializer, bool hadBalances, uint8_t version) {
   size_t walletCount;
   serializer(walletCount, "walletCount");
 
-  m_actualBalance = 0;
-  m_pendingBalance = 0;
   m_deletedKeys.clear();
+
+  const bool readHdIndex = version >= HD_FIELDS_VERSION;
+  // Per-wallet balances were only written by classical (<= v7) wallet files; v8
+  // never persists them (the live balance lives in the PQ ledger).
+  const bool readBalances = hadBalances && version <= LAST_CLASSICAL_VERSION;
 
   std::unordered_set<Crypto::PublicKey> cachedKeySet;
   auto& index = m_walletsContainer.get<KeysIndex>();
   for (size_t i = 0; i < walletCount; ++i) {
     Crypto::PublicKey spendPublicKey;
-    uint64_t actualBalance;
-    uint64_t pendingBalance;
     uint32_t hdIndex = WALLET_INVALID_HD_INDEX;
     serializer(spendPublicKey, "spendPublicKey");
-    if (version >= SERIALIZATION_VERSION) {
+    if (readHdIndex) {
       serializer(hdIndex, "hdIndex");
     }
-
-    if (saveCache) {
+    if (readBalances) {
+      uint64_t actualBalance = 0;
+      uint64_t pendingBalance = 0;
       serializer(actualBalance, "actualBalance");
       serializer(pendingBalance, "pendingBalance");
     }
@@ -310,16 +306,7 @@ void WalletSerializerV2::loadKeyListAndBalances(CryptoNote::ISerializer& seriali
     if (it == index.end()) {
       m_deletedKeys.emplace(std::move(spendPublicKey));
     } else {
-      if (saveCache) {
-        m_actualBalance += actualBalance;
-        m_pendingBalance += pendingBalance;
-      }
-
-      index.modify(it, [actualBalance, pendingBalance, hdIndex, saveCache](WalletRecord& wallet) {
-        if (saveCache) {
-          wallet.actualBalance = actualBalance;
-          wallet.pendingBalance = pendingBalance;
-        }
+      index.modify(it, [hdIndex](WalletRecord& wallet) {
         wallet.hdIndex = hdIndex;
       });
     }
@@ -332,126 +319,42 @@ void WalletSerializerV2::loadKeyListAndBalances(CryptoNote::ISerializer& seriali
   }
 }
 
-void WalletSerializerV2::saveKeyListAndBalances(CryptoNote::ISerializer& serializer, bool saveCache) {
+void WalletSerializerV2::saveKeyList(CryptoNote::ISerializer& serializer) {
   auto walletCount = m_walletsContainer.get<RandomAccessIndex>().size();
   serializer(walletCount, "walletCount");
   for (auto wallet : m_walletsContainer.get<RandomAccessIndex>()) {
     serializer(wallet.spendPublicKey, "spendPublicKey");
     serializer(wallet.hdIndex, "hdIndex");
-
-    if (saveCache) {
-      serializer(wallet.actualBalance, "actualBalance");
-      serializer(wallet.pendingBalance, "pendingBalance");
-    }
   }
 }
 
-void WalletSerializerV2::loadTransactions(CryptoNote::ISerializer& serializer) {
+void WalletSerializerV2::skipLegacyTransactions(CryptoNote::ISerializer& serializer) {
   uint64_t count = 0;
   serializer(count, "transactionCount");
-
-  m_transactions.get<RandomAccessIndex>().reserve(count);
-
   for (uint64_t i = 0; i < count; ++i) {
     WalletTransactionDtoV2 dto;
     serializer(dto, "transaction");
-
-    WalletTransaction tx;
-    tx.state = dto.state;
-    tx.timestamp = dto.timestamp;
-    tx.blockHeight = dto.blockHeight;
-    tx.hash = dto.hash;
-    tx.totalAmount = dto.totalAmount;
-    tx.fee = dto.fee;
-    tx.creationTime = dto.creationTime;
-    tx.unlockHeight = dto.unlockHeight;
-    tx.extra = dto.extra;
-    tx.isBase = dto.isBase;
-    if (dto.secretKey)
-      tx.secretKey = reinterpret_cast<const Crypto::SecretKey&>(dto.secretKey.get());
-
-    m_transactions.get<RandomAccessIndex>().emplace_back(std::move(tx));
   }
 }
 
-void WalletSerializerV2::saveTransactions(CryptoNote::ISerializer& serializer) {
-  uint64_t count = m_transactions.size();
-  serializer(count, "transactionCount");
-
-  for (const auto& tx : m_transactions) {
-    WalletTransactionDtoV2 dto(tx);
-    serializer(dto, "transaction");
-  }
-}
-
-void WalletSerializerV2::loadTransfers(CryptoNote::ISerializer& serializer) {
+void WalletSerializerV2::skipLegacyTransfers(CryptoNote::ISerializer& serializer) {
   uint64_t count = 0;
   serializer(count, "transferCount");
-
-  m_transfers.reserve(count);
-
   for (uint64_t i = 0; i < count; ++i) {
     uint64_t txId = 0;
     serializer(txId, "transactionId");
-
     WalletTransferDtoV2 dto;
     serializer(dto, "transfer");
-
-    WalletTransfer tr;
-    tr.address = dto.address;
-    tr.amount = dto.amount;
-    tr.type = static_cast<WalletTransferType>(dto.type);
-
-    m_transfers.emplace_back(std::piecewise_construct, std::forward_as_tuple(txId), std::forward_as_tuple(std::move(tr)));
   }
 }
 
-void WalletSerializerV2::saveTransfers(CryptoNote::ISerializer& serializer) {
-  uint64_t count = m_transfers.size();
-  serializer(count, "transferCount");
-
-  for (const auto& kv : m_transfers) {
-    uint64_t txId = kv.first;
-
-    WalletTransferDtoV2 tr(kv.second);
-
-    serializer(txId, "transactionId");
-    serializer(tr, "transfer");
-  }
-}
-
-void WalletSerializerV2::loadTransfersSynchronizer(CryptoNote::ISerializer& serializer) {
-  // The classical TransfersSyncronizer is gone; read and discard the legacy blob
-  // (kept in the wallet-file format for backward compatibility).
-  std::string transfersSynchronizerData;
-  serializer(transfersSynchronizerData, "transfersSynchronizer");
-}
-
-void WalletSerializerV2::saveTransfersSynchronizer(CryptoNote::ISerializer& serializer) {
-  // Write an empty blob: the classical sync state no longer exists, but the field
-  // is preserved so the wallet-file layout is unchanged (no version bump).
-  std::string transfersSynchronizerData;
-  serializer(transfersSynchronizerData, "transfersSynchronizer");
-}
-
-void WalletSerializerV2::loadUnlockTransactionsJobs(CryptoNote::ISerializer& serializer) {
-  // Unlock-transaction jobs are a classical-only feature (they tracked per-output
-  // soft-lock maturity on ECC outputs). Read and discard any persisted jobs; the
-  // count field is kept for wallet-file backward compatibility.
+void WalletSerializerV2::skipLegacyUnlockTransactionsJobs(CryptoNote::ISerializer& serializer) {
   uint64_t jobsCount = 0;
   serializer(jobsCount, "unlockTransactionsJobsCount");
-
   for (uint64_t i = 0; i < jobsCount; ++i) {
     UnlockTransactionJobDtoV2 dto;
     serializer(dto, "unlockTransactionsJob");
   }
-}
-
-void WalletSerializerV2::saveUnlockTransactionsJobs(CryptoNote::ISerializer& serializer) {
-  // The PQ wallet never creates unlock jobs (per-output unlock heights live in the
-  // WalletLedger), so persist an empty set, preserving the field for compatibility.
-  uint64_t jobsCount = 0;
-  serializer(jobsCount, "unlockTransactionsJobsCount");
 }
 
 } //namespace CryptoNote
