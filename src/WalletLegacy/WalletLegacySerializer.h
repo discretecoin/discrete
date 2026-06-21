@@ -32,11 +32,9 @@ class ISerializer;
 
 namespace CryptoNote {
 
-class WalletUserTransactionsCache;
-
 class WalletLegacySerializer {
 public:
-  WalletLegacySerializer(CryptoNote::AccountBase& account, WalletUserTransactionsCache& transactionsCache);
+  explicit WalletLegacySerializer(CryptoNote::AccountBase& account);
 
   void serialize(std::ostream& stream, const std::string& password, bool saveDetailed, const std::string& cache);
   void deserialize(std::istream& stream, const std::string& password, std::string& cache);
@@ -50,7 +48,6 @@ private:
   void decrypt(const std::string& cipher, std::string& plain, Crypto::chacha8_iv iv, const std::string& password);
 
   CryptoNote::AccountBase& account;
-  WalletUserTransactionsCache& transactionsCache;
   const uint32_t walletSerializationVersion;
 };
 

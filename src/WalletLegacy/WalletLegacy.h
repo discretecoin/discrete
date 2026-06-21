@@ -205,8 +205,6 @@ private:
   std::unique_ptr<WalletLedgerConsumer> m_pqConsumer;
   std::unique_ptr<PqTrackingKeys> m_pqTrackingKeys;
 
-  WalletUserTransactionsCache m_transactionsCache;
-
   WalletAsyncContextCounter m_asyncContextCounter;
   Tools::ObserverManager<CryptoNote::IWalletLegacyObserver> m_observerManager;
 

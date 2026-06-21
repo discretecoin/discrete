@@ -38,9 +38,8 @@ namespace CryptoNote {
 
 uint32_t WALLET_LEGACY_SERIALIZATION_VERSION = 2;
 
-WalletLegacySerializer::WalletLegacySerializer(CryptoNote::AccountBase& account, WalletUserTransactionsCache& transactionsCache) :
+WalletLegacySerializer::WalletLegacySerializer(CryptoNote::AccountBase& account) :
   account(account),
-  transactionsCache(transactionsCache),
   walletSerializationVersion(2)
 {
 }
@@ -54,11 +53,12 @@ void WalletLegacySerializer::serialize(std::ostream& stream, const std::string& 
   CryptoNote::BinaryOutputStreamSerializer serializer(plainStream);
   saveKeys(serializer);
 
-  serializer(saveDetailed, "has_details");
-
-  if (saveDetailed) {
-    serializer(transactionsCache, "details");
-  }
+  // The classical detailed transaction cache is gone on the PQ wallet (history
+  // lives in the WalletLedger, persisted in the `cache` blob below). Always write
+  // has_details=false; older files that carried details still load (see below).
+  (void)saveDetailed;
+  bool hasDetails = false;
+  serializer(hasDetails, "has_details");
 
   serializer.binary(const_cast<std::string&>(cache), "cache");
 
@@ -147,7 +147,10 @@ void WalletLegacySerializer::deserialize(std::istream& stream, const std::string
   serializer(detailsSaved, "has_details");
 
   if (detailsSaved) {
-    serializer(transactionsCache, "details");
+    // Older wallet files carry a classical detailed transaction cache. Read and
+    // discard it; the PQ wallet rebuilds history from the WalletLedger.
+    WalletUserTransactionsCache legacyDetails;
+    serializer(legacyDetails, "details");
   }
 
   serializer.binary(cache, "cache");

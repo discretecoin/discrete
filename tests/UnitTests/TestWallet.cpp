@@ -1304,7 +1304,7 @@ void WalletApi::testIWalletDataCompatibility(bool details, const std::string& ca
   account.generate();
 
   WalletUserTransactionsCache iWalletCache;
-  WalletLegacySerializer walletSerializer(account, iWalletCache);
+  WalletLegacySerializer walletSerializer(account);
 
   for (const auto& tx: txs) {
     std::vector<WalletLegacyTransfer> txtrs;
@@ -1388,25 +1388,30 @@ void WalletApi::testIWalletDataCompatibility(bool details, const std::string& ca
   }
 }
 
-TEST_F(WalletApi, IWalletDataCompatibilityEmptyDetailsNoCache) {
+// DISABLED: these test importing a classical (WalletLegacy-format) iwallet file
+// into WalletGreen and assert classical address/transaction semantics. WalletGreen
+// is now PQ-only -- getAddress(0) returns a PQ address (not classical-parseable)
+// and there is no classical transaction store -- so legacy-iwallet import compat
+// no longer applies on this fork.
+TEST_F(WalletApi, DISABLED_IWalletDataCompatibilityEmptyDetailsNoCache) {
   testIWalletDataCompatibility(true);
 }
 
-TEST_F(WalletApi, IWalletDataCompatibilityEmptyNoDetailsNoCache) {
+TEST_F(WalletApi, DISABLED_IWalletDataCompatibilityEmptyNoDetailsNoCache) {
   testIWalletDataCompatibility(false);
 }
 
-TEST_F(WalletApi, IWalletDataCompatibilityEmptyNoDetailsCache) {
+TEST_F(WalletApi, DISABLED_IWalletDataCompatibilityEmptyNoDetailsCache) {
   std::string cache(1024, 'c');
   testIWalletDataCompatibility(false, cache);
 }
 
-TEST_F(WalletApi, IWalletDataCompatibilityEmptyDetailsCache) {
+TEST_F(WalletApi, DISABLED_IWalletDataCompatibilityEmptyDetailsCache) {
   std::string cache(1024, 'c');
   testIWalletDataCompatibility(true, cache);
 }
 
-TEST_F(WalletApi, IWalletDataCompatibilityDetails) {
+TEST_F(WalletApi, DISABLED_IWalletDataCompatibilityDetails) {
   std::vector<WalletLegacyTransaction> txs;
 
   WalletLegacyTransaction tx1;
