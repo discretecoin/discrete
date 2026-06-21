@@ -33,6 +33,7 @@
 #include <System/Timer.h>
 #include <CryptoNoteCore/TransactionApi.h>
 #include <Common/FormatTools.h>
+#include <Common/ScopeExit.h>
 #include <Common/StringTools.h>
 #include <CryptoNoteCore/CryptoNoteBasicImpl.h>
 #include <CryptoNoteCore/CryptoNoteFormatUtils.h>
@@ -177,6 +178,16 @@ void NodeRpcProxy::workerThread(const INode::Callback& initialized_callback) {
   try {
     Dispatcher dispatcher;
     m_dispatcher = &dispatcher;
+
+    // m_httpClient owns boost::asio sockets bound to `dispatcher`'s io_context, so it
+    // MUST be destroyed while that io_context is still alive — otherwise the socket
+    // destructor locks an already-freed io_context service mutex and the worker thread
+    // crashes on shutdown (SIGSEGV). Tie its teardown to this scope so it runs on every
+    // exit path (normal and exception). Declared after `dispatcher` but before
+    // `contextGroup`, so on scope exit it runs after the spawned contexts are joined
+    // (contextGroup destroyed) but before `dispatcher` is destroyed.
+    Tools::ScopeExit httpClientGuard([this]() { m_httpClient.reset(); });
+
     ContextGroup contextGroup(dispatcher);
     m_context_group = &contextGroup;
 
@@ -223,7 +234,8 @@ void NodeRpcProxy::workerThread(const INode::Callback& initialized_callback) {
 
   m_dispatcher = nullptr;
   m_context_group = nullptr;
-  m_httpClient.reset();
+  // m_httpClient was already reset by httpClientGuard above, while the io_context was
+  // still alive (resetting here, after `dispatcher` is gone, is what used to crash).
   m_httpEvent = nullptr;
   m_connected = false;
   m_rpcProxyObserverManager.notify(&INodeRpcProxyObserver::connectionStatusUpdated, m_connected);
