@@ -48,13 +48,13 @@ source_group("" FILES $${Common} ${Checkpoints} ${Crypto} ${CryptoNoteCore} ${Cr
 add_library(BlockchainExplorer ${BlockchainExplorer})
 add_library(Checkpoints ${Checkpoints})
 add_library(CryptoNoteProtocol ${CryptoNoteProtocol})
-# Real target is CommonLib; `Common` is kept as an alias so the dozens of
+# Real target is CryptoNoteCommon; `Common` is kept as an alias so the dozens of
 # downstream `target_link_libraries(... Common)` references need no change.
 # The distinct project name avoids a case-insensitive clash with liboqs's
 # `common` object library in the generated Visual Studio solution (VS treats
 # "Common" and "common" as the same item). Aliases don't generate a .vcxproj.
-add_library(CommonLib ${Common})
-add_library(Common ALIAS CommonLib)
+add_library(CryptoNoteCommon ${Common})
+add_library(Common ALIAS CryptoNoteCommon)
 add_library(Crypto ${Crypto})
 add_library(CryptoPq ${CryptoPq})
 # Common provides Tools::Base58 used by PqAddress encoding; Base58 in turn
@@ -97,7 +97,7 @@ else()
 endif()
 
 if (MINGW)
-  target_link_libraries(CommonLib dnsapi)
+  target_link_libraries(CryptoNoteCommon dnsapi)
   target_link_libraries(P2P bcrypt)
   target_link_libraries(System ws2_32)
 endif()
