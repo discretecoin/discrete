@@ -48,7 +48,6 @@
 #include "WalletLegacy/WalletUserTransactionsCache.h"
 #include "WalletLegacy/WalletUnconfirmedTransactions.h"
 
-#include "WalletLegacy/WalletTransactionSender.h"
 #include "WalletLegacy/WalletRequest.h"
 
 #include "Transfers/BlockchainSynchronizer.h"
