@@ -108,11 +108,24 @@ public:
   // Unspent balance still in the mempool (received at UNCONFIRMED_HEIGHT).
   uint64_t pendingBalance() const;
 
-  // Unspent balance attributed to one deposit index (for walletd attribution).
+  // Unspent balance attributed to one deposit index (confirmed + pending; for
+  // walletd attribution).
   uint64_t depositBalance(uint32_t depositIndex) const;
+
+  // Unspent balance attributed to one deposit index that is still in the mempool
+  // (received at UNCONFIRMED_HEIGHT). Per-bucket counterpart of pendingBalance();
+  // a deposit's confirmed balance is depositBalance(idx) - depositPendingBalance(idx).
+  uint64_t depositPendingBalance(uint32_t depositIndex) const;
 
   // Unspent balance per deposit index, excluding the primary address.
   std::map<uint32_t, uint64_t> depositBalances() const;
+
+  // The wallet's own net effect of `txid`, split by address bucket: +amount for an
+  // output this tx created, -amount for an owned output this tx spent, summed per
+  // depositIndex (PQ_PRIMARY_DEPOSIT = the primary address). Derived from the owned
+  // outputs, so it reflects only OUR addresses (external counterparties are not
+  // recoverable). Empty if the tx never touched the wallet.
+  std::map<uint32_t, int64_t> transfersByDeposit(const Crypto::Hash& txid) const;
 
   // All unspent outputs as builder inputs (for buildPqTransaction).
   std::vector<PqSpendInput> spendableInputs() const;

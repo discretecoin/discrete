@@ -198,17 +198,12 @@ public:
   virtual std::vector<Crypto::Hash> getBlockHashes(uint32_t blockIndex, size_t count) const = 0;
   virtual uint32_t getBlockCount() const  = 0;
   virtual std::vector<WalletTransactionWithTransfers> getUnconfirmedTransactions() const = 0;
-  virtual std::vector<size_t> getDelayedTransactionIds() const = 0;
   virtual std::vector<TransactionOutputInformation> getTransfers(size_t index, uint32_t flags) const = 0;
 
   virtual std::string signMessage(const std::string &message, const std::string& address) = 0;
   virtual bool verifyMessage(const std::string &message, const std::string& address, const std::string &signature) = 0;
 
   virtual size_t transfer(const TransactionParameters& sendingTransaction, Crypto::SecretKey &txSecretKey) = 0;
-
-  virtual size_t makeTransaction(const TransactionParameters& sendingTransaction) = 0;
-  virtual void commitTransaction(size_t transactionId) = 0;
-  virtual void rollbackUncommitedTransaction(size_t transactionId) = 0;
 
   virtual void start() = 0;
   virtual void stop() = 0;

@@ -888,15 +888,9 @@ KeyPair WalletGreen::getAddressSpendKey(const std::string& address) const {
   // PQ addresses are not classical CryptoNote addresses. The wallet's PQ identity
   // and every deposit subaddress derive from the single classical spend key at
   // index 0, so map any of our own PQ addresses back to it.
-  if (m_pqConsumer) {
-    if (address == getPqAddress()) {
-      return getAddressSpendKey(0);
-    }
-    for (uint32_t i = 0; i < m_pqDepositCount; ++i) {
-      if (address == getAddress(static_cast<size_t>(i) + 1)) {
-        return getAddressSpendKey(0);
-      }
-    }
+  uint32_t bucket = 0;
+  if (pqResolveAddressBucket(address, bucket)) {
+    return getAddressSpendKey(0);
   }
 
   m_logger(ERROR, BRIGHT_RED) << "Failed to get address spend key: address not found " << address;
@@ -1450,6 +1444,41 @@ WalletTransaction pqRowToWalletTx(const PqWalletTransaction& h) {
 }
 }  // namespace
 
+bool WalletGreen::pqResolveAddressBucket(const std::string& address, uint32_t& depositIndex) const {
+  if (!m_pqConsumer) {
+    return false;
+  }
+  if (address == getPqAddress()) {
+    depositIndex = PQ_PRIMARY_DEPOSIT;
+    return true;
+  }
+  for (uint32_t i = 0; i < m_pqDepositCount; ++i) {
+    if (address == getAddress(static_cast<size_t>(i) + 1)) {
+      depositIndex = i;
+      return true;
+    }
+  }
+  return false;
+}
+
+std::vector<WalletTransfer> WalletGreen::pqTransfersForTx(const Crypto::Hash& txid, int64_t fallbackNet) const {
+  std::vector<WalletTransfer> transfers;
+  if (m_pqConsumer) {
+    // One transfer per OUR address the tx touched (primary + any deposits). External
+    // counterparties aren't recoverable from owned-output scanning, by PQ design.
+    for (const auto& kv : m_pqConsumer->state().transfersByDeposit(txid)) {
+      std::string address = kv.first == PQ_PRIMARY_DEPOSIT
+                                ? getPqAddress()
+                                : getAddress(static_cast<size_t>(kv.first) + 1);
+      transfers.push_back(WalletTransfer{WalletTransferType::USUAL, std::move(address), kv.second});
+    }
+  }
+  if (transfers.empty()) {
+    transfers.push_back(WalletTransfer{WalletTransferType::USUAL, getPqAddress(), fallbackNet});
+  }
+  return transfers;
+}
+
 uint64_t WalletGreen::getActualBalance() const {
   throwIfNotInitialized();
   throwIfStopped();
@@ -1468,20 +1497,16 @@ uint64_t WalletGreen::getActualBalance(const std::string& address) const {
   throwIfNotInitialized();
   throwIfStopped();
 
-  if (!m_pqConsumer) {
+  // Map a PQ address to its bucket; "actual" = that bucket's confirmed balance
+  // (total minus its still-in-mempool pending). Unknown address -> 0.
+  uint32_t bucket = 0;
+  if (!pqResolveAddressBucket(address, bucket)) {
     return 0;
   }
-  // Map a PQ address back to its deposit bucket. Primary -> primary balance;
-  // a deposit address -> that deposit's balance; unknown -> 0.
-  if (address == getPqAddress()) {
-    return m_pqConsumer->state().depositBalance(PQ_PRIMARY_DEPOSIT);
-  }
-  for (uint32_t i = 0; i < m_pqDepositCount; ++i) {
-    if (address == getAddress(static_cast<size_t>(i) + 1)) {
-      return m_pqConsumer->state().depositBalance(i);
-    }
-  }
-  return 0;
+  const auto& st = m_pqConsumer->state();
+  uint64_t total = st.depositBalance(bucket);
+  uint64_t pending = st.depositPendingBalance(bucket);
+  return total >= pending ? total - pending : 0;
 }
 
 uint64_t WalletGreen::getPendingBalance() const {
@@ -1495,12 +1520,13 @@ uint64_t WalletGreen::getPendingBalance(const std::string& address) const {
   throwIfNotInitialized();
   throwIfStopped();
 
-  // Per-address pending isn't tracked per deposit; report the wallet's pending
-  // against its primary PQ address (deposits / unknown addresses -> 0).
-  if (m_pqConsumer && address == getPqAddress()) {
-    return m_pqConsumer->state().pendingBalance();
+  // Per-bucket pending: the unspent, still-in-mempool balance attributed to this
+  // address (primary or a deposit). Unknown address -> 0.
+  uint32_t bucket = 0;
+  if (!pqResolveAddressBucket(address, bucket)) {
+    return 0;
   }
-  return 0;
+  return m_pqConsumer->state().depositPendingBalance(bucket);
 }
 
 size_t WalletGreen::getTransactionCount() const {
@@ -1527,12 +1553,14 @@ size_t WalletGreen::getTransactionTransferCount(size_t transactionIndex) const {
   throwIfNotInitialized();
   throwIfStopped();
 
-  // A PQ history row is reported as a single net transfer against our own address;
-  // counterparties aren't recoverable from owned-output scanning.
-  if (!m_pqConsumer) {
+  // A PQ history row reports one transfer per OUR address the tx touched (primary +
+  // deposits); counterparties aren't recoverable from owned-output scanning.
+  const auto* hist = m_pqConsumer ? &m_pqConsumer->state().history() : nullptr;
+  if (hist == nullptr || transactionIndex >= hist->size()) {
     return 0;
   }
-  return m_pqConsumer->state().history().size() > transactionIndex ? 1 : 0;
+  const auto& row = (*hist)[transactionIndex];
+  return pqTransfersForTx(row.txid, row.netAmount).size();
 }
 
 WalletTransfer WalletGreen::getTransactionTransfer(size_t transactionIndex, size_t transferIndex) const {
@@ -1540,13 +1568,17 @@ WalletTransfer WalletGreen::getTransactionTransfer(size_t transactionIndex, size
   throwIfStopped();
 
   const auto* hist = m_pqConsumer ? &m_pqConsumer->state().history() : nullptr;
-  if (hist == nullptr || transactionIndex >= hist->size() || transferIndex != 0) {
-    m_logger(ERROR, BRIGHT_RED) << "Failed to get transfer: invalid transfer index " << transferIndex
-                                << ". Transaction index " << transactionIndex;
-    throw std::system_error(make_error_code(std::errc::invalid_argument));
+  if (hist != nullptr && transactionIndex < hist->size()) {
+    const auto& row = (*hist)[transactionIndex];
+    std::vector<WalletTransfer> transfers = pqTransfersForTx(row.txid, row.netAmount);
+    if (transferIndex < transfers.size()) {
+      return transfers[transferIndex];
+    }
   }
 
-  return WalletTransfer{WalletTransferType::USUAL, getPqAddress(), (*hist)[transactionIndex].netAmount};
+  m_logger(ERROR, BRIGHT_RED) << "Failed to get transfer: invalid transfer index " << transferIndex
+                              << ". Transaction index " << transactionIndex;
+  throw std::system_error(make_error_code(std::errc::invalid_argument));
 }
 
 size_t WalletGreen::transfer(const TransactionParameters& transactionParameters, Crypto::SecretKey& txSecretKey) {
@@ -1599,37 +1631,6 @@ uint64_t WalletGreen::getBalanceMinusDust(const std::vector<std::string>& /*addr
   return getActualBalance();
 }
 
-size_t WalletGreen::makeTransaction(const TransactionParameters& /*sendingTransaction*/) {
-  throwIfNotInitialized();
-  throwIfTrackingMode();
-  throwIfStopped();
-
-  // Delayed (uncommitted) transactions relied on the classical build-without-relay
-  // path. The PQ sender always builds-and-relays; a deferred PQ flow is not wired.
-  throw std::system_error(make_error_code(std::errc::function_not_supported),
-    "Delayed transactions are not supported on the post-quantum wallet");
-}
-
-void WalletGreen::commitTransaction(size_t /*transactionId*/) {
-  throwIfNotInitialized();
-  throwIfStopped();
-  throwIfTrackingMode();
-
-  // Delayed/uncommitted transactions are a classical-only flow (makeTransaction
-  // is unsupported on the PQ wallet, which always builds-and-relays).
-  throw std::system_error(make_error_code(std::errc::function_not_supported),
-    "Delayed transactions are not supported on the post-quantum wallet");
-}
-
-void WalletGreen::rollbackUncommitedTransaction(size_t /*transactionId*/) {
-  throwIfNotInitialized();
-  throwIfStopped();
-  throwIfTrackingMode();
-
-  throw std::system_error(make_error_code(std::errc::function_not_supported),
-    "Delayed transactions are not supported on the post-quantum wallet");
-}
-
 WalletTransactionWithTransfers WalletGreen::getTransaction(const Crypto::Hash& transactionHash) const {
   throwIfNotInitialized();
   throwIfStopped();
@@ -1641,9 +1642,7 @@ WalletTransactionWithTransfers WalletGreen::getTransaction(const Crypto::Hash& t
   }
   WalletTransactionWithTransfers w;
   w.transaction = pqRowToWalletTx(*row);
-  // Counterparties aren't recoverable from owned-output scanning: report the net
-  // effect against this wallet's own address.
-  w.transfers.push_back(WalletTransfer{WalletTransferType::USUAL, getPqAddress(), row->netAmount});
+  w.transfers = pqTransfersForTx(row->txid, row->netAmount);
   return w;
 }
 
@@ -1703,26 +1702,16 @@ std::vector<WalletTransactionWithTransfers> WalletGreen::getUnconfirmedTransacti
   if (!m_pqConsumer) {
     return result;
   }
-  std::string ownAddress = getPqAddress();
   for (const auto& row : m_pqConsumer->state().history()) {
     if (row.height != WalletLedger::UNCONFIRMED_HEIGHT) {
       continue;
     }
     WalletTransactionWithTransfers w;
     w.transaction = pqRowToWalletTx(row);
-    w.transfers.push_back(WalletTransfer{WalletTransferType::USUAL, ownAddress, row.netAmount});
+    w.transfers = pqTransfersForTx(row.txid, row.netAmount);
     result.push_back(std::move(w));
   }
   return result;
-}
-
-std::vector<size_t> WalletGreen::getDelayedTransactionIds() const {
-  throwIfNotInitialized();
-  throwIfStopped();
-  throwIfTrackingMode();
-
-  // Delayed (uncommitted) transactions are unsupported on the PQ wallet.
-  return std::vector<size_t>();
 }
 
 std::vector<TransactionOutputInformation> WalletGreen::getTransfers(size_t /*index*/, uint32_t /*flags*/) const {
@@ -2365,10 +2354,9 @@ std::vector<TransactionsInBlockInfo> WalletGreen::getTransactionsInBlocks(uint32
 
   // PQ-native: group the ledger's confirmed history rows by block height. The
   // wallet's block-hash list (m_blockchain) still tracks the chain, so heights
-  // map to hashes the same way. Counterparties aren't recoverable, so each tx
-  // carries one net WalletTransfer against the wallet's own address.
+  // map to hashes the same way. Each tx carries one WalletTransfer per OUR address
+  // it touched (counterparties aren't recoverable from owned-output scanning).
   const auto& hist = m_pqConsumer->state().history();
-  std::string ownAddress = getPqAddress();
   for (uint32_t height = blockIndex; height < stopIndex; ++height) {
     TransactionsInBlockInfo info;
     info.blockHash = m_blockchain[height];
@@ -2378,7 +2366,7 @@ std::vector<TransactionsInBlockInfo> WalletGreen::getTransactionsInBlocks(uint32
       }
       WalletTransactionWithTransfers w;
       w.transaction = pqRowToWalletTx(row);
-      w.transfers.push_back(WalletTransfer{WalletTransferType::USUAL, ownAddress, row.netAmount});
+      w.transfers = pqTransfersForTx(row.txid, row.netAmount);
       info.transactions.push_back(std::move(w));
     }
     result.push_back(std::move(info));
@@ -2405,18 +2393,8 @@ void WalletGreen::initBlockchain(const Crypto::PublicKey& /*viewPublicKey*/) {
 bool WalletGreen::isMyAddress(const std::string& addressString) const {
   // PQ-native: an address is ours if it matches our primary PQ address or one of
   // our issued deposit subaddresses.
-  if (!m_pqConsumer || addressString.empty()) {
-    return false;
-  }
-  if (addressString == getPqAddress()) {
-    return true;
-  }
-  for (uint32_t i = 0; i < m_pqDepositCount; ++i) {
-    if (addressString == getAddress(static_cast<size_t>(i) + 1)) {
-      return true;
-    }
-  }
-  return false;
+  uint32_t bucket = 0;
+  return !addressString.empty() && pqResolveAddressBucket(addressString, bucket);
 }
 
 /* The blockchain events are sent to us from the blockchain synchronizer,

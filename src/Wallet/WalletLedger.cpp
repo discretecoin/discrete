@@ -303,11 +303,34 @@ uint64_t WalletLedger::depositBalance(uint32_t depositIndex) const {
   return total;
 }
 
+uint64_t WalletLedger::depositPendingBalance(uint32_t depositIndex) const {
+  uint64_t total = 0;
+  for (const auto& o : m_outputs) {
+    if (!o.spent && o.depositIndex == depositIndex && o.height == UNCONFIRMED_HEIGHT) {
+      total += o.amount;
+    }
+  }
+  return total;
+}
+
 std::map<uint32_t, uint64_t> WalletLedger::depositBalances() const {
   std::map<uint32_t, uint64_t> out;
   for (const auto& o : m_outputs) {
     if (!o.spent && o.depositIndex != PQ_PRIMARY_DEPOSIT) {
       out[o.depositIndex] += o.amount;
+    }
+  }
+  return out;
+}
+
+std::map<uint32_t, int64_t> WalletLedger::transfersByDeposit(const Crypto::Hash& txid) const {
+  std::map<uint32_t, int64_t> out;
+  for (const auto& o : m_outputs) {
+    if (o.txid == txid) {
+      out[o.depositIndex] += static_cast<int64_t>(o.amount);   // received into this bucket
+    }
+    if (o.spent && o.spentTxid == txid) {
+      out[o.depositIndex] -= static_cast<int64_t>(o.amount);   // spent out of this bucket
     }
   }
   return out;

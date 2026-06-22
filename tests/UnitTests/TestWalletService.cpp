@@ -107,17 +107,12 @@ struct IWalletBaseStub : public CryptoNote::IWallet {
   virtual std::vector<Crypto::Hash> getBlockHashes(uint32_t blockIndex, size_t count) const override { return {}; }
   virtual uint32_t getBlockCount() const override { return 0; }
   virtual std::vector<WalletTransactionWithTransfers> getUnconfirmedTransactions() const override { return {}; }
-  virtual std::vector<size_t> getDelayedTransactionIds() const override { return {}; }
   virtual std::vector<TransactionOutputInformation> getTransfers(size_t index, uint32_t flags) const override { return {}; }
 
   virtual std::string signMessage(const std::string &message, const std::string& address) override { return ""; }
   virtual bool verifyMessage(const std::string &message, const std::string& address, const std::string &signature) override { return false; }
 
   virtual size_t transfer(const TransactionParameters& sendingTransaction, Crypto::SecretKey& txSecretKey) override { return 0; }
-
-  virtual size_t makeTransaction(const TransactionParameters& sendingTransaction) override { return 0; }
-  virtual void commitTransaction(size_t transactionId) override { }
-  virtual void rollbackUncommitedTransaction(size_t transactionId) override { }
 
   virtual void start() override { m_stopped = false; }
   virtual void stop() override { m_stopped = true; m_eventOccurred.set(); }
@@ -858,120 +853,6 @@ TEST_F(WalletServiceTest_sendTransaction, incorrectTransferAddress) {
   std::string txSecretKey;
   auto ec = service->sendTransaction(request, hash, txSecretKey);
   ASSERT_EQ(make_error_code(CryptoNote::error::BAD_ADDRESS), ec);
-}
-
-class WalletServiceTest_createDelayedTransaction : public WalletServiceTest_getTransactions {
-  virtual void SetUp() override;
-protected:
-  CreateDelayedTransaction::Request request;
-};
-
-void WalletServiceTest_createDelayedTransaction::SetUp() {
-  WalletServiceTest_getTransactions::SetUp();
-  request.addresses.insert(request.addresses.end(), {RANDOM_ADDRESS1, RANDOM_ADDRESS2});
-  request.transfers.push_back(WalletRpcOrder {RANDOM_ADDRESS3, 11111});
-  request.fee = 2021;
-  request.anonymity = currency.minMixin();
-  request.unlockHeight = 848309;
-}
-
-struct WalletMakeTransactionStub : public IWalletBaseStub {
-  WalletMakeTransactionStub(System::Dispatcher& dispatcher, const Crypto::Hash& hash) : IWalletBaseStub(dispatcher), hash(hash) {
-  }
-
-  virtual bool isMyAddress(const std::string& address) const override {
-    return true;
-  }
-
-  virtual size_t makeTransaction(const TransactionParameters& sendingTransaction) override {
-    params = sendingTransaction;
-    return 0;
-  }
-
-  virtual WalletTransaction getTransaction(size_t transactionIndex) const override {
-    return WalletTransactionBuilder().hash(hash).build();
-  }
-
-  Crypto::Hash hash;
-  TransactionParameters params;
-};
-
-bool isEquivalent(const CreateDelayedTransaction::Request& request, const TransactionParameters& params) {
-  std::string extra;
-  if (!request.paymentId.empty()) {
-    extra = "022100" + request.paymentId;
-  } else {
-    extra = request.extra;
-  }
-
-  std::vector<WalletOrder> orders;
-  std::for_each(request.transfers.begin(), request.transfers.end(), [&orders] (const WalletRpcOrder& order) {
-    orders.push_back( WalletOrder{order.address, order.amount});
-  });
-
-  return std::make_tuple(request.addresses, orders, request.fee, request.anonymity, extra, request.unlockHeight)
-      ==
-      std::make_tuple(params.sourceAddresses, params.destinations, params.fee, params.mixIn, Common::toHex(Common::asBinaryArray(params.extra)), params.unlockHeightstamp);
-}
-
-TEST_F(WalletServiceTest_createDelayedTransaction, passesCorrectParameters) {
-  WalletMakeTransactionStub wallet(dispatcher, generateRandomHash());
-  auto service = createWalletService(wallet);
-
-  std::string hash;
-  auto ec = service->createDelayedTransaction(request, hash);
-
-  ASSERT_FALSE(ec);
-  ASSERT_EQ(Common::podToHex(wallet.hash), hash);
-  ASSERT_TRUE(isEquivalent(request, wallet.params));
-}
-
-TEST_F(WalletServiceTest_createDelayedTransaction, incorrectSourceAddress) {
-  auto service = createWalletService();
-  request.addresses.push_back("wrong address");
-
-  std::string hash;
-  auto ec = service->createDelayedTransaction(request, hash);
-  ASSERT_EQ(make_error_code(CryptoNote::error::BAD_ADDRESS), ec);
-}
-
-TEST_F(WalletServiceTest_createDelayedTransaction, incorrectTransferAddress) {
-  auto service = createWalletService();
-  request.transfers.push_back(WalletRpcOrder{"wrong address", 12131});
-
-  std::string hash;
-  auto ec = service->createDelayedTransaction(request, hash);
-  ASSERT_EQ(make_error_code(CryptoNote::error::BAD_ADDRESS), ec);
-}
-
-class WalletServiceTest_getDelayedTransactionHashes: public WalletServiceTest {
-};
-
-struct WalletGetDelayedTransactionIdsStub : public IWalletBaseStub {
-  WalletGetDelayedTransactionIdsStub(System::Dispatcher& dispatcher, const Crypto::Hash& hash) : IWalletBaseStub(dispatcher), hash(hash) {
-  }
-
-  virtual std::vector<size_t> getDelayedTransactionIds() const override {
-    return {0};
-  }
-
-  virtual WalletTransaction getTransaction(size_t transactionIndex) const override {
-    return WalletTransactionBuilder().hash(hash).build();
-  }
-
-  const Crypto::Hash hash;
-};
-
-TEST_F(WalletServiceTest_getDelayedTransactionHashes, returnsCorrectResult) {
-  WalletGetDelayedTransactionIdsStub wallet(dispatcher, generateRandomHash());
-  auto service = createWalletService(wallet);
-
-  std::vector<std::string> hashes;
-  auto ec = service->getDelayedTransactionHashes(hashes);
-
-  ASSERT_FALSE(ec);
-  ASSERT_EQ(1, hashes.size());
-  ASSERT_EQ(Common::podToHex(wallet.hash), hashes[0]);
 }
 
 class WalletServiceTest_getUnconfirmedTransactionHashes: public WalletServiceTest_getTransactions {

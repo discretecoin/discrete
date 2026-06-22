@@ -163,7 +163,6 @@ public:
   virtual std::vector<Crypto::Hash> getBlockHashes(uint32_t blockIndex, size_t count) const override;
   virtual uint32_t getBlockCount() const override;
   virtual std::vector<WalletTransactionWithTransfers> getUnconfirmedTransactions() const override;
-  virtual std::vector<size_t> getDelayedTransactionIds() const override;
   virtual std::vector<TransactionOutputInformation> getTransfers(size_t index, uint32_t flags) const override;
 
   virtual std::string signMessage(const std::string &message, const std::string& address) override;
@@ -174,10 +173,6 @@ public:
     Crypto::SecretKey txSecretKey;
     return transfer(sendingTransaction, txSecretKey);
   }
-
-  virtual size_t makeTransaction(const TransactionParameters& sendingTransaction) override;
-  virtual void commitTransaction(size_t) override;
-  virtual void rollbackUncommitedTransaction(size_t) override;
 
   virtual void start() override;
   virtual void stop() override;
@@ -254,6 +249,15 @@ protected:
   // Native history index (transaction id) of a PQ transaction by hash, or
   // WALLET_INVALID_TRANSACTION_ID if it is not in the ledger. Takes the wallet lock.
   size_t pqHistoryIndex(const Crypto::Hash& txid) const;
+  // Map one of our own PQ addresses to its ledger bucket: the primary address ->
+  // PQ_PRIMARY_DEPOSIT, a deposit address -> its deposit index. Returns false for an
+  // address that is not ours. No wallet lock taken (callers already hold the ready gate).
+  bool pqResolveAddressBucket(const std::string& address, uint32_t& depositIndex) const;
+  // Build the per-(own-)address WalletTransfer list for a tx from the ledger's
+  // per-bucket net (transfersByDeposit): PQ_PRIMARY_DEPOSIT -> primary address, else
+  // the deposit address. Falls back to a single primary-address transfer carrying
+  // `fallbackNet` when the tx touched no resolvable bucket.
+  std::vector<WalletTransfer> pqTransfersForTx(const Crypto::Hash& txid, int64_t fallbackNet) const;
   void startBlockchainSynchronizer();
   void stopBlockchainSynchronizer();
   // Create + register the PQ scanning consumer for the primary address. Full
