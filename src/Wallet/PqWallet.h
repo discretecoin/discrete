@@ -85,8 +85,19 @@ struct PqTrackingKeys {
 // seed_master from the classical account spend secret key (see file header).
 CryptoPQ::SeedMaster pqSeedMasterFromSpendSecret(const Crypto::SecretKey& spendSecretKey) noexcept;
 
+// A fresh PQ-native master seed straight from the OS CSPRNG (32 random bytes).
+// This is the seed source for new Discrete wallets: it is consumed directly by the
+// PqSeed derivation chain (deriveViewKeys / deriveSpendKeys), with NO classical
+// keypair anywhere in the wallet identity.
+CryptoPQ::SeedMaster generatePqSeedMaster();
+
 // Full PQ identity (view + spend keypairs) for a classical wallet.
 PqWalletKeys derivePqWalletKeys(const Crypto::SecretKey& spendSecretKey);
+
+// Full PQ identity straight from a PQ-native master seed (the new wallet path).
+// Unlike the spend-secret overload there is no intermediate HKDF: the seed IS the
+// seed_master consumed by the cemented PqSeed chain.
+PqWalletKeys derivePqWalletKeys(const CryptoPQ::SeedMaster& seedMaster);
 
 // Strip a full wallet identity down to the view-only audit credential.
 PqTrackingKeys pqTrackingKeys(const PqWalletKeys& keys);

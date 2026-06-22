@@ -20,6 +20,7 @@
 #include <algorithm>
 
 #include "Common/StringTools.h"
+#include "crypto/crypto-util.h"
 #include "crypto_pq/PqHash.h"
 
 namespace CryptoNote {
@@ -64,9 +65,19 @@ CryptoPQ::SeedMaster pqSeedMasterFromSpendSecret(const Crypto::SecretKey& spendS
   return seed;
 }
 
+CryptoPQ::SeedMaster generatePqSeedMaster() {
+  CryptoPQ::SeedMaster seed{};
+  secure_random_bytes(seed.data(), seed.size());
+  return seed;
+}
+
 PqWalletKeys derivePqWalletKeys(const Crypto::SecretKey& spendSecretKey) {
+  return derivePqWalletKeys(pqSeedMasterFromSpendSecret(spendSecretKey));
+}
+
+PqWalletKeys derivePqWalletKeys(const CryptoPQ::SeedMaster& seedMaster) {
   PqWalletKeys keys;
-  keys.seedMaster = pqSeedMasterFromSpendSecret(spendSecretKey);
+  keys.seedMaster = seedMaster;
 
   auto view = CryptoPQ::deriveViewKeys(keys.seedMaster);
   keys.viewPub = view.first;
