@@ -339,104 +339,54 @@ void generateNewWallet(const CryptoNote::Currency& currency, const WalletConfigu
   std::unique_ptr<CryptoNote::IWallet> walletGuard(wallet);
 
   std::string address;
-  const uint32_t restoreAddressCount = conf.restoreAddressCount == 0 ? 1 : conf.restoreAddressCount;
 
-  auto initializeWithViewKey = [&wallet, &conf](const Crypto::SecretKey& privateViewKey) {
-    if (conf.scanHeight != 0) {
-      wallet->initializeWithViewKey(conf.walletFile, conf.walletPassword, privateViewKey, conf.scanHeight);
-    } else {
-      wallet->initializeWithViewKey(conf.walletFile, conf.walletPassword, privateViewKey);
+  // Mint a fresh PQ master seed, or import the given 32-byte seed, as the primary
+  // address (record 0). The PQ wallet is single-identity; there is no classical
+  // view key, HD batch, or independent-key mode.
+  auto createPrimary = [&wallet, &conf](const Crypto::SecretKey* importSeed) -> std::string {
+    if (importSeed != nullptr) {
+      return conf.scanHeight != 0 ? wallet->createAddress(*importSeed, conf.scanHeight)
+                                  : wallet->createAddress(*importSeed);
     }
-  };
-
-  auto createDefaultAddress = [&wallet, &conf]() {
     return conf.scanHeight != 0 ? wallet->createAddress(conf.scanHeight) : wallet->createAddress();
   };
 
-  auto createHdAddressBatch = [&wallet, &conf, restoreAddressCount]() {
-    std::string firstAddress;
-    for (uint32_t i = 0; i < restoreAddressCount; ++i) {
-      std::string generatedAddress = conf.scanHeight != 0 ? wallet->createAddress(conf.scanHeight) : wallet->createAddress();
-      if (i == 0) {
-        firstAddress = generatedAddress;
-      }
-    }
-
-    return firstAddress;
-  };
-
-  if (conf.secretSpendKey.empty() && conf.secretViewKey.empty() && conf.mnemonicSeed.empty())
+  if (conf.secretSpendKey.empty() && conf.mnemonicSeed.empty())
   {
-    if (conf.independentAddresses) {
-      log(Logging::INFO, Logging::BRIGHT_WHITE) << "Generating new independent-address wallet";
-      wallet->initialize(conf.walletFile, conf.walletPassword);
-      wallet->setAddressGenerationMode(AddressGenerationMode::INDEPENDENT_SPEND_KEYS, NULL_SECRET_KEY);
-      address = createDefaultAddress();
-      log(Logging::INFO, Logging::BRIGHT_WHITE) << "New independent-address wallet is generated. Address: " << address;
-    } else {
-      log(Logging::INFO, Logging::BRIGHT_WHITE) << "Generating new HD deterministic wallet";
-
-      Crypto::SecretKey private_view_key;
-      CryptoNote::KeyPair spendKey;
-
-      Crypto::generate_keys(spendKey.publicKey, spendKey.secretKey);
-      CryptoNote::AccountBase::generateViewFromSpend(spendKey.secretKey, private_view_key);
-
-      initializeWithViewKey(private_view_key);
-      wallet->setAddressGenerationMode(AddressGenerationMode::HD_DETERMINISTIC, spendKey.secretKey);
-      address = createHdAddressBatch();
-
-      log(Logging::INFO, Logging::BRIGHT_WHITE) << "New HD wallet is generated. First address: " << address
-        << ", address count: " << restoreAddressCount;
-    }
+    log(Logging::INFO, Logging::BRIGHT_WHITE) << "Generating new PQ wallet";
+    wallet->initialize(conf.walletFile, conf.walletPassword);
+    address = createPrimary(nullptr);
+    log(Logging::INFO, Logging::BRIGHT_WHITE) << "New PQ wallet generated. Address: " << address;
   }
   else if (!conf.mnemonicSeed.empty()) {
-      log(Logging::INFO, Logging::BRIGHT_WHITE) << "Importing HD wallet from mnemonic seed";
+    log(Logging::INFO, Logging::BRIGHT_WHITE) << "Importing PQ wallet from mnemonic seed";
 
-      Crypto::SecretKey private_spend_key;
-      Crypto::SecretKey private_view_key;
+    Crypto::SecretKey seed;
+    std::string languageName;
+    if (!Crypto::ElectrumWords::words_to_bytes(conf.mnemonicSeed, seed, languageName))
+    {
+      log(Logging::ERROR, Logging::BRIGHT_RED) << "Electrum-style word list failed verification.";
+      return;
+    }
 
-      std::string languageName;
-      if (!Crypto::ElectrumWords::words_to_bytes(conf.mnemonicSeed, private_spend_key, languageName))
-      {
-        log(Logging::ERROR, Logging::BRIGHT_RED) << "Electrum-style word list failed verification.";
-        return;
-      }
-
-      CryptoNote::AccountBase::generateViewFromSpend(private_spend_key, private_view_key);
-
-      initializeWithViewKey(private_view_key);
-      wallet->setAddressGenerationMode(AddressGenerationMode::HD_DETERMINISTIC, private_spend_key);
-      address = createHdAddressBatch();
-      log(Logging::INFO, Logging::BRIGHT_WHITE) << "Imported HD wallet successfully. First address: " << address
-        << ", address count: " << restoreAddressCount;
+    wallet->initialize(conf.walletFile, conf.walletPassword);
+    address = createPrimary(&seed);
+    log(Logging::INFO, Logging::BRIGHT_WHITE) << "Imported PQ wallet from mnemonic. Address: " << address;
   }
   else {
-    if ((!conf.secretViewKey.empty() && conf.secretSpendKey.empty())
-      || (conf.secretViewKey.empty() && !conf.secretSpendKey.empty())) {
-  	  log(Logging::ERROR, Logging::BRIGHT_RED) << "Both the secret spend key and the secret view key are required.";
-  	  return;
-    } else {
-      log(Logging::INFO, Logging::BRIGHT_WHITE) << "Importing wallet from keys";
-      Crypto::Hash private_spend_key_hash;
-      Crypto::Hash private_view_key_hash;
-      size_t size;
-      if (!Common::fromHex(conf.secretSpendKey, &private_spend_key_hash, sizeof(private_spend_key_hash), size) || size != sizeof(private_spend_key_hash)) {
-        log(Logging::ERROR, Logging::BRIGHT_RED) << "Invalid spend key";
-        return;
-      }
-      if (!Common::fromHex(conf.secretViewKey, &private_view_key_hash, sizeof(private_view_key_hash), size) || size != sizeof(private_spend_key_hash)) {
-        log(Logging::ERROR, Logging::BRIGHT_RED) << "Invalid view key";
-        return;
-      }
-      Crypto::SecretKey private_spend_key = *(struct Crypto::SecretKey *) &private_spend_key_hash;
-      Crypto::SecretKey private_view_key = *(struct Crypto::SecretKey *) &private_view_key_hash;
-
-      initializeWithViewKey(private_view_key);
-      wallet->setAddressGenerationMode(AddressGenerationMode::INDEPENDENT_SPEND_KEYS, NULL_SECRET_KEY);
-      address = conf.scanHeight != 0 ? wallet->createAddress(private_spend_key, conf.scanHeight) : wallet->createAddress(private_spend_key);
-      log(Logging::INFO, Logging::BRIGHT_WHITE) << "Wallet imported successfully.";
+    // Import from a raw 32-byte secret = the PQ master seed. Any view key argument is
+    // ignored (PQ has no classical view key).
+    log(Logging::INFO, Logging::BRIGHT_WHITE) << "Importing PQ wallet from key";
+    Crypto::Hash seed_hash;
+    size_t size;
+    if (!Common::fromHex(conf.secretSpendKey, &seed_hash, sizeof(seed_hash), size) || size != sizeof(seed_hash)) {
+      log(Logging::ERROR, Logging::BRIGHT_RED) << "Invalid spend key (PQ master seed)";
+      return;
     }
+    Crypto::SecretKey seed = *(struct Crypto::SecretKey *) &seed_hash;
+    wallet->initialize(conf.walletFile, conf.walletPassword);
+    address = createPrimary(&seed);
+    log(Logging::INFO, Logging::BRIGHT_WHITE) << "PQ wallet imported successfully. Address: " << address;
   }
 
   // Record the deposit-wallet scheme in the container (immutable after creation).
@@ -982,29 +932,10 @@ std::error_code WalletService::getMnemonicSeed(const std::string& address, std::
   try {
     System::EventLock lk(readyEvent);
 
-    if (wallet.getAddressGenerationMode() == AddressGenerationMode::HD_DETERMINISTIC) {
-      Crypto::ElectrumWords::bytes_to_words(wallet.getDeterministicSeed(), mnemonicSeed, "English");
-      return std::error_code();
-    }
-
-    CryptoNote::KeyPair key = wallet.getAddressSpendKey(address);
-    CryptoNote::KeyPair viewKey = wallet.getViewKey();
-
-    Crypto::SecretKey deterministic_private_view_key;
-
-    CryptoNote::AccountBase::generateViewFromSpend(key.secretKey, deterministic_private_view_key);
-
-    bool deterministic_private_keys = deterministic_private_view_key == viewKey.secretKey;
-
-    if (deterministic_private_keys) {
-      Crypto::ElectrumWords::bytes_to_words(key.secretKey, mnemonicSeed, "English");
-    } else {
-      /* Have to be able to derive view key from spend key to create a mnemonic
-         seed, due to being able to generate multiple addresses we can't do
-         this in walletd as the default */
-      logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Your private keys are not deterministic and so a mnemonic seed cannot be generated!";
-      return make_error_code(CryptoNote::error::WalletServiceErrorCode::KEYS_NOT_DETERMINISTIC);
-    }
+    // The PQ master seed IS the deterministic backup; encode it as Electrum words.
+    // (PQ wallets are single-identity, so the address is irrelevant.)
+    (void)address;
+    Crypto::ElectrumWords::bytes_to_words(wallet.getDeterministicSeed(), mnemonicSeed, "English");
   } catch (std::system_error& x) {
     logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while getting mnemonic seed: " << x.what();
     return x.code();

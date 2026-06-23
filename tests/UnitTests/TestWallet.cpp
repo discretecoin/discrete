@@ -3329,6 +3329,17 @@ void pumpUntil(System::Dispatcher& dispatcher, CryptoNote::WalletGreen& wallet,
 // standalone long-hash (the wallet never validates PoW — it trusts its node), so no
 // real Core sink is needed here. This test also guards the F1 fix: the classical
 // TransfersConsumer must count PQ-only blocks as empty instead of stalling PQ sync.
+
+// getAddressSpendKey(0).secretKey returns the wallet's 32-byte PQ master seed. The
+// wallet derives its identity from the seed directly (no HKDF), so a test that mines
+// to the wallet must derive the same way (the SeedMaster overload, not the SecretKey
+// overload which applies the legacy HKDF step).
+static CryptoNote::PqWalletKeys pqKeysFromWalletSeed(const Crypto::SecretKey& seed) {
+  CryptoPQ::SeedMaster sm{};
+  std::memcpy(sm.data(), seed.data, sm.size());
+  return CryptoNote::derivePqWalletKeys(sm);
+}
+
 TEST(PqWalletIntegration, IncomingTransactionCreditsNativeBalance) {
   System::Dispatcher dispatcher;
   Logging::ConsoleLogger logger(Logging::ERROR);
@@ -3348,7 +3359,7 @@ TEST(PqWalletIntegration, IncomingTransactionCreditsNativeBalance) {
 
   // The wallet's PQ identity derives from its primary spend secret.
   Crypto::SecretKey spend = wallet.getAddressSpendKey(0).secretKey;
-  CryptoNote::PqWalletKeys mine = CryptoNote::derivePqWalletKeys(spend);
+  CryptoNote::PqWalletKeys mine = pqKeysFromWalletSeed(spend);
 
   // Some other wallet pays us 800000 via a TX_PQ placed on-chain.
   Crypto::SecretKey otherSecret;
@@ -3401,7 +3412,7 @@ TEST(PqWalletIntegration, BalanceSurvivesSaveAndReload) {
     wallet.initialize(path, "pass");
     wallet.createAddress();
     Crypto::SecretKey spend = wallet.getAddressSpendKey(0).secretKey;
-    CryptoNote::PqWalletKeys mine = CryptoNote::derivePqWalletKeys(spend);
+    CryptoNote::PqWalletKeys mine = pqKeysFromWalletSeed(spend);
 
     Crypto::SecretKey otherSecret;
     for (std::size_t i = 0; i < sizeof(otherSecret.data); ++i)
@@ -3452,7 +3463,7 @@ TEST(PqWalletIntegration, ReorgDetachReversesCredit) {
   wallet.initialize(path, "pass");
   wallet.createAddress();
   Crypto::SecretKey spend = wallet.getAddressSpendKey(0).secretKey;
-  CryptoNote::PqWalletKeys mine = CryptoNote::derivePqWalletKeys(spend);
+  CryptoNote::PqWalletKeys mine = pqKeysFromWalletSeed(spend);
 
   Crypto::SecretKey otherSecret;
   for (std::size_t i = 0; i < sizeof(otherSecret.data); ++i)

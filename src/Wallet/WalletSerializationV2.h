@@ -28,8 +28,6 @@ namespace CryptoNote {
 class WalletSerializerV2 {
 public:
   WalletSerializerV2(
-    Crypto::PublicKey& viewPublicKey,
-    Crypto::SecretKey& viewSecretKey,
     AddressGenerationMode& addressGenerationMode,
     Crypto::SecretKey& deterministicSeed,
     uint32_t& nextDeterministicIndex,
@@ -45,11 +43,11 @@ public:
   std::unordered_set<Crypto::PublicKey>& addedKeys();
   std::unordered_set<Crypto::PublicKey>& deletedKeys();
 
-  static const uint8_t MIN_VERSION = 6;
-  // v8 drops the classical balance/transaction/transfer/unlock/uncommitted
-  // sections. Files with version <= LAST_CLASSICAL_VERSION still carry them and
-  // are read-then-discarded for backward compatibility.
-  static const uint8_t SERIALIZATION_VERSION = 8;
+  // v9 is the PQ-native container: each record stores a 32-byte master seed (no
+  // classical key material). Older formats (v6-v8) carried classical key pairs and
+  // are no longer loadable (Discrete is pre-launch with no frozen wallet format).
+  static const uint8_t MIN_VERSION = 9;
+  static const uint8_t SERIALIZATION_VERSION = 9;
   static const uint8_t LAST_CLASSICAL_VERSION = 7;
   // hdIndex + the address-generation state were introduced at this version.
   static const uint8_t HD_FIELDS_VERSION = 7;

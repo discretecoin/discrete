@@ -190,9 +190,9 @@ public:
 
 protected:
   struct NewAddressData {
-    Crypto::PublicKey spendPublicKey;
-    Crypto::SecretKey spendSecretKey;
-    uint64_t creationTimestamp;
+    CryptoPQ::SeedMaster seedMaster{};
+    bool tracking = false;
+    uint64_t creationTimestamp = 0;
     uint32_t hdIndex = WALLET_INVALID_HD_INDEX;
   };
 
@@ -202,32 +202,35 @@ protected:
   void doShutdown();
   void clearCaches(bool clearTransactions, bool clearCachedData);
   void convertAndLoadWalletFile(const std::string& path, std::ifstream&& walletFileStream);
-  static void decryptKeyPair(const EncryptedWalletRecord& cipher, Crypto::PublicKey& publicKey, Crypto::SecretKey& secretKey,
+  // Encrypt/decrypt a wallet record = magic || PQ master seed || creation timestamp.
+  // decryptSeed returns false if the magic doesn't match (i.e. wrong password).
+  static bool decryptSeed(const EncryptedWalletRecord& cipher, CryptoPQ::SeedMaster& seedMaster,
     uint64_t& creationTimestamp, const Crypto::chacha8_key& key);
-  void decryptKeyPair(const EncryptedWalletRecord& cipher, Crypto::PublicKey& publicKey, Crypto::SecretKey& secretKey, uint64_t& creationTimestamp) const;
-  static EncryptedWalletRecord encryptKeyPair(const Crypto::PublicKey& publicKey, const Crypto::SecretKey& secretKey, uint64_t creationTimestamp,
+  bool decryptSeed(const EncryptedWalletRecord& cipher, CryptoPQ::SeedMaster& seedMaster, uint64_t& creationTimestamp) const;
+  static EncryptedWalletRecord encryptSeed(const CryptoPQ::SeedMaster& seedMaster, uint64_t creationTimestamp,
     const Crypto::chacha8_key& key, const Crypto::chacha8_iv& iv);
-  EncryptedWalletRecord encryptKeyPair(const Crypto::PublicKey& publicKey, const Crypto::SecretKey& secretKey, uint64_t creationTimestamp) const;
+  EncryptedWalletRecord encryptSeed(const CryptoPQ::SeedMaster& seedMaster, uint64_t creationTimestamp) const;
   Crypto::chacha8_iv getNextIv() const;
   static void incIv(Crypto::chacha8_iv& iv);
   void incNextIv();
-  void initWithKeys(const std::string& path, const std::string& password, const Crypto::PublicKey& viewPublicKey, const Crypto::SecretKey& viewSecretKey, const uint64_t& _creationTimestamp);
-  CryptoNote::KeyPair deriveHdSpendKey(uint32_t hdIndex) const;
-  NewAddressData createHdAddressData(uint64_t creationTimestamp);
-  std::string doCreateAddress(const Crypto::PublicKey& spendPublicKey, const Crypto::SecretKey& spendSecretKey, uint64_t creationTimestamp, uint32_t hdIndex = WALLET_INVALID_HD_INDEX);
+  // Set up a fresh (empty) PQ wallet container: the prefix holds only {version,nextIv}
+  // — there is no classical view key. The primary seed lands as record 0 via the
+  // first createAddress()/doCreateAddress().
+  void initContainer(const std::string& path, const std::string& password);
+  // The wallet's primary PQ master seed (record 0). Throws if there are no addresses.
+  CryptoPQ::SeedMaster primarySeedMaster() const;
+  // Bootstrap seed for the primary address: the deterministic/imported seed bytes if
+  // set (HD/import mode), otherwise a fresh CSPRNG seed.
+  CryptoPQ::SeedMaster createHdAddressData(uint64_t creationTimestamp);
+  std::string doCreateAddress(const CryptoPQ::SeedMaster& seedMaster, bool tracking, uint64_t creationTimestamp, uint32_t hdIndex = WALLET_INVALID_HD_INDEX);
   std::vector<std::string> doCreateAddressList(const std::vector<NewAddressData>& addressDataList);
 
   uint64_t getBlockTimestamp(const uint32_t blockHeight);
   uint64_t scanHeightToTimestamp(const uint32_t scanHeight);
   uint64_t getCurrentTimestampAdjusted();
 
-#pragma pack(push, 1)
-  struct ContainerStoragePrefix {
-    uint8_t version;
-    Crypto::chacha8_iv nextIv;
-    EncryptedWalletRecord encryptedViewKeys;
-  };
-#pragma pack(pop)
+  // ContainerStoragePrefix + the seed-record codec live in WalletIndices.h so the
+  // daemon's read-only mining-key loader shares the exact wallet file format.
 
   virtual void synchronizationProgressUpdated(uint32_t processedBlockCount, uint32_t totalBlockCount) override;
   virtual void synchronizationCompleted(std::error_code result) override;
@@ -243,7 +246,7 @@ protected:
   virtual void onBlocksAdded(IBlockchainConsumer* consumer, const std::vector<Crypto::Hash>& blockHashes) override;
   virtual void onBlockchainDetach(IBlockchainConsumer* consumer, uint32_t blockIndex) override;
 
-  std::string addWallet(const Crypto::PublicKey& spendPublicKey, const Crypto::SecretKey& spendSecretKey, uint64_t creationTimestamp, uint32_t hdIndex = WALLET_INVALID_HD_INDEX);
+  std::string addWallet(const CryptoPQ::SeedMaster& seedMaster, bool tracking, uint64_t creationTimestamp, uint32_t hdIndex = WALLET_INVALID_HD_INDEX);
   void pushEvent(const WalletEvent& event);
 
   // Native history index (transaction id) of a PQ transaction by hash, or
@@ -262,7 +265,7 @@ protected:
   void stopBlockchainSynchronizer();
   // Create + register the PQ scanning consumer for the primary address. Full
   // wallets derive from a spend secret; tracking wallets use a PQ audit key.
-  void initPqConsumer(const Crypto::SecretKey& spendSecretKey, const SynchronizationStart& syncStart);
+  void initPqConsumer(const CryptoPQ::SeedMaster& seedMaster, const SynchronizationStart& syncStart);
   void initPqConsumer(const PqTrackingKeys& pqTrackingKeys, const SynchronizationStart& syncStart);
   void initPqConsumerForPrimary();
   // Serialize the PQ consumer's sync cursor + WalletLedger into m_pqState (for
@@ -305,7 +308,7 @@ protected:
   std::vector<TransactionsInBlockInfo> getTransactionsInBlocks(uint32_t blockIndex, size_t count) const;
   Crypto::Hash getBlockHashByIndex(uint32_t blockIndex) const;
 
-  void initBlockchain(const Crypto::PublicKey& viewPublicKey);
+  void initBlockchain();
 
   System::Dispatcher& m_dispatcher;
   const Currency& m_currency;
@@ -348,9 +351,10 @@ protected:
   mutable uint32_t m_pqRegHeight = 0;
   mutable uint32_t m_pqRegTxIndex = 0;
 
-  Crypto::PublicKey m_viewPublicKey;
-  Crypto::SecretKey m_viewSecretKey;
   AddressGenerationMode m_addressGenerationMode;
+  // Deterministic/imported PQ master seed (32 bytes). When set (HD or import mode),
+  // the primary address (record 0) is bootstrapped from these bytes; otherwise a
+  // fresh CSPRNG seed is minted. Empty for the default "mint a random seed" path.
   Crypto::SecretKey m_deterministicSeed;
   uint32_t m_nextDeterministicIndex;
 

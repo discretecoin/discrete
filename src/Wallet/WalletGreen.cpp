@@ -182,47 +182,27 @@ WalletGreen::~WalletGreen() {
 }
 
 void WalletGreen::initialize(const std::string& path, const std::string& password) {
-  Crypto::PublicKey viewPublicKey;
-  Crypto::SecretKey viewSecretKey;
-  Crypto::generate_keys(viewPublicKey, viewSecretKey);
-  uint64_t creationTimestamp = time(nullptr);
-  initWithKeys(path, password, viewPublicKey, viewSecretKey, creationTimestamp);
-  m_logger(INFO, BRIGHT_WHITE) << "New container initialized, public view key " << viewPublicKey;
+  // PQ-native: a fresh container has no addresses yet; the caller mints the primary
+  // master seed (record 0) via createAddress().
+  initContainer(path, password);
+  m_logger(INFO, BRIGHT_WHITE) << "New PQ container initialized";
 }
 
-void WalletGreen::initializeWithViewKey(const std::string& path, const std::string& password, const Crypto::SecretKey& viewSecretKey) {
-  Crypto::PublicKey viewPublicKey;
-  if (!Crypto::secret_key_to_public_key(viewSecretKey, viewPublicKey)) {
-    m_logger(ERROR, BRIGHT_RED) << "initializeWithViewKey(" << viewSecretKey << ") Failed to convert secret key to public key";
-    throw std::system_error(make_error_code(CryptoNote::error::KEY_GENERATION_ERROR));
-  }
-  uint64_t creationTimestamp = time(nullptr);
-  initWithKeys(path, password, viewPublicKey, viewSecretKey, creationTimestamp);
-  m_logger(INFO, BRIGHT_WHITE) << "Container initialized with view secret key, public view key " << viewPublicKey;
+void WalletGreen::initializeWithViewKey(const std::string& path, const std::string& password, const Crypto::SecretKey& /*viewSecretKey*/) {
+  // PQ has no classical view key; the argument is ignored. The wallet's audit
+  // capability is the PQ tracking key (see initializeWithPqTrackingKey).
+  initContainer(path, password);
+  m_logger(INFO, BRIGHT_WHITE) << "PQ container initialized";
 }
 
-void WalletGreen::initializeWithViewKey(const std::string& path, const std::string& password, const Crypto::SecretKey& viewSecretKey, const uint64_t& creationTimestamp) {
-  Crypto::PublicKey viewPublicKey;
-  if (!Crypto::secret_key_to_public_key(viewSecretKey, viewPublicKey)) {
-    m_logger(ERROR, BRIGHT_RED) << "initializeWithViewKey(" << viewSecretKey << ") Failed to convert secret key to public key";
-    throw std::system_error(make_error_code(CryptoNote::error::KEY_GENERATION_ERROR));
-  }
-
-  initWithKeys(path, password, viewPublicKey, viewSecretKey, creationTimestamp);
-  m_logger(INFO, BRIGHT_WHITE) << "Container initialized with view secret key, public view key " << viewPublicKey;
+void WalletGreen::initializeWithViewKey(const std::string& path, const std::string& password, const Crypto::SecretKey& /*viewSecretKey*/, const uint64_t& /*creationTimestamp*/) {
+  initContainer(path, password);
+  m_logger(INFO, BRIGHT_WHITE) << "PQ container initialized";
 }
 
-void WalletGreen::initializeWithViewKey(const std::string& path, const std::string& password, const Crypto::SecretKey& viewSecretKey, const uint32_t scanHeight) {
-  Crypto::PublicKey viewPublicKey;
-  if (!Crypto::secret_key_to_public_key(viewSecretKey, viewPublicKey)) {
-    m_logger(ERROR, BRIGHT_RED) << "initializeWithViewKey(" << viewSecretKey << ") Failed to convert secret key to public key";
-    throw std::system_error(make_error_code(CryptoNote::error::KEY_GENERATION_ERROR));
-  }
-
-  uint64_t creationTimestamp = scanHeightToTimestamp(scanHeight);
-
-  initWithKeys(path, password, viewPublicKey, viewSecretKey, creationTimestamp);
-  m_logger(INFO, BRIGHT_WHITE) << "Container initialized with view secret key, public view key " << viewPublicKey;
+void WalletGreen::initializeWithViewKey(const std::string& path, const std::string& password, const Crypto::SecretKey& /*viewSecretKey*/, const uint32_t /*scanHeight*/) {
+  initContainer(path, password);
+  m_logger(INFO, BRIGHT_WHITE) << "PQ container initialized";
 }
 
 void WalletGreen::initializeWithPqTrackingKey(const std::string& path, const std::string& password,
@@ -233,19 +213,14 @@ void WalletGreen::initializeWithPqTrackingKey(const std::string& path, const std
 void WalletGreen::initializeWithPqTrackingKey(const std::string& path, const std::string& password,
                                               const PqTrackingKeys& pqTrackingKeys,
                                               const uint64_t& creationTimestamp) {
-  Crypto::PublicKey viewPublicKey;
-  Crypto::SecretKey viewSecretKey;
-  Crypto::generate_keys(viewPublicKey, viewSecretKey);
-
-  initWithKeys(path, password, viewPublicKey, viewSecretKey, creationTimestamp);
+  initContainer(path, password);
   m_pqTrackingKeys.reset(new PqTrackingKeys(pqTrackingKeys));
 
-  Crypto::PublicKey placeholderSpendPublicKey;
-  Crypto::SecretKey placeholderSpendSecretKey;
-  Crypto::generate_keys(placeholderSpendPublicKey, placeholderSpendSecretKey);
-  createAddress(placeholderSpendPublicKey, creationTimestamp);
+  // Audit-only record 0: an all-zero master seed marks the wallet as tracking; the
+  // scanning consumer is built from the imported PQ tracking credential.
+  doCreateAddress(CryptoPQ::SeedMaster{}, true, creationTimestamp);
 
-  m_logger(INFO, BRIGHT_WHITE) << "Container initialized with tracking key";
+  m_logger(INFO, BRIGHT_WHITE) << "Container initialized with PQ tracking key";
 }
 
 void WalletGreen::shutdown() {
@@ -289,47 +264,30 @@ void WalletGreen::clearCaches(bool /*clearTransactions*/, bool clearCachedData) 
   }
 }
 
-void WalletGreen::decryptKeyPair(const EncryptedWalletRecord& cipher, PublicKey& publicKey, SecretKey& secretKey,
+bool WalletGreen::decryptSeed(const EncryptedWalletRecord& cipher, CryptoPQ::SeedMaster& seedMaster,
   uint64_t& creationTimestamp, const Crypto::chacha8_key& key) {
-
-  std::array<char, sizeof(cipher.data)> buffer;
-  chacha8(cipher.data, sizeof(cipher.data), key, cipher.iv, buffer.data());
-
-  MemoryInputStream stream(buffer.data(), buffer.size());
-  BinaryInputStreamSerializer serializer(stream);
-
-  serializer(publicKey, "publicKey");
-  serializer(secretKey, "secretKey");
-  serializer.binary(&creationTimestamp, sizeof(uint64_t), "creationTimestamp");
+  return decryptSeedRecord(cipher, seedMaster, creationTimestamp, key);
 }
 
-void WalletGreen::decryptKeyPair(const EncryptedWalletRecord& cipher, PublicKey& publicKey, SecretKey& secretKey, uint64_t& creationTimestamp) const {
-  decryptKeyPair(cipher, publicKey, secretKey, creationTimestamp, m_key);
+bool WalletGreen::decryptSeed(const EncryptedWalletRecord& cipher, CryptoPQ::SeedMaster& seedMaster, uint64_t& creationTimestamp) const {
+  return decryptSeedRecord(cipher, seedMaster, creationTimestamp, m_key);
 }
 
-EncryptedWalletRecord WalletGreen::encryptKeyPair(const PublicKey& publicKey, const SecretKey& secretKey, uint64_t creationTimestamp,
+EncryptedWalletRecord WalletGreen::encryptSeed(const CryptoPQ::SeedMaster& seedMaster, uint64_t creationTimestamp,
   const Crypto::chacha8_key& key, const Crypto::chacha8_iv& iv) {
-
-  EncryptedWalletRecord result;
-
-  std::string serializedKeys;
-  StringOutputStream outputStream(serializedKeys);
-  BinaryOutputStreamSerializer serializer(outputStream);
-
-  serializer(const_cast<PublicKey&>(publicKey), "publicKey");
-  serializer(const_cast<SecretKey&>(secretKey), "secretKey");
-  serializer.binary(&creationTimestamp, sizeof(uint64_t), "creationTimestamp");
-
-  assert(serializedKeys.size() == sizeof(result.data));
-
-  result.iv = iv;
-  chacha8(serializedKeys.data(), serializedKeys.size(), key, result.iv, reinterpret_cast<char*>(result.data));
-
-  return result;
+  return encryptSeedRecord(seedMaster, creationTimestamp, key, iv);
 }
 
-EncryptedWalletRecord WalletGreen::encryptKeyPair(const PublicKey& publicKey, const SecretKey& secretKey, uint64_t creationTimestamp) const {
-  return encryptKeyPair(publicKey, secretKey, creationTimestamp, m_key, getNextIv());
+EncryptedWalletRecord WalletGreen::encryptSeed(const CryptoPQ::SeedMaster& seedMaster, uint64_t creationTimestamp) const {
+  return encryptSeed(seedMaster, creationTimestamp, m_key, getNextIv());
+}
+
+CryptoPQ::SeedMaster WalletGreen::primarySeedMaster() const {
+  const auto& index = m_walletsContainer.get<RandomAccessIndex>();
+  if (index.empty()) {
+    throw std::system_error(make_error_code(error::WRONG_PARAMETERS), "wallet has no addresses");
+  }
+  return index.front().seedMaster;
 }
 
 Crypto::chacha8_iv WalletGreen::getNextIv() const {
@@ -353,11 +311,9 @@ void WalletGreen::incNextIv() {
   incIv(prefix->nextIv);
 }
 
-void WalletGreen::initWithKeys(const std::string& path, const std::string& password,
-  const Crypto::PublicKey& viewPublicKey, const Crypto::SecretKey& viewSecretKey, const uint64_t& _creationTimestamp) {
-
+void WalletGreen::initContainer(const std::string& path, const std::string& password) {
   if (m_state != WalletState::NOT_INITIALIZED) {
-    m_logger(ERROR, BRIGHT_RED) << "Failed to initialize with keys: already initialized. Current state: " << m_state;
+    m_logger(ERROR, BRIGHT_RED) << "Failed to initialize: already initialized. Current state: " << m_state;
     throw std::system_error(make_error_code(CryptoNote::error::ALREADY_INITIALIZED));
   }
 
@@ -371,17 +327,11 @@ void WalletGreen::initWithKeys(const std::string& path, const std::string& passw
   Crypto::cn_context cnContext;
   Crypto::generate_chacha8_key(cnContext, password, m_key);
 
-  prefix->encryptedViewKeys = encryptKeyPair(viewPublicKey, viewSecretKey, _creationTimestamp, m_key, prefix->nextIv);
-
   newStorage.flush();
   m_containerStorage.swap(newStorage);
-  incNextIv();
 
-  m_viewPublicKey = viewPublicKey;
-  m_viewSecretKey = viewSecretKey;
   m_password = password;
   m_path = path;
-  m_logger = Logging::LoggerRef(m_logger.getLogger(), "WalletGreen/" + podToHex(m_viewPublicKey).substr(0, 5));
 
   assert(m_blockchain.empty());
   m_blockchain.push_back(m_currency.genesisBlockHash());
@@ -529,7 +479,7 @@ void WalletGreen::load(const std::string& path, const std::string& password, std
 
   assert(m_blockchain.empty());
   if (m_walletsContainer.get<RandomAccessIndex>().size() != 0) {
-    initBlockchain(m_viewPublicKey);
+    initBlockchain();
 
     startBlockchainSynchronizer();
   } else {
@@ -542,8 +492,7 @@ void WalletGreen::load(const std::string& path, const std::string& password, std
   m_extra = extra;
 
   m_state = WalletState::INITIALIZED;
-  m_logger(INFO, BRIGHT_WHITE) << "Container loaded, view public key " << m_viewPublicKey <<
-    ", wallet count " << m_walletsContainer.size() <<
+  m_logger(INFO, BRIGHT_WHITE) << "Container loaded, wallet count " << m_walletsContainer.size() <<
     ", balance " << m_currency.formatAmount(getActualBalance());
 }
 
@@ -557,13 +506,11 @@ void WalletGreen::loadContainerStorage(const std::string& path) {
     m_containerStorage.open(path, FileMappedVectorOpenMode::OPEN, sizeof(ContainerStoragePrefix));
 
     ContainerStoragePrefix* prefix = reinterpret_cast<ContainerStoragePrefix*>(m_containerStorage.prefix());
-    assert(prefix->version >= WalletSerializerV2::MIN_VERSION);
+    if (prefix->version < WalletSerializerV2::MIN_VERSION) {
+      throw std::system_error(make_error_code(error::WRONG_VERSION), "Unsupported wallet version");
+    }
 
-    uint64_t creationTimestamp;
-    decryptKeyPair(prefix->encryptedViewKeys, m_viewPublicKey, m_viewSecretKey, creationTimestamp);
-    throwIfKeysMissmatch(m_viewSecretKey, m_viewPublicKey, "Restored view public key doesn't correspond to secret key");
-    m_logger = Logging::LoggerRef(m_logger.getLogger(), "WalletGreen/" + podToHex(m_viewPublicKey).substr(0, 5));
-
+    // The password is verified inside loadSpendKeys via the record-0 seed magic.
     loadSpendKeys();
 
     m_logger(DEBUGGING) << "Container keys were successfully loaded";
@@ -584,8 +531,6 @@ void WalletGreen::loadWalletCache(std::unordered_set<Crypto::PublicKey>& addedKe
   loadAndDecryptContainerData(m_containerStorage, m_key, contanerData);
 
   WalletSerializerV2 s(
-    m_viewPublicKey,
-    m_viewSecretKey,
     m_addressGenerationMode,
     m_deterministicSeed,
     m_nextDeterministicIndex,
@@ -618,8 +563,6 @@ void WalletGreen::saveWalletCache(ContainerStorage& storage, const Crypto::chach
   Common::StringOutputStream containerStream(containerData);
 
   WalletSerializerV2 s(
-    m_viewPublicKey,
-    m_viewSecretKey,
     m_addressGenerationMode,
     m_deterministicSeed,
     m_nextDeterministicIndex,
@@ -658,33 +601,29 @@ void WalletGreen::copyContainerStorageKeys(ContainerStorage& src, const chacha8_
 
   size_t counter = 0;
 
-  for (auto& encryptedSpendKeys : src) {
-    Crypto::PublicKey publicKey;
-    Crypto::SecretKey secretKey;
-    uint64_t creationTimestamp;
-    decryptKeyPair(encryptedSpendKeys, publicKey, secretKey, creationTimestamp, srcKey);
+  for (auto& encryptedSeed : src) {
+    CryptoPQ::SeedMaster seed{};
+    uint64_t creationTimestamp = 0;
+    if (!decryptSeed(encryptedSeed, seed, creationTimestamp, srcKey)) {
+      throw std::system_error(make_error_code(error::WRONG_PASSWORD), "Wrong password");
+    }
 
-    // push_back() can resize container, and dstPrefix address can be changed, so it is requested for each key pair
+    // push_back() can resize container, and dstPrefix address can be changed, so it is requested for each record
     ContainerStoragePrefix* dstPrefix = reinterpret_cast<ContainerStoragePrefix*>(dst.prefix());
-    Crypto::chacha8_iv keyPairIv = dstPrefix->nextIv;
+    Crypto::chacha8_iv recordIv = dstPrefix->nextIv;
     incIv(dstPrefix->nextIv);
 
-    dst.push_back(encryptKeyPair(publicKey, secretKey, creationTimestamp, dstKey, keyPairIv));
+    dst.push_back(encryptSeed(seed, creationTimestamp, dstKey, recordIv));
   }
 }
 
-void WalletGreen::copyContainerStoragePrefix(ContainerStorage& src, const chacha8_key& srcKey, ContainerStorage& dst, const chacha8_key& dstKey) {
+void WalletGreen::copyContainerStoragePrefix(ContainerStorage& src, const chacha8_key& /*srcKey*/, ContainerStorage& dst, const chacha8_key& /*dstKey*/) {
+  // The prefix holds no key material on a PQ container (just version + IV); the
+  // master seed lives in the body records, copied by copyContainerStorageKeys.
   ContainerStoragePrefix* srcPrefix = reinterpret_cast<ContainerStoragePrefix*>(src.prefix());
   ContainerStoragePrefix* dstPrefix = reinterpret_cast<ContainerStoragePrefix*>(dst.prefix());
   dstPrefix->version = srcPrefix->version;
   dstPrefix->nextIv = Crypto::randomChachaIV();
-
-  Crypto::PublicKey publicKey;
-  Crypto::SecretKey secretKey;
-  uint64_t creationTimestamp;
-  decryptKeyPair(srcPrefix->encryptedViewKeys, publicKey, secretKey, creationTimestamp, srcKey);
-  dstPrefix->encryptedViewKeys = encryptKeyPair(publicKey, secretKey, creationTimestamp, dstKey, dstPrefix->nextIv);
-  incIv(dstPrefix->nextIv);
 }
 
 void WalletGreen::encryptAndSaveContainerData(ContainerStorage& storage, const Crypto::chacha8_key& key, const void* containerData, size_t containerDataSize) {
@@ -725,25 +664,22 @@ void WalletGreen::deleteOrphanTransactions(const std::unordered_set<Crypto::Publ
 }
 
 void WalletGreen::loadSpendKeys() {
-  bool isTrackingMode;
+  bool isTrackingMode = false;
   for (size_t i = 0; i < m_containerStorage.size(); ++i) {
     WalletRecord wallet;
-    uint64_t creationTimestamp;
-    decryptKeyPair(m_containerStorage[i], wallet.spendPublicKey, wallet.spendSecretKey, creationTimestamp);
-    wallet.creationTimestamp = creationTimestamp;
+    uint64_t creationTimestamp = 0;
+    CryptoPQ::SeedMaster seed{};
+    if (!decryptSeed(m_containerStorage[i], seed, creationTimestamp)) {
+      throw std::system_error(make_error_code(error::WRONG_PASSWORD), "Wrong password");
+    }
+    wallet.seedMaster = seed;
+    wallet.tracking = (seed == CryptoPQ::SeedMaster{});  // all-zero seed = audit-only
+    wallet.creationTimestamp = static_cast<time_t>(creationTimestamp);
 
     if (i == 0) {
-      isTrackingMode = wallet.spendSecretKey == NULL_SECRET_KEY;
-    } else if ((isTrackingMode && wallet.spendSecretKey != NULL_SECRET_KEY) || (!isTrackingMode && wallet.spendSecretKey == NULL_SECRET_KEY)) {
+      isTrackingMode = wallet.tracking;
+    } else if (wallet.tracking != isTrackingMode) {
       throw std::system_error(make_error_code(error::BAD_ADDRESS), "All addresses must be whether tracking or not");
-    }
-
-    if (wallet.spendSecretKey != NULL_SECRET_KEY) {
-      throwIfKeysMissmatch(wallet.spendSecretKey, wallet.spendPublicKey, "Restored spend public key doesn't correspond to secret key");
-    } else {
-      if (!Crypto::check_key(wallet.spendPublicKey)) {
-        throw std::system_error(make_error_code(error::WRONG_PASSWORD), "Public spend key is incorrect");
-      }
     }
 
     wallet.actualBalance = 0;
@@ -845,8 +781,9 @@ AccountPublicAddress WalletGreen::getAccountPublicAddress(size_t index) const {
     throw std::system_error(make_error_code(std::errc::invalid_argument));
   }
 
-  const WalletRecord& wallet = m_walletsContainer.get<RandomAccessIndex>()[index];
-  return { wallet.spendPublicKey, m_viewPublicKey };
+  // PQ wallets have no classical account address; callers use getAddress()/getPqAddress().
+  (void)m_walletsContainer.get<RandomAccessIndex>()[index];
+  return AccountPublicAddress{};
 }
 
 std::string WalletGreen::getAddress(size_t index) const {
@@ -878,7 +815,13 @@ KeyPair WalletGreen::getAddressSpendKey(size_t index) const {
   }
 
   const WalletRecord& wallet = m_walletsContainer.get<RandomAccessIndex>()[index];
-  return {wallet.spendPublicKey, wallet.spendSecretKey};
+  // The exportable secret is the PQ master seed; the "public key" is a non-secret
+  // identifier (a hash of the seed), not a classical key.
+  KeyPair kp{};
+  std::memcpy(kp.secretKey.data, wallet.seedMaster.data(), sizeof(kp.secretKey.data));
+  Crypto::cn_fast_hash(wallet.seedMaster.data(), wallet.seedMaster.size(),
+                       reinterpret_cast<Crypto::Hash&>(kp.publicKey));
+  return kp;
 }
 
 KeyPair WalletGreen::getAddressSpendKey(const std::string& address) const {
@@ -901,7 +844,9 @@ KeyPair WalletGreen::getViewKey() const {
   throwIfNotInitialized();
   throwIfStopped();
 
-  return {m_viewPublicKey, m_viewSecretKey};
+  // PQ wallets have no classical view key; the audit credential is the PQ tracking
+  // key (getPqTrackingKeys / encodePqTrackingKey).
+  return KeyPair{};
 }
 
 AddressGenerationMode WalletGreen::getAddressGenerationMode() const {
@@ -915,12 +860,12 @@ Crypto::SecretKey WalletGreen::getDeterministicSeed() const {
   throwIfNotInitialized();
   throwIfStopped();
 
-  if (m_addressGenerationMode != AddressGenerationMode::HD_DETERMINISTIC || m_deterministicSeed == NULL_SECRET_KEY) {
-    m_logger(ERROR, BRIGHT_RED) << "Container does not have an HD deterministic seed";
-    throw std::system_error(make_error_code(error::WRONG_PARAMETERS));
-  }
-
-  return m_deterministicSeed;
+  // The wallet's PQ master seed (record 0) IS the deterministic backup seed; the
+  // same 32 bytes recover the entire PQ identity (and back the mnemonic).
+  CryptoPQ::SeedMaster seed = primarySeedMaster();
+  Crypto::SecretKey out;
+  std::memcpy(out.data, seed.data(), sizeof(out.data));
+  return out;
 }
 
 void WalletGreen::setAddressGenerationMode(AddressGenerationMode mode, const Crypto::SecretKey& deterministicSeed) {
@@ -938,19 +883,7 @@ void WalletGreen::setAddressGenerationMode(AddressGenerationMode mode, const Cry
       throw std::system_error(make_error_code(error::WRONG_PARAMETERS));
     }
 
-    Crypto::PublicKey spendPublicKey;
-    if (!Crypto::secret_key_to_public_key(deterministicSeed, spendPublicKey)) {
-      m_logger(ERROR, BRIGHT_RED) << "HD deterministic seed cannot be converted to a public spend key";
-      throw std::system_error(make_error_code(CryptoNote::error::KEY_GENERATION_ERROR));
-    }
-
-    Crypto::SecretKey deterministicViewSecretKey;
-    CryptoNote::AccountBase::generateViewFromSpend(deterministicSeed, deterministicViewSecretKey);
-    if (deterministicViewSecretKey != m_viewSecretKey) {
-      m_logger(ERROR, BRIGHT_RED) << "HD deterministic seed does not match the container view key";
-      throw std::system_error(make_error_code(error::WRONG_PARAMETERS));
-    }
-
+    // The 32 seed bytes become the PQ master seed for the primary address (record 0).
     m_addressGenerationMode = AddressGenerationMode::HD_DETERMINISTIC;
     m_deterministicSeed = deterministicSeed;
     m_nextDeterministicIndex = 0;
@@ -968,52 +901,18 @@ void WalletGreen::setAddressGenerationMode(AddressGenerationMode mode, const Cry
   throw std::system_error(make_error_code(error::WRONG_PARAMETERS));
 }
 
-CryptoNote::KeyPair WalletGreen::deriveHdSpendKey(uint32_t hdIndex) const {
-  if (m_addressGenerationMode != AddressGenerationMode::HD_DETERMINISTIC || m_deterministicSeed == NULL_SECRET_KEY ||
-      hdIndex == WALLET_INVALID_HD_INDEX) {
-    m_logger(ERROR, BRIGHT_RED) << "HD spend key derivation requested for an invalid wallet state or index";
-    throw std::system_error(make_error_code(error::WRONG_PARAMETERS));
+CryptoPQ::SeedMaster WalletGreen::createHdAddressData(uint64_t creationTimestamp) {
+  (void)creationTimestamp;
+  // The PQ wallet is single-identity: the "HD" master seed (set via
+  // setAddressGenerationMode) is the primary seed; additional addresses are derived
+  // deposits, not independent HD keys. Bootstrap from the deterministic seed bytes
+  // if present, otherwise mint a fresh CSPRNG seed.
+  if (m_deterministicSeed != NULL_SECRET_KEY) {
+    CryptoPQ::SeedMaster seed{};
+    std::memcpy(seed.data(), m_deterministicSeed.data, seed.size());
+    return seed;
   }
-
-  KeyPair spendKey;
-  if (hdIndex == 0) {
-    spendKey.secretKey = m_deterministicSeed;
-  } else {
-    static const char domain[] = "Karbo walletd HD spend v1";
-    std::vector<uint8_t> derivationData;
-    derivationData.reserve(sizeof(domain) - 1 + sizeof(m_deterministicSeed.data) + sizeof(m_viewSecretKey.data) + sizeof(hdIndex));
-    const uint8_t* domainData = reinterpret_cast<const uint8_t*>(domain);
-    derivationData.insert(derivationData.end(), domainData, domainData + sizeof(domain) - 1);
-    derivationData.insert(derivationData.end(), m_deterministicSeed.data, m_deterministicSeed.data + sizeof(m_deterministicSeed.data));
-    derivationData.insert(derivationData.end(), m_viewSecretKey.data, m_viewSecretKey.data + sizeof(m_viewSecretKey.data));
-    derivationData.push_back(static_cast<uint8_t>(hdIndex));
-    derivationData.push_back(static_cast<uint8_t>(hdIndex >> 8));
-    derivationData.push_back(static_cast<uint8_t>(hdIndex >> 16));
-    derivationData.push_back(static_cast<uint8_t>(hdIndex >> 24));
-    Crypto::hash_to_scalar(derivationData.data(), derivationData.size(), spendKey.secretKey);
-  }
-
-  if (!Crypto::secret_key_to_public_key(spendKey.secretKey, spendKey.publicKey)) {
-    m_logger(ERROR, BRIGHT_RED) << "Failed to derive HD spend public key at index " << hdIndex;
-    throw std::system_error(make_error_code(CryptoNote::error::KEY_GENERATION_ERROR));
-  }
-
-  return spendKey;
-}
-
-WalletGreen::NewAddressData WalletGreen::createHdAddressData(uint64_t creationTimestamp) {
-  for (;;) {
-    if (m_nextDeterministicIndex == WALLET_INVALID_HD_INDEX) {
-      m_logger(ERROR, BRIGHT_RED) << "HD address index space is exhausted";
-      throw std::system_error(make_error_code(error::WRONG_PARAMETERS));
-    }
-
-    const uint32_t hdIndex = m_nextDeterministicIndex++;
-    KeyPair spendKey = deriveHdSpendKey(hdIndex);
-    if (m_walletsContainer.get<KeysIndex>().find(spendKey.publicKey) == m_walletsContainer.get<KeysIndex>().end()) {
-      return NewAddressData{ spendKey.publicKey, spendKey.secretKey, creationTimestamp, hdIndex };
-    }
-  }
+  return generatePqSeedMaster();
 }
 
 std::string WalletGreen::createAddress() {
@@ -1026,15 +925,8 @@ std::string WalletGreen::createAddress() {
     return getAddress(static_cast<size_t>(depositIndex) + 1);
   }
 
-  if (m_addressGenerationMode == AddressGenerationMode::HD_DETERMINISTIC) {
-    return doCreateAddressList({ createHdAddressData(static_cast<uint64_t>(time(nullptr))) }).front();
-  }
-
-  KeyPair spendKey;
-  Crypto::generate_keys(spendKey.publicKey, spendKey.secretKey);
   uint64_t creationTimestamp = static_cast<uint64_t>(time(nullptr));
-
-  return doCreateAddress(spendKey.publicKey, spendKey.secretKey, creationTimestamp);
+  return doCreateAddress(createHdAddressData(creationTimestamp), false, creationTimestamp);
 }
 
 std::string WalletGreen::createAddress(uint32_t scanHeight) {
@@ -1044,87 +936,53 @@ std::string WalletGreen::createAddress(uint32_t scanHeight) {
     return getAddress(static_cast<size_t>(depositIndex) + 1);
   }
   const uint64_t creationTimestamp = scanHeightToTimestamp(scanHeight);
-  if (m_addressGenerationMode == AddressGenerationMode::HD_DETERMINISTIC) {
-    return doCreateAddressList({ createHdAddressData(creationTimestamp) }).front();
-  }
-
-  KeyPair spendKey;
-  Crypto::generate_keys(spendKey.publicKey, spendKey.secretKey);
-  return doCreateAddress(spendKey.publicKey, spendKey.secretKey, creationTimestamp);
+  return doCreateAddress(createHdAddressData(creationTimestamp), false, creationTimestamp);
 }
 
-std::string WalletGreen::createAddress(const Crypto::SecretKey& spendSecretKey, bool reset) {
-  Crypto::PublicKey spendPublicKey;
-  if (!Crypto::secret_key_to_public_key(spendSecretKey, spendPublicKey)) {
-    m_logger(ERROR, BRIGHT_RED) << "createAddress(" << spendSecretKey << ") Failed to convert secret key to public key";
-    throw std::system_error(make_error_code(CryptoNote::error::KEY_GENERATION_ERROR));
-  }
-  uint64_t creationTimestamp = reset ? 0 : static_cast<uint64_t>(time(nullptr));
+namespace {
+// Treat 32 imported secret bytes as a PQ master seed (used by the from-key /
+// from-mnemonic restore paths).
+CryptoPQ::SeedMaster seedFromSecret(const Crypto::SecretKey& secret) {
+  CryptoPQ::SeedMaster seed{};
+  std::memcpy(seed.data(), secret.data, seed.size());
+  return seed;
+}
+[[noreturn]] void throwClassicalImportUnsupported() {
+  throw std::system_error(make_error_code(std::errc::function_not_supported),
+    "Importing a classical public spend key is not supported on the post-quantum wallet");
+}
+}  // namespace
 
-  return doCreateAddress(spendPublicKey, spendSecretKey, creationTimestamp);
+std::string WalletGreen::createAddress(const Crypto::SecretKey& spendSecretKey, bool reset) {
+  uint64_t creationTimestamp = reset ? 0 : static_cast<uint64_t>(time(nullptr));
+  return doCreateAddress(seedFromSecret(spendSecretKey), false, creationTimestamp);
 }
 
 std::string WalletGreen::createAddress(const Crypto::SecretKey& spendSecretKey, const uint64_t& creationTimestamp) {
-  Crypto::PublicKey spendPublicKey;
-  if (!Crypto::secret_key_to_public_key(spendSecretKey, spendPublicKey)) {
-    m_logger(ERROR, BRIGHT_RED) << "createAddress(" << spendSecretKey << ") Failed to convert secret key to public key";
-    throw std::system_error(make_error_code(CryptoNote::error::KEY_GENERATION_ERROR));
-  }
-
-  return doCreateAddress(spendPublicKey, spendSecretKey, creationTimestamp);
+  return doCreateAddress(seedFromSecret(spendSecretKey), false, creationTimestamp);
 }
 
-std::string WalletGreen::createAddress(const Crypto::PublicKey& spendPublicKey, bool reset) {
-  if (!Crypto::check_key(spendPublicKey)) {
-    m_logger(ERROR, BRIGHT_RED) << "createAddress(" << spendPublicKey << ") Wrong public key format";
-    throw std::system_error(make_error_code(error::WRONG_PARAMETERS), "Wrong public key format");
-  }
-  uint64_t creationTimestamp = reset ? 0 : static_cast<uint64_t>(time(nullptr));
-
-  return doCreateAddress(spendPublicKey, NULL_SECRET_KEY, creationTimestamp);
+std::string WalletGreen::createAddress(const Crypto::PublicKey&, bool) {
+  throwClassicalImportUnsupported();
 }
 
-std::string WalletGreen::createAddress(const Crypto::PublicKey& spendPublicKey, const uint64_t& creationTimestamp) {
-  if (!Crypto::check_key(spendPublicKey)) {
-    m_logger(ERROR, BRIGHT_RED) << "createAddress(" << spendPublicKey << ") Wrong public key format";
-    throw std::system_error(make_error_code(error::WRONG_PARAMETERS), "Wrong public key format");
-  }
-
-  return doCreateAddress(spendPublicKey, NULL_SECRET_KEY, creationTimestamp);
+std::string WalletGreen::createAddress(const Crypto::PublicKey&, const uint64_t&) {
+  throwClassicalImportUnsupported();
 }
 
 std::string WalletGreen::createAddress(const Crypto::SecretKey& spendSecretKey, const uint32_t scanHeight) {
-  Crypto::PublicKey spendPublicKey;
-  if (!Crypto::secret_key_to_public_key(spendSecretKey, spendPublicKey)) {
-    m_logger(ERROR, BRIGHT_RED) << "createAddress(" << spendSecretKey << ") Failed to convert secret key to public key";
-    throw std::system_error(make_error_code(CryptoNote::error::KEY_GENERATION_ERROR));
-  }
-  uint64_t creationTimestamp = scanHeightToTimestamp(scanHeight);
-
-  return doCreateAddress(spendPublicKey, spendSecretKey, creationTimestamp);
+  return doCreateAddress(seedFromSecret(spendSecretKey), false, scanHeightToTimestamp(scanHeight));
 }
 
-std::string WalletGreen::createAddress(const Crypto::PublicKey& spendPublicKey, const uint32_t scanHeight) {
-  if (!Crypto::check_key(spendPublicKey)) {
-    m_logger(ERROR, BRIGHT_RED) << "createAddress(" << spendPublicKey << ") Wrong public key format";
-    throw std::system_error(make_error_code(error::WRONG_PARAMETERS), "Wrong public key format");
-  }
-  uint64_t creationTimestamp = scanHeightToTimestamp(scanHeight);
-
-  return doCreateAddress(spendPublicKey, NULL_SECRET_KEY, creationTimestamp);
+std::string WalletGreen::createAddress(const Crypto::PublicKey&, const uint32_t) {
+  throwClassicalImportUnsupported();
 }
 
 std::vector<std::string> WalletGreen::createAddressList(const std::vector<Crypto::SecretKey>& spendSecretKeys, bool reset) {
   std::vector<NewAddressData> addressDataList(spendSecretKeys.size());
   for (size_t i = 0; i < spendSecretKeys.size(); ++i) {
-    Crypto::PublicKey spendPublicKey;
-    if (!Crypto::secret_key_to_public_key(spendSecretKeys[i], spendPublicKey)) {
-      m_logger(ERROR, BRIGHT_RED) << "createAddressList(): failed to convert secret key to public key, secret key " << spendSecretKeys[i];
-      throw std::system_error(make_error_code(CryptoNote::error::KEY_GENERATION_ERROR));
-    }
-
-    addressDataList[i].spendSecretKey = spendSecretKeys[i];
-    addressDataList[i].spendPublicKey = spendPublicKey;
+    addressDataList[i].seedMaster = seedFromSecret(spendSecretKeys[i]);
+    addressDataList[i].tracking = false;
     addressDataList[i].creationTimestamp = reset ? 0 : static_cast<uint64_t>(time(nullptr));
   }
 
@@ -1138,14 +996,8 @@ std::vector<std::string> WalletGreen::createAddressList(const std::vector<Crypto
   }
   std::vector<NewAddressData> addressDataList(spendSecretKeys.size());
   for (size_t i = 0; i < spendSecretKeys.size(); ++i) {
-    Crypto::PublicKey spendPublicKey;
-    if (!Crypto::secret_key_to_public_key(spendSecretKeys[i], spendPublicKey)) {
-      m_logger(ERROR, BRIGHT_RED) << "createAddressList(): failed to convert secret key to public key, secret key " << spendSecretKeys[i];
-      throw std::system_error(make_error_code(CryptoNote::error::KEY_GENERATION_ERROR));
-    }
-
-    addressDataList[i].spendSecretKey = spendSecretKeys[i];
-    addressDataList[i].spendPublicKey = spendPublicKey;
+    addressDataList[i].seedMaster = seedFromSecret(spendSecretKeys[i]);
+    addressDataList[i].tracking = false;
     addressDataList[i].creationTimestamp = creationTimestamps[i];
   }
 
@@ -1159,25 +1011,19 @@ std::vector<std::string> WalletGreen::createAddressList(const std::vector<Crypto
   }
   std::vector<NewAddressData> addressDataList(spendSecretKeys.size());
   for (size_t i = 0; i < spendSecretKeys.size(); ++i) {
-    Crypto::PublicKey spendPublicKey;
-    if (!Crypto::secret_key_to_public_key(spendSecretKeys[i], spendPublicKey)) {
-      m_logger(ERROR, BRIGHT_RED) << "createAddressList(): failed to convert secret key to public key, secret key " << spendSecretKeys[i];
-      throw std::system_error(make_error_code(CryptoNote::error::KEY_GENERATION_ERROR));
-    }
-
-    addressDataList[i].spendSecretKey = spendSecretKeys[i];
-    addressDataList[i].spendPublicKey = spendPublicKey;
+    addressDataList[i].seedMaster = seedFromSecret(spendSecretKeys[i]);
+    addressDataList[i].tracking = false;
     addressDataList[i].creationTimestamp = scanHeightToTimestamp(scanHeights[i]);
   }
 
   return doCreateAddressList(addressDataList);
 }
 
-std::string WalletGreen::doCreateAddress(const Crypto::PublicKey& spendPublicKey, const Crypto::SecretKey& spendSecretKey, uint64_t creationTimestamp, uint32_t hdIndex) {
+std::string WalletGreen::doCreateAddress(const CryptoPQ::SeedMaster& seedMaster, bool tracking, uint64_t creationTimestamp, uint32_t hdIndex) {
   assert(creationTimestamp <= std::numeric_limits<uint64_t>::max() - m_currency.blockFutureTimeLimit());
 
   std::vector<NewAddressData> addressDataList;
-  addressDataList.push_back(NewAddressData{ spendPublicKey, spendSecretKey, creationTimestamp, hdIndex });
+  addressDataList.push_back(NewAddressData{ seedMaster, tracking, creationTimestamp, hdIndex });
   std::vector<std::string> addresses = doCreateAddressList(addressDataList);
   assert(addresses.size() == 1);
 
@@ -1208,7 +1054,7 @@ std::vector<std::string> WalletGreen::doCreateAddressList(const std::vector<NewA
 
       for (auto& addressData : addressDataList) {
         assert(addressData.creationTimestamp <= std::numeric_limits<uint64_t>::max() - m_currency.blockFutureTimeLimit());
-        std::string address = addWallet(addressData.spendPublicKey, addressData.spendSecretKey, addressData.creationTimestamp, addressData.hdIndex);
+        std::string address = addWallet(addressData.seedMaster, addressData.tracking, addressData.creationTimestamp, addressData.hdIndex);
         m_logger(INFO, BRIGHT_WHITE) << "New wallet added " << address << ", creation timestamp " << addressData.creationTimestamp;
         addresses.push_back(std::move(address));
 
@@ -1235,55 +1081,34 @@ std::vector<std::string> WalletGreen::doCreateAddressList(const std::vector<NewA
   return addresses;
 }
 
-std::string WalletGreen::addWallet(const Crypto::PublicKey& spendPublicKey, const Crypto::SecretKey& spendSecretKey, uint64_t creationTimestamp, uint32_t hdIndex) {
-  auto& index = m_walletsContainer.get<KeysIndex>();
+std::string WalletGreen::addWallet(const CryptoPQ::SeedMaster& seedMaster, bool tracking, uint64_t creationTimestamp, uint32_t hdIndex) {
+  auto& index = m_walletsContainer.get<RandomAccessIndex>();
 
-  auto trackingMode = getTrackingMode();
-
-  if ((trackingMode == WalletTrackingMode::TRACKING && spendSecretKey != NULL_SECRET_KEY) ||
-      (trackingMode == WalletTrackingMode::NOT_TRACKING && spendSecretKey == NULL_SECRET_KEY)) {
-    m_logger(ERROR, BRIGHT_RED) << "Failed to add wallet: incompatible tracking mode and spend secret key, tracking mode=" << trackingMode <<
-      ", spendSecretKey " << (spendSecretKey == NULL_SECRET_KEY ? "is null" : "is not null");
-    throw std::system_error(make_error_code(error::WRONG_PARAMETERS));
-  }
-
-  auto insertIt = index.find(spendPublicKey);
-  if (insertIt != index.end()) {
-    m_logger(ERROR, BRIGHT_RED) << "Failed to add wallet: address already exists, " <<
-      m_currency.accountAddressAsString(AccountPublicAddress{spendPublicKey, m_viewPublicKey});
-    throw std::system_error(make_error_code(error::ADDRESS_ALREADY_EXISTS));
-  }
-
-  m_containerStorage.push_back(encryptKeyPair(spendPublicKey, spendSecretKey, creationTimestamp));
+  // Persist the encrypted seed record, then register the in-memory record.
+  m_containerStorage.push_back(encryptSeed(seedMaster, creationTimestamp));
   incNextIv();
 
   try {
-    AccountSubscription sub;
-    sub.keys.address.viewPublicKey = m_viewPublicKey;
-    sub.keys.address.spendPublicKey = spendPublicKey;
-    sub.keys.viewSecretKey = m_viewSecretKey;
-    sub.keys.spendSecretKey = spendSecretKey;
-    sub.transactionSpendableAge = m_transactionSoftLockTime;
-    sub.syncStart.height = 0;
-    sub.syncStart.timestamp = std::max(creationTimestamp, ACCOUNT_CREATE_TIME_ACCURACY) - ACCOUNT_CREATE_TIME_ACCURACY;
-
     WalletRecord wallet;
-    wallet.spendPublicKey = spendPublicKey;
-    wallet.spendSecretKey = spendSecretKey;
+    wallet.seedMaster = seedMaster;
+    wallet.tracking = tracking;
     wallet.creationTimestamp = static_cast<time_t>(creationTimestamp);
     wallet.hdIndex = hdIndex;
 
-    index.insert(insertIt, std::move(wallet));
+    index.push_back(std::move(wallet));
     m_logger(DEBUGGING) << "Wallet count " << m_walletsContainer.size();
 
     if (index.size() == 1) {
-      // The PQ identity derives from the primary address's spend secret. Create the
+      // The PQ identity derives from the primary record's master seed. Create the
       // consumer first so the block list (m_blockchain) can be seeded from it.
-      initPqConsumer(spendSecretKey, sub.syncStart);
-      initBlockchain(m_viewPublicKey);
+      SynchronizationStart syncStart;
+      syncStart.height = 0;
+      syncStart.timestamp = std::max(creationTimestamp, ACCOUNT_CREATE_TIME_ACCURACY) - ACCOUNT_CREATE_TIME_ACCURACY;
+      initPqConsumer(seedMaster, syncStart);
+      initBlockchain();
     }
 
-    auto address = m_currency.accountAddressAsString({ spendPublicKey, m_viewPublicKey });
+    std::string address = getPqAddress();
     m_logger(DEBUGGING) << "Wallet added " << address << ", creation timestamp " << creationTimestamp;
     return address;
   } catch (const std::exception& e) {
@@ -1371,26 +1196,18 @@ void WalletGreen::reset(const uint64_t scanHeight)
     /* Stop so things can't be added to the container as we're looping */
     stop();
 
-    /* Grab the wallet encrypted prefix */
-    auto* prefix = reinterpret_cast<ContainerStoragePrefix*>(m_containerStorage.prefix());
-
     uint64_t newTimestamp = scanHeightToTimestamp((uint32_t) scanHeight);
 
-    /* Reencrypt with the new creation timestamp so we rescan from here when we relaunch */
-    prefix->encryptedViewKeys = encryptKeyPair(m_viewPublicKey, m_viewSecretKey, newTimestamp);
-
-    /* As a reference so we can update it */
-    for (auto& encryptedSpendKeys : m_containerStorage)
+    /* Re-encrypt every seed record with the new creation timestamp so we rescan from
+       here when we relaunch (the PQ container has no classical view key in the prefix). */
+    for (auto& encryptedSeed : m_containerStorage)
     {
-        Crypto::PublicKey publicKey;
-        Crypto::SecretKey secretKey;
-        uint64_t oldTimestamp;
-
-        /* Decrypt the key pair we're pointing to */
-        decryptKeyPair(encryptedSpendKeys, publicKey, secretKey, oldTimestamp);
-
-        /* Re-encrypt with the new timestamp */
-        encryptedSpendKeys = encryptKeyPair(publicKey, secretKey, newTimestamp);
+        CryptoPQ::SeedMaster seed{};
+        uint64_t oldTimestamp = 0;
+        if (decryptSeed(encryptedSeed, seed, oldTimestamp))
+        {
+            encryptedSeed = encryptSeed(seed, newTimestamp);
+        }
     }
 
     /* Start again so we can save */
@@ -1894,18 +1711,18 @@ void WalletGreen::pushEvent(const WalletEvent& event) {
   m_eventOccurred.set();
 }
 
-void WalletGreen::initPqConsumer(const Crypto::SecretKey& spendSecretKey,
+void WalletGreen::initPqConsumer(const CryptoPQ::SeedMaster& seedMaster,
                                  const SynchronizationStart& syncStart) {
   if (m_pqConsumer) {
     return;  // already created
   }
-  if (spendSecretKey == NULL_SECRET_KEY) {
+  if (seedMaster == CryptoPQ::SeedMaster{}) {  // all-zero => tracking (audit-only) wallet
     if (m_pqTrackingKeys) {
       initPqConsumer(*m_pqTrackingKeys, syncStart);
     }
     return;
   }
-  PqWalletKeys pqKeys = derivePqWalletKeys(spendSecretKey);
+  PqWalletKeys pqKeys = derivePqWalletKeys(seedMaster);
   m_pqConsumer.reset(new WalletLedgerConsumer(pqKeys, syncStart, m_logger.getLogger()));
   m_blockchainSynchronizer.addConsumer(m_pqConsumer.get());
   m_pqConsumer->addObserver(this);  // m_blockchain (block list) is fed from here
@@ -1933,7 +1750,7 @@ void WalletGreen::initPqConsumerForPrimary() {
   syncStart.height = 0;
   syncStart.timestamp = std::max(static_cast<uint64_t>(primary.creationTimestamp),
                                  ACCOUNT_CREATE_TIME_ACCURACY) - ACCOUNT_CREATE_TIME_ACCURACY;
-  initPqConsumer(primary.spendSecretKey, syncStart);
+  initPqConsumer(primary.seedMaster, syncStart);
 }
 
 void WalletGreen::syncPqDepositConfigToState() {
@@ -2079,11 +1896,11 @@ bool WalletGreen::getPqTrackingKeys(PqTrackingKeys& keys) const {
   if (getAddressCount() == 0) {
     return false;
   }
-  KeyPair primary = getAddressSpendKey(0);
-  if (primary.secretKey == NULL_SECRET_KEY) {
-    return false;
+  CryptoPQ::SeedMaster seed = primarySeedMaster();
+  if (seed == CryptoPQ::SeedMaster{}) {
+    return false;  // tracking wallet without a stored credential
   }
-  keys = pqTrackingKeys(derivePqWalletKeys(primary.secretKey));
+  keys = pqTrackingKeys(derivePqWalletKeys(seed));
   return true;
 }
 
@@ -2093,11 +1910,11 @@ bool WalletGreen::getPqRegistrationKeysHex(std::string& viewHex, std::string& sp
   if (getAddressCount() == 0) {
     return false;
   }
-  KeyPair primary = getAddressSpendKey(0);
-  if (primary.secretKey == NULL_SECRET_KEY) {
+  CryptoPQ::SeedMaster seed = primarySeedMaster();
+  if (seed == CryptoPQ::SeedMaster{}) {
     return false;
   }
-  PqWalletKeys keys = derivePqWalletKeys(primary.secretKey);
+  PqWalletKeys keys = derivePqWalletKeys(seed);
   viewHex = Common::toHex(keys.viewPub.data(), keys.viewPub.size());
   spendHex = Common::toHex(keys.spendPub.data(), keys.spendPub.size());
   return true;
@@ -2111,11 +1928,11 @@ PqSendResult WalletGreen::sendPqTransfer(const std::vector<PqSendOutput>& recipi
   if (!pqEnabled()) {
     throw std::runtime_error("Spending is unavailable for this wallet");
   }
-  KeyPair primary = getAddressSpendKey(0);
-  if (primary.secretKey == NULL_SECRET_KEY) {
+  CryptoPQ::SeedMaster seed = primarySeedMaster();
+  if (seed == CryptoPQ::SeedMaster{}) {
     throw std::runtime_error("tracking wallet cannot spend");
   }
-  PqWalletKeys keys = derivePqWalletKeys(primary.secretKey);
+  PqWalletKeys keys = derivePqWalletKeys(seed);
 
   PqSendRequest req;
   req.recipients = recipients;
@@ -2173,11 +1990,11 @@ PqSendResult WalletGreen::registerPqAccountPaid() {
   if (!pqEnabled()) {
     throw std::runtime_error("Registration is unavailable for this wallet");
   }
-  KeyPair primary = getAddressSpendKey(0);
-  if (primary.secretKey == NULL_SECRET_KEY) {
+  CryptoPQ::SeedMaster seed = primarySeedMaster();
+  if (seed == CryptoPQ::SeedMaster{}) {
     throw std::runtime_error("tracking wallet cannot register account numbers");
   }
-  PqWalletKeys keys = derivePqWalletKeys(primary.secretKey);
+  PqWalletKeys keys = derivePqWalletKeys(seed);
 
   // A paid registration is a fee-paying TX_PQ whose extra holds the registration
   // tag (consensus records it first-reg-wins). Pay the smallest denomination back
@@ -2223,11 +2040,11 @@ std::string WalletGreen::pqDepositAddress(uint32_t index, uint32_t regBlockHeigh
   if (getAddressCount() == 0) {
     return std::string();
   }
-  KeyPair primary = getAddressSpendKey(0);
-  if (primary.secretKey == NULL_SECRET_KEY) {
+  CryptoPQ::SeedMaster seed = primarySeedMaster();
+  if (seed == CryptoPQ::SeedMaster{}) {
     return std::string();  // tracking wallet: cannot derive deposit spend keys
   }
-  PqWalletKeys base = derivePqWalletKeys(primary.secretKey);
+  PqWalletKeys base = derivePqWalletKeys(seed);
 
   if (m_pqDepositScheme == PqDepositScheme::SingleKeyIndex) {
     // Spec 2: one keypair; the deposit identity is the H-I-T-C account number.
@@ -2256,11 +2073,11 @@ Transaction WalletGreen::buildPqFreeRegTransaction(const Crypto::Hash& refBlockH
   if (getAddressCount() == 0) {
     throw std::runtime_error("wallet has no addresses");
   }
-  KeyPair primary = getAddressSpendKey(0);
-  if (primary.secretKey == NULL_SECRET_KEY) {
+  CryptoPQ::SeedMaster seed = primarySeedMaster();
+  if (seed == CryptoPQ::SeedMaster{}) {
     throw std::runtime_error("tracking wallet cannot register account numbers");
   }
-  PqWalletKeys keys = derivePqWalletKeys(primary.secretKey);
+  PqWalletKeys keys = derivePqWalletKeys(seed);
   // Shared anti-spam PoW grind (same helper simplewallet uses → same target).
   uint64_t nonce = grindFreeRegPow(keys.viewPub, refBlockHash);
   return buildFreeRegTransaction(keys.viewPub, keys.spendPub, refBlockHash, nonce);
@@ -2330,7 +2147,7 @@ WalletGreen::WalletTrackingMode WalletGreen::getTrackingMode() const {
     return WalletTrackingMode::NO_ADDRESSES;
   }
 
-  return m_walletsContainer.get<RandomAccessIndex>().begin()->spendSecretKey == NULL_SECRET_KEY ?
+  return m_walletsContainer.get<RandomAccessIndex>().begin()->tracking ?
         WalletTrackingMode::TRACKING : WalletTrackingMode::NOT_TRACKING;
 }
 
@@ -2379,7 +2196,7 @@ Crypto::Hash WalletGreen::getBlockHashByIndex(uint32_t blockIndex) const {
   return m_blockchain.get<BlockHeightIndex>()[blockIndex];
 }
 
-void WalletGreen::initBlockchain(const Crypto::PublicKey& /*viewPublicKey*/) {
+void WalletGreen::initBlockchain() {
   if (!m_pqConsumer) {
     return;
   }
@@ -2435,27 +2252,15 @@ void WalletGreen::clearCacheAndShutdown()
   shutdown();
 }
 
-void WalletGreen::createViewWallet(const std::string &password,
-                                   const std::string address,
-                                   const Crypto::SecretKey &viewSecretKey,
-                                   const std::string &path)
+void WalletGreen::createViewWallet(const std::string& /*password*/,
+                                   const std::string /*address*/,
+                                   const Crypto::SecretKey& /*viewSecretKey*/,
+                                   const std::string& /*path*/)
 {
-    CryptoNote::AccountPublicAddress publicKeys;
-    uint64_t prefix;
-
-    std::string data;
-
-    if (!(Tools::Base58::decode_addr(address, prefix, data) &&
-          fromBinaryArray(publicKeys, asBinaryArray(data)) &&
-          // ::serialization::parse_binary(data, adr) &&
-          check_key(publicKeys.spendPublicKey) &&
-          check_key(publicKeys.viewPublicKey)))
-    {
-        throw std::runtime_error("Failed to parse address!");
-    }
-
-    initializeWithViewKey(path, password, viewSecretKey);
-    createAddress(publicKeys.spendPublicKey);
+    // Classical (view-key + address) view wallets do not exist on a PQ chain; an
+    // audit-only wallet is created from a PQ tracking key (initializeWithPqTrackingKey).
+    throw std::system_error(make_error_code(std::errc::function_not_supported),
+      "Classical view wallets are not supported on the post-quantum wallet; import a PQ tracking key instead");
 }
 
 } //namespace CryptoNote

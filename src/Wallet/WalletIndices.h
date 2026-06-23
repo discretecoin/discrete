@@ -17,6 +17,7 @@
 
 #pragma once
 
+#include <cstring>
 #include <limits>
 #include <map>
 #include <unordered_map>
@@ -33,28 +34,79 @@
 
 #include "Common/FileMappedVector.h"
 #include "crypto/chacha8.h"
+#include "crypto_pq/PqSeed.h"
 
 namespace CryptoNote {
 
 const uint64_t ACCOUNT_CREATE_TIME_ACCURACY = 60 * 60 * 24;
 const uint32_t WALLET_INVALID_HD_INDEX = std::numeric_limits<uint32_t>::max();
 
+// PQ-native wallet identity. The wallet's master secret is a post-quantum
+// CryptoPQ::SeedMaster (32 CSPRNG bytes); every PQ key (view, spend, per-deposit
+// spend) derives from it through the cemented PqSeed chain. There is no classical
+// (Ed25519) keypair. A tracking (audit-only) wallet holds an all-zero seedMaster
+// and carries its PqTrackingKeys credential separately (persisted in the PQ state
+// blob); `tracking` records that distinction.
 struct WalletRecord {
-  Crypto::PublicKey spendPublicKey;
-  Crypto::SecretKey spendSecretKey;
+  CryptoPQ::SeedMaster seedMaster{};
+  bool tracking = false;
   uint64_t pendingBalance = 0;
   uint64_t actualBalance = 0;
-  time_t creationTimestamp;
+  time_t creationTimestamp = 0;
   uint32_t hdIndex = WALLET_INVALID_HD_INDEX;
 };
 
 #pragma pack(push, 1)
 struct EncryptedWalletRecord {
   Crypto::chacha8_iv iv;
-  // Secret key, public key and creation timestamp
-  uint8_t data[sizeof(Crypto::PublicKey) + sizeof(Crypto::SecretKey) + sizeof(uint64_t)];
+  // Encrypted payload: magic(4) || seedMaster(32) || creationTimestamp(8). The
+  // magic doubles as the password check (a wrong password decrypts to garbage and
+  // the magic won't match).
+  uint8_t data[4 + sizeof(CryptoPQ::SeedMaster) + sizeof(uint64_t)];
+};
+
+// On-disk container header. PQ containers keep no key material here (the master
+// seed lives in the body records); this is part of the wallet file format and is
+// shared by WalletGreen and the daemon's read-only mining-key loader.
+struct ContainerStoragePrefix {
+  uint8_t version;
+  Crypto::chacha8_iv nextIv;
 };
 #pragma pack(pop)
+
+typedef Common::FileMappedVector<EncryptedWalletRecord> ContainerStorage;
+
+// Magic prefix inside every encrypted seed record. A wrong password decrypts to
+// garbage and this won't match, which is how a bad password is detected (the PQ
+// master seed has no stored public counterpart to validate against).
+constexpr uint8_t SEED_RECORD_MAGIC[4] = { 'D', 'P', 'Q', 'S' };
+
+// Encrypt/decrypt a wallet record = magic || master seed || creation timestamp.
+// Shared by WalletGreen and MiningKeyLoader so the file format lives in one place.
+// decryptSeedRecord returns false when the magic doesn't match (i.e. wrong password).
+inline EncryptedWalletRecord encryptSeedRecord(const CryptoPQ::SeedMaster& seedMaster, uint64_t creationTimestamp,
+                                               const Crypto::chacha8_key& key, const Crypto::chacha8_iv& iv) {
+  EncryptedWalletRecord result;
+  unsigned char buffer[sizeof(result.data)];
+  std::memcpy(buffer, SEED_RECORD_MAGIC, sizeof(SEED_RECORD_MAGIC));
+  std::memcpy(buffer + sizeof(SEED_RECORD_MAGIC), seedMaster.data(), seedMaster.size());
+  std::memcpy(buffer + sizeof(SEED_RECORD_MAGIC) + seedMaster.size(), &creationTimestamp, sizeof(uint64_t));
+  result.iv = iv;
+  Crypto::chacha8(buffer, sizeof(buffer), key, result.iv, reinterpret_cast<char*>(result.data));
+  return result;
+}
+
+inline bool decryptSeedRecord(const EncryptedWalletRecord& cipher, CryptoPQ::SeedMaster& seedMaster,
+                              uint64_t& creationTimestamp, const Crypto::chacha8_key& key) {
+  unsigned char buffer[sizeof(cipher.data)];
+  Crypto::chacha8(cipher.data, sizeof(cipher.data), key, cipher.iv, reinterpret_cast<char*>(buffer));
+  if (std::memcmp(buffer, SEED_RECORD_MAGIC, sizeof(SEED_RECORD_MAGIC)) != 0) {
+    return false;
+  }
+  std::memcpy(seedMaster.data(), buffer + sizeof(SEED_RECORD_MAGIC), seedMaster.size());
+  std::memcpy(&creationTimestamp, buffer + sizeof(SEED_RECORD_MAGIC) + seedMaster.size(), sizeof(uint64_t));
+  return true;
+}
 
 struct RandomAccessIndex {};
 struct KeysIndex {};
@@ -67,12 +119,13 @@ struct TransactionHashIndex {};
 struct TransactionIndex {};
 struct BlockHashIndex {};
 
+// PQ wallets are single-identity (one master seed) plus derived deposit addresses,
+// so the container only needs positional access — there is no classical spend
+// public key left to hash on.
 typedef boost::multi_index_container <
   WalletRecord,
   boost::multi_index::indexed_by <
-    boost::multi_index::random_access < boost::multi_index::tag <RandomAccessIndex> >,
-    boost::multi_index::hashed_unique < boost::multi_index::tag <KeysIndex>,
-    BOOST_MULTI_INDEX_MEMBER(WalletRecord, Crypto::PublicKey, spendPublicKey)>
+    boost::multi_index::random_access < boost::multi_index::tag <RandomAccessIndex> >
   >
 > WalletsContainer;
 
@@ -106,7 +159,6 @@ typedef boost::multi_index_container <
   >
 > WalletTransactions;
 
-typedef Common::FileMappedVector<EncryptedWalletRecord> ContainerStorage;
 typedef std::pair<size_t, CryptoNote::WalletTransfer> TransactionTransferPair;
 typedef std::vector<TransactionTransferPair> WalletTransfers;
 typedef std::map<size_t, CryptoNote::Transaction> UncommitedTransactions;

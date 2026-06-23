@@ -490,19 +490,16 @@ bool verifyMessagePq(const std::string& data, const CryptoPQ::DsaPublicKey& spen
   return CryptoPQ::dsa_verify(spendPub, digest.data(), digest.size(), sig);
 }
 
-void deriveMinerPqKeys(const Crypto::SecretKey& spendSecretKey,
+void deriveMinerPqKeys(const Crypto::SecretKey& masterSeed,
                        CryptoPQ::KemPublicKey& viewPub,
                        CryptoPQ::DsaPublicKey& spendPub,
                        CryptoPQ::DsaSecretKey& spendSk) {
-  // CEMENTED wallet-layer derivation (must match Wallet/PqWallet.cpp
-  // pqSeedMasterFromSpendSecret + PqSeed deriveViewKeys/deriveSpendKeys). The
-  // domain string is fixed forever — changing it orphans every PQ identity.
-  static const char kPqWalletSeedDomain[] = "karbo-pq-wallet-seed-v1";
-  CryptoPQ::Hash256 okm = CryptoPQ::hkdf_sha3_256(
-      spendSecretKey.data, sizeof(spendSecretKey.data),
-      kPqWalletSeedDomain, sizeof(kPqWalletSeedDomain) - 1);
+  // The wallet's 32-byte master seed IS the PqSeed SeedMaster (PQ-native: no HKDF
+  // indirection). This must match Wallet/PqWallet.cpp derivePqWalletKeys(SeedMaster),
+  // which also feeds the seed straight into the cemented PqSeed chain — so the daemon
+  // mines to exactly the address the wallet owns.
   CryptoPQ::SeedMaster sm{};
-  std::copy(okm.begin(), okm.end(), sm.begin());
+  std::copy(std::begin(masterSeed.data), std::end(masterSeed.data), sm.begin());
   auto view = CryptoPQ::deriveViewKeys(sm);
   auto spend = CryptoPQ::deriveSpendKeys(sm);
   viewPub = view.first;

@@ -125,8 +125,6 @@ void serialize(WalletTransferDtoV2& value, CryptoNote::ISerializer& serializer) 
 namespace CryptoNote {
 
 WalletSerializerV2::WalletSerializerV2(
-  Crypto::PublicKey& viewPublicKey,
-  Crypto::SecretKey& viewSecretKey,
   AddressGenerationMode& addressGenerationMode,
   Crypto::SecretKey& deterministicSeed,
   uint32_t& nextDeterministicIndex,
@@ -143,10 +141,6 @@ WalletSerializerV2::WalletSerializerV2(
   m_transactionSoftLockTime(transactionSoftLockTime),
   m_pqState(pqState)
 {
-  // The view keys are decrypted/verified from the container prefix elsewhere; the
-  // wallet cache neither stores nor needs them.
-  (void)viewPublicKey;
-  (void)viewSecretKey;
 }
 
 void WalletSerializerV2::load(Common::IInputStream& source, uint8_t version) {
@@ -273,57 +267,38 @@ void WalletSerializerV2::normalizeAddressGenerationState() {
   }
 }
 
-void WalletSerializerV2::loadKeyList(CryptoNote::ISerializer& serializer, bool hadBalances, uint8_t version) {
+void WalletSerializerV2::loadKeyList(CryptoNote::ISerializer& serializer, bool /*hadBalances*/, uint8_t /*version*/) {
+  // PQ-native (v9): the wallet's identity (the master seed) is loaded from the
+  // container records before the cache; this section only restores per-record
+  // hdIndex by position. The wallet is single-identity, so there is no added/deleted
+  // key reconciliation.
+  m_addedKeys.clear();
+  m_deletedKeys.clear();
+
   size_t walletCount;
   serializer(walletCount, "walletCount");
 
-  m_deletedKeys.clear();
-
-  const bool readHdIndex = version >= HD_FIELDS_VERSION;
-  // Per-wallet balances were only written by classical (<= v7) wallet files; v8
-  // never persists them (the live balance lives in the PQ ledger).
-  const bool readBalances = hadBalances && version <= LAST_CLASSICAL_VERSION;
-
-  std::unordered_set<Crypto::PublicKey> cachedKeySet;
-  auto& index = m_walletsContainer.get<KeysIndex>();
+  auto& index = m_walletsContainer.get<RandomAccessIndex>();
   for (size_t i = 0; i < walletCount; ++i) {
-    Crypto::PublicKey spendPublicKey;
+    CryptoPQ::SeedMaster seedMaster{};
     uint32_t hdIndex = WALLET_INVALID_HD_INDEX;
-    serializer(spendPublicKey, "spendPublicKey");
-    if (readHdIndex) {
-      serializer(hdIndex, "hdIndex");
-    }
-    if (readBalances) {
-      uint64_t actualBalance = 0;
-      uint64_t pendingBalance = 0;
-      serializer(actualBalance, "actualBalance");
-      serializer(pendingBalance, "pendingBalance");
-    }
+    serializer.binary(seedMaster.data(), seedMaster.size(), "seedMaster");
+    serializer(hdIndex, "hdIndex");
 
-    cachedKeySet.insert(spendPublicKey);
-
-    auto it = index.find(spendPublicKey);
-    if (it == index.end()) {
-      m_deletedKeys.emplace(std::move(spendPublicKey));
-    } else {
-      index.modify(it, [hdIndex](WalletRecord& wallet) {
+    if (i < index.size()) {
+      index.modify(std::next(index.begin(), i), [hdIndex](WalletRecord& wallet) {
         wallet.hdIndex = hdIndex;
       });
-    }
-  }
-
-  for (auto wallet : index) {
-    if (cachedKeySet.count(wallet.spendPublicKey) == 0) {
-      m_addedKeys.insert(wallet.spendPublicKey);
     }
   }
 }
 
 void WalletSerializerV2::saveKeyList(CryptoNote::ISerializer& serializer) {
-  auto walletCount = m_walletsContainer.get<RandomAccessIndex>().size();
+  auto& index = m_walletsContainer.get<RandomAccessIndex>();
+  auto walletCount = index.size();
   serializer(walletCount, "walletCount");
-  for (auto wallet : m_walletsContainer.get<RandomAccessIndex>()) {
-    serializer(wallet.spendPublicKey, "spendPublicKey");
+  for (auto wallet : index) {
+    serializer.binary(wallet.seedMaster.data(), wallet.seedMaster.size(), "seedMaster");
     serializer(wallet.hdIndex, "hdIndex");
   }
 }
