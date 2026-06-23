@@ -289,10 +289,6 @@ namespace CryptoNote {
     return true;
   }
 
-  std::string Currency::accountAddressAsString(const AccountBase& account) const {
-    return getAccountAddressAsStr(m_publicAddressBase58Prefix, account.getAccountKeys().address);
-  }
-
   std::string Currency::accountAddressAsString(const AccountPublicAddress& accountPublicAddress) const {
     return getAccountAddressAsStr(m_publicAddressBase58Prefix, accountPublicAddress);
   }

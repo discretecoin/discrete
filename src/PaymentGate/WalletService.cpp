@@ -47,7 +47,6 @@
 #include "Wallet/WalletGreen.h"
 #include "Wallet/PqRecipient.h"
 #include "Wallet/PqSender.h"
-#include "Wallet/LegacyKeysImporter.h"
 #include "AccountNumber.h"
 #include "CryptoNoteCore/CryptoNoteTools.h"
 #include "Wallet/WalletErrors.h"

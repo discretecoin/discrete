@@ -154,7 +154,7 @@ public:
   {
     CryptoNote::AccountBase randomAccount;
     randomAccount.generate();
-    RANDOM_ADDRESS = currency.accountAddressAsString(randomAccount);
+    RANDOM_ADDRESS = currency.accountAddressAsString(randomAccount.getAccountKeys().address);
   }
 
   virtual void SetUp() override;

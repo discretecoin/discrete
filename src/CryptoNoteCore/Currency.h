@@ -147,7 +147,6 @@ public:
     Transaction& tx,
     const BinaryArray& extraNonce = BinaryArray()) const;
 
-  std::string accountAddressAsString(const AccountBase& account) const;
   std::string accountAddressAsString(const AccountPublicAddress& accountPublicAddress) const;
   bool parseAccountAddressString(const std::string& str, AccountPublicAddress& addr) const;
 

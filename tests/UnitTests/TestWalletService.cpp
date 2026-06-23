@@ -531,7 +531,7 @@ void WalletServiceTest_getTransactions::SetUp() {
   auto makeAddress = [this]() {
     CryptoNote::AccountBase account;
     account.generate();
-    return currency.accountAddressAsString(account);
+    return currency.accountAddressAsString(account.getAccountKeys().address);
   };
 
   RANDOM_ADDRESS1 = makeAddress();

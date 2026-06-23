@@ -1756,7 +1756,7 @@ TEST_F(WalletLegacyApi, outdatedUnconfirmedTransactionDeletedOnNewBlock) {
 
   CryptoNote::AccountBase account;
   account.generate();
-  const std::string ADDRESS = currency.accountAddressAsString(account);
+  const std::string ADDRESS = currency.accountAddressAsString(account.getAccountKeys().address);
   const uint64_t initialBalance = wallet.actualBalance();
   node.setNextTransactionToPool();
   auto id = wallet.sendTransaction({ADDRESS, static_cast<int64_t>(initialBalance - currency.minimumFee())}, currency.minimumFee());
@@ -1795,7 +1795,7 @@ TEST_F(WalletLegacyApi, outdatedUnconfirmedTransactionDeletedOnLoad) {
 
   CryptoNote::AccountBase account;
   account.generate();
-  const std::string ADDRESS = currency.accountAddressAsString(account);
+  const std::string ADDRESS = currency.accountAddressAsString(account.getAccountKeys().address);
   const uint64_t initialBalance = wallet.actualBalance();
   node.setNextTransactionToPool();
   auto id = wallet.sendTransaction({ADDRESS, static_cast<int64_t>(initialBalance - currency.minimumFee())}, currency.minimumFee());
