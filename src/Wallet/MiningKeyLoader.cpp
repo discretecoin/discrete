@@ -25,6 +25,7 @@
 #include "Common/MemoryInputStream.h"
 #include "Common/StdInputStream.h"
 #include "CryptoNoteCore/CryptoNoteBasic.h"   // NULL_SECRET_KEY
+#include "CryptoNoteCore/CryptoNoteSerialization.h"  // chacha8_iv serialize overload
 #include "Logging/LoggerRef.h"
 #include "Serialization/BinaryInputStreamSerializer.h"
 #include "crypto/chacha8.h"
@@ -33,11 +34,71 @@
 
 #include "WalletErrors.h"
 #include "WalletIndices.h"          // ContainerStorage(Prefix), seed-record codec
+#include "WalletLegacy/KeysStorage.h"  // simplewallet single-blob keystore DTO
 #include "WalletSerializationV2.h"  // version constants
 
 using namespace Crypto;
 
 namespace CryptoNote {
+
+namespace {
+
+// Read the master seed from a simplewallet (WalletLegacy) container: a single
+// chacha8 blob whose head is a KeysStorage. The wallet's PQ identity derives from
+// spendSecretKey (now the 32-byte master seed), so that is what we return.
+// Strictly read-only (never rewrites the file).
+Crypto::SecretKey loadLegacyMasterSeed(const std::string& path, const std::string& password) {
+  std::ifstream file(path, std::ios_base::binary);
+  if (!file) {
+    throw std::system_error(make_error_code(error::WRONG_STATE),
+                            "Failed to open wallet '" + path + "'");
+  }
+
+  uint32_t version = 0;
+  chacha8_iv iv;
+  std::string cipher;
+  {
+    Common::StdInputStream stdStream(file);
+    BinaryInputStreamSerializer envelope(stdStream);
+    envelope.beginObject("wallet");
+    envelope(version, "version");
+    envelope(iv, "iv");
+    envelope(cipher, "data");
+    envelope.endObject();
+  }
+
+  chacha8_key key;
+  {
+    cn_context cnContext;
+    generate_chacha8_key(cnContext, password, key);
+  }
+  std::string plain(cipher.size(), '\0');
+  chacha8(cipher.data(), cipher.size(), key, iv, &plain[0]);
+  sodium_memzero(&key, sizeof(key));
+
+  KeysStorage keys;
+  try {
+    Common::MemoryInputStream plainStream(plain.data(), plain.size());
+    BinaryInputStreamSerializer serializer(plainStream);
+    keys.serialize(serializer, "keys");
+  } catch (const std::exception&) {
+    sodium_memzero(&plain[0], plain.size());
+    sodium_memzero(&keys, sizeof(keys));
+    throw std::system_error(make_error_code(error::WRONG_PASSWORD), "Wrong password, or corrupt wallet");
+  }
+  sodium_memzero(&plain[0], plain.size());
+
+  Crypto::SecretKey seed = keys.spendSecretKey;
+  sodium_memzero(&keys, sizeof(keys));
+  if (seed == NULL_SECRET_KEY) {
+    sodium_memzero(&seed, sizeof(seed));
+    throw std::system_error(make_error_code(error::WRONG_STATE),
+        "Wallet is view-only (tracking) and has no master seed, so it cannot mine");
+  }
+  return seed;
+}
+
+}  // namespace
 
 Crypto::SecretKey loadMiningSpendSecret(const std::string& path,
                                         const std::string& password,
@@ -57,7 +118,11 @@ Crypto::SecretKey loadMiningSpendSecret(const std::string& path,
                               "Failed to read wallet version from '" + path + "'");
     }
     uint8_t version = static_cast<uint8_t>(peeked);
-    if (version < WalletSerializerV2::MIN_VERSION || version > WalletSerializerV2::SERIALIZATION_VERSION) {
+    if (version < WalletSerializerV2::MIN_VERSION) {
+      // simplewallet (WalletLegacy) container — read its master seed directly.
+      return loadLegacyMasterSeed(path, password);
+    }
+    if (version > WalletSerializerV2::SERIALIZATION_VERSION) {
       throw std::system_error(make_error_code(error::WRONG_VERSION),
                               "Unsupported wallet version " + std::to_string(version));
     }

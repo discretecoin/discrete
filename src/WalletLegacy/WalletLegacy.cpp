@@ -275,6 +275,17 @@ void WalletLegacy::removeObserver(IWalletLegacyObserver* observer) {
   m_observerManager.remove(observer);
 }
 
+namespace {
+// Treat the wallet's 32-byte master secret as the PQ SeedMaster: PQ-native means
+// the seed feeds the cemented PqSeed chain directly (no HKDF), matching WalletGreen
+// and the daemon's deriveMinerPqKeys so the same wallet derives the same identity.
+CryptoPQ::SeedMaster toSeedMaster(const Crypto::SecretKey& s) {
+  CryptoPQ::SeedMaster sm{};
+  std::memcpy(sm.data(), s.data, sm.size());
+  return sm;
+}
+}  // namespace
+
 void WalletLegacy::initAndGenerateNonDeterministic(const std::string& password) {
   {
     std::unique_lock<std::mutex> stateLock(m_cacheMutex);
@@ -460,7 +471,7 @@ void WalletLegacy::initSync() {
   // PQ audit credential.
   const auto& keys = m_account.getAccountKeys();
   if (keys.spendSecretKey != NULL_SECRET_KEY) {
-    PqWalletKeys pqKeys = derivePqWalletKeys(keys.spendSecretKey);
+    PqWalletKeys pqKeys = derivePqWalletKeys(toSeedMaster(keys.spendSecretKey));
     m_pqConsumer.reset(new WalletLedgerConsumer(pqKeys, syncStart, m_logger.getLogger()));
     m_blockchainSync.addConsumer(m_pqConsumer.get());
   } else if (m_pqTrackingKeys) {
@@ -677,15 +688,11 @@ std::error_code WalletLegacy::changePassword(const std::string& oldPassword, con
 
 bool WalletLegacy::getSeed(std::string& electrum_words)
 {
+  // The 32-byte master seed IS the deterministic backup; the same words recover the
+  // whole PQ identity. (There is no classical view key to cross-check anymore.)
   std::string lang = "English";
   Crypto::ElectrumWords::bytes_to_words(m_account.getAccountKeys().spendSecretKey, electrum_words, lang);
-
-  Crypto::SecretKey second;
-  keccak((uint8_t *)&m_account.getAccountKeys().spendSecretKey, sizeof(Crypto::SecretKey), (uint8_t *)&second, sizeof(Crypto::SecretKey));
-
-  sc_reduce32((uint8_t *)&second);
-
-  return memcmp(second.data, m_account.getAccountKeys().viewSecretKey.data, sizeof(Crypto::SecretKey)) == 0;
+  return m_account.getAccountKeys().spendSecretKey != NULL_SECRET_KEY;
 }
 
 std::string WalletLegacy::getAddress() {
@@ -698,7 +705,14 @@ std::string WalletLegacy::getAddress() {
 }
 
 std::string WalletLegacy::sign_message(const std::string &message) {
-  return CryptoNote::signMessage(message, m_account.getAccountKeys());
+  // Sign with the wallet's post-quantum (ML-DSA) spend key — its PQ identity — the
+  // same as WalletGreen. The classical ECC key is gone.
+  AccountKeys keys = m_account.getAccountKeys();
+  if (keys.spendSecretKey == NULL_SECRET_KEY) {
+    throw std::runtime_error("tracking wallet cannot sign messages");
+  }
+  PqWalletKeys pq = derivePqWalletKeys(toSeedMaster(keys.spendSecretKey));
+  return CryptoNote::signMessagePq(message, pq.spendSk);
 }
 
 bool WalletLegacy::verify_message(const std::string &message, const CryptoNote::AccountPublicAddress &address, const std::string &signature) {
@@ -760,7 +774,7 @@ bool WalletLegacy::getPqTrackingKeys(PqTrackingKeys& keys) const {
     return false;
   }
 
-  keys = pqTrackingKeys(derivePqWalletKeys(accountKeys.spendSecretKey));
+  keys = pqTrackingKeys(derivePqWalletKeys(toSeedMaster(accountKeys.spendSecretKey)));
   return true;
 }
 
@@ -784,7 +798,7 @@ PqSendResult WalletLegacy::sendPqTransfer(const std::vector<PqSendOutput>& recip
   if (keys.spendSecretKey == NULL_SECRET_KEY) {
     throw std::runtime_error("tracking wallet cannot spend");
   }
-  PqWalletKeys pq = derivePqWalletKeys(keys.spendSecretKey);
+  PqWalletKeys pq = derivePqWalletKeys(toSeedMaster(keys.spendSecretKey));
 
   PqSendRequest req;
   req.recipients = recipients;
@@ -991,7 +1005,7 @@ std::string WalletLegacy::prepareRawTransaction(TransactionId& transactionId, co
     recipients.push_back(PqSendOutput{viewPub, spendPub, static_cast<uint64_t>(t.amount), subaddrT});
   }
 
-  PqWalletKeys pq = derivePqWalletKeys(keys.spendSecretKey);
+  PqWalletKeys pq = derivePqWalletKeys(toSeedMaster(keys.spendSecretKey));
   PqSendRequest req;
   req.recipients = recipients;
   req.explicitFee = fee;
