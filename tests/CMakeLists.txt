@@ -2,34 +2,31 @@ add_definitions(-DSTATICLIB)
 
 include_directories(${gtest_SOURCE_DIR}/include ${gtest_SOURCE_DIR} ../version)
 
-file(GLOB_RECURSE CoreTests CoreTests/*)
+# Classical-consensus test suites (CoreTests, TransfersTests, PerformanceTests) were
+# removed: they exercise classical CryptoNote tx/transfer/consensus mechanics that no
+# longer exist on the post-quantum chain. The Pq* suites are the regression gate.
 file(GLOB_RECURSE CryptoTests crypto/*)
 file(GLOB_RECURSE FunctionalTests FunctionalTests/*)
 file(GLOB_RECURSE IntegrationTestLibrary IntegrationTestLib/*)
 file(GLOB_RECURSE IntegrationTests IntegrationTests/*)
 file(GLOB_RECURSE NodeRpcProxyTests NodeRpcProxyTests/*)
-file(GLOB_RECURSE PerformanceTests PerformanceTests/*)
 file(GLOB_RECURSE SystemTests System/*)
 file(GLOB_RECURSE TestGenerator TestGenerator/*)
-file(GLOB_RECURSE TransfersTests TransfersTests/*)
 file(GLOB_RECURSE UnitTests UnitTests/*)
 
 file(GLOB_RECURSE CryptoNoteProtocol ../src/CryptoNoteProtocol/*)
 file(GLOB_RECURSE P2p ../src/P2p/*)
 
-source_group("" FILES ${CoreTests} ${CryptoTests} ${FunctionalTests} ${IntegrationTestLibrary} ${IntegrationTests} ${NodeRpcProxyTests} ${PerformanceTests} ${SystemTests} ${TestGenerator} ${TransfersTests} ${UnitTests})
+source_group("" FILES ${CryptoTests} ${FunctionalTests} ${IntegrationTestLibrary} ${IntegrationTests} ${NodeRpcProxyTests} ${SystemTests} ${TestGenerator} ${UnitTests})
 source_group("" FILES ${CryptoNoteProtocol} ${P2p})
 
 add_library(IntegrationTestLibrary ${IntegrationTestLibrary})
 add_library(TestGenerator ${TestGenerator})
 
-add_executable(CoreTests ${CoreTests})
 add_executable(CryptoTests ${CryptoTests})
 add_executable(IntegrationTests ${IntegrationTests})
 add_executable(NodeRpcProxyTests ${NodeRpcProxyTests})
-add_executable(PerformanceTests ${PerformanceTests})
 add_executable(SystemTests ${SystemTests})
-add_executable(TransfersTests ${TransfersTests})
 add_executable(UnitTests ${UnitTests})
 add_executable(LMDBReorgTests test_lmdb_reorg.cpp)
 add_executable(DifficultyTests Difficulty/Difficulty.cpp)
@@ -56,13 +53,10 @@ add_executable(PqGenesisTests test_pq_genesis.cpp)
 add_executable(DenominationsTests test_denominations.cpp)
 add_executable(PqSenderTests test_pq_sender.cpp)
 
-target_link_libraries(CoreTests TestGenerator Wallet CryptoNoteCore Serialization System Logging Common Crypto BlockchainExplorer Checkpoints ${Boost_LIBRARIES})
 target_link_libraries(CryptoTests Crypto Common ${Boost_LIBRARIES})
 target_link_libraries(IntegrationTests IntegrationTestLibrary Wallet NodeRpcProxy InProcessNode P2P Rpc Http CryptoNoteProtocol Transfers Serialization System CryptoNoteCore Logging Common Crypto BlockchainExplorer Checkpoints gtest Mnemonics upnpc-static ${Boost_LIBRARIES})
 target_link_libraries(NodeRpcProxyTests NodeRpcProxy CryptoNoteCore Rpc Http Serialization System Logging Common Crypto ${Boost_LIBRARIES})
-target_link_libraries(PerformanceTests Wallet CryptoNoteCore Serialization Logging Common Crypto ${Boost_LIBRARIES})
 target_link_libraries(SystemTests System gtest_main ${Boost_LIBRARIES})
-target_link_libraries(TransfersTests IntegrationTestLibrary Wallet gtest_main InProcessNode NodeRpcProxy P2P Rpc Http CryptoNoteProtocol BlockchainExplorer CryptoNoteCore Serialization System Logging Transfers Checkpoints Common Crypto Mnemonics upnpc-static ${Boost_LIBRARIES})
 target_link_libraries(UnitTests gtest_main PaymentGate Wallet TestGenerator InProcessNode NodeRpcProxy Rpc Http Transfers Serialization System Logging BlockchainExplorer CryptoNoteCore Checkpoints Common Crypto Mnemonics ${Boost_LIBRARIES})
 target_link_libraries(LMDBReorgTests TestGenerator Wallet CryptoNoteCore Serialization System Logging Common Crypto BlockchainExplorer Checkpoints ${Boost_LIBRARIES})
 target_link_libraries(DifficultyTests CryptoNoteCore Serialization Crypto Logging Common ${Boost_LIBRARIES})
@@ -92,17 +86,13 @@ target_link_libraries(PqSenderTests Wallet CryptoNoteCore Serialization System L
 if(MSVC)
   target_link_libraries(SystemTests ws2_32)
   target_link_libraries(NodeRpcProxyTests ws2_32)
-  target_link_libraries(CoreTests ws2_32)
-  target_link_libraries(CoreTests legacy_stdio_definitions.lib)
   target_link_libraries(DifficultyTests legacy_stdio_definitions.lib)
   target_link_libraries(HashTests legacy_stdio_definitions.lib)
   target_link_libraries(UnitTests legacy_stdio_definitions.lib)
   target_link_libraries(LMDBReorgTests ws2_32)
   target_link_libraries(LMDBReorgTests legacy_stdio_definitions.lib)
-  target_link_libraries(PerformanceTests legacy_stdio_definitions.lib)
   target_link_libraries(NodeRpcProxyTests legacy_stdio_definitions.lib ${OPENSSL_LIBRARIES})
   target_link_libraries(IntegrationTests legacy_stdio_definitions.lib ${OPENSSL_LIBRARIES} ws2_32)
-  target_link_libraries(TransfersTests legacy_stdio_definitions.lib ${OPENSSL_LIBRARIES} ws2_32)
   target_link_libraries(PqExtraTests legacy_stdio_definitions.lib ws2_32)
   target_link_libraries(PqWireTests legacy_stdio_definitions.lib ws2_32)
   target_link_libraries(PqDomainsTests legacy_stdio_definitions.lib ws2_32)
@@ -120,33 +110,27 @@ if(MSVC)
 endif()
 
 if(${CMAKE_SYSTEM_NAME} STREQUAL "Linux" OR APPLE AND NOT ANDROID)
-  target_link_libraries(CoreTests -lresolv)
   target_link_libraries(IntegrationTests -lresolv)
   target_link_libraries(NodeRpcProxyTests -lresolv)
-  target_link_libraries(PerformanceTests -lresolv)
-  target_link_libraries(TransfersTests -lresolv)
   target_link_libraries(UnitTests -lresolv)
   target_link_libraries(DifficultyTests -lresolv)
 endif()
 
 if(NOT MSVC)
-  set_property(TARGET gtest gtest_main IntegrationTestLibrary IntegrationTests TestGenerator UnitTests SystemTests HashTargetTests TransfersTests APPEND_STRING PROPERTY COMPILE_FLAGS " -Wno-undef -Wno-sign-compare")
+  set_property(TARGET gtest gtest_main IntegrationTestLibrary IntegrationTests TestGenerator UnitTests SystemTests HashTargetTests APPEND_STRING PROPERTY COMPILE_FLAGS " -Wno-undef -Wno-sign-compare")
 endif()
 
-add_custom_target(tests DEPENDS CoreTests CryptoTests IntegrationTests NodeRpcProxyTests PerformanceTests SystemTests TransfersTests UnitTests LMDBReorgTests DifficultyTests HashTargetTests HashTests)
+add_custom_target(tests DEPENDS CryptoTests IntegrationTests NodeRpcProxyTests SystemTests UnitTests LMDBReorgTests DifficultyTests HashTargetTests HashTests)
 
 set_property(TARGET
   tests
   IntegrationTestLibrary
   TestGenerator
   LMDBReorgTests
-  CoreTests
   CryptoTests
   IntegrationTests
   NodeRpcProxyTests
-  PerformanceTests
   SystemTests
-  TransfersTests
   UnitTests
   DifficultyTests
   HashTargetTests
@@ -174,13 +158,10 @@ PROPERTY FOLDER "tests")
 
 add_dependencies(IntegrationTestLibrary version)
 
-set_property(TARGET CoreTests PROPERTY OUTPUT_NAME "core_tests")
 set_property(TARGET CryptoTests PROPERTY OUTPUT_NAME "crypto_tests")
 set_property(TARGET IntegrationTests PROPERTY OUTPUT_NAME "integration_tests")
 set_property(TARGET NodeRpcProxyTests PROPERTY OUTPUT_NAME "node_rpc_proxy_tests")
-set_property(TARGET PerformanceTests PROPERTY OUTPUT_NAME "performance_tests")
 set_property(TARGET SystemTests PROPERTY OUTPUT_NAME "system_tests")
-set_property(TARGET TransfersTests PROPERTY OUTPUT_NAME "transfers_tests")
 set_property(TARGET UnitTests PROPERTY OUTPUT_NAME "unit_tests")
 set_property(TARGET LMDBReorgTests PROPERTY OUTPUT_NAME "lmdb_reorg_tests")
 set_property(TARGET DifficultyTests PROPERTY OUTPUT_NAME "difficulty_tests")
@@ -206,7 +187,6 @@ set_property(TARGET PqGenesisTests PROPERTY OUTPUT_NAME "pq_genesis_tests")
 set_property(TARGET DenominationsTests PROPERTY OUTPUT_NAME "denominations_tests")
 set_property(TARGET PqSenderTests PROPERTY OUTPUT_NAME "pq_sender_tests")
 
-add_test(CoreTests core_tests --generate_and_play_test_data)
 add_test(CryptoTests crypto_tests ${CMAKE_CURRENT_SOURCE_DIR}/crypto/tests.txt)
 add_test(DifficultyTests difficulty_tests ${CMAKE_CURRENT_SOURCE_DIR}/Difficulty/data.txt)
 foreach(hash IN ITEMS fast slow tree extra-blake extra-groestl extra-jh extra-skein)

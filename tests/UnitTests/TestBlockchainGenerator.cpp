@@ -25,7 +25,7 @@
 #include "CryptoNoteCore/CryptoNoteTools.h"
 
 
-#include "../PerformanceTests/MultiTransactionTestBase.h"
+#include "MultiTransactionTestBase.h"
 
 using namespace CryptoNote;
 
