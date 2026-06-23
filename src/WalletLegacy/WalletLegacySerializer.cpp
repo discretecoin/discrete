@@ -132,12 +132,16 @@ void WalletLegacySerializer::deserialize(std::istream& stream, const std::string
   CryptoNote::BinaryInputStreamSerializer serializer(decryptedStream);
 
   loadKeys(serializer);
-  throwIfKeysMissmatch(account.getAccountKeys().viewSecretKey, account.getAccountKeys().address.viewPublicKey);
 
-  if (account.getAccountKeys().spendSecretKey != NULL_SECRET_KEY) {
-    throwIfKeysMissmatch(account.getAccountKeys().spendSecretKey, account.getAccountKeys().address.spendPublicKey);
-  } else {
-    if (!Crypto::check_key(account.getAccountKeys().address.spendPublicKey)) {
+  // PQ-native: the wallet identity is the 32-byte master seed (spendSecretKey). The
+  // spendPublicKey slot carries cn_fast_hash(seed) as a password/integrity checksum
+  // (a wrong password decrypts to garbage whose hash won't match). There are no
+  // classical key pairs left to cross-check.
+  {
+    const AccountKeys& acc = account.getAccountKeys();
+    Crypto::Hash checksum;
+    Crypto::cn_fast_hash(acc.spendSecretKey.data, sizeof(acc.spendSecretKey.data), checksum);
+    if (std::memcmp(checksum.data, acc.address.spendPublicKey.data, sizeof(checksum.data)) != 0) {
       throw std::system_error(make_error_code(CryptoNote::error::WRONG_PASSWORD));
     }
   }
@@ -190,29 +194,12 @@ bool WalletLegacySerializer::deserialize(std::istream& stream, const std::string
     catch (const std::runtime_error&) {
       return false;
     }
-    CryptoNote::AccountKeys acc;
-    acc.address.spendPublicKey = keys.spendPublicKey;
-    acc.spendSecretKey = keys.spendSecretKey;
-    acc.address.viewPublicKey = keys.viewPublicKey;
-    acc.viewSecretKey = keys.viewSecretKey;
-
-    Crypto::PublicKey pub;
-    bool r = Crypto::secret_key_to_public_key(acc.viewSecretKey, pub);
-    if (!r || acc.address.viewPublicKey != pub) {
+    // Password check via the seed checksum (cn_fast_hash(seed) is stored in the
+    // spendPublicKey slot — see deserialize() above).
+    Crypto::Hash checksum;
+    Crypto::cn_fast_hash(keys.spendSecretKey.data, sizeof(keys.spendSecretKey.data), checksum);
+    if (std::memcmp(checksum.data, keys.spendPublicKey.data, sizeof(checksum.data)) != 0) {
       return false;
-    }
-
-    if (acc.spendSecretKey != NULL_SECRET_KEY) {
-      Crypto::PublicKey pub;
-      bool r = Crypto::secret_key_to_public_key(acc.spendSecretKey, pub);
-      if (!r || acc.address.spendPublicKey != pub) {
-        return false;
-      }
-    }
-    else {
-      if (!Crypto::check_key(acc.address.spendPublicKey)) {
-        return false;
-      }
     }
   }
   catch (std::system_error&) {

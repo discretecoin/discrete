@@ -16,14 +16,27 @@
 // along with Karbo.  If not, see <http://www.gnu.org/licenses/>.
 
 #include "Account.h"
+
+#include <cstring>
+
 #include "CryptoNoteSerialization.h"
 #include "crypto/crypto.h"
-#include "crypto_pq/PqDsa.h"
-#include "crypto_pq/PqKem.h"
+#include "crypto/crypto-util.h"   // secure_random_bytes
+#include "crypto_pq/PqSeed.h"     // deriveViewKeys / deriveSpendKeys
 extern "C"
 {
 #include "crypto/keccak.h"
 }
+
+namespace {
+// The 32-byte master secret is the PQ SeedMaster (fed straight into the PqSeed
+// chain — no HKDF — matching the wallet and the daemon mining-key derivation).
+CryptoPQ::SeedMaster toSeedMaster(const Crypto::SecretKey& s) {
+  CryptoPQ::SeedMaster sm{};
+  std::memcpy(sm.data(), s.data, sm.size());
+  return sm;
+}
+}  // namespace
 
 namespace CryptoNote {
 //-----------------------------------------------------------------
@@ -36,37 +49,23 @@ void AccountBase::setNull() {
 }
 //-----------------------------------------------------------------
 void AccountBase::generate() {
-  Crypto::generate_keys(m_keys.address.spendPublicKey, m_keys.spendSecretKey);
-  Crypto::generate_keys(m_keys.address.viewPublicKey, m_keys.viewSecretKey);
-
-  auto [dPk, dSk] = CryptoPQ::dsa_keygen();
-  m_pqSpendPk = dPk;
-  m_pqSpendSk = dSk;
-  auto [kPk, kSk] = CryptoPQ::kem_keygen();
-  m_pqViewPk = kPk;
-  m_pqViewSk = kSk;
+  // Mint a PQ-native master seed (32 CSPRNG bytes). The whole identity (view, spend,
+  // per-deposit) derives from it; there is no classical (Ed25519) keypair. The
+  // spendPublicKey slot carries a hash-of-seed checksum used only as the wallet-file
+  // password check; viewPublicKey / viewSecretKey stay zero.
+  secure_random_bytes(m_keys.spendSecretKey.data, sizeof(m_keys.spendSecretKey.data));
+  Crypto::cn_fast_hash(m_keys.spendSecretKey.data, sizeof(m_keys.spendSecretKey.data),
+                       reinterpret_cast<Crypto::Hash&>(m_keys.address.spendPublicKey));
+  m_keys.address.viewPublicKey = Crypto::PublicKey{};
+  m_keys.viewSecretKey = Crypto::SecretKey{};
 
   m_creation_timestamp = time(NULL);
 }
 
 //-----------------------------------------------------------------
 void AccountBase::generateDeterministic() {
-  Crypto::generate_keys(m_keys.address.spendPublicKey, m_keys.spendSecretKey);
-
-  // Derive viewSecretKey: sc_reduce32(keccak(spendSecretKey)). Controls viewPublicKey / address.
-  Crypto::SecretKey viewKeySeed;
-  keccak((uint8_t *)&m_keys.spendSecretKey, sizeof(Crypto::SecretKey),
-         (uint8_t *)&viewKeySeed, sizeof(viewKeySeed));
-  Crypto::generate_deterministic_keys(m_keys.address.viewPublicKey, m_keys.viewSecretKey, viewKeySeed);
-
-  auto [dPk, dSk] = CryptoPQ::dsa_keygen();
-  m_pqSpendPk = dPk;
-  m_pqSpendSk = dSk;
-  auto [kPk, kSk] = CryptoPQ::kem_keygen();
-  m_pqViewPk = kPk;
-  m_pqViewSk = kSk;
-
-  m_creation_timestamp = time(NULL);
+  // A PQ wallet has a single master seed; there is no separate deterministic scheme.
+  generate();
 }
 
 //-----------------------------------------------------------------
@@ -90,6 +89,19 @@ const AccountKeys &AccountBase::getAccountKeys() const {
 
 void AccountBase::setAccountKeys(const AccountKeys &keys) {
   m_keys = keys;
+}
+//-----------------------------------------------------------------
+CryptoPQ::DsaPublicKey AccountBase::pqSpendPk() const {
+  return CryptoPQ::deriveSpendKeys(toSeedMaster(m_keys.spendSecretKey)).first;
+}
+CryptoPQ::DsaSecretKey AccountBase::pqSpendSk() const {
+  return CryptoPQ::deriveSpendKeys(toSeedMaster(m_keys.spendSecretKey)).second;
+}
+CryptoPQ::KemPublicKey AccountBase::pqViewPk() const {
+  return CryptoPQ::deriveViewKeys(toSeedMaster(m_keys.spendSecretKey)).first;
+}
+CryptoPQ::KemSecretKey AccountBase::pqViewSk() const {
+  return CryptoPQ::deriveViewKeys(toSeedMaster(m_keys.spendSecretKey)).second;
 }
 //-----------------------------------------------------------------
 

@@ -89,7 +89,15 @@ Crypto::SecretKey loadLegacyMasterSeed(const std::string& path, const std::strin
   sodium_memzero(&plain[0], plain.size());
 
   Crypto::SecretKey seed = keys.spendSecretKey;
+  // Password check: cn_fast_hash(seed) is stored in the spendPublicKey slot.
+  Crypto::Hash checksum;
+  Crypto::cn_fast_hash(seed.data, sizeof(seed.data), checksum);
+  bool ok = std::memcmp(checksum.data, keys.spendPublicKey.data, sizeof(checksum.data)) == 0;
   sodium_memzero(&keys, sizeof(keys));
+  if (!ok) {
+    sodium_memzero(&seed, sizeof(seed));
+    throw std::system_error(make_error_code(error::WRONG_PASSWORD), "Wrong password, or corrupt wallet");
+  }
   if (seed == NULL_SECRET_KEY) {
     sodium_memzero(&seed, sizeof(seed));
     throw std::system_error(make_error_code(error::WRONG_STATE),

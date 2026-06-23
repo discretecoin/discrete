@@ -44,11 +44,13 @@ namespace CryptoNote {
     void set_createtime(uint64_t val) { m_creation_timestamp = val; }
     void serialize(ISerializer& s);
 
-    // PQ keypair — native Discrete keys used for block signing and coinbase outputs.
-    const CryptoPQ::DsaPublicKey& pqSpendPk() const { return m_pqSpendPk; }
-    const CryptoPQ::DsaSecretKey& pqSpendSk() const { return m_pqSpendSk; }
-    const CryptoPQ::KemPublicKey& pqViewPk()  const { return m_pqViewPk;  }
-    const CryptoPQ::KemSecretKey& pqViewSk()  const { return m_pqViewSk;  }
+    // PQ identity (block signing / coinbase outputs), derived on demand from the
+    // master seed. The account no longer holds an independent classical or PQ
+    // keypair — the single 32-byte seed (m_keys.spendSecretKey) is the whole identity.
+    CryptoPQ::DsaPublicKey pqSpendPk() const;
+    CryptoPQ::DsaSecretKey pqSpendSk() const;
+    CryptoPQ::KemPublicKey pqViewPk()  const;
+    CryptoPQ::KemSecretKey pqViewSk()  const;
 
     template <class t_archive>
     inline void serialize(t_archive &a, const unsigned int /*ver*/) {
@@ -58,11 +60,10 @@ namespace CryptoNote {
 
   private:
     void setNull();
+    // Only m_keys.spendSecretKey is meaningful — it is the PQ master seed. The
+    // address/view fields are vestigial: spendPublicKey carries a hash-of-seed
+    // checksum (for the wallet-file password check), the rest are zero.
     AccountKeys m_keys;
     uint64_t m_creation_timestamp;
-    CryptoPQ::DsaPublicKey m_pqSpendPk{};
-    CryptoPQ::DsaSecretKey m_pqSpendSk{};
-    CryptoPQ::KemPublicKey m_pqViewPk{};
-    CryptoPQ::KemSecretKey m_pqViewSk{};
   };
 }
