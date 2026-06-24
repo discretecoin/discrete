@@ -146,7 +146,7 @@ namespace {
 CryptoNote::Transaction makePqPayTo(const CryptoNote::PqWalletKeys& from,
                                     const CryptoNote::PqWalletKeys& to,
                                     uint64_t inAmount, uint64_t payAmount, uint8_t seed,
-                                    uint64_t subaddrT = 0) {
+                                    uint64_t subaddrT = 0, uint64_t outUnlockHeight = 0) {
   std::vector<CryptoPQ::InputRef> refs(1);
   for (auto& b : refs[0].prevTxid) b = seed;
   refs[0].prevOutIndex = 1;
@@ -159,7 +159,8 @@ CryptoNote::Transaction makePqPayTo(const CryptoNote::PqWalletKeys& from,
   in.amount = inAmount;
   in.rho = src.rho;
   CryptoNote::PqSendOutput out{to.viewPub, to.spendPub, payAmount};
-  out.subaddrIndexT = subaddrT;  // SingleKeyIndex deposit routing (0 = base address)
+  out.subaddrIndexT = subaddrT;       // SingleKeyIndex deposit routing (0 = base address)
+  out.unlockHeight = outUnlockHeight;  // per-output spend lock (0 = none); 0 != coinbase maturity
   return CryptoNote::buildPqTransaction({in}, {out}, from.spendPub, from.spendSk);
 }
 // Pump wallet events until `pred` holds or the timeout elapses.
@@ -684,4 +685,60 @@ TEST(PqWalletIntegration, TrackingWalletCannotSpend) {
 
   tracking.shutdown();
   boost::filesystem::remove(trackPath);
+}
+
+// A spend-locked output (per-output unlockHeight — the same mechanism coinbase maturity
+// uses) is counted in the balance but NOT spendable until the chain reaches its unlock
+// height; once it does, it becomes spendable.
+TEST(PqWalletIntegration, LockedOutputNotSpendableUntilUnlockHeight) {
+  System::Dispatcher dispatcher;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(1000000).upgradeHeightV6(1000000)
+      .currency();
+  TestBlockchainGenerator generator(currency);
+  INodeTrivialRefreshStub node(generator);
+  CryptoNote::WalletGreen wallet(dispatcher, currency, node, logger);
+
+  const std::string path = "pq_locked.wallet";
+  boost::filesystem::remove(path);
+  wallet.initialize(path, "pass");
+  wallet.createAddress();
+
+  Crypto::SecretKey spend = wallet.getAddressSpendKey(0).secretKey;
+  CryptoNote::PqWalletKeys mine = pqKeysFromWalletSeed(spend);
+  Crypto::SecretKey otherSecret;
+  for (std::size_t i = 0; i < sizeof(otherSecret.data); ++i)
+    otherSecret.data[i] = static_cast<uint8_t>(i * 7 + 3);
+  CryptoNote::PqWalletKeys them = CryptoNote::derivePqWalletKeys(otherSecret);
+
+  // Receive an output locked until a height a few blocks ahead of the current tip.
+  const uint64_t unlockAt = generator.getBlockchain().size() + 5;
+  CryptoNote::Transaction pqTx = makePqPayTo(them, mine, 1000000, 800000, 0x55, /*T*/ 0, unlockAt);
+  generator.setTxFee(CryptoNote::getObjectHash(pqTx), 1000000 - 800000);
+  generator.addTxToBlockchain(pqTx);
+  node.updateObservers();
+  pumpUntil(dispatcher, wallet, [&wallet]() { return wallet.getActualBalance() == 800000u; });
+
+  // Counted in the balance, but locked: a spend can't draw on it yet.
+  EXPECT_EQ(wallet.getActualBalance(), 800000u);
+  EXPECT_THROW(wallet.sendPqTransfer({ CryptoNote::PqSendOutput{ them.viewPub, them.spendPub, 300000 } }),
+               std::exception);
+
+  // Advance the chain past the unlock height.
+  generator.generateEmptyBlocks(8);
+  const uint32_t tip = static_cast<uint32_t>(generator.getBlockchain().size() - 1);
+  node.updateObservers();
+  pumpUntil(dispatcher, wallet, [&wallet, tip]() { return wallet.pqSyncedHeight() >= tip; });
+
+  // Now spendable.
+  node.setNextTransactionToPool();
+  CryptoNote::PqSendResult r =
+      wallet.sendPqTransfer({ CryptoNote::PqSendOutput{ them.viewPub, them.spendPub, 300000 } });
+  EXPECT_EQ(r.sent, 300000u);
+
+  wallet.shutdown();
+  boost::filesystem::remove(path);
 }
