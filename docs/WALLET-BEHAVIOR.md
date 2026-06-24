@@ -64,9 +64,9 @@ for removal.)
 | Operation | Intended (CN) | Aggregated | Index | Status |
 |---|---|---|---|---|
 | Output detection | scan with view key | shared view key decapsulates every owned output | one view key | ✅ `PqScanTests`, `PqWalletSyncE2E` |
-| Bucket attribution | by subaddress | match per-deposit spend pubkey | recover subaddress **T** | 🟡 unit-level; ⬜ deposit credit not E2E |
+| Bucket attribution | by subaddress | match per-deposit spend pubkey | recover subaddress **T** | ✅ Aggregated `PqWalletIntegration.AggregatedDepositReceivesAndSpends`; ⬜ Index |
 | `getBalance` (global) | total / unlocked | `getActualBalance` (confirmed) + `getPendingBalance` | same | ✅ `PqWalletSyncE2E` |
-| `getBalance(address)` | per-subaddress actual + locked | per-bucket: `depositBalance − depositPendingBalance` / pending | same | 🟡 `addressIndexAndAccountNumberSelectors` (0 funds) |
+| `getBalance(address)` | per-subaddress actual + locked | per-bucket: `depositBalance − depositPendingBalance` / pending | same | ✅ Aggregated (funded) `AggregatedDepositReceivesAndSpends`; ⬜ Index |
 | coinbase maturity | locked until `minedMoneyUnlockWindow` | enforced via `unlockHeight` in `spendableInputs` + chain-context | same | ⬜ not asserted for a wallet |
 
 ## D. History
@@ -113,10 +113,12 @@ for removal.)
 
 1. **Index-mode deposit lifecycle, end to end** — register account → confirm → create
    H-I-T-C deposit → receive → per-deposit balance → spend (one key) → change. No test
-   drives this today; it is the least-exercised mode.
-2. **Aggregated deposit credit + spend, end to end** — a real `WalletGreen` receives to
-   a deposit address and the deposit balance + history + spend all reflect it (unit
-   pieces exist; the full path through scan→attribution→balance→spend does not).
+   drives this today; it is the least-exercised mode. **← next**
+2. ~~**Aggregated deposit credit + spend, end to end**~~ — ✅ DONE
+   (`PqWalletIntegration.AggregatedDepositReceivesAndSpends`, commit `4a6d2c2f`): a real
+   `WalletGreen` receives to a deposit, attributes it to the deposit bucket, and spends
+   it restricted to that source (signed with the derived per-deposit key), change to
+   primary.
 3. **Deposit-output reorg** — orphaning a block that credited a *deposit* rolls back the
    per-deposit balance (only the primary case is covered).
 4. **Tracking/view-only wallet** — scans and reports balance but `sendTransaction`
