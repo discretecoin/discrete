@@ -145,9 +145,6 @@ public:
   virtual std::string createAddress(const Crypto::PublicKey& spendPublicKey, const uint64_t& creationTimestamp) override;
   virtual std::string createAddress(const Crypto::SecretKey& spendSecretKey, const uint32_t scanHeight) override;
   virtual std::string createAddress(const Crypto::PublicKey& spendPublicKey, const uint32_t scanHeight) override;
-  virtual std::vector<std::string> createAddressList(const std::vector<Crypto::SecretKey>& spendSecretKeys, bool reset = true) override;
-  virtual std::vector<std::string> createAddressList(const std::vector<Crypto::SecretKey>& spendSecretKeys, const std::vector<uint64_t>&creationTimestamps) override;
-  virtual std::vector<std::string> createAddressList(const std::vector<Crypto::SecretKey>& spendSecretKeys, const std::vector<uint32_t>& scanHeights) override;
   virtual void deleteAddress(const std::string& address) override;
 
   virtual uint64_t getActualBalance() const override;

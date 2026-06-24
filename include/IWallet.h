@@ -174,9 +174,6 @@ public:
   virtual std::string createAddress(const Crypto::PublicKey& spendPublicKey, const uint64_t& creationTimestamp) = 0;
   virtual std::string createAddress(const Crypto::SecretKey& spendSecretKey, const uint32_t scanHeight) = 0;
   virtual std::string createAddress(const Crypto::PublicKey& spendPublicKey, const uint32_t scanHeight) = 0;
-  virtual std::vector<std::string> createAddressList(const std::vector<Crypto::SecretKey>& spendSecretKeys, bool reset = true) = 0;
-  virtual std::vector<std::string> createAddressList(const std::vector<Crypto::SecretKey>& spendSecretKeys, const std::vector<uint64_t>& creationTimestamps) = 0;
-  virtual std::vector<std::string> createAddressList(const std::vector<Crypto::SecretKey>& spendSecretKeys, const std::vector<uint32_t>& scanHeights) = 0;
   virtual void deleteAddress(const std::string& address) = 0;
 
   virtual uint64_t getActualBalance() const = 0;

@@ -79,7 +79,6 @@ private:
   std::error_code handleReset(const Reset::Request& request, Reset::Response& response);
   std::error_code handleExport(const Export::Request& request, Export::Response& response);
   std::error_code handleCreateAddress(const CreateAddress::Request& request, CreateAddress::Response& response);
-  std::error_code handleCreateAddressList(const CreateAddressList::Request& request, CreateAddressList::Response& response);
   std::error_code handleDeleteAddress(const DeleteAddress::Request& request, DeleteAddress::Response& response);
   std::error_code handleHasAddress(const HasAddress::Request& request, HasAddress::Response& response);
   std::error_code handleGetSpendKeys(const GetSpendKeys::Request& request, GetSpendKeys::Response& response);

@@ -125,29 +125,6 @@ void CreateAddress::Response::serialize(CryptoNote::ISerializer& serializer) {
   serializer(address, "address");
 }
 
-void CreateAddressList::Request::serialize(CryptoNote::ISerializer& serializer) {
-  if (!serializer(spendSecretKeys, "spendSecretKeys")) {
-    //TODO: replace it with error codes
-    throw RequestSerializationError();
-  }
-  bool hasReset = serializer(reset, "reset");
-  if (!hasReset)
-    reset = true;
-  bool hasScanHeights = serializer(scanHeights, "scanHeights");
-  if (hasScanHeights && hasReset) {
-    //TODO: replace it with error codes
-    throw RequestSerializationError();
-  }
-  if (hasScanHeights && scanHeights.size() != spendSecretKeys.size()) {
-    //TODO: replace it with error codes
-    throw RequestSerializationError();
-  }
-}
-
-void CreateAddressList::Response::serialize(CryptoNote::ISerializer& serializer) {
-  serializer(addresses, "addresses");
-}
-
 void DeleteAddress::Request::serialize(CryptoNote::ISerializer& serializer) {
   if (!serializer(address, "address")) {
     throw RequestSerializationError();

@@ -978,47 +978,6 @@ std::string WalletGreen::createAddress(const Crypto::PublicKey&, const uint32_t)
   throwClassicalImportUnsupported();
 }
 
-std::vector<std::string> WalletGreen::createAddressList(const std::vector<Crypto::SecretKey>& spendSecretKeys, bool reset) {
-  std::vector<NewAddressData> addressDataList(spendSecretKeys.size());
-  for (size_t i = 0; i < spendSecretKeys.size(); ++i) {
-    addressDataList[i].seedMaster = seedFromSecret(spendSecretKeys[i]);
-    addressDataList[i].tracking = false;
-    addressDataList[i].creationTimestamp = reset ? 0 : static_cast<uint64_t>(time(nullptr));
-  }
-
-  return doCreateAddressList(addressDataList);
-}
-
-std::vector<std::string> WalletGreen::createAddressList(const std::vector<Crypto::SecretKey>& spendSecretKeys, const std::vector<uint64_t>&creationTimestamps) {
-  if (spendSecretKeys.size() != creationTimestamps.size()) {
-    m_logger(ERROR, BRIGHT_RED) << "createAddressList(): the sizes of keys and timestamps vectors do not match.";
-    throw std::system_error(make_error_code(std::errc::invalid_argument));
-  }
-  std::vector<NewAddressData> addressDataList(spendSecretKeys.size());
-  for (size_t i = 0; i < spendSecretKeys.size(); ++i) {
-    addressDataList[i].seedMaster = seedFromSecret(spendSecretKeys[i]);
-    addressDataList[i].tracking = false;
-    addressDataList[i].creationTimestamp = creationTimestamps[i];
-  }
-
-  return doCreateAddressList(addressDataList);
-}
-
-std::vector<std::string> WalletGreen::createAddressList(const std::vector<Crypto::SecretKey>& spendSecretKeys, const std::vector<uint32_t>& scanHeights) {
-  if (spendSecretKeys.size() != scanHeights.size()) {
-    m_logger(ERROR, BRIGHT_RED) << "createAddressList(): the sizes of keys and scan heights vectors do not match.";
-    throw std::system_error(make_error_code(std::errc::invalid_argument));
-  }
-  std::vector<NewAddressData> addressDataList(spendSecretKeys.size());
-  for (size_t i = 0; i < spendSecretKeys.size(); ++i) {
-    addressDataList[i].seedMaster = seedFromSecret(spendSecretKeys[i]);
-    addressDataList[i].tracking = false;
-    addressDataList[i].creationTimestamp = scanHeightToTimestamp(scanHeights[i]);
-  }
-
-  return doCreateAddressList(addressDataList);
-}
-
 std::string WalletGreen::doCreateAddress(const CryptoPQ::SeedMaster& seedMaster, bool tracking, uint64_t creationTimestamp, uint32_t hdIndex) {
   assert(creationTimestamp <= std::numeric_limits<uint64_t>::max() - m_currency.blockFutureTimeLimit());
 

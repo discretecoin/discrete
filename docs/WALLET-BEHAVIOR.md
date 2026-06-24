@@ -74,7 +74,7 @@ multi-record `createAddressList` path is dead and still slated for removal.
 | Bucket attribution | by subaddress | match per-deposit spend pubkey | recover subaddress **T** | ✅ Aggregated `AggregatedDepositReceivesAndSpends`; ✅ Index `SingleKeyIndexAttributesDepositsByT` |
 | `getBalance` (global) | total / unlocked | `getActualBalance` (confirmed) + `getPendingBalance` | same | ✅ `PqWalletSyncE2E` |
 | `getBalance(address)` | per-subaddress actual + locked | per-bucket: `depositBalance − depositPendingBalance` / pending | same | ✅ Aggregated (funded) `AggregatedDepositReceivesAndSpends`; ⬜ Index |
-| coinbase maturity | locked until `minedMoneyUnlockWindow` | enforced via `unlockHeight` in `spendableInputs` + chain-context | same | ⬜ not asserted for a wallet |
+| output spend-lock / coinbase maturity | locked until `minedMoneyUnlockWindow` | enforced via `unlockHeight` in `spendableInputs` + chain-context | same | ✅ mechanism `PqWalletIntegration.LockedOutputNotSpendableUntilUnlockHeight` |
 
 ## D. History
 
@@ -92,7 +92,7 @@ multi-record `createAddressList` path is dead and still slated for removal.
 | **spend authority per input** | sign with the key the output committed to | **per-deposit** key for deposit inputs, primary for primary | the **one** key for all | ✅ `PqTxBuilder.PerInputDepositKeysPassConsensus`, `PqSender.AggregatedDepositInputSignedWithDepositKey` / `SingleKeyIndexUsesOneKeyForDeposits` |
 | `sendTransaction` sources | restrict spend to given addresses | `sourceBuckets` filter | same | ✅ `PqSender.SourceBucketFilterRestrictsInputs` |
 | **change destination** | explicit `changeAddress` (valid+ours) → sole address → sole source → else `CHANGE_ADDRESS_REQUIRED` | change re-scans into the chosen bucket (`pqChangeTemplate`) | same (T carried) | ✅ `PaymentGateTest.ChangeDestinationRuleMatchesCryptoNote`, `PqSender.ChangeRoutedToChangeDestination` |
-| relay / reserve / rollback-on-fail | add-before-relay, delete-on-fail | `addUnconfirmedTransaction` then relay; rollback on relay error | same | 🟡 logic present; ⬜ failure path not tested |
+| relay / reserve / rollback-on-fail | add-before-relay, delete-on-fail | `addUnconfirmedTransaction` then relay; rollback on relay error | same | ✅ `PqWalletIntegration.RelayFailureRollsBackReservation` |
 
 ## F. Keys / backup / signing
 
@@ -108,35 +108,36 @@ multi-record `createAddressList` path is dead and still slated for removal.
 | Operation | Intended (CN) | PQ behavior | Status |
 |---|---|---|---|
 | save / load | persist + restore wallet | v9 container + persisted PQ ledger; balance/history restore without rescan | ✅ `PqWalletIntegration.BalanceSurvivesSaveAndReload` |
-| reorg / detach | roll back balance + history | `WalletLedger::rollbackToHeight` on `onBlockchainDetach` | ✅ (primary) `PqWalletIntegration.ReorgDetachReversesCredit`; ⬜ deposit-output reorg |
-| tracking / view-only | scan, refuse to spend | zero seed → scan via tracking key, `sendPqTransfer` throws | ⬜ not E2E |
+| reorg / detach | roll back balance + history | `WalletLedger::rollbackToHeight` on `onBlockchainDetach` | ✅ primary `ReorgDetachReversesCredit`; ✅ deposit `DepositCreditReversedOnReorg` |
+| tracking / view-only | scan, refuse to spend | zero seed → scan via tracking key, `sendPqTransfer` throws | ✅ `PqWalletIntegration.TrackingWalletCannotSpend` |
 | reset / rescan | re-scan from a height | re-derives the ledger | ⬜ |
 | `getStatus` / `getBlockHashes` | node/sync status | pass-through | 🟡 low risk |
 | mining keys from wallet | n/a | `MiningKeyLoader` reads the seed (both wallet formats) | ✅ `PqChainTests`, mining path |
 
 ---
 
-## Open gaps / next tests (the ⬜ and ❌ rows above, prioritized)
+## Coverage status (the matrix, after this verification pass)
 
-1. ~~**Index-mode deposit lifecycle**~~ — mostly ✅. Attribution-by-T
-   (`SingleKeyIndexAttributesDepositsByT`) and registration → H-I-C status → H-I-T-C
-   issuance → ownership (`IndexModeRegistersAndIssuesHITC`, against the now PQ-account-aware
-   stub). Remaining: a *receive + spend* addressed by the H-I-T-C string end to end (now
-   unblocked by the stub). **← quick follow-up**
-2. ~~**Aggregated deposit credit + spend, end to end**~~ — ✅ DONE
-   (`PqWalletIntegration.AggregatedDepositReceivesAndSpends`, commit `4a6d2c2f`): a real
-   `WalletGreen` receives to a deposit, attributes it to the deposit bucket, and spends
-   it restricted to that source (signed with the derived per-deposit key), change to
-   primary.
-3. **Deposit-output reorg** — orphaning a block that credited a *deposit* rolls back the
-   per-deposit balance (only the primary case is covered).
-4. **Tracking/view-only wallet** — scans and reports balance but `sendTransaction`
-   refuses with a clear error.
-5. **Coinbase maturity** — a freshly mined output is locked until the unlock window and
-   is not offered for spending before then.
-6. **Relay-failure rollback** — a failed relay un-reserves inputs and drops the
-   unconfirmed change/history.
+Done (✅), with the test that proves each:
+- Aggregated deposit receive → attribute → per-deposit balance → spend (derived key) →
+  change-to-primary — `AggregatedDepositReceivesAndSpends`
+- `restore-address-count` recovers deposit funds from the seed — `RestoreFromSeed…` +
+  `PaymentGateTest.RestoreAddressCountRegeneratesDeposits` (fixed a real fund-loss bug)
+- Index attribution-by-T — `SingleKeyIndexAttributesDepositsByT`
+- Index registration → H-I-C status → H-I-T-C issuance → ownership —
+  `IndexModeRegistersAndIssuesHITC` (node stub gained PQ-account resolution)
+- Deposit-output reorg rollback — `DepositCreditReversedOnReorg`
+- Tracking/view-only refuse-to-spend — `TrackingWalletCannotSpend`
+- Output spend-lock / maturity — `LockedOutputNotSpendableUntilUnlockHeight`
+- Relay-failure rollback — `RelayFailureRollsBackReservation`
+- `--independent-addresses` removed; dead multi-record `createAddressList` RPC removed
 
-These become the deposit-lifecycle test matrix: **{Aggregated, Index} × {receive,
-per-address balance, history filter, spend, change, reorg} × {walletd, simplewallet}**.
-Each cell that is wrong is a bug we fix on our terms, grounded in the pre-PQ behavior.
+Remaining (lower-risk; pieces already covered individually):
+1. A *receive + spend addressed by the H-I-T-C string* end to end (attribution-by-T,
+   registration→H-I-T-C, and spend-with-one-key are each already proven; this is the
+   integration of the three via the address string).
+2. `signMessage`/`verifyMessage`, `getViewKey`/`getMnemonicSeed` shape (single-identity,
+   address-ignored) — 🟡 untested but trivial.
+3. `reset`/rescan re-derives the ledger — ⬜.
+4. simplewallet (`WalletLegacy`) parity for the deposit flows — the engine differs; it
+   has no deposits, so most cells are N/A, but a smoke test is worthwhile.

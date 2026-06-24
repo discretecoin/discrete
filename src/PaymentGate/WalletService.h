@@ -76,8 +76,6 @@ public:
   std::error_code createAddress(const std::string& spendSecretKeyText, bool reset, std::string& address);
   std::error_code createAddress(const std::string& spendSecretKeyText, const uint32_t scanHeight, std::string& address);
   std::error_code createAddress(std::string& address);
-  std::error_code createAddressList(const std::vector<std::string>& spendSecretKeysText, bool reset, std::vector<std::string>& addresses);
-  std::error_code createAddressList(const std::vector<std::string>& spendSecretKeysText, const std::vector<uint32_t>& scanHeights, std::vector<std::string>& addresses);
   std::error_code createTrackingAddress(const std::string& spendPublicKeyText, std::string& address);
   std::error_code createTrackingAddress(const std::string& spendPublicKeyText, const uint32_t scanHeight, std::string& address);
   std::error_code deleteAddress(const std::string& address);
