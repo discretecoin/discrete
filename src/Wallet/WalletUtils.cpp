@@ -19,6 +19,7 @@
 
 #include "CryptoNote.h"
 #include "crypto/crypto.h"
+#include "PqAddress.h"
 #include "Wallet/WalletErrors.h"
 
 namespace CryptoNote {
@@ -33,7 +34,15 @@ void throwIfKeysMissmatch(const Crypto::SecretKey& secretKey, const Crypto::Publ
 
 bool validateAddress(const std::string& address, const CryptoNote::Currency& currency) {
   CryptoNote::AccountPublicAddress ignore;
-  return currency.parseAccountAddressString(address, ignore);
+  if (currency.parseAccountAddressString(address, ignore)) {
+    return true;
+  }
+  // PQ-native addresses (what the wallet actually issues) are not classical base58,
+  // so accept them too — otherwise per-address RPCs (getTransactions/getBalance/
+  // sendTransaction source filters) would reject the wallet's own addresses.
+  CryptoNote::PqAddress pq;
+  return CryptoNote::decodePqAddress(address, pq) &&
+         pq.networkPrefix == currency.publicAddressBase58Prefix();
 }
 
 std::ostream& operator<<(std::ostream& os, CryptoNote::WalletTransactionState state) {

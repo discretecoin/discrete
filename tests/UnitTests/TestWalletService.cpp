@@ -25,6 +25,7 @@
 
 #include "CryptoNoteCore/Account.h"
 #include "CryptoNoteCore/Currency.h"
+#include "PqAddress.h"
 #include "Logging/LoggerGroup.h"
 #include "Logging/ConsoleLogger.h"
 #include <System/Event.h>
@@ -529,9 +530,14 @@ protected:
 
 void WalletServiceTest_getTransactions::SetUp() {
   auto makeAddress = [this]() {
+    // Produce a valid PQ address (what the wallet actually issues). Rendering the
+    // classical address of a PQ account is non-deterministic — its spendPublicKey
+    // slot is a hash, a valid curve point only ~half the time.
     CryptoNote::AccountBase account;
     account.generate();
-    return currency.accountAddressAsString(account.getAccountKeys().address);
+    auto addr = CryptoNote::makePqAddress(currency.publicAddressBase58Prefix(),
+                                          account.pqViewPk(), account.pqSpendPk());
+    return CryptoNote::encodePqAddress(addr);
   };
 
   RANDOM_ADDRESS1 = makeAddress();
