@@ -19,6 +19,8 @@
 #include "CryptoNoteCore/CryptoNoteFormatUtils.h"
 #include "CryptoNoteCore/CryptoNoteTools.h"
 #include "CryptoNoteCore/TransactionApi.h"
+#include "CryptoNoteCore/TransactionExtra.h"
+#include "Common/StringTools.h"
 #include "Wallet/WalletErrors.h"
 
 #include <functional>
@@ -192,6 +194,75 @@ void INodeTrivialRefreshStub::doRelayTransaction(const Transaction& transaction,
 
   m_blockchainGenerator.addTxToBlockchain(transaction);
   lock.unlock();
+  callback(std::error_code());
+}
+
+CryptoNote::BlockHeaderInfo INodeTrivialRefreshStub::getLastLocalBlockHeaderInfo() const {
+  CryptoNote::BlockHeaderInfo info = CryptoNote::BlockHeaderInfo();
+  const std::vector<CryptoNote::Block>& chain = m_blockchainGenerator.getBlockchain();
+  if (!chain.empty()) {
+    const CryptoNote::Block& tip = chain.back();
+    info.index = static_cast<uint32_t>(chain.size() - 1);
+    info.majorVersion = tip.majorVersion;
+    info.minorVersion = tip.minorVersion;
+    info.timestamp = tip.timestamp;
+    info.hash = CryptoNote::get_block_hash(tip);
+    info.prevHash = tip.previousBlockHash;
+    info.nonce = tip.nonce;
+  }
+  return info;
+}
+
+void INodeTrivialRefreshStub::getPqAccount(const std::string& viewPubHex, const std::string& spendPubHex,
+    bool& registered, uint32_t& blockHeight, uint32_t& txIndex, const Callback& callback) {
+  registered = false;
+  blockHeight = 0;
+  txIndex = 0;
+  std::vector<CryptoNote::Block> chain = m_blockchainGenerator.getBlockchainCopy();
+  // First-registration-wins: scan height-ascending, in-block order; coinbase = index 0.
+  for (uint32_t h = 0; h < chain.size() && !registered; ++h) {
+    const CryptoNote::Block& block = chain[h];
+    for (uint32_t j = 0; j < block.transactionHashes.size(); ++j) {
+      CryptoNote::Transaction tx;
+      if (!m_blockchainGenerator.getTransactionByHash(block.transactionHashes[j], tx, false)) {
+        continue;
+      }
+      CryptoNote::TransactionExtraPqAccountRegistration reg;
+      if (!CryptoNote::getPqAccountRegistrationFromExtra(tx.extra, reg)) {
+        continue;
+      }
+      if (Common::toHex(reg.viewPub.data(), reg.viewPub.size()) == viewPubHex &&
+          Common::toHex(reg.spendPub.data(), reg.spendPub.size()) == spendPubHex) {
+        registered = true;
+        blockHeight = h;
+        txIndex = j + 1;  // coinbase occupies in-block index 0
+        break;
+      }
+    }
+  }
+  callback(std::error_code());
+}
+
+void INodeTrivialRefreshStub::resolvePqAccount(uint32_t blockHeight, uint32_t txIndex, bool& found,
+    std::string& viewPubHex, std::string& spendPubHex, const Callback& callback) {
+  found = false;
+  viewPubHex.clear();
+  spendPubHex.clear();
+  std::vector<CryptoNote::Block> chain = m_blockchainGenerator.getBlockchainCopy();
+  if (blockHeight < chain.size() && txIndex >= 1) {
+    const CryptoNote::Block& block = chain[blockHeight];
+    const uint32_t pos = txIndex - 1;  // back out the coinbase offset
+    if (pos < block.transactionHashes.size()) {
+      CryptoNote::Transaction tx;
+      CryptoNote::TransactionExtraPqAccountRegistration reg;
+      if (m_blockchainGenerator.getTransactionByHash(block.transactionHashes[pos], tx, false) &&
+          CryptoNote::getPqAccountRegistrationFromExtra(tx.extra, reg)) {
+        found = true;
+        viewPubHex = Common::toHex(reg.viewPub.data(), reg.viewPub.size());
+        spendPubHex = Common::toHex(reg.spendPub.data(), reg.spendPub.size());
+      }
+    }
+  }
   callback(std::error_code());
 }
 

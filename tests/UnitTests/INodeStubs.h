@@ -104,6 +104,8 @@ public:
 
   virtual uint32_t getLastLocalBlockHeight() const override { return static_cast<uint32_t>(m_blockchainGenerator.getBlockchain().size() - 1); }
   virtual uint32_t getLastKnownBlockHeight() const override { return static_cast<uint32_t>(m_blockchainGenerator.getBlockchain().size() - 1); }
+  // Real chain tip header (the free-registration PoW references a recent block hash).
+  virtual CryptoNote::BlockHeaderInfo getLastLocalBlockHeaderInfo() const override;
 
   virtual uint32_t getLocalBlockCount() const override { return static_cast<uint32_t>(m_blockchainGenerator.getBlockchain().size()); }
   virtual uint32_t getKnownBlockCount() const override { return static_cast<uint32_t>(m_blockchainGenerator.getBlockchain().size()); }
@@ -111,6 +113,13 @@ public:
   virtual void getNewBlocks(std::vector<Crypto::Hash>&& knownBlockIds, std::vector<CryptoNote::block_complete_entry>& newBlocks, uint32_t& startHeight, const Callback& callback) override;
 
   virtual void relayTransaction(const CryptoNote::Transaction& transaction, const Callback& callback) override;
+  // PQ account registry resolved on-demand by scanning the generator's chain for a
+  // TransactionExtraPqAccountRegistration tag. Account number = (block height, in-block
+  // tx index; coinbase = 0, first regular tx = 1).
+  virtual void getPqAccount(const std::string& viewPubHex, const std::string& spendPubHex, bool& registered,
+                            uint32_t& blockHeight, uint32_t& txIndex, const Callback& callback) override;
+  virtual void resolvePqAccount(uint32_t blockHeight, uint32_t txIndex, bool& found,
+                                std::string& viewPubHex, std::string& spendPubHex, const Callback& callback) override;
   virtual void getRandomOutsByAmounts(std::vector<uint64_t>&& amounts, uint64_t outsCount, std::vector<CryptoNote::COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::outs_for_amount>& result, const Callback& callback) override;
   virtual void getTransactionOutsGlobalIndices(const Crypto::Hash& transactionHash, std::vector<uint32_t>& outsGlobalIndices, const Callback& callback) override;
   virtual void queryBlocks(std::vector<Crypto::Hash>&& knownBlockIds, uint64_t timestamp, std::vector<CryptoNote::BlockShortEntry>& newBlocks, uint32_t& startHeight, const Callback& callback) override;

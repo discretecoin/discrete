@@ -53,7 +53,7 @@ multi-record `createAddressList` path is dead and still slated for removal.
 |---|---|---|---|---|
 | Primary identity | seed → spend/view keys | 32-byte `SeedMaster` → `deriveSpendKeys`/`deriveViewKeys` (no HKDF) | same | ✅ `PqDeriveTests`, `PqWalletSyncE2E` |
 | `getAddresses` / `getAddressesCount` | primary + every subaddress | index 0 = primary PQ address; 1.. = deposit PQ addresses | index 0 = primary; 1.. = H-I-T-C numbers | 🟡 `PaymentGateTest.addressIndexAndAccountNumberSelectors` (1 deposit) |
-| `createPqDepositAddress` | derive next subaddress | derive per-deposit spend key, return PQ address; **no registration needed** | return H-I-T-C; **requires confirmed registration** | 🟡 Aggregated tested; ⬜ Index path (registration→deposit) not E2E |
+| `createPqDepositAddress` | derive next subaddress | derive per-deposit spend key, return PQ address; **no registration needed** | return H-I-T-C; **requires confirmed registration** | ✅ Aggregated `AggregatedDepositReceivesAndSpends`; ✅ Index `IndexModeRegistersAndIssuesHITC` |
 | `listPqDepositAddresses` | enumerate subaddresses | list issued deposits + indices | same (needs registration) | ⬜ |
 | `getPqDepositScheme` | n/a | reports `aggregated-multikey` + count | reports `single-key-index` + count | ⬜ |
 | `validateAddress` (RPC) | parse + report validity | accepts classical, PQ, H-I-C/H-I-T-C, or index | same | ✅ `addressIndexAndAccountNumberSelectors` |
@@ -63,8 +63,8 @@ multi-record `createAddressList` path is dead and still slated for removal.
 
 | Operation | Aggregated | Index | Status |
 |---|---|---|---|
-| `registerPqAccount` (free, PoW) / `registerPqAccountPaid` (fee TX_PQ) | optional (only needed for a short account number for the **primary**) | **once** — register the base account (H-I-C); all deposits are H-I-T-C subaddresses under it | ⬜ not E2E; `PqFreeReg.BuildsValidRegistration` covers the tx shape only |
-| `getPqAccountStatus` | reports registered + H-I-C number once the reg tx confirms | same | ⬜ |
+| `registerPqAccount` (free, PoW) / `registerPqAccountPaid` (fee TX_PQ) | optional (only needed for a short account number for the **primary**) | **once** — register the base account (H-I-C); all deposits are H-I-T-C subaddresses under it | ✅ free path `PaymentGateTest.IndexModeRegistersAndIssuesHITC`; ⬜ paid |
+| `getPqAccountStatus` | reports registered + H-I-C number once the reg tx confirms | same | ✅ `IndexModeRegistersAndIssuesHITC` |
 
 ## C. Receiving / balance
 
@@ -118,11 +118,11 @@ multi-record `createAddressList` path is dead and still slated for removal.
 
 ## Open gaps / next tests (the ⬜ and ❌ rows above, prioritized)
 
-1. **Index-mode deposit lifecycle** — attribution-by-T is now covered
-   (`SingleKeyIndexAttributesDepositsByT`). What's left needs a **node-stub extension**
-   (the `INodeTrivialRefreshStub` has no PQ-account resolution): registration → confirm →
-   getPqAccountStatus returns H-I-C → create H-I-T-C deposit address → source-select a
-   spend by H-I-T-C. **← next (build the stub support, then the full E2E)**
+1. ~~**Index-mode deposit lifecycle**~~ — mostly ✅. Attribution-by-T
+   (`SingleKeyIndexAttributesDepositsByT`) and registration → H-I-C status → H-I-T-C
+   issuance → ownership (`IndexModeRegistersAndIssuesHITC`, against the now PQ-account-aware
+   stub). Remaining: a *receive + spend* addressed by the H-I-T-C string end to end (now
+   unblocked by the stub). **← quick follow-up**
 2. ~~**Aggregated deposit credit + spend, end to end**~~ — ✅ DONE
    (`PqWalletIntegration.AggregatedDepositReceivesAndSpends`, commit `4a6d2c2f`): a real
    `WalletGreen` receives to a deposit, attributes it to the deposit bucket, and spends

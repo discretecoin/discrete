@@ -299,6 +299,59 @@ TEST_F(PaymentGateTest, RestoreAddressCountRegeneratesDeposits) {
   EXPECT_EQ(addrs.size(), 3u);  // primary + 2 deposits regenerated from the seed
 }
 
+// Full Index (SingleKeyIndex / H-I-T-C) registration plumbing, end to end against the
+// PQ-account-aware node stub: register the base account once, resolve its H-I-C, then
+// issue an H-I-T-C deposit under it and confirm the wallet owns it.
+TEST_F(PaymentGateTest, IndexModeRegistersAndIssuesHITC) {
+  auto cfg = createWalletConfiguration();
+  unlink(cfg.walletFile.c_str());
+  generateNewWallet(currency, cfg, logger, dispatcher, nodeStub,
+                    CryptoNote::PqDepositScheme::SingleKeyIndex);
+  auto service = createWalletService(cfg);
+
+  // Not registered yet.
+  {
+    bool registered = true;
+    std::string acct;
+    uint32_t h = 0, i = 0;
+    ASSERT_FALSE(service->getPqAccountStatus(registered, acct, h, i));
+    EXPECT_FALSE(registered);
+  }
+
+  // Register (free anti-spam PoW); the stub relays + mines the registration tx.
+  std::string regTxHash;
+  ASSERT_FALSE(service->registerPqAccount(regTxHash));
+  ASSERT_FALSE(regTxHash.empty());
+
+  // Status now resolves to the base account number H-I-C via the node.
+  bool registered = false;
+  std::string accountNumber;
+  uint32_t H = 0, I = 0;
+  ASSERT_FALSE(service->getPqAccountStatus(registered, accountNumber, H, I));
+  ASSERT_TRUE(registered);
+  CryptoNote::AccountNumber base;
+  ASSERT_TRUE(CryptoNote::AccountNumber::fromString(accountNumber, base));
+  EXPECT_EQ(base.blockHeight, H);
+  EXPECT_EQ(base.txIndex, I);
+
+  // Issue an H-I-T-C deposit under the SAME (H, I); T = 0.
+  std::string depositAddr;
+  uint32_t depIdx = 99;
+  ASSERT_FALSE(service->createPqDepositAddress(depositAddr, depIdx));
+  EXPECT_EQ(depIdx, 0u);
+  CryptoNote::AccountNumber acct;
+  uint32_t t = 99;
+  ASSERT_TRUE(CryptoNote::AccountNumber::fromStringWithIndex(depositAddr, acct, t));
+  EXPECT_EQ(acct.blockHeight, H);
+  EXPECT_EQ(acct.txIndex, I);
+  EXPECT_EQ(t, 0u);
+
+  // The wallet recognizes its own H-I-T-C deposit as ours.
+  bool ours = false;
+  ASSERT_FALSE(service->hasAddress(depositAddr, ours));
+  EXPECT_TRUE(ours);
+}
+
 /*
 TEST_F(PaymentGateTest, DISABLED_sendTransaction) {
 
