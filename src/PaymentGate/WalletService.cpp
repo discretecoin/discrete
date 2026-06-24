@@ -436,6 +436,20 @@ void generateNewWallet(const CryptoNote::Currency& currency, const WalletConfigu
       greenWallet->setPqDepositScheme(depositScheme);
       log(Logging::INFO, Logging::BRIGHT_WHITE) << "Deposit scheme: "
         << (depositScheme == CryptoNote::PqDepositScheme::SingleKeyIndex ? "single-key-index" : "aggregated-multikey");
+
+      // Restore the deposit subaddresses. The seed derives every deposit key, but the
+      // COUNT is not in the seed (it lives only in the wallet file), so the caller
+      // supplies it via restore-address-count (total addresses incl. the primary).
+      // This is REQUIRED to recover AggregatedMultikey deposit funds: each deposit
+      // output commits to a distinct derived spend key, and the scanner only
+      // recognizes an output whose key it has reserved/derived.
+      for (uint32_t i = 1; i < conf.restoreAddressCount; ++i) {
+        greenWallet->reservePqDepositIndex();
+      }
+      if (conf.restoreAddressCount > 1) {
+        log(Logging::INFO, Logging::BRIGHT_WHITE)
+          << "Restored " << (conf.restoreAddressCount - 1) << " deposit address(es) from the seed";
+      }
     }
   }
 

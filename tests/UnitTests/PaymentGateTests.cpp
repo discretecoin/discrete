@@ -273,6 +273,32 @@ TEST_F(PaymentGateTest, ChangeDestinationRuleMatchesCryptoNote) {
   }
 }
 
+// restore-address-count must regenerate the wallet's deposit subaddresses on a
+// seed/mnemonic restore (the count is not in the seed). 3 = primary + 2 deposits.
+TEST_F(PaymentGateTest, RestoreAddressCountRegeneratesDeposits) {
+  auto cfg = createWalletConfiguration();
+  generateWallet(cfg);
+  std::string mnemonic;
+  {
+    auto service = createWalletService(cfg);
+    ASSERT_FALSE(service->getMnemonicSeed("", mnemonic));
+    ASSERT_FALSE(mnemonic.empty());
+  }
+
+  WalletConfiguration restoreCfg;
+  restoreCfg.walletFile = "pg_restore.bin";
+  restoreCfg.walletPassword = "pass";
+  restoreCfg.mnemonicSeed = mnemonic;
+  restoreCfg.restoreAddressCount = 3;
+  unlink(restoreCfg.walletFile.c_str());
+  generateNewWallet(currency, restoreCfg, logger, dispatcher, nodeStub);
+
+  auto restored = createWalletService(restoreCfg);
+  std::vector<std::string> addrs;
+  ASSERT_FALSE(restored->getAddresses(addrs));
+  EXPECT_EQ(addrs.size(), 3u);  // primary + 2 deposits regenerated from the seed
+}
+
 /*
 TEST_F(PaymentGateTest, DISABLED_sendTransaction) {
 

@@ -425,3 +425,60 @@ TEST(PqWalletIntegration, AggregatedDepositReceivesAndSpends) {
   wallet.shutdown();
   boost::filesystem::remove(path);
 }
+
+// Seed-only restore of an AggregatedMultikey wallet must be told the deposit COUNT
+// (restore-address-count) to recover deposit funds: each deposit output commits to a
+// distinct derived spend key, so the scanner only recognizes it after that deposit is
+// re-reserved. Without it the deposit funds are invisible; with it they are recovered.
+TEST(PqWalletIntegration, RestoreFromSeedNeedsDepositCountToRecoverDepositFunds) {
+  System::Dispatcher dispatcher;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(1000000).upgradeHeightV6(1000000)
+      .currency();
+  TestBlockchainGenerator generator(currency);
+  INodeTrivialRefreshStub node(generator);
+
+  // A known wallet seed and its derived deposit-0 identity (shared view + deposit key).
+  Crypto::SecretKey seed;
+  for (std::size_t i = 0; i < sizeof(seed.data); ++i) seed.data[i] = static_cast<uint8_t>(i * 3 + 1);
+  CryptoNote::PqWalletKeys mine = pqKeysFromWalletSeed(seed);
+  CryptoNote::PqWalletKeys deposit0 = mine;
+  deposit0.spendPub = CryptoPQ::deriveDepositSpendKeys(mine.seedMaster, 0).first;
+
+  // Put an 800000 payment to deposit 0 on-chain (funded by some other wallet).
+  Crypto::SecretKey otherSecret;
+  for (std::size_t i = 0; i < sizeof(otherSecret.data); ++i)
+    otherSecret.data[i] = static_cast<uint8_t>(i * 11 + 5);
+  CryptoNote::PqWalletKeys them = CryptoNote::derivePqWalletKeys(otherSecret);
+  CryptoNote::Transaction pqTx = makePqPayTo(them, deposit0, 1000000, 800000, 0x44);
+  generator.setTxFee(CryptoNote::getObjectHash(pqTx), 1000000 - 800000);
+  generator.addTxToBlockchain(pqTx);
+  const uint32_t tipHeight = static_cast<uint32_t>(generator.getBlockchain().size() - 1);
+
+  // Restore the primary from the seed, optionally re-reserving `deposits` deposits
+  // (what restore-address-count does), sync fully, and report the recovered balance.
+  auto restoreAndSync = [&](const std::string& path, uint32_t deposits) -> uint64_t {
+    boost::filesystem::remove(path);
+    CryptoNote::WalletGreen w(dispatcher, currency, node, logger);
+    w.initialize(path, "pass");
+    w.createAddress(seed);  // restore the primary identity from the seed
+    for (uint32_t i = 0; i < deposits; ++i) {
+      w.reservePqDepositIndex();
+    }
+    node.updateObservers();
+    pumpUntil(dispatcher, w, [&w, tipHeight]() { return w.pqSyncedHeight() >= tipHeight; });
+    uint64_t bal = w.getActualBalance();
+    w.shutdown();
+    boost::filesystem::remove(path);
+    return bal;
+  };
+
+  // Seed only, no deposits restored -> the deposit output is unrecognized (the bug
+  // restore-address-count fixes).
+  EXPECT_EQ(restoreAndSync("pq_restore_nodep.wallet", 0), 0u);
+  // Seed + deposit count 1 -> the deposit funds are recovered.
+  EXPECT_EQ(restoreAndSync("pq_restore_dep.wallet", 1), 800000u);
+}
