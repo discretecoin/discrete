@@ -17,13 +17,26 @@ The two deposit modes (`PqDepositScheme`):
 |---|---|---|
 | Keys | one shared ML-KEM **view** key + a **per-deposit** ML-DSA spend key (`deriveDepositSpendKeys(seed, i)`) | **one** ML-KEM view + **one** ML-DSA spend key for everything |
 | Deposit address | a PQ base58 address carrying the per-deposit spend pubkey | an **H-I-T-C account number** (base account H-I + subaddress index T) |
-| On-chain registration | **not required** — a deposit address is self-contained | **required** — H,I are the registration's (block height, tx index); needs `registerPqAccount[Paid]` first |
+| On-chain registration | **not required** — a deposit address is self-contained | **once** — the wallet registers a single base account (H-I-C); H,I are that registration's (block height, tx index). Every deposit is then an **H-I-T-C subaddress** under it (issue freely, no per-deposit registration). |
 | Output attribution on scan | match the recovered spend pubkey to the per-deposit pubkey | recover subaddress index **T** from the output by decapsulation |
 | Spend authority for a deposit output | the **per-deposit** spend secret | the one spend secret (T is routing only) |
 
 Everywhere an address is accepted, the same three selector forms are interchangeable
 (commit `7792c1dd`): a raw PQ/classical **address**, an **H-I-C / H-I-T-C** account
 number, or a numeric **address index** (0 = primary, 1.. = deposit in issue order).
+
+**Both modes are HD / single-mnemonic.** One 32-byte master seed (the mnemonic) derives
+the shared ML-KEM view key, the primary ML-DSA spend key, and — under AggregatedMultikey
+— every per-deposit spend key (`deriveDepositSpendKeys(seed, i)`). So a single mnemonic
+restores the entire wallet (primary + all deposits) in either mode; nothing needs an
+out-of-band per-address backup. **Discrete is HD-only:** the classical Karbo
+"independent spend keys" mode (each address a standalone key with no mnemonic, backed up
+individually) is **not offered** — PQ secret keys are multi-kilobyte (ML-DSA-65 secret
+≈ 4 KB), so per-key backup is impractical, and the HD deposit model already serves the
+exchange/many-address use case from one seed. (The `--independent-addresses` /
+`restore-address-count` config knobs are vestigial: `generateNewWallet` ignores them and
+`getAddressCount` = 1 + HD deposits; the leftover multi-record path is dead and slated
+for removal.)
 
 ---
 
@@ -43,7 +56,7 @@ number, or a numeric **address index** (0 = primary, 1.. = deposit in issue orde
 
 | Operation | Aggregated | Index | Status |
 |---|---|---|---|
-| `registerPqAccount` (free, PoW) / `registerPqAccountPaid` (fee TX_PQ) | optional (only needed if you want a short account number for the **primary**) | **required before any deposit** (gives H,I) | ⬜ not E2E; `PqFreeReg.BuildsValidRegistration` covers the tx shape only |
+| `registerPqAccount` (free, PoW) / `registerPqAccountPaid` (fee TX_PQ) | optional (only needed for a short account number for the **primary**) | **once** — register the base account (H-I-C); all deposits are H-I-T-C subaddresses under it | ⬜ not E2E; `PqFreeReg.BuildsValidRegistration` covers the tx shape only |
 | `getPqAccountStatus` | reports registered + H-I-C number once the reg tx confirms | same | ⬜ |
 
 ## C. Receiving / balance
