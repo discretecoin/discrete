@@ -19,6 +19,7 @@
 
 #include "CryptoNote.h"
 #include "crypto/crypto.h"
+#include "AccountNumber.h"
 #include "PqAddress.h"
 #include "Wallet/WalletErrors.h"
 
@@ -41,8 +42,17 @@ bool validateAddress(const std::string& address, const CryptoNote::Currency& cur
   // so accept them too — otherwise per-address RPCs (getTransactions/getBalance/
   // sendTransaction source filters) would reject the wallet's own addresses.
   CryptoNote::PqAddress pq;
-  return CryptoNote::decodePqAddress(address, pq) &&
-         pq.networkPrefix == currency.publicAddressBase58Prefix();
+  if (CryptoNote::decodePqAddress(address, pq) &&
+      pq.networkPrefix == currency.publicAddressBase58Prefix()) {
+    return true;
+  }
+  // H-I-T-C deposit subaddress (SingleKeyIndex scheme) or its H-I-C base account.
+  // Both are self-validating (Luhn mod-36 check char), so accept either form so the
+  // per-index RPCs can filter/select by account number, not just by raw address.
+  CryptoNote::AccountNumber acct;
+  uint32_t subaddrIndex = 0;
+  return CryptoNote::AccountNumber::fromStringWithIndex(address, acct, subaddrIndex) ||
+         CryptoNote::AccountNumber::fromString(address, acct);
 }
 
 std::ostream& operator<<(std::ostream& os, CryptoNote::WalletTransactionState state) {

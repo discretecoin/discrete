@@ -24,6 +24,7 @@
 
 #include "PaymentGate/WalletService.h"
 #include "Wallet/WalletGreen.h"
+#include "AccountNumber.h"
 
 // test helpers
 #include "INodeStubs.h"
@@ -137,6 +138,67 @@ TEST_F(PaymentGateTest, getSpendKeysAcceptsOwnAddress) {
   ASSERT_EQ(64u, spendPublicKey.size());
   ASSERT_EQ(64u, spendSecretKey.size());
   ASSERT_NE(spendSecretKey, std::string(64, '0'));
+}
+
+// Every address-taking RPC accepts the same selector forms: a numeric address index
+// (0 = primary, 1.. = deposit in issue order), the raw PQ address, and (for the
+// validation gate) an H-I-C / H-I-T-C account number. Index and address must resolve
+// to the same bucket.
+TEST_F(PaymentGateTest, addressIndexAndAccountNumberSelectors) {
+  auto cfg = createWalletConfiguration();
+  generateWallet(cfg);
+  auto service = createWalletService(cfg);
+
+  std::vector<std::string> addresses;
+  ASSERT_FALSE(service->getAddresses(addresses));
+  ASSERT_EQ(1u, addresses.size());
+  const std::string primary = addresses[0];
+
+  // AggregatedMultikey (the default scheme) derives a deposit address with no
+  // on-chain registration, so index 1 becomes addressable.
+  std::string depositAddr;
+  uint32_t depositIndex = 99;
+  ASSERT_FALSE(service->createPqDepositAddress(depositAddr, depositIndex));
+  ASSERT_EQ(0u, depositIndex);
+  ASSERT_FALSE(depositAddr.empty());
+
+  // getBalance: index "0"/"1" resolve to the same buckets as the address strings.
+  uint64_t a = 1, l = 1, b = 2, m = 2;
+  ASSERT_FALSE(service->getBalance("0", a, l));
+  ASSERT_FALSE(service->getBalance(primary, b, m));
+  EXPECT_EQ(a, b);
+  EXPECT_EQ(l, m);
+  ASSERT_FALSE(service->getBalance("1", a, l));
+  ASSERT_FALSE(service->getBalance(depositAddr, b, m));
+  EXPECT_EQ(a, b);
+  EXPECT_EQ(l, m);
+
+  // hasAddress by index.
+  bool ours = false;
+  ASSERT_FALSE(service->hasAddress("1", ours));
+  EXPECT_TRUE(ours);
+
+  // validateAddress: a numeric index normalizes to the deposit address; the raw PQ
+  // address is recognized as valid.
+  bool valid = false;
+  std::string norm, spk, vpk;
+  ASSERT_FALSE(service->validateAddress("1", valid, norm, spk, vpk));
+  EXPECT_TRUE(valid);
+  EXPECT_EQ(norm, depositAddr);
+  valid = false;
+  ASSERT_FALSE(service->validateAddress(depositAddr, valid, norm, spk, vpk));
+  EXPECT_TRUE(valid);
+
+  // A filter-gated RPC accepts index, raw address, and a syntactic H-I-T-C account
+  // number (empty wallet -> empty result, but crucially no BAD_ADDRESS rejection).
+  std::vector<std::string> hashes;
+  ASSERT_FALSE(service->getUnconfirmedTransactionHashes(std::vector<std::string>{ "1" }, hashes));
+  ASSERT_FALSE(service->getUnconfirmedTransactionHashes(std::vector<std::string>{ depositAddr }, hashes));
+  const std::string hitc = CryptoNote::AccountNumber{ 10, 2 }.toStringWithIndex(3);
+  ASSERT_FALSE(service->getUnconfirmedTransactionHashes(std::vector<std::string>{ hitc }, hashes));
+
+  // An out-of-range index is rejected.
+  ASSERT_TRUE(service->getBalance("5", a, l));
 }
 
 /*

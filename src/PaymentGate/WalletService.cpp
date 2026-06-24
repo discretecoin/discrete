@@ -298,6 +298,45 @@ void validateAddresses(const std::vector<std::string>& addresses, const CryptoNo
   }
 }
 
+// Resolve an address-or-index selector to the wallet's canonical address string.
+// A pure-decimal selector is an address INDEX (0 = the wallet's primary address,
+// 1.. = deposit subaddress in issue order) and is mapped to wallet.getAddress(index);
+// anything else (a PQ address, a classical address, or an H-I-C / H-I-T-C account
+// number) passes through unchanged for the wallet / validateAddress to resolve. This
+// is what lets every per-address RPC accept "address OR index" in the same field.
+std::string canonicalizeAddressSelector(CryptoNote::IWallet& wallet, const std::string& selector) {
+  if (selector.empty()) {
+    return selector;
+  }
+  for (char c : selector) {
+    if (c < '0' || c > '9') {
+      return selector;  // not a pure-decimal index
+    }
+  }
+  uint64_t index = 0;
+  try {
+    index = std::stoull(selector);
+  } catch (const std::exception&) {
+    throw std::system_error(make_error_code(CryptoNote::error::BAD_ADDRESS),
+                            "address index out of range: " + selector);
+  }
+  if (index >= wallet.getAddressCount()) {
+    throw std::system_error(make_error_code(CryptoNote::error::BAD_ADDRESS),
+                            "address index out of range: " + selector);
+  }
+  return wallet.getAddress(static_cast<size_t>(index));
+}
+
+std::vector<std::string> canonicalizeAddressSelectors(CryptoNote::IWallet& wallet,
+                                                      const std::vector<std::string>& selectors) {
+  std::vector<std::string> out;
+  out.reserve(selectors.size());
+  for (const auto& s : selectors) {
+    out.push_back(canonicalizeAddressSelector(wallet, s));
+  }
+  return out;
+}
+
 std::string getValidatedTransactionExtraString(const std::string& extraString) {
   std::vector<uint8_t> binary;
   if (!Common::fromHex(extraString, binary)) {
@@ -831,7 +870,7 @@ std::error_code WalletService::hasAddress(const std::string& address, bool& isOu
 
     logger(Logging::DEBUGGING) << "Has address request came";
 
-    isOurs = wallet.isMyAddress(address);
+    isOurs = wallet.isMyAddress(canonicalizeAddressSelector(wallet, address));
     if (!isOurs) {
       logger(Logging::DEBUGGING, Logging::BRIGHT_YELLOW) << "Address " << address << " doesn't exist in container";
       //return make_error_code(CryptoNote::error::WalletServiceErrorCode::OBJECT_NOT_FOUND);
@@ -851,7 +890,7 @@ std::error_code WalletService::getSpendkeys(const std::string& address, std::str
   try {
     System::EventLock lk(readyEvent);
 
-    CryptoNote::KeyPair key = wallet.getAddressSpendKey(address);
+    CryptoNote::KeyPair key = wallet.getAddressSpendKey(canonicalizeAddressSelector(wallet, address));
 
     publicSpendKeyText = Common::podToHex(key.publicKey);
     secretSpendKeyText = Common::podToHex(key.secretKey);
@@ -867,10 +906,11 @@ std::error_code WalletService::getSpendkeys(const std::string& address, std::str
 std::error_code WalletService::getBalance(const std::string& address, uint64_t& availableBalance, uint64_t& lockedAmount) {
   try {
     System::EventLock lk(readyEvent);
-    logger(Logging::DEBUGGING) << "Getting balance for address " << address;
+    const std::string resolved = canonicalizeAddressSelector(wallet, address);
+    logger(Logging::DEBUGGING) << "Getting balance for address " << resolved;
 
-    availableBalance = wallet.getActualBalance(address);
-    lockedAmount = wallet.getPendingBalance(address);
+    availableBalance = wallet.getActualBalance(resolved);
+    lockedAmount = wallet.getPendingBalance(resolved);
   } catch (std::system_error& x) {
     logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while getting balance: " << x.what();
     return x.code();
@@ -947,13 +987,14 @@ std::error_code WalletService::getTransactionHashes(const std::vector<std::strin
   uint32_t blockCount, const std::string& paymentId, std::vector<TransactionHashesInBlockRpcInfo>& transactionHashes) {
   try {
     System::EventLock lk(readyEvent);
-    validateAddresses(addresses, currency, logger);
+    const std::vector<std::string> resolvedAddresses = canonicalizeAddressSelectors(wallet, addresses);
+    validateAddresses(resolvedAddresses, currency, logger);
 
     if (!paymentId.empty()) {
       validatePaymentId(paymentId, logger);
     }
 
-    TransactionsInBlockInfoFilter transactionFilter(addresses, paymentId);
+    TransactionsInBlockInfoFilter transactionFilter(resolvedAddresses, paymentId);
     Crypto::Hash blockHash = parseHash(blockHashString, logger);
 
     transactionHashes = getRpcTransactionHashes(blockHash, blockCount, transactionFilter);
@@ -972,13 +1013,14 @@ std::error_code WalletService::getTransactionHashes(const std::vector<std::strin
   uint32_t blockCount, const std::string& paymentId, std::vector<TransactionHashesInBlockRpcInfo>& transactionHashes) {
   try {
     System::EventLock lk(readyEvent);
-    validateAddresses(addresses, currency, logger);
+    const std::vector<std::string> resolvedAddresses = canonicalizeAddressSelectors(wallet, addresses);
+    validateAddresses(resolvedAddresses, currency, logger);
 
     if (!paymentId.empty()) {
       validatePaymentId(paymentId, logger);
     }
 
-    TransactionsInBlockInfoFilter transactionFilter(addresses, paymentId);
+    TransactionsInBlockInfoFilter transactionFilter(resolvedAddresses, paymentId);
     transactionHashes = getRpcTransactionHashes(firstBlockIndex, blockCount, transactionFilter);
 
   } catch (std::system_error& x) {
@@ -996,13 +1038,14 @@ std::error_code WalletService::getTransactions(const std::vector<std::string>& a
   uint32_t blockCount, const std::string& paymentId, std::vector<TransactionsInBlockRpcInfo>& transactions) {
   try {
     System::EventLock lk(readyEvent);
-    validateAddresses(addresses, currency, logger);
+    const std::vector<std::string> resolvedAddresses = canonicalizeAddressSelectors(wallet, addresses);
+    validateAddresses(resolvedAddresses, currency, logger);
 
     if (!paymentId.empty()) {
       validatePaymentId(paymentId, logger);
     }
 
-    TransactionsInBlockInfoFilter transactionFilter(addresses, paymentId);
+    TransactionsInBlockInfoFilter transactionFilter(resolvedAddresses, paymentId);
 
     Crypto::Hash blockHash = parseHash(blockHashString, logger);
 
@@ -1028,13 +1071,14 @@ std::error_code WalletService::getTransactions(const std::vector<std::string>& a
   uint32_t blockCount, const std::string& paymentId, std::vector<TransactionsInBlockRpcInfo>& transactions) {
   try {
     System::EventLock lk(readyEvent);
-    validateAddresses(addresses, currency, logger);
+    const std::vector<std::string> resolvedAddresses = canonicalizeAddressSelectors(wallet, addresses);
+    validateAddresses(resolvedAddresses, currency, logger);
 
     if (!paymentId.empty()) {
       validatePaymentId(paymentId, logger);
     }
 
-    TransactionsInBlockInfoFilter transactionFilter(addresses, paymentId);
+    TransactionsInBlockInfoFilter transactionFilter(resolvedAddresses, paymentId);
 
     std::vector<TransactionsInBlockRpcInfo> txs = getRpcTransactions(firstBlockIndex, blockCount, transactionFilter);
     for (TransactionsInBlockRpcInfo& b : txs){
@@ -1538,8 +1582,9 @@ std::error_code WalletService::sendTransaction(const SendTransaction::Request& r
         CryptoPQ::KemPublicKey viewPub;
         CryptoPQ::DsaPublicKey spendPub;
         uint64_t subaddrT = 0;
-        if (!CryptoNote::resolvePqRecipient(node, t.address, viewPub, spendPub, subaddrT)) {
-          logger(Logging::WARNING) << "Invalid recipient: " << t.address;
+        const std::string recipient = canonicalizeAddressSelector(wallet, t.address);
+        if (!CryptoNote::resolvePqRecipient(node, recipient, viewPub, spendPub, subaddrT)) {
+          logger(Logging::WARNING) << "Invalid recipient: " << recipient;
           return make_error_code(CryptoNote::error::BAD_ADDRESS);
         }
         recipients.push_back(CryptoNote::PqSendOutput{viewPub, spendPub, t.amount, subaddrT});
@@ -1593,11 +1638,12 @@ std::error_code WalletService::getUnconfirmedTransactionHashes(const std::vector
   try {
     System::EventLock lk(readyEvent);
 
-    validateAddresses(addresses, currency, logger);
+    const std::vector<std::string> resolvedAddresses = canonicalizeAddressSelectors(wallet, addresses);
+    validateAddresses(resolvedAddresses, currency, logger);
 
     std::vector<CryptoNote::WalletTransactionWithTransfers> transactions = wallet.getUnconfirmedTransactions();
 
-    TransactionsInBlockInfoFilter transactionFilter(addresses, "");
+    TransactionsInBlockInfoFilter transactionFilter(resolvedAddresses, "");
 
     for (const auto& transaction: transactions) {
       if (transactionFilter.checkTransaction(transaction)) {
@@ -1642,12 +1688,25 @@ std::error_code WalletService::validateAddress(const std::string& address, bool&
   try {
     System::EventLock lk(readyEvent);
 
+    // Accept any selector form: a numeric index resolves to one of our addresses,
+    // then classical / PQ / H-I-C / H-I-T-C account number are all recognized.
+    const std::string resolved = canonicalizeAddressSelector(wallet, address);
+
     CryptoNote::AccountPublicAddress acc = boost::value_initialized<AccountPublicAddress>();
-    if (currency.parseAccountAddressString(address, acc)) {
+    if (currency.parseAccountAddressString(resolved, acc)) {
       isValid = true;
       _address = currency.accountAddressAsString(acc);
       spendPublicKey = Common::podToHex(acc.spendPublicKey);
       viewPublicKey = Common::podToHex(acc.viewPublicKey);
+    }
+    else if (CryptoNote::validateAddress(resolved, currency)) {
+      // A PQ address or an H-I-C / H-I-T-C account number: valid, but its spend/view
+      // authority is not a classical 32-byte keypair (PQ keys are large; account-
+      // number keys live on-chain), so only echo the normalized address.
+      isValid = true;
+      _address = resolved;
+      spendPublicKey.clear();
+      viewPublicKey.clear();
     }
     else {
       isValid = false;
