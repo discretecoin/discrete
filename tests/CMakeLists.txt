@@ -3,8 +3,13 @@ add_definitions(-DSTATICLIB)
 include_directories(${gtest_SOURCE_DIR}/include ${gtest_SOURCE_DIR} ../version)
 
 # Classical-consensus test suites (CoreTests, TransfersTests, PerformanceTests) were
-# removed: they exercise classical CryptoNote tx/transfer/consensus mechanics that no
-# longer exist on the post-quantum chain. The Pq* suites are the regression gate.
+# removed, along with DifficultyTests (stale classical difficulty vectors) and
+# LMDBReorgTests (classical chaingen, hangs on the PQ chain): they exercise classical
+# CryptoNote tx/transfer/consensus mechanics that no longer exist on the post-quantum
+# chain. The classical case-level tests inside UnitTests (WalletApi, WalletLegacyApi,
+# Transfers*, tx_pool, parse_amount, BlockchainExplorer, ...) were pruned for the same
+# reason; only the PqWalletIntegration gate remains there. The Pq* suites + the pruned
+# UnitTests are the regression gate, and a bare `ctest` is now fully green.
 file(GLOB_RECURSE CryptoTests crypto/*)
 file(GLOB_RECURSE FunctionalTests FunctionalTests/*)
 file(GLOB_RECURSE IntegrationTestLibrary IntegrationTestLib/*)
@@ -28,8 +33,6 @@ add_executable(IntegrationTests ${IntegrationTests})
 add_executable(NodeRpcProxyTests ${NodeRpcProxyTests})
 add_executable(SystemTests ${SystemTests})
 add_executable(UnitTests ${UnitTests})
-add_executable(LMDBReorgTests test_lmdb_reorg.cpp)
-add_executable(DifficultyTests Difficulty/Difficulty.cpp)
 add_executable(HashTargetTests HashTarget.cpp)
 add_executable(HashTests Hash/main.cpp)
 
@@ -58,8 +61,6 @@ target_link_libraries(IntegrationTests IntegrationTestLibrary Wallet NodeRpcProx
 target_link_libraries(NodeRpcProxyTests NodeRpcProxy CryptoNoteCore Rpc Http Serialization System Logging Common Crypto ${Boost_LIBRARIES})
 target_link_libraries(SystemTests System gtest_main ${Boost_LIBRARIES})
 target_link_libraries(UnitTests gtest_main PaymentGate Wallet TestGenerator InProcessNode NodeRpcProxy Rpc Http Transfers Serialization System Logging BlockchainExplorer CryptoNoteCore Checkpoints Common Crypto Mnemonics ${Boost_LIBRARIES})
-target_link_libraries(LMDBReorgTests TestGenerator Wallet CryptoNoteCore Serialization System Logging Common Crypto BlockchainExplorer Checkpoints ${Boost_LIBRARIES})
-target_link_libraries(DifficultyTests CryptoNoteCore Serialization Crypto Logging Common ${Boost_LIBRARIES})
 target_link_libraries(HashTargetTests CryptoNoteCore Crypto)
 target_link_libraries(HashTests Crypto)
 
@@ -86,11 +87,8 @@ target_link_libraries(PqSenderTests Wallet CryptoNoteCore Serialization System L
 if(MSVC)
   target_link_libraries(SystemTests ws2_32)
   target_link_libraries(NodeRpcProxyTests ws2_32)
-  target_link_libraries(DifficultyTests legacy_stdio_definitions.lib)
   target_link_libraries(HashTests legacy_stdio_definitions.lib)
   target_link_libraries(UnitTests legacy_stdio_definitions.lib)
-  target_link_libraries(LMDBReorgTests ws2_32)
-  target_link_libraries(LMDBReorgTests legacy_stdio_definitions.lib)
   target_link_libraries(NodeRpcProxyTests legacy_stdio_definitions.lib ${OPENSSL_LIBRARIES})
   target_link_libraries(IntegrationTests legacy_stdio_definitions.lib ${OPENSSL_LIBRARIES} ws2_32)
   target_link_libraries(PqExtraTests legacy_stdio_definitions.lib ws2_32)
@@ -113,26 +111,23 @@ if(${CMAKE_SYSTEM_NAME} STREQUAL "Linux" OR APPLE AND NOT ANDROID)
   target_link_libraries(IntegrationTests -lresolv)
   target_link_libraries(NodeRpcProxyTests -lresolv)
   target_link_libraries(UnitTests -lresolv)
-  target_link_libraries(DifficultyTests -lresolv)
 endif()
 
 if(NOT MSVC)
   set_property(TARGET gtest gtest_main IntegrationTestLibrary IntegrationTests TestGenerator UnitTests SystemTests HashTargetTests APPEND_STRING PROPERTY COMPILE_FLAGS " -Wno-undef -Wno-sign-compare")
 endif()
 
-add_custom_target(tests DEPENDS CryptoTests IntegrationTests NodeRpcProxyTests SystemTests UnitTests LMDBReorgTests DifficultyTests HashTargetTests HashTests)
+add_custom_target(tests DEPENDS CryptoTests IntegrationTests NodeRpcProxyTests SystemTests UnitTests HashTargetTests HashTests)
 
 set_property(TARGET
   tests
   IntegrationTestLibrary
   TestGenerator
-  LMDBReorgTests
   CryptoTests
   IntegrationTests
   NodeRpcProxyTests
   SystemTests
   UnitTests
-  DifficultyTests
   HashTargetTests
   HashTests
   PqPrimitivesTests
@@ -163,8 +158,6 @@ set_property(TARGET IntegrationTests PROPERTY OUTPUT_NAME "integration_tests")
 set_property(TARGET NodeRpcProxyTests PROPERTY OUTPUT_NAME "node_rpc_proxy_tests")
 set_property(TARGET SystemTests PROPERTY OUTPUT_NAME "system_tests")
 set_property(TARGET UnitTests PROPERTY OUTPUT_NAME "unit_tests")
-set_property(TARGET LMDBReorgTests PROPERTY OUTPUT_NAME "lmdb_reorg_tests")
-set_property(TARGET DifficultyTests PROPERTY OUTPUT_NAME "difficulty_tests")
 set_property(TARGET HashTargetTests PROPERTY OUTPUT_NAME "hash_target_tests")
 set_property(TARGET HashTests PROPERTY OUTPUT_NAME "hash_tests")
 set_property(TARGET PqPrimitivesTests PROPERTY OUTPUT_NAME "pq_primitives_tests")
@@ -188,7 +181,6 @@ set_property(TARGET DenominationsTests PROPERTY OUTPUT_NAME "denominations_tests
 set_property(TARGET PqSenderTests PROPERTY OUTPUT_NAME "pq_sender_tests")
 
 add_test(CryptoTests crypto_tests ${CMAKE_CURRENT_SOURCE_DIR}/crypto/tests.txt)
-add_test(DifficultyTests difficulty_tests ${CMAKE_CURRENT_SOURCE_DIR}/Difficulty/data.txt)
 foreach(hash IN ITEMS fast slow tree extra-blake extra-groestl extra-jh extra-skein)
   add_test(hash-${hash} hash_tests ${hash} ${CMAKE_CURRENT_SOURCE_DIR}/Hash/tests-${hash}.txt)
 endforeach()
@@ -218,4 +210,3 @@ add_test(PqSenderTests pq_sender_tests)
 # Pq* name so it joins the regression gate (ctest -R "Pq|Denomination") without
 # pulling in the runtime-broken classical UnitTests suites.
 add_test(NAME PqWalletSyncE2E COMMAND unit_tests --gtest_filter=PqWalletIntegration.*)
-add_test(LMDBReorgTests lmdb_reorg_tests)

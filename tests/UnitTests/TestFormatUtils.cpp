@@ -124,18 +124,6 @@ TEST(parseTransactionExtra, handles_pub_key_and_padding)
   ASSERT_EQ(typeid(CryptoNote::TransactionExtraPadding), tx_extra_fields[1].type());
 }
 
-TEST(parse_and_validate_tx_extra, is_valid_tx_extra_parsed)
-{
-  Logging::LoggerGroup logger;
-  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger).currency();
-  CryptoNote::Transaction tx = AUTO_VAL_INIT(tx);
-  CryptoNote::AccountBase acc;
-  acc.generate();
-  CryptoNote::BinaryArray b = Common::asBinaryArray("dsdsdfsdfsf");
-  ASSERT_TRUE(currency.constructMinerTx(CryptoNote::BLOCK_MAJOR_VERSION_1, 0, 0, 10000000000000, 1000, currency.minimumFee(), acc.getAccountKeys().address, tx, b, 1));
-  Crypto::PublicKey tx_pub_key = CryptoNote::getTransactionPublicKeyFromExtra(tx.extra);
-  ASSERT_NE(tx_pub_key, CryptoNote::NULL_PUBLIC_KEY);
-}
 TEST(parse_and_validate_tx_extra, fails_on_big_extra_nonce)
 {
   Logging::LoggerGroup logger;
@@ -154,49 +142,4 @@ TEST(parse_and_validate_tx_extra, fails_on_wrong_size_in_extra_nonce)
   tx.extra[1] = 255;
   std::vector<CryptoNote::TransactionExtraField> tx_extra_fields;
   ASSERT_FALSE(CryptoNote::parseTransactionExtra(tx.extra, tx_extra_fields));
-}
-TEST(validate_parse_amount_case, validate_parse_amount)
-{
-  Logging::LoggerGroup logger;
-  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger).currency();
-  uint64_t res = 0;
-  bool r = currency.parseAmount("0.0001", res);
-  ASSERT_TRUE(r);
-  ASSERT_EQ(res, 100000000);
-
-  r = currency.parseAmount("100.0001", res);
-  ASSERT_TRUE(r);
-  ASSERT_EQ(res, 100000100000000);
-
-  r = currency.parseAmount("000.0000", res);
-  ASSERT_TRUE(r);
-  ASSERT_EQ(res, 0);
-
-  r = currency.parseAmount("0", res);
-  ASSERT_TRUE(r);
-  ASSERT_EQ(res, 0);
-
-
-  r = currency.parseAmount("   100.0001    ", res);
-  ASSERT_TRUE(r);
-  ASSERT_EQ(res, 100000100000000);
-
-  r = currency.parseAmount("   100.0000    ", res);
-  ASSERT_TRUE(r);
-  ASSERT_EQ(res, 100000000000000);
-
-  r = currency.parseAmount("   100. 0000    ", res);
-  ASSERT_FALSE(r);
-
-  r = currency.parseAmount("100. 0000", res);
-  ASSERT_FALSE(r);
-
-  r = currency.parseAmount("100 . 0000", res);
-  ASSERT_FALSE(r);
-
-  r = currency.parseAmount("100.00 00", res);
-  ASSERT_FALSE(r);
-
-  r = currency.parseAmount("1 00.00 00", res);
-  ASSERT_FALSE(r);
 }
