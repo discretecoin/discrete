@@ -39,6 +39,7 @@
 #include "Wallet/PqTransactionBuilder.h"
 #include "crypto_pq/PqOutputBuilder.h"
 #include "crypto_pq/PqDerive.h"
+#include "crypto_pq/PqSeed.h"   // deriveDepositSpendKeys
 #include "Wallet/WalletSerializationV2.h"
 #include "Wallet/WalletUtils.h"
 #include "WalletLegacy/WalletUserTransactionsCache.h"
@@ -340,6 +341,86 @@ TEST(PqWalletIntegration, ReorgDetachReversesCredit) {
 
   EXPECT_EQ(wallet.getActualBalance(), 0u);
   EXPECT_EQ(wallet.getTransactionCount(), 0u);
+
+  wallet.shutdown();
+  boost::filesystem::remove(path);
+}
+
+// AggregatedMultikey deposit lifecycle end-to-end through a real WalletGreen: receive a
+// payment to a DEPOSIT address, confirm it's attributed to the deposit bucket (not the
+// primary), then SPEND it restricted to that deposit (which must sign with the derived
+// per-deposit key) and confirm the deposit empties while change lands on the primary.
+TEST(PqWalletIntegration, AggregatedDepositReceivesAndSpends) {
+  System::Dispatcher dispatcher;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(1000000).upgradeHeightV6(1000000)
+      .currency();
+  TestBlockchainGenerator generator(currency);
+  INodeTrivialRefreshStub node(generator);
+  CryptoNote::WalletGreen wallet(dispatcher, currency, node, logger);
+
+  const std::string path = "pq_deposit.wallet";
+  boost::filesystem::remove(path);
+  wallet.initialize(path, "pass");
+  wallet.createAddress();  // primary = index 0
+
+  Crypto::SecretKey spend = wallet.getAddressSpendKey(0).secretKey;
+  CryptoNote::PqWalletKeys mine = pqKeysFromWalletSeed(spend);
+
+  // Reserve deposit 0 (AggregatedMultikey is the default). This configures the ledger
+  // to attribute deposit-0 outputs. getAddress(1) is the deposit address.
+  const uint32_t depIdx = wallet.reservePqDepositIndex();
+  ASSERT_EQ(depIdx, 0u);
+  const std::string primaryAddr = wallet.getAddress(0);
+  const std::string depositAddr = wallet.getAddress(1);
+  ASSERT_NE(primaryAddr, depositAddr);
+
+  // Some other wallet pays 800000 to OUR deposit: shared view key + the per-deposit
+  // spend key (subaddress T = 0 under AggregatedMultikey).
+  CryptoNote::PqWalletKeys depositRecipient = mine;
+  depositRecipient.spendPub = CryptoPQ::deriveDepositSpendKeys(mine.seedMaster, 0).first;
+
+  Crypto::SecretKey otherSecret;
+  for (std::size_t i = 0; i < sizeof(otherSecret.data); ++i)
+    otherSecret.data[i] = static_cast<uint8_t>(i * 11 + 5);
+  CryptoNote::PqWalletKeys them = CryptoNote::derivePqWalletKeys(otherSecret);
+
+  CryptoNote::Transaction pqTx = makePqPayTo(them, depositRecipient, 1000000, 800000, 0x33);
+  generator.setTxFee(CryptoNote::getObjectHash(pqTx), 1000000 - 800000);
+  generator.addTxToBlockchain(pqTx);
+  node.updateObservers();
+  pumpUntil(dispatcher, wallet, [&wallet]() { return wallet.getActualBalance() == 800000u; });
+
+  // Attribution: the credit is the DEPOSIT's, not the primary's.
+  EXPECT_EQ(wallet.getActualBalance(), 800000u);
+  EXPECT_EQ(wallet.getActualBalance(depositAddr), 800000u);
+  EXPECT_EQ(wallet.getActualBalance(primaryAddr), 0u);
+
+  // Spend, restricted to the deposit source: buildPqSend must sign the deposit input
+  // with deriveDepositSpendKeys(seed, 0). Pay an external recipient; change (no explicit
+  // changeAddress) returns to the primary. Relay to the pool first so we can register
+  // the TX_PQ fee (no inline input amounts) before the generator mines it.
+  node.setNextTransactionToPool();
+  CryptoNote::PqSendResult r = wallet.sendPqTransfer(
+      { CryptoNote::PqSendOutput{ them.viewPub, them.spendPub, 300000 } },
+      /*fee*/ 0, /*unlockHeight*/ 0, /*extra*/ {}, /*sourceAddresses*/ { depositAddr });
+  ASSERT_EQ(r.selected.size(), 1u);
+  EXPECT_EQ(r.selected[0].depositIndex, 0u);  // spent the deposit's output, not primary's
+  generator.setTxFee(CryptoNote::getObjectHash(r.tx), r.fee);
+  generator.putTxPoolToBlockchain();
+  node.updateObservers();
+  pumpUntil(dispatcher, wallet, [&wallet, &primaryAddr]() {
+    return wallet.getActualBalance(primaryAddr) > 0u;  // change confirmed to primary
+  });
+
+  // The deposit output is spent; the change landed on the primary; nothing stranded.
+  EXPECT_EQ(wallet.getActualBalance(depositAddr), 0u);
+  EXPECT_GT(wallet.getActualBalance(primaryAddr), 0u);
+  EXPECT_EQ(wallet.getActualBalance(), wallet.getActualBalance(primaryAddr));
+  EXPECT_LT(wallet.getActualBalance(), 800000u - 300000u);  // < change ceiling (fee paid)
 
   wallet.shutdown();
   boost::filesystem::remove(path);
