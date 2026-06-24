@@ -25,6 +25,9 @@
 #include "PaymentGate/WalletService.h"
 #include "Wallet/WalletGreen.h"
 #include "AccountNumber.h"
+#include "PqAddress.h"
+#include "CryptoNoteCore/Account.h"
+#include "Wallet/WalletErrors.h"
 
 // test helpers
 #include "INodeStubs.h"
@@ -199,6 +202,75 @@ TEST_F(PaymentGateTest, addressIndexAndAccountNumberSelectors) {
 
   // An out-of-range index is rejected.
   ASSERT_TRUE(service->getBalance("5", a, l));
+}
+
+// The change-destination defaulting must match the original CryptoNote rule
+// (getChangeDestination / validateChangeDestination): explicit changeAddress (ours),
+// else the wallet's sole address, else the sole source; otherwise CHANGE_ADDRESS_REQUIRED.
+// Asserted on an unfunded wallet — the rule is enforced before coin selection, so a
+// rule PASS surfaces as some non-change error (insufficient funds), never as a change
+// error.
+TEST_F(PaymentGateTest, ChangeDestinationRuleMatchesCryptoNote) {
+  auto cfg = createWalletConfiguration();
+  generateWallet(cfg);
+  auto service = createWalletService(cfg);
+
+  std::vector<std::string> addrs;
+  ASSERT_FALSE(service->getAddresses(addrs));
+  ASSERT_EQ(1u, addrs.size());
+  const std::string primary = addrs[0];
+
+  auto trySend = [&](const std::string& change, const std::vector<std::string>& sources) {
+    SendTransaction::Request req;
+    req.transfers.push_back(WalletRpcOrder{ primary, 100 });  // recipient = our primary PQ addr
+    req.fee = 100;
+    req.changeAddress = change;
+    req.sourceAddresses = sources;
+    std::string hash, txkey;
+    return service->sendTransaction(req, hash, txkey);
+  };
+  const auto required = make_error_code(CryptoNote::error::CHANGE_ADDRESS_REQUIRED);
+  const auto notFound = make_error_code(CryptoNote::error::CHANGE_ADDRESS_NOT_FOUND);
+
+  // Single-address wallet, no change address -> defaults to the sole address (rule
+  // passes); the failure is insufficient funds, not a change error.
+  {
+    auto ec = trySend("", {});
+    EXPECT_NE(ec, required);
+    EXPECT_NE(ec, notFound);
+  }
+
+  // Give the wallet a second address (a deposit).
+  std::string dep;
+  uint32_t depIdx = 0;
+  ASSERT_FALSE(service->createPqDepositAddress(dep, depIdx));
+
+  // Multi-address, no change, no source -> ambiguous -> CHANGE_ADDRESS_REQUIRED.
+  EXPECT_EQ(trySend("", {}), required);
+
+  // Multi-address, exactly one source -> change defaults to that source (rule passes).
+  {
+    auto ec = trySend("", { dep });
+    EXPECT_NE(ec, required);
+    EXPECT_NE(ec, notFound);
+  }
+
+  // Explicit change to our own deposit, addressed by index -> rule passes.
+  {
+    auto ec = trySend("1", {});
+    EXPECT_NE(ec, required);
+    EXPECT_NE(ec, notFound);
+  }
+
+  // Change to a valid address that is not ours -> CHANGE_ADDRESS_NOT_FOUND.
+  {
+    CryptoNote::AccountBase other;
+    other.generate();
+    const std::string foreign = CryptoNote::encodePqAddress(
+        CryptoNote::makePqAddress(currency.publicAddressBase58Prefix(),
+                                  other.pqViewPk(), other.pqSpendPk()));
+    EXPECT_EQ(trySend(foreign, {}), notFound);
+  }
 }
 
 /*

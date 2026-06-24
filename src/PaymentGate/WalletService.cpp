@@ -1593,8 +1593,34 @@ std::error_code WalletService::sendTransaction(const SendTransaction::Request& r
       // account-number selectors all resolve to buckets inside the wallet).
       const std::vector<std::string> sourceAddresses =
           canonicalizeAddressSelectors(wallet, request.sourceAddresses);
+
+      // Change destination — the original CryptoNote getChangeDestination /
+      // validateChangeDestination rule: an explicit changeAddress (valid and ours),
+      // else the wallet's sole address, else the sole source address; otherwise the
+      // change destination is ambiguous and must be given.
+      std::string changeAddress;
+      if (!request.changeAddress.empty()) {
+        changeAddress = canonicalizeAddressSelector(wallet, request.changeAddress);
+        if (!CryptoNote::validateAddress(changeAddress, currency)) {
+          logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Bad change address: " << changeAddress;
+          return make_error_code(CryptoNote::error::BAD_ADDRESS);
+        }
+        if (!wallet.isMyAddress(changeAddress)) {
+          logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Change address is not ours: " << changeAddress;
+          return make_error_code(CryptoNote::error::CHANGE_ADDRESS_NOT_FOUND);
+        }
+      } else if (wallet.getAddressCount() == 1) {
+        changeAddress.clear();  // the sole address; sendPqTransfer routes change to it
+      } else if (sourceAddresses.size() == 1) {
+        changeAddress = sourceAddresses[0];
+      } else {
+        logger(Logging::WARNING, Logging::BRIGHT_YELLOW)
+            << "Change address is required when the wallet has deposits and the source is ambiguous";
+        return make_error_code(CryptoNote::error::CHANGE_ADDRESS_REQUIRED);
+      }
+
       CryptoNote::PqSendResult r = gw->sendPqTransfer(recipients, request.fee, request.unlockHeight,
-                                                      std::vector<uint8_t>{}, sourceAddresses);
+                                                      std::vector<uint8_t>{}, sourceAddresses, changeAddress);
       transactionHash = Common::podToHex(CryptoNote::getObjectHash(r.tx));
       transactionSecretKey.clear();  // PQ transactions carry no per-tx secret key
       logger(Logging::DEBUGGING) << "Transaction " << transactionHash << " has been sent";

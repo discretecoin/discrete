@@ -58,7 +58,7 @@ uint64_t growSelection(const std::vector<PqSpendInput>& sortedDesc,
 // output count fits `maxOut`. Throws TooLarge if it cannot (every group already a
 // single output, yet still over the cap). Returns the flattened PqSendOutput list.
 std::vector<PqSendOutput> decomposeOutputs(const std::vector<PqSendOutput>& recipients,
-                                           uint64_t change, const PqWalletKeys& keys,
+                                           uint64_t change, const PqSendOutput& changeTmpl,
                                            std::size_t maxOut) {
   std::vector<OutputGroup> groups;
   groups.reserve(recipients.size() + 1);
@@ -70,7 +70,8 @@ std::vector<PqSendOutput> decomposeOutputs(const std::vector<PqSendOutput>& reci
   }
   if (change > 0) {
     OutputGroup g;
-    g.tmpl = PqSendOutput{keys.viewPub, keys.spendPub, 0 /*amount per slot*/, 0 /*T*/, 0 /*unlock*/};
+    g.tmpl = changeTmpl;
+    g.tmpl.amount = 0;  // filled per denomination slot
     g.denoms = decomposeToDenominations(change);
     groups.push_back(std::move(g));
   }
@@ -119,12 +120,12 @@ std::vector<PqSendOutput> decomposeOutputs(const std::vector<PqSendOutput>& reci
 Transaction buildFitting(const std::vector<PqSpendInput>& selected,
                          const std::vector<PqInputAuth>& inputAuth,
                          const std::vector<PqSendOutput>& recipients, uint64_t change,
-                         const PqWalletKeys& keys, uint64_t unlockHeight,
+                         const PqSendOutput& changeTmpl, uint64_t unlockHeight,
                          const std::vector<uint8_t>& extra) {
   std::size_t numDest = recipients.size() + (change > 0 ? 1 : 0);
   std::size_t maxOut = P::MAX_PQ_OUTPUTS_PER_TX;
   for (;;) {
-    std::vector<PqSendOutput> outs = decomposeOutputs(recipients, change, keys, maxOut);
+    std::vector<PqSendOutput> outs = decomposeOutputs(recipients, change, changeTmpl, maxOut);
     Transaction tx = buildPqTransaction(selected, outs, inputAuth, unlockHeight, extra);
     if (toBinaryArray(tx).size() <= P::MAX_PQ_TX_SIZE) {
       return tx;
@@ -203,6 +204,12 @@ PqSendResult buildPqSend(const std::vector<PqSpendInput>& available,
     return auth;
   };
 
+  // Change destination: the caller's choice, else the primary identity (single-address
+  // default). The amount is filled per slot in decomposeOutputs.
+  PqSendOutput changeTmpl = req.hasChangeDest
+                                ? req.changeDest
+                                : PqSendOutput{keys.viewPub, keys.spendPub, 0, 0, 0};
+
   std::vector<PqSpendInput> selected;
   uint64_t sumIn = growSelection(sorted, selected, 0, sent);
   if (sumIn < sent) {
@@ -222,7 +229,7 @@ PqSendResult buildPqSend(const std::vector<PqSpendInput>& available,
       }
     }
     uint64_t change = sumIn - sent - fee;
-    tx = buildFitting(selected, authForSelection(selected), req.recipients, change, keys,
+    tx = buildFitting(selected, authForSelection(selected), req.recipients, change, changeTmpl,
                       req.unlockHeight, req.extra);
     if (req.explicitFee != 0) {
       break;  // caller fixed the fee

@@ -52,6 +52,14 @@ struct PqSendRequest {
   // = primary). Empty = spend from any bucket. Lets a caller spend only from a specific
   // deposit / address index.
   std::vector<uint32_t> sourceBuckets;
+
+  // Where change (if any) is sent. When hasChangeDest is false (default) change returns
+  // to the primary identity (`keys`) — correct for a single-address wallet. The
+  // front-end sets it to route change to a specific address/deposit per the
+  // change-destination rule (CryptoNote getChangeDestination). `changeDest.amount` is
+  // ignored (filled per denomination slot).
+  bool hasChangeDest = false;
+  PqSendOutput changeDest;
 };
 
 struct PqSendResult {

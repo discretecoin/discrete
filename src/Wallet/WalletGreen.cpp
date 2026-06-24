@@ -1923,7 +1923,8 @@ bool WalletGreen::getPqRegistrationKeysHex(std::string& viewHex, std::string& sp
 PqSendResult WalletGreen::sendPqTransfer(const std::vector<PqSendOutput>& recipients,
                                          uint64_t fee, uint64_t unlockHeight,
                                          const std::vector<uint8_t>& extra,
-                                         const std::vector<std::string>& sourceAddresses) {
+                                         const std::vector<std::string>& sourceAddresses,
+                                         const std::string& changeAddress) {
   throwIfNotInitialized();
   throwIfStopped();
   if (!pqEnabled()) {
@@ -1952,6 +1953,17 @@ PqSendResult WalletGreen::sendPqTransfer(const std::vector<PqSendOutput>& recipi
                               "source address is not owned by this wallet: " + a);
     }
     req.sourceBuckets.push_back(bucket);
+  }
+  // Change destination (empty = primary). Must be one of our own addresses; route any
+  // change there so it re-scans into that bucket.
+  if (!changeAddress.empty()) {
+    uint32_t changeBucket = 0;
+    if (!pqResolveAddressBucket(changeAddress, changeBucket)) {
+      throw std::system_error(make_error_code(error::CHANGE_ADDRESS_NOT_FOUND),
+                              "change address is not owned by this wallet: " + changeAddress);
+    }
+    req.hasChangeDest = true;
+    req.changeDest = pqChangeTemplate(changeBucket);
   }
 
   // Build + reserve under the wallet lock: reading the spendable set and registering
@@ -2071,6 +2083,29 @@ std::string WalletGreen::pqDepositAddress(uint32_t index, uint32_t regBlockHeigh
   PqAddress addr = makePqAddress(CryptoNote::parameters::CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX,
                                  base.viewPub, depositSpend.first);
   return encodePqAddress(addr, PqAddressEncoding::Base58);
+}
+
+PqSendOutput WalletGreen::pqChangeTemplate(uint32_t depositIndex) const {
+  // Built exactly like a payment to that bucket's address, so the wallet re-scans the
+  // change output back into the same bucket. The view key is shared across buckets.
+  PqWalletKeys keys = derivePqWalletKeys(primarySeedMaster());
+  PqSendOutput o{};
+  o.amount = 0;
+  o.unlockHeight = 0;
+  o.recipientViewPub = keys.viewPub;
+  if (depositIndex == PQ_PRIMARY_DEPOSIT) {
+    o.recipientSpendPub = keys.spendPub;
+    o.subaddrIndexT = 0;
+  } else if (m_pqDepositScheme == PqDepositScheme::SingleKeyIndex) {
+    // One spend key; the deposit is the subaddress index T carried in the output.
+    o.recipientSpendPub = keys.spendPub;
+    o.subaddrIndexT = depositIndex;
+  } else {
+    // AggregatedMultikey: the deposit has its own spend key (T = 0).
+    o.recipientSpendPub = CryptoPQ::deriveDepositSpendKeys(keys.seedMaster, depositIndex).first;
+    o.subaddrIndexT = 0;
+  }
+  return o;
 }
 
 uint64_t WalletGreen::pqDepositBalance(uint32_t index) const {

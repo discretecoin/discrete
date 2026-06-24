@@ -76,10 +76,13 @@ public:
   // owned by those of the wallet's own addresses — each is a PQ address, an H-I-T-C
   // account number, or a numeric address index, resolved to a deposit bucket. Under
   // AggregatedMultikey each deposit input is signed with its own derived spend key.
+  // `changeAddress` (empty = the primary identity) routes any change to one of OUR
+  // addresses/deposits; it must be ours.
   PqSendResult sendPqTransfer(const std::vector<PqSendOutput>& recipients,
                               uint64_t fee = 0, uint64_t unlockHeight = 0,
                               const std::vector<uint8_t>& extra = {},
-                              const std::vector<std::string>& sourceAddresses = {});
+                              const std::vector<std::string>& sourceAddresses = {},
+                              const std::string& changeAddress = {});
   // Register this wallet's PQ identity with a fee-paying TX_PQ: a self-payment of
   // the smallest denomination whose tx.extra carries the account-registration tag.
   // Returns the built+relayed result. Throws on a tracking wallet / insufficient
@@ -261,6 +264,10 @@ protected:
   // PQ_PRIMARY_DEPOSIT, a deposit address -> its deposit index. Returns false for an
   // address that is not ours. No wallet lock taken (callers already hold the ready gate).
   bool pqResolveAddressBucket(const std::string& address, uint32_t& depositIndex) const;
+  // The change-output template (recipient view/spend pubkeys + subaddress T) for one of
+  // our buckets, built exactly as a payment to that address would be so the wallet
+  // re-scans the change into the same bucket. PQ_PRIMARY_DEPOSIT -> primary identity.
+  PqSendOutput pqChangeTemplate(uint32_t depositIndex) const;
   // Build the per-(own-)address WalletTransfer list for a tx from the ledger's
   // per-bucket net (transfersByDeposit): PQ_PRIMARY_DEPOSIT -> primary address, else
   // the deposit address. Falls back to a single primary-address transfer carrying

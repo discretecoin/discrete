@@ -16,6 +16,7 @@
 #include "CryptoNote.h"
 #include "PqTxType.h"
 #include "crypto_pq/PqSeed.h"   // deriveDepositSpendKeys
+#include "crypto_pq/PqScan.h"   // scanPqOutput (verify change routing)
 
 #include <cstring>
 #include <numeric>
@@ -214,6 +215,50 @@ TEST(PqSender, CarriesExtraForPaidRegistration) {
 
     PqSendResult r = buildPqSend(inputs, me, req);
     EXPECT_EQ(r.tx.extra, req.extra);  // extra is preserved verbatim (and signed over)
+}
+
+TEST(PqSender, ChangeRoutedToChangeDestination) {
+    // With an explicit change destination, all change must land on THAT identity and
+    // none on the spending identity. (Default behavior — change to `keys` — is what
+    // every other test exercises implicitly.)
+    PqWalletKeys me = derivePqWalletKeys(spendSecret(9, 1));
+    PqWalletKeys to = derivePqWalletKeys(spendSecret(7, 3));
+    PqWalletKeys changeOwner = derivePqWalletKeys(spendSecret(5, 5));
+
+    std::vector<PqSpendInput> inputs = {mkInput(1000, 0x10)};
+    PqSendRequest req;
+    req.recipients.push_back(PqSendOutput{to.viewPub, to.spendPub, 200});
+    req.explicitFee = 50;  // change = 1000 - 200 - 50 = 750
+    req.hasChangeDest = true;
+    req.changeDest = PqSendOutput{changeOwner.viewPub, changeOwner.spendPub, 0, 0, 0};
+
+    PqSendResult r = buildPqSend(inputs, me, req);
+    ASSERT_EQ(r.change, 750u);
+
+    std::vector<CryptoPQ::InputRef> refs(r.tx.inputs.size());
+    for (std::size_t i = 0; i < r.tx.inputs.size(); ++i) {
+        const PqInput& pin = boost::get<PqInput>(r.tx.inputs[i]);
+        std::memcpy(refs[i].prevTxid.data(), pin.prevTxid.data, 32);
+        refs[i].prevOutIndex = pin.prevOutIndex;
+    }
+    CryptoPQ::Hash256 ih = CryptoPQ::inputsHash(refs);
+
+    uint64_t toChangeOwner = 0, toSpender = 0;
+    for (std::size_t i = 0; i < r.tx.outputs.size(); ++i) {
+        const PqOutput& po = boost::get<PqOutput>(r.tx.outputs[i].target);
+        CryptoPQ::PqScanOutput so;
+        so.outputIndex = static_cast<uint32_t>(i);
+        so.amount = r.tx.outputs[i].amount;
+        std::memcpy(so.kemCt.data(), po.kemCt.data(), so.kemCt.size());
+        so.encPayload = po.encPayload;
+        std::memcpy(so.spendCommit.data(), po.spendCommit.data, 32);
+        if (CryptoPQ::scanPqOutput(pqScanKeys(changeOwner), ih, so).has_value())
+            toChangeOwner += r.tx.outputs[i].amount;
+        if (CryptoPQ::scanPqOutput(pqScanKeys(me), ih, so).has_value())
+            toSpender += r.tx.outputs[i].amount;
+    }
+    EXPECT_EQ(toChangeOwner, 750u);  // all change went to the change destination
+    EXPECT_EQ(toSpender, 0u);        // none leaked back to the spender
 }
 
 TEST(PqSender, NoRecipientsThrows) {
