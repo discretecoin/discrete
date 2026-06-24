@@ -116,6 +116,28 @@ TEST(PqDomains, ReservedCtMaskNotReused) {
     }
 }
 
+TEST(PqDomains, ReservedShieldedSerialNotReused) {
+    // kReservedShieldedSerial is reserved for Phase 3 (shielded-spend serials).
+    // The serial S = H_lat(s) shares the unified spent-marker set with Phase-1
+    // nullifiers, separated ONLY by this derivation domain — so this no-collision
+    // guarantee is precisely what stops a serial from ever being replayable as a
+    // plain nullifier (or vice versa). Must also stay distinct from the Phase-2
+    // reserved CT mask.
+    EXPECT_STREQ(kReservedShieldedSerial, "discrete-pq-serial-v1");
+    EXPECT_EQ(std::strlen(kReservedShieldedSerial), 21u);
+
+    const char* phase12[] = {
+        kDomainInputsHash, kDomainOutContext, kDomainAeadKey,
+        kDomainSpendCommit, kDomainNullifier, kDomainTxSign,
+        kDomainCoinbaseRho, kDomainViewRoot, kDomainSpendRoot,
+        kDomainDepositSpendRoot, kReservedCtMask,
+    };
+    for (const char* tag : phase12) {
+        EXPECT_STRNE(tag, kReservedShieldedSerial)
+            << "collision with reserved serial tag: " << tag;
+    }
+}
+
 TEST(PqDomains, SizeConstants) {
     EXPECT_EQ(PQ_KEM_CIPHERTEXT_SIZE, 1088u);
     EXPECT_EQ(PQ_ENC_PAYLOAD_SIZE,      56u);

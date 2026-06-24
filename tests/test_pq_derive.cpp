@@ -212,6 +212,21 @@ TEST(PqDerive, ReservedCtMaskNamespaceUnused) {
     }
 }
 
+// Phase 3 shielded-serial domain: same guard, one tier up. The serial shares the
+// unified spent-marker set with Phase-1 nullifiers, so domain separation is the
+// only thing keeping a serial from being valid as a plain nullifier.
+TEST(PqDerive, ReservedShieldedSerialNamespaceUnused) {
+    const std::string reserved = kReservedShieldedSerial;
+    const char* used[] = {
+        kDomainInputsHash, kDomainOutContext, kDomainAeadKey,
+        kDomainSpendCommit, kDomainNullifier, kDomainTxSign,
+        kReservedCtMask,
+    };
+    for (const char* tag : used) {
+        EXPECT_NE(std::string(tag), reserved);
+    }
+}
+
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

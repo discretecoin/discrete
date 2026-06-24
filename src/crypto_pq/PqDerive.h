@@ -54,6 +54,23 @@ constexpr char kDomainCoinbaseRho[] = "discrete-coinbase-rho-v1";
 // A unit test asserts none of the tags above collides with this string.
 constexpr char kReservedCtMask[]    = "karbo-pq-ct-mask-v1";
 
+// RESERVED for Phase 3 (shielded / untraceable spends) — MUST NOT be used by any
+// Phase-1/2 code. A shielded spend reveals a serial S = H_lat(s) as its
+// double-spend tag (the coin is proven in a membership set, never named by
+// outpoint). S is derived under THIS domain and stored in the SAME unified
+// spent-marker set as Phase-1 nullifiers and (historically) classical key images:
+// all three are 32-byte "already spent" tags with identical lookup semantics, so
+// one table is correct. The ONLY separation needed is the derivation domain — with
+// it, a serial can never be valid as a plain nullifier (and vice versa) except by
+// a 2^-256 hash accident, the exact assumption that already lets nullifiers and
+// key images share spent_keys. No separate namespace/table is needed or wanted.
+//   NOTE: the serial *secret* seed-branch derivation (s from the master seed) is
+//   deliberately NOT cemented here — no shielded coins exist before Phase 3, so
+//   there is nothing to recover yet, and that seed tag is fixed when Phase 3 is
+//   designed. This reservation pins only the on-wire/lookup serial domain.
+// A unit test asserts no Phase-1/2 tag collides with this string.
+constexpr char kReservedShieldedSerial[] = "discrete-pq-serial-v1";
+
 using Rho = std::array<uint8_t, 32>;
 
 // NOTE (ownership-model fix, docs/PQ-OWNERSHIP-FIX.md): the "spend public key"

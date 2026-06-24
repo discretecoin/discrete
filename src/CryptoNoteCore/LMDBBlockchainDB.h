@@ -131,6 +131,16 @@ public:
   // image); the classical and PQ value spaces cannot collide. The unified set is
   // managed via putSpentKey/hasSpentKey/removeSpentKey — see Blockchain's
   // spendImageForInput().
+  //
+  // FORWARD NOTE (Phase 3, shielded/untraceable spends): the future shielded-spend
+  // serial S = H_lat(s) is ALSO a 32-byte "already spent" tag and joins THIS SAME
+  // unified set — no separate table or namespace. All three tiers (classical key
+  // image, PQ nullifier, shielded serial) have identical lookup semantics ("reject
+  // if present"). Cross-tier non-collision rests entirely on derivation-domain
+  // separation: the serial uses kReservedShieldedSerial (PqDerive.h), distinct from
+  // kDomainNullifier, so a serial can never coincide with a nullifier except by a
+  // 2^-256 hash accident — the same assumption that already lets key images and PQ
+  // nullifiers share this table.
 
   // ── pq_acct_reg ───────────────────────────────────────────────────────────
   // PQ account-number registry (first-registration-wins). Key:
