@@ -534,3 +534,154 @@ TEST(PqWalletIntegration, SingleKeyIndexAttributesDepositsByT) {
   wallet.shutdown();
   boost::filesystem::remove(path);
 }
+
+// A failed relay must roll the spend back: inputs are reserved before relay (so a
+// second send can't reuse them), and on relay failure the reservation is undone and the
+// balance fully restored — no funds stranded.
+TEST(PqWalletIntegration, RelayFailureRollsBackReservation) {
+  System::Dispatcher dispatcher;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(1000000).upgradeHeightV6(1000000)
+      .currency();
+  TestBlockchainGenerator generator(currency);
+  INodeTrivialRefreshStub node(generator);
+  CryptoNote::WalletGreen wallet(dispatcher, currency, node, logger);
+
+  const std::string path = "pq_relayfail.wallet";
+  boost::filesystem::remove(path);
+  wallet.initialize(path, "pass");
+  wallet.createAddress();
+
+  Crypto::SecretKey spend = wallet.getAddressSpendKey(0).secretKey;
+  CryptoNote::PqWalletKeys mine = pqKeysFromWalletSeed(spend);
+  Crypto::SecretKey otherSecret;
+  for (std::size_t i = 0; i < sizeof(otherSecret.data); ++i)
+    otherSecret.data[i] = static_cast<uint8_t>(i * 7 + 3);
+  CryptoNote::PqWalletKeys them = CryptoNote::derivePqWalletKeys(otherSecret);
+
+  CryptoNote::Transaction pqTx = makePqPayTo(them, mine, 1000000, 800000, 0x55);
+  generator.setTxFee(CryptoNote::getObjectHash(pqTx), 1000000 - 800000);
+  generator.addTxToBlockchain(pqTx);
+  node.updateObservers();
+  pumpUntil(dispatcher, wallet, [&wallet]() { return wallet.getActualBalance() == 800000u; });
+  ASSERT_EQ(wallet.getActualBalance(), 800000u);
+
+  // Force the next relay to fail; the spend must throw and undo its reservation.
+  node.setNextTransactionError();
+  EXPECT_THROW(wallet.sendPqTransfer({ CryptoNote::PqSendOutput{ them.viewPub, them.spendPub, 300000 } }),
+               std::exception);
+
+  // Fully restored: nothing reserved, nothing pending.
+  EXPECT_EQ(wallet.getActualBalance(), 800000u);
+  EXPECT_EQ(wallet.getPendingBalance(), 0u);
+
+  // And the wallet is still usable: a subsequent (successful) spend goes through.
+  node.setNextTransactionToPool();
+  CryptoNote::PqSendResult r =
+      wallet.sendPqTransfer({ CryptoNote::PqSendOutput{ them.viewPub, them.spendPub, 300000 } });
+  EXPECT_EQ(r.sent, 300000u);
+
+  wallet.shutdown();
+  boost::filesystem::remove(path);
+}
+
+// A deposit credit is rolled back when its block is orphaned, the same as a primary
+// credit (onBlockchainDetach -> WalletLedger::rollbackToHeight), per bucket.
+TEST(PqWalletIntegration, DepositCreditReversedOnReorg) {
+  System::Dispatcher dispatcher;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(1000000).upgradeHeightV6(1000000)
+      .currency();
+  TestBlockchainGenerator generator(currency);
+  INodeTrivialRefreshStub node(generator);
+  CryptoNote::WalletGreen wallet(dispatcher, currency, node, logger);
+
+  const std::string path = "pq_depreorg.wallet";
+  boost::filesystem::remove(path);
+  wallet.initialize(path, "pass");
+  wallet.createAddress();
+  ASSERT_EQ(wallet.reservePqDepositIndex(), 0u);
+
+  Crypto::SecretKey spend = wallet.getAddressSpendKey(0).secretKey;
+  CryptoNote::PqWalletKeys mine = pqKeysFromWalletSeed(spend);
+  CryptoNote::PqWalletKeys depositRecipient = mine;
+  depositRecipient.spendPub = CryptoPQ::deriveDepositSpendKeys(mine.seedMaster, 0).first;
+
+  Crypto::SecretKey otherSecret;
+  for (std::size_t i = 0; i < sizeof(otherSecret.data); ++i)
+    otherSecret.data[i] = static_cast<uint8_t>(i * 11 + 5);
+  CryptoNote::PqWalletKeys them = CryptoNote::derivePqWalletKeys(otherSecret);
+
+  CryptoNote::Transaction pqTx = makePqPayTo(them, depositRecipient, 1000000, 800000, 0x33);
+  generator.setTxFee(CryptoNote::getObjectHash(pqTx), 1000000 - 800000);
+  generator.addTxToBlockchain(pqTx);  // credits deposit 0 at height 1
+  node.updateObservers();
+  pumpUntil(dispatcher, wallet, [&wallet]() { return wallet.getActualBalance() == 800000u; });
+  ASSERT_EQ(wallet.pqDepositBalance(0), 800000u);
+
+  // Orphan the crediting block; a longer payment-free chain wins.
+  node.startAlternativeChain(1);
+  generator.generateEmptyBlocks(3);
+  node.updateObservers();
+  pumpUntil(dispatcher, wallet, [&wallet]() { return wallet.getActualBalance() == 0u; },
+            std::chrono::seconds(20));
+
+  EXPECT_EQ(wallet.getActualBalance(), 0u);
+  EXPECT_EQ(wallet.pqDepositBalance(0), 0u);  // the deposit credit was rolled back
+  EXPECT_EQ(wallet.getTransactionCount(), 0u);
+
+  wallet.shutdown();
+  boost::filesystem::remove(path);
+}
+
+// A tracking (view-only) wallet — built from a tracking credential, with no spend
+// secret — must scan/report but REFUSE to spend.
+TEST(PqWalletIntegration, TrackingWalletCannotSpend) {
+  System::Dispatcher dispatcher;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(1000000).upgradeHeightV6(1000000)
+      .currency();
+  TestBlockchainGenerator generator(currency);
+  INodeTrivialRefreshStub node(generator);
+
+  // A full wallet to source a tracking credential.
+  CryptoNote::PqTrackingKeys tk;
+  const std::string fullPath = "pq_full.wallet";
+  {
+    boost::filesystem::remove(fullPath);
+    CryptoNote::WalletGreen full(dispatcher, currency, node, logger);
+    full.initialize(fullPath, "pass");
+    full.createAddress();
+    ASSERT_TRUE(full.getPqTrackingKeys(tk));
+    full.shutdown();
+    boost::filesystem::remove(fullPath);
+  }
+
+  // The view-only wallet built from that credential.
+  const std::string trackPath = "pq_tracking.wallet";
+  boost::filesystem::remove(trackPath);
+  CryptoNote::WalletGreen tracking(dispatcher, currency, node, logger);
+  tracking.initializeWithPqTrackingKey(trackPath, "pass", tk);
+
+  // No spend authority...
+  EXPECT_EQ(tracking.getAddressSpendKey(0).secretKey, CryptoNote::NULL_SECRET_KEY);
+  // ...so spending is refused (not attempted and failed on funds — refused outright).
+  Crypto::SecretKey otherSecret;
+  for (std::size_t i = 0; i < sizeof(otherSecret.data); ++i)
+    otherSecret.data[i] = static_cast<uint8_t>(i * 7 + 3);
+  CryptoNote::PqWalletKeys them = CryptoNote::derivePqWalletKeys(otherSecret);
+  EXPECT_THROW(tracking.sendPqTransfer({ CryptoNote::PqSendOutput{ them.viewPub, them.spendPub, 1000 } }),
+               std::exception);
+
+  tracking.shutdown();
+  boost::filesystem::remove(trackPath);
+}
