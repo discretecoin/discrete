@@ -67,7 +67,6 @@ struct Configuration {
   bool generateNewContainer;
   bool changePassword;
   bool generateDeterministic;
-  bool independentAddresses;
   bool daemonize;
   bool registerService;
   bool unregisterService;

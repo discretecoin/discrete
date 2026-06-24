@@ -145,7 +145,8 @@ namespace CryptoNote {
 namespace {
 CryptoNote::Transaction makePqPayTo(const CryptoNote::PqWalletKeys& from,
                                     const CryptoNote::PqWalletKeys& to,
-                                    uint64_t inAmount, uint64_t payAmount, uint8_t seed) {
+                                    uint64_t inAmount, uint64_t payAmount, uint8_t seed,
+                                    uint64_t subaddrT = 0) {
   std::vector<CryptoPQ::InputRef> refs(1);
   for (auto& b : refs[0].prevTxid) b = seed;
   refs[0].prevOutIndex = 1;
@@ -158,6 +159,7 @@ CryptoNote::Transaction makePqPayTo(const CryptoNote::PqWalletKeys& from,
   in.amount = inAmount;
   in.rho = src.rho;
   CryptoNote::PqSendOutput out{to.viewPub, to.spendPub, payAmount};
+  out.subaddrIndexT = subaddrT;  // SingleKeyIndex deposit routing (0 = base address)
   return CryptoNote::buildPqTransaction({in}, {out}, from.spendPub, from.spendSk);
 }
 // Pump wallet events until `pred` holds or the timeout elapses.
@@ -481,4 +483,54 @@ TEST(PqWalletIntegration, RestoreFromSeedNeedsDepositCountToRecoverDepositFunds)
   EXPECT_EQ(restoreAndSync("pq_restore_nodep.wallet", 0), 0u);
   // Seed + deposit count 1 -> the deposit funds are recovered.
   EXPECT_EQ(restoreAndSync("pq_restore_dep.wallet", 1), 800000u);
+}
+
+// SingleKeyIndex (H-I-T-C) differentiator: every deposit shares the ONE spend key and is
+// distinguished only by the subaddress index T carried in the output. The scanner must
+// attribute each output to the bucket whose T it scans under. (The H-I-T-C address
+// string + registration are a separate concern needing node-side account resolution.)
+TEST(PqWalletIntegration, SingleKeyIndexAttributesDepositsByT) {
+  System::Dispatcher dispatcher;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(1000000).upgradeHeightV6(1000000)
+      .currency();
+  TestBlockchainGenerator generator(currency);
+  INodeTrivialRefreshStub node(generator);
+  CryptoNote::WalletGreen wallet(dispatcher, currency, node, logger);
+
+  const std::string path = "pq_ski.wallet";
+  boost::filesystem::remove(path);
+  wallet.initialize(path, "pass");
+  wallet.createAddress();  // primary
+  wallet.setPqDepositScheme(CryptoNote::PqDepositScheme::SingleKeyIndex);
+  ASSERT_EQ(wallet.reservePqDepositIndex(), 0u);
+  ASSERT_EQ(wallet.reservePqDepositIndex(), 1u);
+
+  Crypto::SecretKey spend = wallet.getAddressSpendKey(0).secretKey;
+  CryptoNote::PqWalletKeys mine = pqKeysFromWalletSeed(spend);  // the one keypair
+
+  Crypto::SecretKey otherSecret;
+  for (std::size_t i = 0; i < sizeof(otherSecret.data); ++i)
+    otherSecret.data[i] = static_cast<uint8_t>(i * 11 + 5);
+  CryptoNote::PqWalletKeys them = CryptoNote::derivePqWalletKeys(otherSecret);
+
+  // Two payments to the ONE key but with different T must land in different buckets.
+  CryptoNote::Transaction t0 = makePqPayTo(them, mine, 1000000, 500000, 0x61, /*T*/ 0);
+  CryptoNote::Transaction t1 = makePqPayTo(them, mine, 1000000, 300000, 0x62, /*T*/ 1);
+  generator.setTxFee(CryptoNote::getObjectHash(t0), 1000000 - 500000);
+  generator.setTxFee(CryptoNote::getObjectHash(t1), 1000000 - 300000);
+  generator.addTxToBlockchain(t0);
+  generator.addTxToBlockchain(t1);
+  node.updateObservers();
+  pumpUntil(dispatcher, wallet, [&wallet]() { return wallet.getActualBalance() == 800000u; });
+
+  EXPECT_EQ(wallet.getActualBalance(), 800000u);
+  EXPECT_EQ(wallet.pqDepositBalance(0), 500000u);  // T=0 output -> bucket 0
+  EXPECT_EQ(wallet.pqDepositBalance(1), 300000u);  // T=1 output -> bucket 1
+
+  wallet.shutdown();
+  boost::filesystem::remove(path);
 }

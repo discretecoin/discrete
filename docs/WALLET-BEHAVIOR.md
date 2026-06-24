@@ -40,9 +40,10 @@ recognizes an output whose key it has reserved (`generateNewWallet` now reserves
 a standalone key with no mnemonic, backed up individually) is **not offered** — PQ secret
 keys are multi-kilobyte (ML-DSA-65 secret ≈ 4 KB), so per-key backup is impractical, and
 the HD deposit model already serves the exchange/many-address use case from one seed.
-(The `--independent-addresses` flag is vestigial — `generateNewWallet` ignores it and
-`getAddressCount` = 1 + HD deposits; the leftover multi-record `createAddressList` path is
-dead and slated for removal. `restore-address-count` is **kept and wired**, per above.)
+(The `--independent-addresses` flag has been **removed** (commit in this series): it was
+ignored by `generateNewWallet` and `getAddressCount` = 1 + HD deposits. The leftover
+multi-record `createAddressList` path is dead and still slated for removal.
+`restore-address-count` is **kept and wired**, per above.)
 
 ---
 
@@ -70,7 +71,7 @@ dead and slated for removal. `restore-address-count` is **kept and wired**, per 
 | Operation | Intended (CN) | Aggregated | Index | Status |
 |---|---|---|---|---|
 | Output detection | scan with view key | shared view key decapsulates every owned output | one view key | ✅ `PqScanTests`, `PqWalletSyncE2E` |
-| Bucket attribution | by subaddress | match per-deposit spend pubkey | recover subaddress **T** | ✅ Aggregated `PqWalletIntegration.AggregatedDepositReceivesAndSpends`; ⬜ Index |
+| Bucket attribution | by subaddress | match per-deposit spend pubkey | recover subaddress **T** | ✅ Aggregated `AggregatedDepositReceivesAndSpends`; ✅ Index `SingleKeyIndexAttributesDepositsByT` |
 | `getBalance` (global) | total / unlocked | `getActualBalance` (confirmed) + `getPendingBalance` | same | ✅ `PqWalletSyncE2E` |
 | `getBalance(address)` | per-subaddress actual + locked | per-bucket: `depositBalance − depositPendingBalance` / pending | same | ✅ Aggregated (funded) `AggregatedDepositReceivesAndSpends`; ⬜ Index |
 | coinbase maturity | locked until `minedMoneyUnlockWindow` | enforced via `unlockHeight` in `spendableInputs` + chain-context | same | ⬜ not asserted for a wallet |
@@ -117,9 +118,11 @@ dead and slated for removal. `restore-address-count` is **kept and wired**, per 
 
 ## Open gaps / next tests (the ⬜ and ❌ rows above, prioritized)
 
-1. **Index-mode deposit lifecycle, end to end** — register account → confirm → create
-   H-I-T-C deposit → receive → per-deposit balance → spend (one key) → change. No test
-   drives this today; it is the least-exercised mode. **← next**
+1. **Index-mode deposit lifecycle** — attribution-by-T is now covered
+   (`SingleKeyIndexAttributesDepositsByT`). What's left needs a **node-stub extension**
+   (the `INodeTrivialRefreshStub` has no PQ-account resolution): registration → confirm →
+   getPqAccountStatus returns H-I-C → create H-I-T-C deposit address → source-select a
+   spend by H-I-T-C. **← next (build the stub support, then the full E2E)**
 2. ~~**Aggregated deposit credit + spend, end to end**~~ — ✅ DONE
    (`PqWalletIntegration.AggregatedDepositReceivesAndSpends`, commit `4a6d2c2f`): a real
    `WalletGreen` receives to a deposit, attributes it to the deposit bucket, and spends

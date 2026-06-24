@@ -50,7 +50,6 @@ struct WalletConfiguration {
   std::string mnemonicSeed;
   bool generateDeterministic = false;
   uint32_t scanHeight = 0;
-  bool independentAddresses = false;
   uint32_t restoreAddressCount = 1;
 };
 

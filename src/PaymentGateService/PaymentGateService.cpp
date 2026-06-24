@@ -135,7 +135,6 @@ WalletConfiguration PaymentGateService::getWalletConfig() const {
     config.gateConfiguration.mnemonicSeed,
     config.gateConfiguration.generateDeterministic,
     config.gateConfiguration.scanHeight,
-    config.gateConfiguration.independentAddresses,
     config.gateConfiguration.restoreAddressCount
   };
 }
