@@ -36,14 +36,30 @@
 
 namespace CryptoNote {
 
+// Sentinel depositIndex meaning "the wallet's own primary address" (not a deposit
+// subaddress). Defined here, next to PqSpendInput, so the spend path and the ledger
+// share one definition.
+constexpr uint32_t PQ_PRIMARY_DEPOSIT = 0xFFFFFFFFu;
+
 // A PQ output this wallet owns and is spending. `rho` comes from the scan record
-// (CryptoPQ::PqOwnedOutput.rho); the wallet authorizes the spend with its
-// long-term ML-DSA spend secret, not with anything derived per-output.
+// (CryptoPQ::PqOwnedOutput.rho). The spend is authorized by the ML-DSA spend secret
+// that matches the output's spend_commit: the wallet's primary key for primary
+// outputs and (under AggregatedMultikey) the per-deposit key for deposit outputs.
+// `depositIndex` records which bucket the output belongs to so the spend path can
+// pick the right key; PQ_PRIMARY_DEPOSIT = primary.
 struct PqSpendInput {
   Crypto::Hash  prevTxid{};
   uint32_t      prevOutIndex = 0;
   uint64_t      amount = 0;
   CryptoPQ::Rho rho{};
+  uint32_t      depositIndex = PQ_PRIMARY_DEPOSIT;
+};
+
+// Per-input spend authority: the ML-DSA (pub, secret) that authorizes one input.
+// authPub must equal the spend key the referenced output committed to.
+struct PqInputAuth {
+  CryptoPQ::DsaPublicKey spendPub{};
+  CryptoPQ::DsaSecretKey spendSk{};
 };
 
 // A recipient of one new PQ output (public address material only).
@@ -84,6 +100,16 @@ Transaction buildPqTransaction(const std::vector<PqSpendInput>& inputs,
                                const std::vector<PqSendOutput>& outputs,
                                const CryptoPQ::DsaPublicKey& spendPub,
                                const CryptoPQ::DsaSecretKey& spendSk,
+                               uint64_t unlockHeight = 0,
+                               const std::vector<uint8_t>& extra = {});
+
+// Per-input spend authority: inputAuth[i] authorizes inputs[i]. This is what lets a
+// single TX_PQ spend outputs owned by DIFFERENT spend keys — e.g. AggregatedMultikey
+// deposit outputs, each committing to its own per-deposit key. inputAuth.size() must
+// equal inputs.size(). (The single-key overload above is this with one key repeated.)
+Transaction buildPqTransaction(const std::vector<PqSpendInput>& inputs,
+                               const std::vector<PqSendOutput>& outputs,
+                               const std::vector<PqInputAuth>& inputAuth,
                                uint64_t unlockHeight = 0,
                                const std::vector<uint8_t>& extra = {});
 

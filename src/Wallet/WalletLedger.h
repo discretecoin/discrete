@@ -44,9 +44,8 @@
 
 namespace CryptoNote {
 
-// Sentinel depositIndex meaning "the wallet's own primary address" — i.e. NOT a
-// deposit issued under a deposit-wallet scheme. Distinct from any real index.
-constexpr uint32_t PQ_PRIMARY_DEPOSIT = 0xFFFFFFFFu;
+// PQ_PRIMARY_DEPOSIT (the "primary, not a deposit" sentinel) is defined in
+// PqTransactionBuilder.h, alongside PqSpendInput, and reused here.
 
 // One PQ output this wallet owns. Holds no secret key: the spend secret is
 // re-derived from the seed on demand at spend time.

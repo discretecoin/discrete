@@ -342,15 +342,11 @@ std::vector<PqSpendInput> WalletLedger::spendableInputs() const {
     if (o.spent) {
       continue;
     }
-    // Spend-authority filter: this list is signed with the wallet's PRIMARY
-    // ML-DSA spend key. Under AggregatedMultikey a deposit output commits to a
-    // distinct per-deposit spend key, so it cannot be signed here — exclude it
-    // (it is swept via its own deposit key). Under SingleKeyIndex every output,
-    // including deposits, is spendable by the one key, so all are offered.
-    if (m_depositScheme == PqDepositScheme::AggregatedMultikey &&
-        o.depositIndex != PQ_PRIMARY_DEPOSIT) {
-      continue;
-    }
+    // Every owned output is spendable; the spend path picks the matching ML-DSA key
+    // per input from its bucket (the primary key for primary outputs; under
+    // AggregatedMultikey the per-deposit key for deposit outputs; under SingleKeyIndex
+    // the one key for all). depositIndex carries the bucket so buildPqSend can do that.
+    //
     // Per-output spend lock: do not offer an output the network would reject as
     // still locked. m_lastScannedHeight approximates the chain tip; an output
     // unlocks once the tip reaches its unlockHeight (0 = no lock). Conservative
@@ -363,6 +359,7 @@ std::vector<PqSpendInput> WalletLedger::spendableInputs() const {
     si.prevOutIndex = o.outputIndex;
     si.amount = o.amount;
     si.rho = o.rho;
+    si.depositIndex = o.depositIndex;
     out.push_back(si);
   }
   return out;

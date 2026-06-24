@@ -55,8 +55,7 @@ CryptoPQ::Hash256 pqTransactionInputsHash(const TransactionPrefix& tx) {
 
 Transaction buildPqTransaction(const std::vector<PqSpendInput>& inputs,
                                const std::vector<PqSendOutput>& outputs,
-                               const CryptoPQ::DsaPublicKey& spendPub,
-                               const CryptoPQ::DsaSecretKey& spendSk,
+                               const std::vector<PqInputAuth>& inputAuth,
                                uint64_t unlockHeight,
                                const std::vector<uint8_t>& extra) {
   if (inputs.empty()) {
@@ -64,6 +63,9 @@ Transaction buildPqTransaction(const std::vector<PqSpendInput>& inputs,
   }
   if (outputs.empty()) {
     throw std::runtime_error("buildPqTransaction: no outputs");
+  }
+  if (inputAuth.size() != inputs.size()) {
+    throw std::runtime_error("buildPqTransaction: input auth count mismatch");
   }
   if (inputs.size() > parameters::MAX_PQ_INPUTS_PER_TX) {
     throw std::runtime_error("buildPqTransaction: too many inputs");
@@ -78,17 +80,18 @@ Transaction buildPqTransaction(const std::vector<PqSpendInput>& inputs,
   tx.unlockHeight = unlockHeight;
   tx.extra = extra;  // authorized below (set before the signing digest)
 
-  // Inputs (unsigned for now): reveal the spender's long-term spend pubkey and
-  // the per-output rho. spend_commit(spendPub, rho) must match the referenced
-  // output's commitment, which holds because the recipient (this wallet) is the
-  // spender and rho is the output's own rho.
+  // Inputs (unsigned for now): reveal the spend pubkey that authorizes THIS input and
+  // the per-output rho. spend_commit(inputAuth[i].spendPub, rho) must match the
+  // referenced output's commitment — true because this wallet owns the output and
+  // supplies the key its bucket committed to (primary, or a per-deposit key).
   tx.inputs.reserve(inputs.size());
   uint64_t sumIn = 0;
-  for (const auto& si : inputs) {
+  for (size_t i = 0; i < inputs.size(); ++i) {
+    const PqSpendInput& si = inputs[i];
     PqInput in;
     in.prevTxid = si.prevTxid;
     in.prevOutIndex = si.prevOutIndex;
-    in.authPub.assign(spendPub.begin(), spendPub.end());
+    in.authPub.assign(inputAuth[i].spendPub.begin(), inputAuth[i].spendPub.end());
     in.rhoReveal.assign(si.rho.begin(), si.rho.end());
     tx.inputs.push_back(std::move(in));
     if (sumIn + si.amount < sumIn) {
@@ -133,13 +136,31 @@ Transaction buildPqTransaction(const std::vector<PqSpendInput>& inputs,
   }
   const uint64_t fee = sumIn - sumOut;
 
-  // Sign every input over the canonical digest; sigs go to Transaction.pqSignatures.
+  // Sign every input over the canonical digest with ITS authorizing secret key; sigs
+  // go to Transaction.pqSignatures. Consensus verifies sig[i] against in[i].authPub.
   CryptoPQ::Hash256 digest = pqSigningDigest(tx, fee);
   tx.pqSignatures.resize(tx.inputs.size());
   for (size_t i = 0; i < tx.inputs.size(); ++i)
-    tx.pqSignatures[i] = CryptoPQ::dsa_sign(spendSk, digest.data(), digest.size());
+    tx.pqSignatures[i] = CryptoPQ::dsa_sign(inputAuth[i].spendSk, digest.data(), digest.size());
 
   return tx;
+}
+
+// Single-key convenience overload: authorize every input with one keypair (used by
+// SingleKeyIndex wallets and by tests). Equivalent to the per-input form with the key
+// repeated.
+Transaction buildPqTransaction(const std::vector<PqSpendInput>& inputs,
+                               const std::vector<PqSendOutput>& outputs,
+                               const CryptoPQ::DsaPublicKey& spendPub,
+                               const CryptoPQ::DsaSecretKey& spendSk,
+                               uint64_t unlockHeight,
+                               const std::vector<uint8_t>& extra) {
+  std::vector<PqInputAuth> auth(inputs.size());
+  for (auto& a : auth) {
+    a.spendPub = spendPub;
+    a.spendSk = spendSk;
+  }
+  return buildPqTransaction(inputs, outputs, auth, unlockHeight, extra);
 }
 
 Transaction buildFreeRegTransaction(const CryptoPQ::KemPublicKey& viewPub,

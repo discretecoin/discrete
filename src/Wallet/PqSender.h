@@ -41,6 +41,17 @@ struct PqSendRequest {
   uint64_t explicitFee = 0;              // 0 = auto (two-pass measured fee)
   uint64_t unlockHeight = 0;             // tx-level spend lock (0 = none)
   std::vector<uint8_t> extra;            // tx.extra (e.g. a PQ account registration tag)
+
+  // Deposit scheme: decides each input's signing key. Under SingleKeyIndex the one
+  // ML-DSA key authorizes every input; under AggregatedMultikey a deposit input is
+  // signed with deriveDepositSpendKeys(seedMaster, depositIndex). `keys` must carry a
+  // usable seedMaster for AggregatedMultikey deposit spends.
+  PqDepositScheme scheme = PqDepositScheme::AggregatedMultikey;
+
+  // Restrict the spend to these source buckets (depositIndex values; PQ_PRIMARY_DEPOSIT
+  // = primary). Empty = spend from any bucket. Lets a caller spend only from a specific
+  // deposit / address index.
+  std::vector<uint32_t> sourceBuckets;
 };
 
 struct PqSendResult {

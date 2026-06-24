@@ -18,6 +18,7 @@
 #include "CryptoNoteCore/TransactionExtra.h"
 #include "crypto_pq/PqOutputBuilder.h"
 #include "crypto_pq/PqDerive.h"
+#include "crypto_pq/PqSeed.h"   // deriveDepositSpendKeys
 #include "crypto/crypto.h"
 #include "CryptoNote.h"
 #include "PqTxType.h"
@@ -115,6 +116,47 @@ TEST(PqTxBuilder, MultiInputMultiOutput) {
     ASSERT_TRUE(checkPqTransactionInputs(tx, {res0, res1}, 0, &nf, &err)) << err;
     EXPECT_EQ(nf.size(), 2u);
     EXPECT_NE(0, std::memcmp(nf[0].data, nf[1].data, 32));  // distinct outputs -> distinct nullifiers
+}
+
+TEST(PqTxBuilder, PerInputDepositKeysPassConsensus) {
+    // AggregatedMultikey: a deposit output commits to a per-deposit spend key, while a
+    // primary output commits to the primary key. A single TX_PQ spends BOTH, signing
+    // each input with its own key (the per-input authority overload).
+    PqWalletKeys base = derivePqWalletKeys(spendSecret(7, 3));   // primary identity
+    PqWalletKeys recip = derivePqWalletKeys(spendSecret(9, 1));
+
+    // Deposit identity (index 2) = shared view key + derived per-deposit spend key.
+    auto dep = CryptoPQ::deriveDepositSpendKeys(base.seedMaster, 2);
+    PqWalletKeys depKeys = base;
+    depKeys.spendPub = dep.first;
+    depKeys.spendSk = dep.second;
+
+    PqResolvedInput resPrimary, resDeposit;
+    PqSpendInput inPrimary = fund(base, 500000, 0x20, 0, resPrimary);
+    inPrimary.depositIndex = PQ_PRIMARY_DEPOSIT;
+    PqSpendInput inDeposit = fund(depKeys, 700000, 0x40, 1, resDeposit);
+    inDeposit.depositIndex = 2;
+
+    PqSendOutput out{recip.viewPub, recip.spendPub, 1100000};  // in 1,200,000 -> fee 100,000
+
+    std::vector<PqInputAuth> auth(2);
+    auth[0].spendPub = base.spendPub; auth[0].spendSk = base.spendSk;     // primary input
+    auth[1].spendPub = dep.first;     auth[1].spendSk = dep.second;       // deposit input
+
+    Transaction tx = buildPqTransaction({inPrimary, inDeposit}, {out}, auth);
+    ASSERT_EQ(tx.pqSignatures.size(), 2u);
+
+    std::string err;
+    ASSERT_TRUE(checkPqTransactionSemantic(tx, &err)) << err;
+    std::vector<Crypto::Hash> nf;
+    ASSERT_TRUE(checkPqTransactionInputs(tx, {resPrimary, resDeposit}, 0, &nf, &err)) << err;
+    EXPECT_EQ(nf.size(), 2u);
+
+    // Sanity: signing BOTH with the primary key (the old single-key path) must fail —
+    // the deposit input's spend_commit won't match the primary pubkey.
+    Transaction wrong = buildPqTransaction({inPrimary, inDeposit}, {out}, base.spendPub, base.spendSk);
+    std::vector<Crypto::Hash> nf2;
+    EXPECT_FALSE(checkPqTransactionInputs(wrong, {resPrimary, resDeposit}, 0, &nf2, &err));
 }
 
 TEST(PqTxBuilder, RecipientCanScanTheOutput) {

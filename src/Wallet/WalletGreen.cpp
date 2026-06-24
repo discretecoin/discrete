@@ -1922,7 +1922,8 @@ bool WalletGreen::getPqRegistrationKeysHex(std::string& viewHex, std::string& sp
 
 PqSendResult WalletGreen::sendPqTransfer(const std::vector<PqSendOutput>& recipients,
                                          uint64_t fee, uint64_t unlockHeight,
-                                         const std::vector<uint8_t>& extra) {
+                                         const std::vector<uint8_t>& extra,
+                                         const std::vector<std::string>& sourceAddresses) {
   throwIfNotInitialized();
   throwIfStopped();
   if (!pqEnabled()) {
@@ -1939,6 +1940,19 @@ PqSendResult WalletGreen::sendPqTransfer(const std::vector<PqSendOutput>& recipi
   req.explicitFee = fee;
   req.unlockHeight = unlockHeight;
   req.extra = extra;
+  // The scheme drives per-input key selection inside buildPqSend (the one key vs a
+  // per-deposit derived key for AggregatedMultikey deposit inputs).
+  req.scheme = m_pqDepositScheme;
+  // Restrict the spend to the requested source addresses (each resolved to a bucket).
+  // Each must be one of our own addresses; an unknown one is rejected.
+  for (const auto& a : sourceAddresses) {
+    uint32_t bucket = 0;
+    if (!pqResolveAddressBucket(a, bucket)) {
+      throw std::system_error(make_error_code(error::BAD_ADDRESS),
+                              "source address is not owned by this wallet: " + a);
+    }
+    req.sourceBuckets.push_back(bucket);
+  }
 
   // Build + reserve under the wallet lock: reading the spendable set and registering
   // the tx (which marks its inputs spent and records the change/history) must be

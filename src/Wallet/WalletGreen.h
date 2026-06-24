@@ -72,9 +72,14 @@ public:
   // recipients via the common sender. Returns the result (tx + fee + sent). Throws on a
   // tracking wallet, insufficient funds, or relay failure. The single PQ spend path
   // shared with WalletLegacy/simplewallet.
+  // `sourceAddresses` (empty = spend from any bucket) restricts the spend to inputs
+  // owned by those of the wallet's own addresses — each is a PQ address, an H-I-T-C
+  // account number, or a numeric address index, resolved to a deposit bucket. Under
+  // AggregatedMultikey each deposit input is signed with its own derived spend key.
   PqSendResult sendPqTransfer(const std::vector<PqSendOutput>& recipients,
                               uint64_t fee = 0, uint64_t unlockHeight = 0,
-                              const std::vector<uint8_t>& extra = {});
+                              const std::vector<uint8_t>& extra = {},
+                              const std::vector<std::string>& sourceAddresses = {});
   // Register this wallet's PQ identity with a fee-paying TX_PQ: a self-payment of
   // the smallest denomination whose tx.extra carries the account-registration tag.
   // Returns the built+relayed result. Throws on a tracking wallet / insufficient

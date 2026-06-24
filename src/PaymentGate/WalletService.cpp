@@ -1589,7 +1589,12 @@ std::error_code WalletService::sendTransaction(const SendTransaction::Request& r
         }
         recipients.push_back(CryptoNote::PqSendOutput{viewPub, spendPub, t.amount, subaddrT});
       }
-      CryptoNote::PqSendResult r = gw->sendPqTransfer(recipients, request.fee, request.unlockHeight);
+      // Restrict the spend to the requested source addresses (index / address /
+      // account-number selectors all resolve to buckets inside the wallet).
+      const std::vector<std::string> sourceAddresses =
+          canonicalizeAddressSelectors(wallet, request.sourceAddresses);
+      CryptoNote::PqSendResult r = gw->sendPqTransfer(recipients, request.fee, request.unlockHeight,
+                                                      std::vector<uint8_t>{}, sourceAddresses);
       transactionHash = Common::podToHex(CryptoNote::getObjectHash(r.tx));
       transactionSecretKey.clear();  // PQ transactions carry no per-tx secret key
       logger(Logging::DEBUGGING) << "Transaction " << transactionHash << " has been sent";

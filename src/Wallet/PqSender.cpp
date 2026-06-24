@@ -18,10 +18,13 @@
 #include "PqSender.h"
 
 #include <algorithm>
+#include <map>
+#include <unordered_set>
 
 #include "Denominations.h"
 #include "CryptoNoteConfig.h"
 #include "CryptoNoteCore/CryptoNoteTools.h"  // toBinaryArray
+#include "crypto_pq/PqSeed.h"                 // deriveDepositSpendKeys
 
 namespace CryptoNote {
 
@@ -114,6 +117,7 @@ std::vector<PqSendOutput> decomposeOutputs(const std::vector<PqSendOutput>& reci
 // Build (and sign) a draft for the given change, shrinking the output cap until the
 // serialized size is within MAX_PQ_TX_SIZE. Returns the signed transaction.
 Transaction buildFitting(const std::vector<PqSpendInput>& selected,
+                         const std::vector<PqInputAuth>& inputAuth,
                          const std::vector<PqSendOutput>& recipients, uint64_t change,
                          const PqWalletKeys& keys, uint64_t unlockHeight,
                          const std::vector<uint8_t>& extra) {
@@ -121,7 +125,7 @@ Transaction buildFitting(const std::vector<PqSpendInput>& selected,
   std::size_t maxOut = P::MAX_PQ_OUTPUTS_PER_TX;
   for (;;) {
     std::vector<PqSendOutput> outs = decomposeOutputs(recipients, change, keys, maxOut);
-    Transaction tx = buildPqTransaction(selected, outs, keys.spendPub, keys.spendSk, unlockHeight, extra);
+    Transaction tx = buildPqTransaction(selected, outs, inputAuth, unlockHeight, extra);
     if (toBinaryArray(tx).size() <= P::MAX_PQ_TX_SIZE) {
       return tx;
     }
@@ -152,10 +156,52 @@ PqSendResult buildPqSend(const std::vector<PqSpendInput>& available,
     sent += r.amount;
   }
 
+  // Optional source filter: keep only inputs from the requested buckets (deposit
+  // indices / PQ_PRIMARY_DEPOSIT). Empty = spend from any bucket.
+  std::vector<PqSpendInput> sorted;
+  if (req.sourceBuckets.empty()) {
+    sorted = available;
+  } else {
+    std::unordered_set<uint32_t> want(req.sourceBuckets.begin(), req.sourceBuckets.end());
+    for (const auto& si : available) {
+      if (want.count(si.depositIndex) != 0) {
+        sorted.push_back(si);
+      }
+    }
+  }
   // Deterministic input selection: largest first.
-  std::vector<PqSpendInput> sorted = available;
   std::sort(sorted.begin(), sorted.end(),
             [](const PqSpendInput& a, const PqSpendInput& b) { return a.amount > b.amount; });
+
+  // Per-input signing key, by bucket. SingleKeyIndex authorizes everything with the one
+  // key; AggregatedMultikey signs a deposit input with its own derived deposit key.
+  // Cached so a multi-input spend from one deposit derives that key once.
+  std::map<uint32_t, PqInputAuth> authCache;
+  auto authForBucket = [&keys, &req, &authCache](uint32_t depositIndex) -> PqInputAuth {
+    auto it = authCache.find(depositIndex);
+    if (it != authCache.end()) {
+      return it->second;
+    }
+    PqInputAuth a;
+    if (req.scheme == PqDepositScheme::SingleKeyIndex || depositIndex == PQ_PRIMARY_DEPOSIT) {
+      a.spendPub = keys.spendPub;
+      a.spendSk = keys.spendSk;
+    } else {
+      auto kp = CryptoPQ::deriveDepositSpendKeys(keys.seedMaster, depositIndex);
+      a.spendPub = kp.first;
+      a.spendSk = kp.second;
+    }
+    authCache.emplace(depositIndex, a);
+    return a;
+  };
+  auto authForSelection = [&authForBucket](const std::vector<PqSpendInput>& sel) {
+    std::vector<PqInputAuth> auth;
+    auth.reserve(sel.size());
+    for (const auto& si : sel) {
+      auth.push_back(authForBucket(si.depositIndex));
+    }
+    return auth;
+  };
 
   std::vector<PqSpendInput> selected;
   uint64_t sumIn = growSelection(sorted, selected, 0, sent);
@@ -176,7 +222,8 @@ PqSendResult buildPqSend(const std::vector<PqSpendInput>& available,
       }
     }
     uint64_t change = sumIn - sent - fee;
-    tx = buildFitting(selected, req.recipients, change, keys, req.unlockHeight, req.extra);
+    tx = buildFitting(selected, authForSelection(selected), req.recipients, change, keys,
+                      req.unlockHeight, req.extra);
     if (req.explicitFee != 0) {
       break;  // caller fixed the fee
     }

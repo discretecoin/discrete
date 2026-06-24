@@ -14,6 +14,8 @@
 #include "CryptoNoteConfig.h"
 #include "CryptoNoteCore/CryptoNoteTools.h"
 #include "CryptoNote.h"
+#include "PqTxType.h"
+#include "crypto_pq/PqSeed.h"   // deriveDepositSpendKeys
 
 #include <cstring>
 #include <numeric>
@@ -45,7 +47,84 @@ uint64_t outputSum(const Transaction& tx) {
     return s;
 }
 
+PqSpendInput mkBucketInput(uint64_t amount, uint8_t seed, uint32_t depositIndex) {
+    PqSpendInput in = mkInput(amount, seed);
+    in.depositIndex = depositIndex;
+    return in;
+}
+
+bool authPubIs(const Transaction& tx, size_t i, const CryptoPQ::DsaPublicKey& pub) {
+    const PqInput& in = boost::get<PqInput>(tx.inputs[i]);
+    return in.authPub.size() == pub.size() &&
+           std::memcmp(in.authPub.data(), pub.data(), pub.size()) == 0;
+}
+
 }  // namespace
+
+TEST(PqSender, AggregatedDepositInputSignedWithDepositKey) {
+    // Under AggregatedMultikey, a deposit input must be authorized by its own derived
+    // spend key, while the primary input uses the primary key.
+    PqWalletKeys me = derivePqWalletKeys(spendSecret(9, 1));
+    PqWalletKeys to = derivePqWalletKeys(spendSecret(7, 3));
+    auto dep = CryptoPQ::deriveDepositSpendKeys(me.seedMaster, 3);
+
+    PqSpendInput primary = mkBucketInput(200, 0x10, PQ_PRIMARY_DEPOSIT);
+    PqSpendInput deposit = mkBucketInput(100, 0x20, 3);  // smaller -> sorted second
+
+    PqSendRequest req;
+    req.scheme = PqDepositScheme::AggregatedMultikey;
+    req.recipients.push_back(PqSendOutput{to.viewPub, to.spendPub, 250});  // needs both
+
+    PqSendResult r = buildPqSend({primary, deposit}, me, req);
+    ASSERT_EQ(r.tx.inputs.size(), 2u);
+    EXPECT_TRUE(authPubIs(r.tx, 0, me.spendPub));  // primary input -> primary key
+    EXPECT_TRUE(authPubIs(r.tx, 1, dep.first));    // deposit input -> derived deposit key
+}
+
+TEST(PqSender, SingleKeyIndexUsesOneKeyForDeposits) {
+    // Under SingleKeyIndex every output (including deposits) commits to the one key.
+    PqWalletKeys me = derivePqWalletKeys(spendSecret(9, 1));
+    PqWalletKeys to = derivePqWalletKeys(spendSecret(7, 3));
+
+    PqSpendInput deposit = mkBucketInput(300, 0x30, 4);
+    PqSendRequest req;
+    req.scheme = PqDepositScheme::SingleKeyIndex;
+    req.recipients.push_back(PqSendOutput{to.viewPub, to.spendPub, 200});
+
+    PqSendResult r = buildPqSend({deposit}, me, req);
+    ASSERT_EQ(r.tx.inputs.size(), 1u);
+    EXPECT_TRUE(authPubIs(r.tx, 0, me.spendPub));  // the one key, NOT a derived deposit key
+}
+
+TEST(PqSender, SourceBucketFilterRestrictsInputs) {
+    PqWalletKeys me = derivePqWalletKeys(spendSecret(9, 1));
+    PqWalletKeys to = derivePqWalletKeys(spendSecret(7, 3));
+
+    PqSpendInput primary = mkBucketInput(300, 0x10, PQ_PRIMARY_DEPOSIT);
+    PqSpendInput deposit = mkBucketInput(300, 0x20, 5);
+
+    PqSendRequest req;
+    req.scheme = PqDepositScheme::AggregatedMultikey;
+    req.recipients.push_back(PqSendOutput{to.viewPub, to.spendPub, 250});
+    req.sourceBuckets = {5};  // spend only from deposit 5
+
+    PqSendResult r = buildPqSend({primary, deposit}, me, req);
+    ASSERT_EQ(r.selected.size(), 1u);
+    EXPECT_EQ(r.selected[0].depositIndex, 5u);
+
+    // Restricting to a bucket that cannot cover the amount -> InsufficientFunds, even
+    // though the wallet as a whole has enough.
+    PqSendRequest req2;
+    req2.scheme = PqDepositScheme::AggregatedMultikey;
+    req2.recipients.push_back(PqSendOutput{to.viewPub, to.spendPub, 500});  // > 300
+    req2.sourceBuckets = {PQ_PRIMARY_DEPOSIT};
+    try {
+        buildPqSend({primary, deposit}, me, req2);
+        FAIL() << "expected PqSendError";
+    } catch (const PqSendError& e) {
+        EXPECT_EQ(e.code, PqSendErrorCode::InsufficientFunds);
+    }
+}
 
 TEST(PqSender, SimpleTransferDecomposesAndBalances) {
     PqWalletKeys me = derivePqWalletKeys(spendSecret(9, 1));
