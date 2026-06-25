@@ -1532,12 +1532,15 @@ std::string WalletGreen::signMessage(const std::string &message, const std::stri
   // wallet has a single primary identity, so `address` (a per-address selector in
   // the classical multi-address model) is not used.
   (void)address;
-  Crypto::SecretKey spendSecret = getAddressSpendKey(0).secretKey;
-  if (spendSecret == NULL_SECRET_KEY) {
+  // Derive from the raw master seed exactly as the wallet's identity/address does
+  // (the SeedMaster overload — NOT the legacy HKDF SecretKey overload), so the
+  // signature verifies against the spend key the wallet's address publishes.
+  CryptoPQ::SeedMaster seed = primarySeedMaster();
+  if (seed == CryptoPQ::SeedMaster{}) {
     throw std::system_error(make_error_code(CryptoNote::error::BAD_ADDRESS),
                             "wallet has no spend key to sign with");
   }
-  PqWalletKeys keys = derivePqWalletKeys(spendSecret);
+  PqWalletKeys keys = derivePqWalletKeys(seed);
   return CryptoNote::signMessagePq(message, keys.spendSk);
 }
 

@@ -28,6 +28,7 @@
 #include "PqAddress.h"
 #include "CryptoNoteCore/Account.h"
 #include "Wallet/WalletErrors.h"
+#include "Mnemonics/electrum-words.h"
 
 // test helpers
 #include "INodeStubs.h"
@@ -350,6 +351,48 @@ TEST_F(PaymentGateTest, IndexModeRegistersAndIssuesHITC) {
   bool ours = false;
   ASSERT_FALSE(service->hasAddress(depositAddr, ours));
   EXPECT_TRUE(ours);
+}
+
+// Message signing (ML-DSA over the single spend identity), the mnemonic (the master
+// seed in Electrum words), and the (absent) classical view key.
+TEST_F(PaymentGateTest, MessageSigningMnemonicAndViewKeyShape) {
+  auto cfg = createWalletConfiguration();
+  generateWallet(cfg);
+  auto service = createWalletService(cfg);
+
+  std::vector<std::string> addrs;
+  ASSERT_FALSE(service->getAddresses(addrs));
+  const std::string primary = addrs[0];
+
+  // Sign / verify round-trip. Signing ignores the address (single identity); verify
+  // resolves the address to our spend pubkey.
+  std::string sig;
+  ASSERT_FALSE(service->signMessage("hello discrete", primary, sig));
+  ASSERT_FALSE(sig.empty());
+  bool valid = false;
+  ASSERT_FALSE(service->verifyMessage("hello discrete", sig, primary, valid));
+  EXPECT_TRUE(valid);
+  // A tampered message must not verify.
+  valid = true;
+  ASSERT_FALSE(service->verifyMessage("hello discretE", sig, primary, valid));
+  EXPECT_FALSE(valid);
+
+  // The mnemonic is the master seed in Electrum words; it round-trips to the same 32
+  // bytes that getSpendkeys exposes as the secret.
+  std::string mnemonic;
+  ASSERT_FALSE(service->getMnemonicSeed("", mnemonic));
+  ASSERT_FALSE(mnemonic.empty());
+  Crypto::SecretKey fromWords;
+  std::string lang;
+  ASSERT_TRUE(Crypto::ElectrumWords::words_to_bytes(mnemonic, fromWords, lang));
+  std::string spendPub, spendSec;
+  ASSERT_FALSE(service->getSpendkeys(primary, spendPub, spendSec));
+  EXPECT_EQ(Common::podToHex(fromWords), spendSec);
+
+  // PQ wallets have no classical view key (the audit credential is the PQ tracking key).
+  std::string viewKey;
+  ASSERT_FALSE(service->getViewKey(viewKey));
+  EXPECT_EQ(viewKey, std::string(64, '0'));
 }
 
 /*
