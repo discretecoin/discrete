@@ -39,10 +39,14 @@ namespace Crypto
         chacha8(data, length, reinterpret_cast<const uint8_t*>(&key), reinterpret_cast<const uint8_t*>(&iv), cipher);
     }
 
-    inline void generate_chacha8_key(Crypto::cn_context& context, const std::string& password, chacha8_key& key) {
+    inline void generate_chacha8_key(Crypto::cn_context& /*context*/, const std::string& password, chacha8_key& key) {
       static_assert(sizeof(chacha8_key) <= sizeof(Hash), "Size of hash must be at least that of chacha8_key");
+      // Memory-hard password KDF via yespower (the same primitive as the PoW),
+      // keyed with a fixed all-zero personalization seed.
       Hash pwd_hash;
-      cn_slow_hash(context, password.data(), password.size(), pwd_hash);
+      Hash seed;
+      memset(&seed, 0, sizeof(seed));
+      y_slow_hash(password.data(), password.size(), seed, pwd_hash);
       memcpy(&key, &pwd_hash, sizeof(key));
       memset(&pwd_hash, 0, sizeof(pwd_hash));
     }

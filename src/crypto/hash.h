@@ -44,25 +44,16 @@ namespace Crypto {
     return h;
   }
 
+  // Opaque PoW context token. Discrete's PoW is yespower (which needs no
+  // persistent context), but the type is still threaded through the block
+  // validation signatures, so it is kept as a trivial empty handle.
   class cn_context {
   public:
-
-    cn_context();
-    ~cn_context();
-#if !defined(_MSC_VER) || _MSC_VER >= 1800
+    cn_context() = default;
+    ~cn_context() = default;
     cn_context(const cn_context &) = delete;
     void operator=(const cn_context &) = delete;
-#endif
-
-  private:
-
-    void *data;
-    friend inline void cn_slow_hash(cn_context &, const void *, size_t, Hash &);
   };
-
-  inline void cn_slow_hash(cn_context &context, const void *data, size_t length, Hash &hash) {
-    cn_slow_hash(data, length, reinterpret_cast<char *>(&hash));
-  }
 
   inline bool y_slow_hash(const void* data, size_t length, const Hash& seed, Hash& hash) {
     yespower_params_t yespower_params = {

@@ -32,8 +32,6 @@ bool operator !=(const chash &a, const chash &b) {
   return 0 != std::memcmp(&a, &b, sizeof(chash));
 }
 
-Crypto::cn_context *context;
-
 extern "C" {
 #ifdef _MSC_VER
 #pragma warning(disable: 4297)
@@ -46,18 +44,13 @@ extern "C" {
     Crypto::tree_hash((const char (*)[32]) data, length >> 5, hash);
   }
 
-  static void slow_hash(const void *data, size_t length, char *hash) {
-    cn_slow_hash(*context, data, length, *reinterpret_cast<chash *>(hash));
-  }
 }
 
 extern "C" typedef void hash_f(const void *, size_t, char *);
 struct hash_func {
   const string name;
   hash_f &f;
-} hashes[] = {{"fast", Crypto::cn_fast_hash}, {"slow", slow_hash}, {"tree", hash_tree},
-  {"extra-blake", Crypto::hash_extra_blake}, {"extra-groestl", Crypto::hash_extra_groestl},
-  {"extra-jh", Crypto::hash_extra_jh}, {"extra-skein", Crypto::hash_extra_skein}};
+} hashes[] = {{"fast", Crypto::cn_fast_hash}, {"tree", hash_tree}};
 
 int main(int argc, char *argv[]) {
   hash_f *f;
@@ -80,9 +73,6 @@ int main(int argc, char *argv[]) {
       f = &hf->f;
       break;
     }
-  }
-  if (f == slow_hash) {
-    context = new Crypto::cn_context();
   }
   input.open(argv[2], ios_base::in);
   for (;;) {

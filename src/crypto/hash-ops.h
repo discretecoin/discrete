@@ -59,18 +59,10 @@ void hash_process(union hash_state *state, const uint8_t *buf, size_t count);
 
 enum {
   HASH_SIZE = 32,
-  HASH_DATA_AREA = 136,
-  SLOW_HASH_CONTEXT_SIZE = 2097552
+  HASH_DATA_AREA = 136
 };
 
 void cn_fast_hash(const void *data, size_t length, char *hash);
-
-void cn_slow_hash(const void *data, size_t length, char *hash);
-
-void hash_extra_blake(const void *data, size_t length, char *hash);
-void hash_extra_groestl(const void *data, size_t length, char *hash);
-void hash_extra_jh(const void *data, size_t length, char *hash);
-void hash_extra_skein(const void *data, size_t length, char *hash);
 
 void tree_hash(const char (*hashes)[HASH_SIZE], size_t count, char *root_hash);
 size_t tree_depth(size_t count);

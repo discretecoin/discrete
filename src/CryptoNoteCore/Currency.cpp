@@ -432,65 +432,6 @@ namespace CryptoNote {
     return std::max<Difficulty>(1, next_D);
   }
 
-  bool Currency::checkProofOfWorkV1(Crypto::cn_context& context, const Block& block, Difficulty currentDiffic,
-    Crypto::Hash& proofOfWork) const {
-    if (BLOCK_MAJOR_VERSION_2 == block.majorVersion || BLOCK_MAJOR_VERSION_3 == block.majorVersion) {
-      return false;
-    }
-
-    if (!get_block_longhash(context, block, proofOfWork)) {
-      return false;
-    }
-
-    return check_hash(proofOfWork, currentDiffic);
-  }
-
-  bool Currency::checkProofOfWorkV2(Crypto::cn_context& context, const Block& block, Difficulty currentDiffic,
-    Crypto::Hash& proofOfWork) const {
-    if (block.majorVersion < BLOCK_MAJOR_VERSION_2) {
-      return false;
-    }
-
-    if (!get_block_longhash(context, block, proofOfWork)) {
-      return false;
-    }
-
-    if (!check_hash(proofOfWork, currentDiffic)) {
-      return false;
-    }
-
-    TransactionExtraMergeMiningTag mmTag;
-    if (!getMergeMiningTagFromExtra(block.parentBlock.baseTransaction.extra, mmTag)) {
-      logger(ERROR) << "merge mining tag wasn't found in extra of the parent block miner transaction";
-      return false;
-    }
-
-    if (8 * sizeof(m_genesisBlockHash) < block.parentBlock.blockchainBranch.size()) {
-      return false;
-    }
-
-    Crypto::Hash auxBlockHeaderHash;
-    if (!get_aux_block_header_hash(block, auxBlockHeaderHash)) {
-      return false;
-    }
-
-    Crypto::Hash auxBlocksMerkleRoot;
-    Crypto::tree_hash_from_branch(block.parentBlock.blockchainBranch.data(), block.parentBlock.blockchainBranch.size(),
-      auxBlockHeaderHash, &m_genesisBlockHash, auxBlocksMerkleRoot);
-
-    if (auxBlocksMerkleRoot != mmTag.merkleRoot) {
-      logger(ERROR, BRIGHT_YELLOW) << "Aux block hash wasn't found in merkle tree";
-      return false;
-    }
-
-    return true;
-  }
-
-  bool Currency::checkProofOfWork(Crypto::cn_context& context, const Block& block, Difficulty currentDiffic, Crypto::Hash& proofOfWork) const {
-    // Discrete only has v6+ blocks; yespower (V1 PoW path reuses the yespower impl).
-    return checkProofOfWorkV1(context, block, currentDiffic, proofOfWork);
-  }
-
   size_t Currency::getApproximateMaximumInputCount(size_t transactionSize, size_t outputCount, size_t mixinCount) const {
     const size_t KEY_IMAGE_SIZE = sizeof(Crypto::KeyImage);
     const size_t OUTPUT_KEY_SIZE = sizeof(decltype(KeyOutput::key));

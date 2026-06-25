@@ -79,7 +79,7 @@ const uint64_t MAX_PQ_TX_SIZE                                = 256 * 1024;
 const uint64_t MIN_PQ_FEE_PER_4000_BYTES                    = 1;
 
 // Free-fee account registration (spec §11). FREE_REG_POW_TARGET is 1/16 expected
-// trials (~16 cn_slow_hash calls, ~30 s on a modest mobile device).
+// trials (~16 yespower calls); recalibrate against target hardware before launch.
 const uint64_t FREE_REG_REF_WINDOW                          = 60;
 const uint64_t FREE_REG_PER_BLOCK                           = 100;
 const uint64_t FREE_REG_POW_TARGET                          = UINT64_C(0x0FFFFFFFFFFFFFFF);
