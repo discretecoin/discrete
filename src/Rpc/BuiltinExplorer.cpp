@@ -55,7 +55,7 @@ namespace {
 const std::string index_start =
 R"(<!DOCTYPE html><html><head><meta http-equiv='refresh' content='60'/><style>* { font-family: monospace; } .wrap { word-break: break-all; word-wrap: break-word; } table.counter tbody tr td:first-child { text-align: right; }</style></head><body><svg xmlns="http://www.w3.org/2000/svg" xml:space="preserve" version="1.1" style="vertical-align:middle; padding-right: 10px; shape-rendering:geometricPrecision; text-rendering:geometricPrecision; image-rendering:optimizeQuality; fill-rule:evenodd; clip-rule:evenodd" viewBox="0 0 2500000 2500000" xmlns:xlink="http://www.w3.org/1999/xlink" width="64px" height="64px">
 <g><circle fill="#0AACFC" cx="1250000" cy="1250000" r="1214062" /><path fill="#FFED00" d="M1251219 1162750c18009,-3203 34019,-10006 48025,-20412 14009,-10407 27215,-28016 39622,-52029l275750 -538290c10803,-18010 24012,-32419 39218,-43625 15210,-10806 33219,-16410 53232,-16410l174893 0 -343384 633144c-15209,26016 -32419,47228 -51628,63635 -19613,16409 -41225,28815 -64838,37221 36822,9604 67638,25213 92854,47225 24812,21610 48425,52025 70437,91247l330578 668363 -192503 0c-38822,0 -70041,-21213 -93653,-63235l-270947 -566303c-14006,-25215 -29216,-43225 -45622,-54034 -16409,-10803 -37222,-17206 -62034,-18809l0 287359 -151281 0 0 -288559 -111263 0 0 703581 -213716 0 0 -1540835 213716 0 0 673166 111263 0 0 -332981 151281 0 0 330581z"/></g></svg>
-Karbo node v. )" PROJECT_VERSION_LONG R"( &bull; )";
+)" + std::string(CRYPTONOTE_NAME) + " node v. " PROJECT_VERSION_LONG R"( &bull; )";
 
 const std::string index_finish = " </body></html>";
 
@@ -555,18 +555,17 @@ bool BuiltinExplorer::on_get_explorer_tx_by_hash(const COMMAND_EXPLORER_GET_TRAN
       body += "  </li>\n";
     }
     // Check for account registration in tx extra
-    // Check for PQ account registration in tx extra
     {
       TransactionExtraPqAccountRegistration reg;
       if (getPqAccountRegistrationFromExtra(txs.back().extra, reg)) {
         body += "  <li>\n";
-        body += "    PQ account registration\n";
+        body += "    Account registration\n";
         body += "  </li>\n";
         body += "  <li>\n";
-        body += "    PQ view public key: <span class=\"wrap\">" + Common::toHex(reg.viewPub.data(), reg.viewPub.size()) + "</span>\n";
+        body += "    View public key: <span class=\"wrap\">" + Common::toHex(reg.viewPub.data(), reg.viewPub.size()) + "</span>\n";
         body += "  </li>\n";
         body += "  <li>\n";
-        body += "    PQ spend public key: <span class=\"wrap\">" + Common::toHex(reg.spendPub.data(), reg.spendPub.size()) + "</span>\n";
+        body += "    Spend public key: <span class=\"wrap\">" + Common::toHex(reg.spendPub.data(), reg.spendPub.size()) + "</span>\n";
         body += "  </li>\n";
 
         if (transactionsDetails.inBlockchain) {
@@ -578,7 +577,7 @@ bool BuiltinExplorer::on_get_explorer_tx_by_hash(const COMMAND_EXPLORER_GET_TRAN
                 viewPub == reg.viewPub && spendPub == reg.spendPub) {
               AccountNumber an{bh, i};
               body += "  <li>\n";
-              body += "    PQ account number: " + an.toString() + "\n";
+              body += "    Account number: " + an.toString() + "\n";
               body += "  </li>\n";
               break;
             }
@@ -661,7 +660,7 @@ bool BuiltinExplorer::on_get_explorer_tx_by_hash(const COMMAND_EXPLORER_GET_TRAN
         body += Common::podToHex(ko);
       } else if (o.output.target.type() == typeid(PqOutput)) {
         PqOutput po = boost::get<PqOutput>(o.output.target);
-        body += "PQ spend_commit: " + Common::podToHex(po.spendCommit);
+        body += "spend_commit: " + Common::podToHex(po.spendCommit);
         body += "<br/>kem_ct bytes: " + std::to_string(po.kemCt.size());
         body += "<br/>enc_payload bytes: " + std::to_string(po.encPayload.size());
       }

@@ -488,7 +488,7 @@ bool DaemonCommandsHandler::start_mining(const std::vector<std::string> &args) {
     }
   }
 
-  std::cout << "Mining started to the wallet's PQ identity with "
+  std::cout << "Mining started to the wallet's identity with "
             << threads_count << " thread(s)." << std::endl;
   return true;
 }

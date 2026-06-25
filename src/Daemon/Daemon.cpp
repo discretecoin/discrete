@@ -410,7 +410,7 @@ int main(int argc, char* argv[])
         if (!m_core.get_miner().startPq(pqViewPub, pqSpendPub, pqSpendSk, threads)) {
           logger(ERROR, BRIGHT_RED) << "Failed to start headless mining.";
         } else {
-          logger(INFO) << "Headless mining started to the wallet's PQ identity with " << threads << " thread(s).";
+          logger(INFO) << "Headless mining started to the wallet's identity with " << threads << " thread(s).";
         }
       }
     }

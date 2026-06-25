@@ -391,13 +391,13 @@ void generateNewWallet(const CryptoNote::Currency& currency, const WalletConfigu
 
   if (conf.secretSpendKey.empty() && conf.mnemonicSeed.empty())
   {
-    log(Logging::INFO, Logging::BRIGHT_WHITE) << "Generating new PQ wallet";
+    log(Logging::INFO, Logging::BRIGHT_WHITE) << "Generating new wallet";
     wallet->initialize(conf.walletFile, conf.walletPassword);
     address = createPrimary(nullptr);
-    log(Logging::INFO, Logging::BRIGHT_WHITE) << "New PQ wallet generated. Address: " << address;
+    log(Logging::INFO, Logging::BRIGHT_WHITE) << "New wallet generated. Address: " << address;
   }
   else if (!conf.mnemonicSeed.empty()) {
-    log(Logging::INFO, Logging::BRIGHT_WHITE) << "Importing PQ wallet from mnemonic seed";
+    log(Logging::INFO, Logging::BRIGHT_WHITE) << "Importing wallet from mnemonic seed";
 
     Crypto::SecretKey seed;
     std::string languageName;
@@ -409,22 +409,22 @@ void generateNewWallet(const CryptoNote::Currency& currency, const WalletConfigu
 
     wallet->initialize(conf.walletFile, conf.walletPassword);
     address = createPrimary(&seed);
-    log(Logging::INFO, Logging::BRIGHT_WHITE) << "Imported PQ wallet from mnemonic. Address: " << address;
+    log(Logging::INFO, Logging::BRIGHT_WHITE) << "Imported wallet from mnemonic. Address: " << address;
   }
   else {
-    // Import from a raw 32-byte secret = the PQ master seed. Any view key argument is
-    // ignored (PQ has no classical view key).
-    log(Logging::INFO, Logging::BRIGHT_WHITE) << "Importing PQ wallet from key";
+    // Import from a raw 32-byte secret = the master seed. Any view key argument is
+    // ignored (there is no classical view key).
+    log(Logging::INFO, Logging::BRIGHT_WHITE) << "Importing wallet from key";
     Crypto::Hash seed_hash;
     size_t size;
     if (!Common::fromHex(conf.secretSpendKey, &seed_hash, sizeof(seed_hash), size) || size != sizeof(seed_hash)) {
-      log(Logging::ERROR, Logging::BRIGHT_RED) << "Invalid spend key (PQ master seed)";
+      log(Logging::ERROR, Logging::BRIGHT_RED) << "Invalid spend key (master seed)";
       return;
     }
     Crypto::SecretKey seed = *(struct Crypto::SecretKey *) &seed_hash;
     wallet->initialize(conf.walletFile, conf.walletPassword);
     address = createPrimary(&seed);
-    log(Logging::INFO, Logging::BRIGHT_WHITE) << "PQ wallet imported successfully. Address: " << address;
+    log(Logging::INFO, Logging::BRIGHT_WHITE) << "Wallet imported successfully. Address: " << address;
   }
 
   // Record the deposit-wallet scheme in the container (immutable after creation).
