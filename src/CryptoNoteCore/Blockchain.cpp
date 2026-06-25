@@ -1818,7 +1818,10 @@ bool Blockchain::getTransactionsWithOutputGlobalIndexes(
       missed_txs.push_back(tx_id);
     } else {
       TransactionEntry te = transactionByIndex({block, txSlot});
-      if (te.m_global_output_indexes.empty()) {
+      // A transaction with no outputs (e.g. a free account registration that carries
+      // only a tx_extra tag) legitimately has no global output indexes. Only an
+      // output-bearing tx missing its indexes is an internal error.
+      if (te.m_global_output_indexes.empty() && !te.tx.outputs.empty()) {
         logger(ERROR, BRIGHT_RED) << "internal error: global indexes for transaction "
           << tx_id << " is empty";
         return false;
@@ -2102,7 +2105,10 @@ bool Blockchain::getTransactionOutputGlobalIndexes(const Crypto::Hash& tx_id,
     return false;
   }
   TransactionEntry te = transactionByIndex({block, txSlot});
-  if (te.m_global_output_indexes.empty()) {
+  // A transaction with no outputs (e.g. a free account registration that carries only
+  // a tx_extra tag) legitimately has no global output indexes; return an empty list.
+  // Only an output-bearing tx missing its indexes is an internal error.
+  if (te.m_global_output_indexes.empty() && !te.tx.outputs.empty()) {
     logger(ERROR, BRIGHT_RED) << "internal error: global indexes for transaction " << tx_id << " is empty";
     return false;
   }
