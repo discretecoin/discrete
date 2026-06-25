@@ -138,8 +138,6 @@ void fillNonce(CryptoNote::Block& blk, const CryptoNote::Difficulty& diffic,
                CryptoNote::Blockchain* blockchain,
                const CryptoNote::AccountBase& minerAcc);
 
-bool constructMinerTxManually(const CryptoNote::Currency& currency, uint8_t blockMajorVersion, uint32_t height, uint64_t alreadyGeneratedCoins,
-  const CryptoNote::AccountPublicAddress& minerAddress, CryptoNote::Transaction& tx, uint64_t fee, CryptoNote::KeyPair* pTxKey = 0);
 bool constructMinerTxBySize(const CryptoNote::Currency& currency, CryptoNote::Transaction& baseTransaction, uint8_t blockMajorVersion, uint32_t height,
   uint64_t alreadyGeneratedCoins, const CryptoNote::AccountPublicAddress& minerAddress,
   std::vector<size_t>& blockSizes, size_t targetTxSize, size_t targetBlockSize, uint64_t fee = 0);

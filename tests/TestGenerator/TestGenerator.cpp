@@ -390,43 +390,6 @@ void fillNonce(CryptoNote::Block& blk, const Difficulty& diffic,
   }
 }
 
-bool constructMinerTxManually(const CryptoNote::Currency& currency, uint8_t blockMajorVersion, uint32_t height, uint64_t alreadyGeneratedCoins,
-                              const AccountPublicAddress& minerAddress, Transaction& tx, uint64_t fee, KeyPair* pTxKey/* = 0*/) {
-  KeyPair txkey = generateKeyPair();
-  addTransactionPublicKeyToExtra(tx.extra, txkey.publicKey);
-
-  if (0 != pTxKey) {
-    *pTxKey = txkey;
-  }
-
-  BaseInput in;
-  in.blockIndex = height;
-  tx.inputs.push_back(in);
-
-  // This will work, until size of constructed block is less then currency.blockGrantedFullRewardZone()
-  int64_t emissionChange;
-  uint64_t blockReward;
-  if (!currency.getBlockReward(blockMajorVersion, 0, 0, alreadyGeneratedCoins, fee, blockReward, emissionChange)) {
-    std::cerr << "Block is too big" << std::endl;
-    return false;
-  }
-
-  Crypto::KeyDerivation derivation;
-  Crypto::PublicKey outEphPublicKey;
-  Crypto::generate_key_derivation(minerAddress.viewPublicKey, txkey.secretKey, derivation);
-  Crypto::derive_public_key(derivation, 0, minerAddress.spendPublicKey, outEphPublicKey);
-
-  TransactionOutput out;
-  out.amount = blockReward;
-  out.target = KeyOutput{outEphPublicKey};
-  tx.outputs.push_back(out);
-
-  tx.version = CURRENT_TRANSACTION_VERSION;
-  tx.unlockHeight = height + currency.minedMoneyUnlockWindow();
-
-  return true;
-}
-
 bool constructMinerTxBySize(const CryptoNote::Currency& currency, CryptoNote::Transaction& baseTransaction, uint8_t blockMajorVersion, uint32_t height,
                             uint64_t alreadyGeneratedCoins, const CryptoNote::AccountPublicAddress& minerAddress,
                             std::vector<size_t>& blockSizes, size_t targetTxSize, size_t targetBlockSize, uint64_t fee/* = 0*/) {
