@@ -57,6 +57,11 @@ add_library(CryptoNoteCommon ${Common})
 add_library(Common ALIAS CryptoNoteCommon)
 add_library(Crypto ${Crypto})
 add_library(CryptoPq ${CryptoPq})
+# Crypto::cn_fast_hash (the chain hash) is SHA3-256 from liboqs, so Crypto links
+# oqs and needs liboqs's generated <oqs/*.h> headers (see note below).
+target_link_libraries(Crypto PUBLIC oqs)
+target_include_directories(Crypto PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/external/liboqs/include>)
 # Common provides Tools::Base58 used by PqAddress encoding; Base58 in turn
 # references Crypto::cn_fast_hash.
 target_link_libraries(CryptoPq PUBLIC oqs chacha20poly1305 Common Crypto)
