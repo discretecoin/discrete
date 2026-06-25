@@ -34,11 +34,17 @@ using namespace CryptoNote;
 
 
 namespace {
-Transaction createTx(ITransactionReader& tx) {
-  Transaction outTx;
-  fromBinaryArray(outTx, tx.getTransactionData());
-
-  return outTx;
+// Builds a minimal, well-formed PQ transaction whose hash is distinct per call —
+// the only property these BlockchainSynchronizer pool tests rely on.
+Transaction makeDistinctTx() {
+  static uint64_t counter = 0;
+  Transaction tx;
+  tx.version = 1;  // TRANSACTION_VERSION_1, the only accepted version
+  tx.txType = 0;
+  tx.unlockHeight = 0;
+  uint64_t n = ++counter;
+  tx.extra.assign(reinterpret_cast<uint8_t*>(&n), reinterpret_cast<uint8_t*>(&n) + sizeof(n));
+  return tx;
 }
 }
 
@@ -510,13 +516,9 @@ public:
 };
 
 TEST_F(BcSTest, firstPoolSynchronizationCheck) {
-  auto tx1ptr = createTransaction();
-  auto tx2ptr = createTransaction();
-  auto tx3ptr = createTransaction();
-
-  auto tx1 = ::createTx(*tx1ptr.get());
-  auto tx2 = ::createTx(*tx2ptr.get());
-  auto tx3 = ::createTx(*tx3ptr.get());
+  auto tx1 = makeDistinctTx();
+  auto tx2 = makeDistinctTx();
+  auto tx3 = makeDistinctTx();
 
   auto tx1hash = getObjectHash(tx1);
   auto tx2hash = getObjectHash(tx2);
@@ -776,8 +778,7 @@ TEST_F(BcSTest, poolSynchronizationCheckError) {
 }
 
 TEST_F(BcSTest, poolSynchronizationCheckTxAdded) {
-  auto tx1ptr = createTransaction();
-  auto tx1 = ::createTx(*tx1ptr.get());
+  auto tx1 = makeDistinctTx();
   auto tx1hash = getObjectHash(tx1);
 
   std::vector<Transaction> newPoolAnswer = { tx1 };
@@ -832,8 +833,7 @@ TEST_F(BcSTest, poolSynchronizationCheckTxAdded) {
 }
 
 TEST_F(BcSTest, poolSynchronizationCheckTxDeleted) {
-  auto tx1ptr = createTransaction();
-  auto tx1 = ::createTx(*tx1ptr.get());
+  auto tx1 = makeDistinctTx();
   auto tx1hash = getObjectHash(tx1);
 
   std::vector<Transaction> newPoolAnswer = { tx1 };
@@ -1344,13 +1344,9 @@ TEST_F(BcSTest, checkTxOrder) {
     errc = ec;
   };
 
-  auto tx1ptr = createTransaction();
-  auto tx2ptr = createTransaction();
-  auto tx3ptr = createTransaction();
-
-  auto tx1 = ::createTx(*tx1ptr.get());
-  auto tx2 = ::createTx(*tx2ptr.get());
-  auto tx3 = ::createTx(*tx3ptr.get());
+  auto tx1 = makeDistinctTx();
+  auto tx2 = makeDistinctTx();
+  auto tx3 = makeDistinctTx();
 
   auto tx1hash = getObjectHash(tx1);
   auto tx2hash = getObjectHash(tx2);

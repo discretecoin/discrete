@@ -39,8 +39,6 @@ public:
   std::vector<CryptoNote::Block> getBlockchainCopy();
   void generateEmptyBlocks(size_t count);
   bool getBlockRewardForAddress(const CryptoNote::AccountPublicAddress& address);
-  bool generateTransactionsInOneBlock(const CryptoNote::AccountPublicAddress& address, size_t n);
-  bool getSingleOutputTransaction(const CryptoNote::AccountPublicAddress& address, uint64_t amount);
   void addTxToBlockchain(const CryptoNote::Transaction& transaction);
   // Pre-register a TX_PQ's fee: a TX_PQ carries no inline input amounts, so the
   // block constructor's classical get_tx_fee can't value it. Mirrors the
@@ -97,6 +95,4 @@ private:
   void addToBlockchain(const std::vector<CryptoNote::Transaction>& txs);
   void addToBlockchain(const std::vector<CryptoNote::Transaction>& txs, const CryptoNote::AccountBase& minerAddress);
   void addTx(const CryptoNote::Transaction& tx);
-
-  bool doGenerateTransactionsInOneBlock(CryptoNote::AccountPublicAddress const &address, size_t n);
 };

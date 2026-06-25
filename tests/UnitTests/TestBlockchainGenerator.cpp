@@ -25,8 +25,6 @@
 #include "CryptoNoteCore/CryptoNoteTools.h"
 
 
-#include "MultiTransactionTestBase.h"
-
 using namespace CryptoNote;
 
 namespace {
@@ -41,45 +39,6 @@ uint32_t getBlockHeight(const Block& block) {
 }
 
 } // namespace
-
-class TransactionForAddressCreator : public multi_tx_test_base<5>
-{
-  typedef multi_tx_test_base<5> base_class;
-public:
-  TransactionForAddressCreator() {}
-
-  bool init()
-  {
-    return base_class::init();
-  }
-
-  void generate(const AccountPublicAddress& address, Transaction& tx, uint64_t unlockHeight = 0)
-  {
-    std::vector<CryptoNote::TxBuildOutput> destinations;
-
-    CryptoNote::decompose_amount_into_digits(this->m_source_amount, 0,
-      [&](uint64_t chunk) { destinations.push_back(CryptoNote::TxBuildOutput{address, chunk}); },
-      [&](uint64_t a_dust) { destinations.push_back(CryptoNote::TxBuildOutput{address, a_dust}); });
-
-    Crypto::SecretKey txkey;
-    try {
-      auto itx = CryptoNote::buildTransaction(this->m_sources, destinations,
-          this->m_miners[this->real_source_idx].getAccountKeys().viewSecretKey, "", unlockHeight, 0, txkey);
-      CryptoNote::fromBinaryArray(tx, itx->getTransactionData());
-    } catch (...) {}
-  }
-
-  void generateSingleOutputTx(const AccountPublicAddress& address, uint64_t amount, Transaction& tx) {
-    std::vector<CryptoNote::TxBuildOutput> destinations;
-    destinations.push_back(CryptoNote::TxBuildOutput{address, amount});
-    Crypto::SecretKey txkey;
-    try {
-      auto itx = CryptoNote::buildTransaction(this->m_sources, destinations,
-          this->m_miners[this->real_source_idx].getAccountKeys().viewSecretKey, "", 0, 0, txkey);
-      CryptoNote::fromBinaryArray(tx, itx->getTransactionData());
-    } catch (...) {}
-  }
-};
 
 TestBlockchainGenerator::TestBlockchainGenerator(const CryptoNote::Currency& currency) :
   m_currency(currency),
@@ -195,51 +154,12 @@ void TestBlockchainGenerator::addTxToBlockchain(const CryptoNote::Transaction& t
   addToBlockchain(transaction);
 }
 
-bool TestBlockchainGenerator::getBlockRewardForAddress(const CryptoNote::AccountPublicAddress& address)
+bool TestBlockchainGenerator::getBlockRewardForAddress(const CryptoNote::AccountPublicAddress& /*address*/)
 {
-  std::unique_lock<std::mutex> lock(m_mutex);
-
-  doGenerateTransactionsInOneBlock(address, 1);
-  return true;
-}
-
-bool TestBlockchainGenerator::generateTransactionsInOneBlock(const CryptoNote::AccountPublicAddress& address, size_t n) {
-  std::unique_lock<std::mutex> lock(m_mutex);
-
-  return doGenerateTransactionsInOneBlock(address, n);
-}
-
-bool TestBlockchainGenerator::doGenerateTransactionsInOneBlock(const AccountPublicAddress &address, size_t n) {
-  assert(n > 0);
-
-  TransactionForAddressCreator creator;
-  if (!creator.init())
-    return false;
-
-  std::vector<Transaction> txs;
-  for (size_t i = 0; i < n; ++i) {
-    Transaction tx;
-    creator.generate(address, tx, m_blockchain.size() + 10);
-    txs.push_back(tx);
-  }
-
-  addToBlockchain(txs);
-
-  return true;
-}
-
-bool TestBlockchainGenerator::getSingleOutputTransaction(const CryptoNote::AccountPublicAddress& address, uint64_t amount) {
-  std::unique_lock<std::mutex> lock(m_mutex);
-
-  TransactionForAddressCreator creator;
-  if (!creator.init())
-    return false;
-
-  CryptoNote::Transaction tx;
-  creator.generateSingleOutputTx(address, amount, tx);
-
-  addToBlockchain(tx);
-
+  // Classical per-address coinbase mining is obsolete on the PQ chain (the PQ
+  // ledger never credited these). Retained only so DISABLED legacy tests compile;
+  // mines a normal PQ empty block instead.
+  generateEmptyBlocks(1);
   return true;
 }
 
