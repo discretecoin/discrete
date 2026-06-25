@@ -64,7 +64,6 @@
 #include "CryptoNoteCore/TransactionExtra.h"
 #include "crypto/crypto.h"
 #include "crypto/random.h"
-#include "Transfers/TransfersContainer.h"
 #include "WalletSerializationV2.h"
 #include "WalletErrors.h"
 #include "WalletUtils.h"

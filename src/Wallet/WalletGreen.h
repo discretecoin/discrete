@@ -30,7 +30,6 @@
 #include "Logging/LoggerRef.h"
 #include <System/Dispatcher.h>
 #include <System/Event.h>
-#include "Transfers/TransfersSynchronizer.h"
 #include "Transfers/BlockchainSynchronizer.h"
 #include "Wallet/WalletLedgerConsumer.h"
 #include "Wallet/PqTransactionBuilder.h"
@@ -38,6 +37,9 @@
 #include "../CryptoNoteConfig.h"
 
 namespace CryptoNote {
+
+class Currency;
+class INode;
 
 class WalletGreen : public IWallet,
                     IBlockchainSynchronizerObserver,
