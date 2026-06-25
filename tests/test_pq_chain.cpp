@@ -351,7 +351,7 @@ bool runFunded() {
   // Spend the matured coinbase PQ output via TX_PQ through the live consensus
   // dispatch. The spender is the miner (its long-term ML-DSA spend keypair).
   PqWalletKeys recip2 = pqKeysFromPattern(9, 2);
-  // Fee must sit above the per-1000-bytes floor (~7 atoms for a ~6.5 KB 1-in/1-out
+  // Fee must sit above the per-4000-bytes floor (~2 atoms for a ~6.5 KB 1-in/1-out
   // TX_PQ) yet well below the coinbase reward.
   uint64_t pqFee = 50;
   Transaction spend = buildPqTransaction(
@@ -697,7 +697,7 @@ bool runEmission() {
   spendIns[0].rho = owned->rho;
 
   PqWalletKeys recip = pqKeysFromPattern(7, 3);
-  const uint64_t pqFee = 50;  // well above the per-1000-bytes floor
+  const uint64_t pqFee = 50;  // well above the per-4000-bytes floor
   Transaction spend = buildPqTransaction(
       spendIns, {PqSendOutput{recip.viewPub, recip.spendPub, inAmount - pqFee}},
       miner.pqSpendPk(), miner.pqSpendSk());

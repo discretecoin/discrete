@@ -196,16 +196,16 @@ TEST(PqValidation, RejectsAmountTamperWithoutResign) {
 TEST(PqValidation, RejectsFeeBelowFloor) {
     BuiltTx b = buildSignedTx(1000000, 999999);  // fee = 1 atom
     std::string err;
-    // A 1-atom fee on a multi-KB TX_PQ is below the per-1000-bytes floor.
-    EXPECT_FALSE(checkPqTransactionInputs(b.tx, b.resolved, parameters::MIN_PQ_FEE_PER_1000_BYTES, nullptr, &err));
+    // A 1-atom fee on a multi-KB TX_PQ is below the per-4000-bytes floor.
+    EXPECT_FALSE(checkPqTransactionInputs(b.tx, b.resolved, parameters::MIN_PQ_FEE_PER_4000_BYTES, nullptr, &err));
 }
 
 TEST(PqValidation, AcceptsFeeMeetsFloor) {
-    // fee=100 atoms comfortably exceeds the floor for any valid tx (≤48 KB → floor ≤49).
+    // fee=100 atoms comfortably exceeds the floor for any valid tx (≤256 KB → floor ≤66).
     BuiltTx b = buildSignedTx(1000000, 999900);  // fee = 100 atoms
     std::string err;
     EXPECT_TRUE(checkPqTransactionInputs(b.tx, b.resolved,
-        parameters::MIN_PQ_FEE_PER_1000_BYTES, nullptr, &err)) << err;
+        parameters::MIN_PQ_FEE_PER_4000_BYTES, nullptr, &err)) << err;
 }
 
 TEST(PqValidation, RejectsExtraTamper) {

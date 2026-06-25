@@ -1269,7 +1269,7 @@ bool Core::handleIncomingTransaction(const Transaction& tx, const Crypto::Hash& 
     }
   
     // Legacy fee/mixin accounting reads classical KeyInput amounts and ring
-    // sizes. TX_PQ has neither — its fee floor (MIN_PQ_FEE_PER_1000_BYTES) and the
+    // sizes. TX_PQ has neither — its fee floor (MIN_PQ_FEE_PER_4000_BYTES) and the
     // value balance are enforced in checkPqTransactionInputs.
     const bool pqOnlyInputs = tx.version >= TRANSACTION_VERSION_1 && tx.txType == TX_PQ;
     // The decomposed-amount rule is a classical-output rule; PQ outputs carry

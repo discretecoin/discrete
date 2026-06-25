@@ -236,7 +236,7 @@ bool checkFreeRegTransactionSemantic(const Transaction& tx, std::string* error, 
 
 bool checkPqTransactionInputs(const Transaction& tx,
                              const std::vector<PqResolvedInput>& resolved,
-                             uint64_t minFeePer1000Bytes,
+                             uint64_t minFeePer4000Bytes,
                              std::vector<Crypto::Hash>* outNullifiers,
                              std::string* error) {
   if (resolved.size() != tx.inputs.size()) {
@@ -303,13 +303,13 @@ bool checkPqTransactionInputs(const Transaction& tx,
   }
   uint64_t fee = sumIn - sumOut;
 
-  // Fee floor: fee >= ceil(minFeePer1000Bytes * size / 1000).
+  // Fee floor: fee >= ceil(minFeePer4000Bytes * size / 4000).
   uint64_t size = toBinaryArray(tx).size();
-  if (minFeePer1000Bytes != 0 && size != 0) {
-    if (size > (UINT64_MAX - 999) / minFeePer1000Bytes) {
+  if (minFeePer4000Bytes != 0 && size != 0) {
+    if (size > (UINT64_MAX - 3999) / minFeePer4000Bytes) {
       return fail(error, "fee floor overflow");  // implausibly large tx
     }
-    uint64_t floor = (minFeePer1000Bytes * size + 999) / 1000;
+    uint64_t floor = (minFeePer4000Bytes * size + 3999) / 4000;
     if (fee < floor) {
       return fail(error, "fee below minimum");
     }

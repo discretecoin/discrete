@@ -2229,7 +2229,7 @@ bool Blockchain::checkPqInputs(const Transaction& tx, uint32_t* pmax_used_block_
 
   std::vector<Crypto::Hash> nullifiers;
   std::string err;
-  if (!checkPqTransactionInputs(tx, resolved, parameters::MIN_PQ_FEE_PER_1000_BYTES, &nullifiers, &err)) {
+  if (!checkPqTransactionInputs(tx, resolved, parameters::MIN_PQ_FEE_PER_4000_BYTES, &nullifiers, &err)) {
     logger(INFO, BRIGHT_WHITE) << "PQ input check failed (" << err << ") for tx " << getObjectHash(tx);
     return false;
   }

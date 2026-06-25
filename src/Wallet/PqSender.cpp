@@ -253,7 +253,7 @@ PqSendResult buildPqSend(const std::vector<PqSpendInput>& available,
       break;  // caller fixed the fee
     }
     uint64_t size = toBinaryArray(tx).size();
-    uint64_t floor = (size * P::MIN_PQ_FEE_PER_1000_BYTES + 999) / 1000 + 1;
+    uint64_t floor = (size * P::MIN_PQ_FEE_PER_4000_BYTES + 3999) / 4000 + 1;
     if (fee >= floor) {
       break;  // fee covers the floor for the final size
     }
