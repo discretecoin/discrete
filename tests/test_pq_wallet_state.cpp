@@ -393,9 +393,13 @@ TEST(WalletLedger, AggregatedMultikeyAttributesDeposit) {
     ASSERT_EQ(st.outputs().size(), 1u);
     EXPECT_EQ(st.outputs()[0].depositIndex, 2u);
 
-    // A Spec-1 deposit output commits to its own deposit spend key, so it must
-    // NOT be offered for spending with the wallet's primary key.
-    EXPECT_TRUE(st.spendableInputs().empty());
+    // A Spec-1 deposit output commits to its own deposit spend key. It IS spendable —
+    // the spend path signs each input with the matching derived deposit key — so it is
+    // offered for spending, tagged with its bucket so the right key can be selected.
+    auto inputs = st.spendableInputs();
+    ASSERT_EQ(inputs.size(), 1u);
+    EXPECT_EQ(inputs[0].depositIndex, 2u);
+    EXPECT_EQ(inputs[0].amount, 800000u);
 }
 
 TEST(WalletLedger, AggregatedMultikeyKeepsPrimaryAddressSpendable) {
