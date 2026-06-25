@@ -60,29 +60,6 @@ bool parseAndValidateTransactionFromBinaryArray(const BinaryArray& tx_blob, Tran
   return true;
 }
 
-bool generate_key_image_helper(const AccountKeys& ack, const PublicKey& tx_public_key, size_t real_output_index, KeyPair& in_ephemeral, KeyImage& ki) {
-  KeyDerivation recv_derivation;
-  bool r = generate_key_derivation(tx_public_key, ack.viewSecretKey, recv_derivation);
-
-  assert(r && "key image helper: failed to generate_key_derivation");
-
-  if (!r) {
-    return false;
-  }
-
-  r = derive_public_key(recv_derivation, real_output_index, ack.address.spendPublicKey, in_ephemeral.publicKey);
-
-  assert(r && "key image helper: failed to derive_public_key");
-
-  if (!r) {
-    return false;
-  }
-
-  derive_secret_key(recv_derivation, real_output_index, ack.spendSecretKey, in_ephemeral.secretKey);
-  generate_key_image(in_ephemeral.publicKey, in_ephemeral.secretKey, ki);
-  return true;
-}
-
 uint64_t power_integral(uint64_t a, uint64_t b) {
   if (b == 0)
     return 1;

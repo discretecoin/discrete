@@ -51,7 +51,7 @@
 #include "WalletLegacy/WalletRequest.h"
 
 #include "Transfers/BlockchainSynchronizer.h"
-#include "Transfers/TransfersSynchronizer.h"
+#include "ITransfersSynchronizer.h"
 
 #include "Wallet/WalletLedgerConsumer.h"
 #include "Wallet/PqTransactionBuilder.h"

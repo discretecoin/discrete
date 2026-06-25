@@ -17,10 +17,12 @@
 
 #pragma once
 
+#include <unordered_set>
+
 #include "Common/IInputStream.h"
 #include "Common/IOutputStream.h"
 #include "Serialization/ISerializer.h"
-#include "Transfers/TransfersSynchronizer.h"
+#include "ITransfersSynchronizer.h"
 #include "Wallet/WalletIndices.h"
 
 namespace CryptoNote {

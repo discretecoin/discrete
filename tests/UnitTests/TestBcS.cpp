@@ -18,7 +18,6 @@
 #include "gtest/gtest.h"
 
 #include "Transfers/BlockchainSynchronizer.h"
-#include "Transfers/TransfersConsumer.h"
 
 #include "crypto/hash.h"
 #include "CryptoNoteCore/TransactionApi.h"

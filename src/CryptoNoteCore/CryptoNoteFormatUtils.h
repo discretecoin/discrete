@@ -65,7 +65,6 @@ bool lookup_acc_outs(const AccountKeys& acc, const Transaction& tx, const Crypto
 bool lookup_acc_outs(const AccountKeys& acc, const Transaction& tx, std::vector<size_t>& outs, uint64_t& money_transfered);
 bool get_tx_fee(const Transaction& tx, uint64_t & fee);
 uint64_t get_tx_fee(const Transaction& tx);
-bool generate_key_image_helper(const AccountKeys& ack, const Crypto::PublicKey& tx_public_key, size_t real_output_index, KeyPair& in_ephemeral, Crypto::KeyImage& ki);
 std::string short_hash_str(const Crypto::Hash& h);
 
 bool get_block_hashing_blob(const Block& b, BinaryArray& blob);

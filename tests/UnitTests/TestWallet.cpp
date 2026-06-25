@@ -30,7 +30,6 @@
 #include "CryptoNoteCore/TransactionApiExtra.h"
 #include "INodeStubs.h"
 #include "TestBlockchainGenerator.h"
-#include "TransactionApiHelpers.h"
 #include <Logging/ConsoleLogger.h>
 #include "Wallet/MiningKeyLoader.h"
 #include "Wallet/WalletErrors.h"
@@ -46,13 +45,12 @@
 #include "PqAddress.h"
 #include "AccountNumber.h"
 #include "CryptoNoteCore/CryptoNoteFormatUtils.h"  // verifyMessagePq
+#include "CryptoNoteCore/CryptoNoteTools.h"  // getObjectHash
 #include "WalletLegacy/WalletUserTransactionsCache.h"
 #include "WalletLegacy/WalletLegacySerializer.h"
 #include <System/Dispatcher.h>
 #include <System/Timer.h>
 #include <System/Context.h>
-
-#include "TransactionApiHelpers.h"
 
 #ifdef ERROR
 #undef ERROR
