@@ -101,7 +101,7 @@ multi-record `createAddressList` path is dead and still slated for removal.
 | `getSpendkeys(address)` | per-address spend keypair | any of our addresses → the 32-byte master seed (id = hash(seed)) | ✅ `PaymentGateTest.getSpendKeysAcceptsOwnAddress` |
 | `getViewKey` | classical view secret | none classical (null); PQ tracking key is the audit credential | ✅ `MessageSigningMnemonicAndViewKeyShape` |
 | `getMnemonicSeed` | per-address electrum words | single identity → master seed as electrum words (address ignored); round-trips to the seed | ✅ `MessageSigningMnemonicAndViewKeyShape` |
-| `signMessage` / `verifyMessage` | per-address signature | ML-DSA over the one spend key (address ignored); **must sign with the seed-master key the address publishes, not the legacy HKDF key** | ✅ `MessageSigningMnemonicAndViewKeyShape` (caught + fixed a wrong-key bug) |
+| `signMessage` / `verifyMessage` | **per-address** signature | ML-DSA; under AggregatedMultikey signs with the addressed deposit's OWN key (SingleKeyIndex/primary use the one key); empty selector = primary | ✅ `MessageSigningMnemonicAndViewKeyShape` (primary; caught+fixed a wrong-key bug) + `AggregatedPerSubaddressMessageSigning` (per-deposit) |
 
 ## G. Lifecycle / sync
 
