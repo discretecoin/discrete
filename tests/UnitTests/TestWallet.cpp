@@ -898,3 +898,54 @@ TEST(PqWalletIntegration, IndexHITCReceiveAndSpendByAddressString) {
   wallet.shutdown();
   boost::filesystem::remove(path);
 }
+
+// AggregatedMultikey per-subaddress message signing: each deposit has its OWN spend key,
+// so signing FOR a deposit address produces a signature that verifies against THAT
+// address and no other.
+TEST(PqWalletIntegration, AggregatedPerSubaddressMessageSigning) {
+  System::Dispatcher dispatcher;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(1000000).upgradeHeightV6(1000000)
+      .currency();
+  TestBlockchainGenerator generator(currency);
+  INodeTrivialRefreshStub node(generator);
+  CryptoNote::WalletGreen wallet(dispatcher, currency, node, logger);
+
+  const std::string path = "pq_subsign.wallet";
+  boost::filesystem::remove(path);
+  wallet.initialize(path, "pass");
+  wallet.createAddress();                 // primary (AggregatedMultikey is default)
+  ASSERT_EQ(wallet.reservePqDepositIndex(), 0u);
+  ASSERT_EQ(wallet.reservePqDepositIndex(), 1u);
+
+  const std::string primary = wallet.getAddress(0);
+  const std::string dep0 = wallet.getAddress(1);
+  const std::string dep1 = wallet.getAddress(2);
+  ASSERT_NE(dep0, dep1);
+
+  const std::string msg = "prove control of deposit 1";
+
+  // Sign FOR deposit 1 with its own key: verifies against deposit 1 only.
+  const std::string sig1 = wallet.signMessage(msg, dep1);
+  EXPECT_TRUE(wallet.verifyMessage(msg, dep1, sig1));
+  EXPECT_FALSE(wallet.verifyMessage(msg, dep0, sig1));     // different deposit key
+  EXPECT_FALSE(wallet.verifyMessage(msg, primary, sig1));  // not the primary key
+
+  // Sign FOR deposit 0: verifies against deposit 0 only.
+  const std::string sig0 = wallet.signMessage(msg, dep0);
+  EXPECT_TRUE(wallet.verifyMessage(msg, dep0, sig0));
+  EXPECT_FALSE(wallet.verifyMessage(msg, dep1, sig0));
+
+  // Primary (and the empty selector) sign as the primary identity.
+  const std::string sigP = wallet.signMessage(msg, primary);
+  EXPECT_TRUE(wallet.verifyMessage(msg, primary, sigP));
+  EXPECT_FALSE(wallet.verifyMessage(msg, dep1, sigP));
+  const std::string sigEmpty = wallet.signMessage(msg, "");
+  EXPECT_TRUE(wallet.verifyMessage(msg, primary, sigEmpty));
+
+  wallet.shutdown();
+  boost::filesystem::remove(path);
+}

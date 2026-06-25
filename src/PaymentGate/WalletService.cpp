@@ -1147,7 +1147,9 @@ std::error_code WalletService::signMessage(const std::string& message, const std
   try {
     System::EventLock lk(readyEvent);
 
-    signature = wallet.signMessage(message, address);
+    // Accept an address index / account number / address as the signing selector
+    // (empty = the primary identity).
+    signature = wallet.signMessage(message, canonicalizeAddressSelector(wallet, address));
   }
   catch (std::system_error& x) {
     logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while signing message: " << x.what();
@@ -1164,7 +1166,9 @@ std::error_code WalletService::verifyMessage(const std::string& message, const s
   try {
     System::EventLock lk(readyEvent);
 
-    isValid = wallet.verifyMessage(message, address, signature);
+    // A numeric index resolves to one of our addresses; any address / account number
+    // passes through (you can verify against an external signer's address too).
+    isValid = wallet.verifyMessage(message, canonicalizeAddressSelector(wallet, address), signature);
   }
   catch (std::system_error& x) {
     logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while verifying message: " << x.what();

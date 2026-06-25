@@ -1527,21 +1527,33 @@ std::string WalletGreen::signMessage(const std::string &message, const std::stri
   throwIfTrackingMode();
   throwIfStopped();
 
-  // Discrete signs with the wallet's post-quantum (ML-DSA) spend key — the PQ
-  // identity its address publishes — not the (unused) classical ECC key. A PQ
-  // wallet has a single primary identity, so `address` (a per-address selector in
-  // the classical multi-address model) is not used.
-  (void)address;
-  // Derive from the raw master seed exactly as the wallet's identity/address does
-  // (the SeedMaster overload — NOT the legacy HKDF SecretKey overload), so the
-  // signature verifies against the spend key the wallet's address publishes.
+  // Discrete signs with the wallet's post-quantum (ML-DSA) spend key, derived from the
+  // raw master seed exactly as the address publishes it (the SeedMaster overload — NOT
+  // the legacy HKDF SecretKey overload), so the signature verifies against that address.
   CryptoPQ::SeedMaster seed = primarySeedMaster();
   if (seed == CryptoPQ::SeedMaster{}) {
     throw std::system_error(make_error_code(CryptoNote::error::BAD_ADDRESS),
                             "wallet has no spend key to sign with");
   }
   PqWalletKeys keys = derivePqWalletKeys(seed);
-  return CryptoNote::signMessagePq(message, keys.spendSk);
+
+  // Per-subaddress signing: under AggregatedMultikey each deposit publishes its OWN
+  // spend key, so signing FOR a deposit address uses that deposit's key — the verifier
+  // checks the signature against the deposit address's spend pubkey. Under SingleKeyIndex
+  // every address shares the one key; an empty selector signs as the primary. `address`
+  // must be one of ours.
+  CryptoPQ::DsaSecretKey signSk = keys.spendSk;
+  if (!address.empty()) {
+    uint32_t bucket = PQ_PRIMARY_DEPOSIT;
+    if (!pqResolveAddressBucket(address, bucket)) {
+      throw std::system_error(make_error_code(CryptoNote::error::BAD_ADDRESS),
+                              "cannot sign for an address that is not owned by this wallet: " + address);
+    }
+    if (m_pqDepositScheme == PqDepositScheme::AggregatedMultikey && bucket != PQ_PRIMARY_DEPOSIT) {
+      signSk = CryptoPQ::deriveDepositSpendKeys(keys.seedMaster, bucket).second;
+    }
+  }
+  return CryptoNote::signMessagePq(message, signSk);
 }
 
 bool WalletGreen::verifyMessage(const std::string &message, const std::string& address, const std::string &signature) {
