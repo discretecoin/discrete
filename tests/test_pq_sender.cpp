@@ -189,9 +189,10 @@ TEST(PqSender, CoarsensToOutputCap) {
     PqWalletKeys me = derivePqWalletKeys(spendSecret(9, 1));
     PqWalletKeys to = derivePqWalletKeys(spendSecret(7, 3));
 
-    // 165,000,000 au decomposes to 16 caps + 5,000,000 = 17 pieces > MAX_PQ_OUTPUTS_PER_TX,
-    // so the sender must coarsen the recipient group down to fit. explicitFee keeps change 0.
-    const uint64_t amount = 165000000;
+    // 700,000,000 au decomposes to 70 pieces of the 10,000,000 cap denomination, which is
+    // > MAX_PQ_OUTPUTS_PER_TX, so the sender must coarsen the recipient group down to fit.
+    // explicitFee keeps change 0.
+    const uint64_t amount = 700000000;
     std::vector<PqSpendInput> inputs = {mkInput(amount + 100, 0x70)};
     PqSendRequest req;
     req.recipients.push_back(PqSendOutput{to.viewPub, to.spendPub, amount});

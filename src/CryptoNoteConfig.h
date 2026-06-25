@@ -65,13 +65,16 @@ const uint64_t MAX_TX_MIXIN_SIZE                             = 0;
 const uint64_t MAX_EXTRA_SIZE                                = 4096;
 const uint64_t MAX_EXTRA_SIZE_PQ                             = 4096;
 
-// PQ Phase 1 transaction limits (spec §1.2). These are consensus caps.
-const uint64_t MAX_PQ_INPUTS_PER_TX                          = 8;
-const uint64_t MAX_PQ_OUTPUTS_PER_TX                         = 16;
-const uint64_t MAX_PQ_TX_SIZE                                = 48 * 1024;
+// PQ Phase 1 transaction limits (spec §1.2). These are consensus caps. A PQ input is
+// ~5.3 KB (ML-DSA-65 auth pub 1952 + signature 3309 + outpoint) and a PQ output is
+// ~1.2 KB (ML-KEM-768 ct 1088 + enc payload 56 + commit 32). The size cap is sized so
+// the input AND output counts can both be maxed in one tx: 32*5.3K + 64*1.2K ~= 246 KB.
+const uint64_t MAX_PQ_INPUTS_PER_TX                          = 32;
+const uint64_t MAX_PQ_OUTPUTS_PER_TX                         = 64;
+const uint64_t MAX_PQ_TX_SIZE                                = 256 * 1024;
 // Minimum PQ fee per 1000 serialized bytes (consensus floor). A typical 1-in/2-out
 // TX_PQ is ~7.7 KB; rate=1 gives floor = 8 atoms (0.08 XDS). The largest valid tx
-// (MAX_PQ_TX_SIZE = 48 KB) gives 49 atoms (0.49 XDS). Wallet pads with +1 atom margin.
+// (MAX_PQ_TX_SIZE = 256 KB) gives ~263 atoms (~2.6 XDS). Wallet pads with +1 atom margin.
 const uint64_t MIN_PQ_FEE_PER_1000_BYTES                    = 1;
 
 // Free-fee account registration (spec §11). FREE_REG_POW_TARGET is 1/16 expected
