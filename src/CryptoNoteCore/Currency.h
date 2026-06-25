@@ -155,7 +155,6 @@ public:
   bool parseAmount(const std::string& str, uint64_t& amount) const;
 
   Difficulty nextDifficulty(uint32_t height, uint8_t blockMajorVersion, std::vector<uint64_t> timestamps, std::vector<Difficulty> Difficulties) const;
-  Difficulty nextDifficultyV5(uint32_t height, uint8_t blockMajorVersion, std::vector<uint64_t> timestamps, std::vector<Difficulty> Difficulties) const;
 
   bool checkProofOfWorkV1(Crypto::cn_context& context, const Block& block, Difficulty currentDiffic, Crypto::Hash& proofOfWork) const;
   bool checkProofOfWorkV2(Crypto::cn_context& context, const Block& block, Difficulty currentDiffic, Crypto::Hash& proofOfWork) const;
