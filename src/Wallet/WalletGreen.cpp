@@ -185,24 +185,24 @@ void WalletGreen::initialize(const std::string& path, const std::string& passwor
   // PQ-native: a fresh container has no addresses yet; the caller mints the primary
   // master seed (record 0) via createAddress().
   initContainer(path, password);
-  m_logger(INFO, BRIGHT_WHITE) << "New PQ container initialized";
+  m_logger(INFO, BRIGHT_WHITE) << "New container initialized";
 }
 
 void WalletGreen::initializeWithViewKey(const std::string& path, const std::string& password, const Crypto::SecretKey& /*viewSecretKey*/) {
   // PQ has no classical view key; the argument is ignored. The wallet's audit
   // capability is the PQ tracking key (see initializeWithPqTrackingKey).
   initContainer(path, password);
-  m_logger(INFO, BRIGHT_WHITE) << "PQ container initialized";
+  m_logger(INFO, BRIGHT_WHITE) << "Container initialized";
 }
 
 void WalletGreen::initializeWithViewKey(const std::string& path, const std::string& password, const Crypto::SecretKey& /*viewSecretKey*/, const uint64_t& /*creationTimestamp*/) {
   initContainer(path, password);
-  m_logger(INFO, BRIGHT_WHITE) << "PQ container initialized";
+  m_logger(INFO, BRIGHT_WHITE) << "Container initialized";
 }
 
 void WalletGreen::initializeWithViewKey(const std::string& path, const std::string& password, const Crypto::SecretKey& /*viewSecretKey*/, const uint32_t /*scanHeight*/) {
   initContainer(path, password);
-  m_logger(INFO, BRIGHT_WHITE) << "PQ container initialized";
+  m_logger(INFO, BRIGHT_WHITE) << "Container initialized";
 }
 
 void WalletGreen::initializeWithPqTrackingKey(const std::string& path, const std::string& password,
@@ -220,7 +220,7 @@ void WalletGreen::initializeWithPqTrackingKey(const std::string& path, const std
   // scanning consumer is built from the imported PQ tracking credential.
   doCreateAddress(CryptoPQ::SeedMaster{}, true, creationTimestamp);
 
-  m_logger(INFO, BRIGHT_WHITE) << "Container initialized with PQ tracking key";
+  m_logger(INFO, BRIGHT_WHITE) << "Container initialized with tracking key";
 }
 
 void WalletGreen::shutdown() {
@@ -261,6 +261,7 @@ void WalletGreen::clearCaches(bool /*clearTransactions*/, bool clearCachedData) 
     }
 
     m_blockchain.clear();
+    m_pqNotifiedTxCount = 0;
   }
 }
 
@@ -1394,7 +1395,7 @@ size_t WalletGreen::transfer(const TransactionParameters& transactionParameters,
   // The tx was registered in the ledger (as unconfirmed) by sendPqTransfer; return
   // its native history index.
   size_t id = pqHistoryIndex(getObjectHash(result.tx));
-  m_logger(INFO, BRIGHT_WHITE) << "PQ transaction sent, hash " << getObjectHash(result.tx) <<
+  m_logger(INFO, BRIGHT_WHITE) << "Transaction sent, hash " << getObjectHash(result.tx) <<
     ", amount " << m_currency.formatAmount(result.sent) <<
     ", fee " << m_currency.formatAmount(result.fee);
   return id;
@@ -1633,6 +1634,9 @@ void WalletGreen::onSynchronizationProgressUpdated(uint32_t processedBlockCount,
     return;
   }
 
+  // The PQ scan appends history rows as it processes blocks; announce them so the
+  // txid->index map walletd builds from these events stays current.
+  pushNewTransactionEvents();
   pushEvent(makeSyncProgressUpdatedEvent(processedBlockCount, totalBlockCount));
 }
 
@@ -1645,7 +1649,30 @@ void WalletGreen::onSynchronizationCompleted() {
     return;
   }
 
+  // The pool path (onPoolUpdated) reports only through synchronizationCompleted, so
+  // newly received mempool transactions are announced here.
+  pushNewTransactionEvents();
   pushEvent(makeSyncCompletedEvent());
+}
+
+void WalletGreen::pushNewTransactionEvents() {
+  if (!m_pqConsumer) {
+    return;
+  }
+
+  size_t count = m_pqConsumer->state().historyCount();
+
+  // A reorg or a dropped mempool transaction removes rows and re-indexes the rest,
+  // shrinking the history. Re-baseline to the current size; nothing new to announce.
+  if (m_pqNotifiedTxCount > count) {
+    m_pqNotifiedTxCount = count;
+    return;
+  }
+
+  for (size_t id = m_pqNotifiedTxCount; id < count; ++id) {
+    pushEvent(makeTransactionCreatedEvent(id));
+  }
+  m_pqNotifiedTxCount = count;
 }
 
 void WalletGreen::blocksAdded(const std::vector<Crypto::Hash>& blockHashes) {
@@ -1835,6 +1862,11 @@ void WalletGreen::restorePqStateBlob() {
   }
   // The scanner needs the restored scheme + count to attribute deposits.
   syncPqDepositConfigToState();
+
+  // History rows already on disk are this wallet's past (walletd seeds its txid
+  // index from them at load); baseline the announce cursor so they are not
+  // re-announced. Rows discovered during this session's sync fire TRANSACTION_CREATED.
+  m_pqNotifiedTxCount = m_pqConsumer ? m_pqConsumer->state().historyCount() : 0;
 }
 
 uint64_t WalletGreen::pqActualBalance() const {

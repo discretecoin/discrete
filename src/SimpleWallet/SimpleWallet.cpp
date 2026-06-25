@@ -1436,11 +1436,11 @@ bool simple_wallet::new_wallet(const std::string &wallet_file, const std::string
   AccountKeys keys;
   m_wallet->getAccountKeys(keys);
 
+  // PQ wallets have no classical (Ed25519) view key — the slot is always zero.
+  // The view-only audit credential is the PQ tracking key (see the "tracking_key"
+  // command); printing the zero scalar here only looked like a leftover ECC field.
   logger(INFO, BRIGHT_WHITE) << "Generated new wallet: "
-                             << m_wallet->getAddress()
-                             << std::endl
-                             << "view key: "
-                             << Common::podToHex(keys.viewSecretKey);
+                             << m_wallet->getAddress();
 
   success_msg_writer() <<
     "**********************************************************************\n" <<
@@ -1921,27 +1921,34 @@ std::string simple_wallet::get_formatted_wallet_keys() {
   AccountKeys keys;
   m_wallet->getAccountKeys(keys);
 
+  // A Discrete wallet is post-quantum: the 32-byte master seed (the spend secret)
+  // is the single root secret — every key derives from it and the 25-word mnemonic
+  // encodes it. There is no classical Ed25519 view key, so the old zero "view key"
+  // and the AccountKeys paperwallet blob are gone.
+  const bool tracking = m_wallet->isTrackingWallet();
+
   std::string priv_keys = "";
   priv_keys += "Wallet file name:\t" + m_wallet_file + "\n";
   priv_keys += "Public address:\t\t" + m_wallet->getAddress() + "\n";
-  priv_keys += "Private spend key:\t" + Common::podToHex(keys.spendSecretKey) + "\n";
-  priv_keys += "Private view key:\t" + Common::podToHex(keys.viewSecretKey) + "\n";
-  priv_keys += "Private keys:\t\t" + Tools::Base58::encode_addr(parameters::CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX,
-    std::string(reinterpret_cast<char*>(&keys), sizeof(keys))) + "\n";
+  if (!tracking) {
+    priv_keys += "Private spend key:\t" + Common::podToHex(keys.spendSecretKey) + "\n";
+  }
 
-  Crypto::PublicKey unused_dummy_variable;
-  Crypto::SecretKey deterministic_private_view_key;
-  AccountBase::generateViewFromSpend(keys.spendSecretKey, deterministic_private_view_key, unused_dummy_variable);
-  bool deterministic_private_keys = deterministic_private_view_key == keys.viewSecretKey;
-  if (deterministic_private_keys) {
-    std::string electrum_words;
-    bool success = m_wallet->getSeed(electrum_words);
-    if (success) {
-      seedFormater(electrum_words);
-      priv_keys += "Mnemonic seed:\n" + electrum_words + "\n";
-    }
-  } else {
-    priv_keys += "The wallet is non-deterministic and does not have a mnemonic seed.\n";
+  // The view key (tracking credential): a view-only secret that can scan this
+  // wallet's incoming and outgoing transactions. Same value the "tracking_key"
+  // command prints; long, because it is the ML-KEM-768 view key.
+  auto* wallet = dynamic_cast<CryptoNote::WalletLegacy*>(m_wallet.get());
+  PqTrackingKeys trackingKeys;
+  if (wallet && wallet->getPqTrackingKeys(trackingKeys)) {
+    priv_keys += "Private view key:\t" + encodePqTrackingKey(trackingKeys) + "\n";
+  }
+
+  std::string electrum_words;
+  if (!tracking && m_wallet->getSeed(electrum_words)) {
+    seedFormater(electrum_words);
+    priv_keys += "Mnemonic seed:\n" + electrum_words + "\n";
+  } else if (tracking) {
+    priv_keys += "This is a view-only (tracking) wallet: no spend key or mnemonic seed.\n";
   }
 
   return priv_keys;
@@ -2391,7 +2398,15 @@ bool simple_wallet::pq_balance(const std::vector<std::string> &args) {
     fail_msg_writer() << "Balance is unavailable for this wallet.";
     return true;
   }
-  success_msg_writer() << "Available balance: " << m_currency.formatAmount(wl->pqActualBalance());
+  uint64_t total = wl->pqActualBalance();
+  uint64_t unlocked = wl->pqUnlockedBalance();
+  // "Available" is what can be spent right now. Freshly mined coinbase is counted in
+  // the total but stays locked until it matures, so show the locked remainder too —
+  // otherwise a send up to the displayed balance fails as "insufficient".
+  success_msg_writer() << "Available balance: " << m_currency.formatAmount(unlocked);
+  if (total > unlocked) {
+    success_msg_writer() << "Locked (immature):  " << m_currency.formatAmount(total - unlocked);
+  }
   success_msg_writer() << "Scanned to height: " << wl->pqSyncedHeight();
   return true;
 }

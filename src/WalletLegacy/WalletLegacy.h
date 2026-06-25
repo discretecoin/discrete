@@ -102,6 +102,9 @@ public:
   // wallets instead hold a view-only PqTrackingKeys credential.
   bool pqEnabled() const { return static_cast<bool>(m_pqConsumer); }
   uint64_t pqActualBalance() const;
+  // Balance currently spendable (coinbase maturity / timelocks reached). The
+  // difference pqActualBalance() - pqUnlockedBalance() is still locked.
+  uint64_t pqUnlockedBalance() const;
   std::vector<PqSpendInput> pqSpendableInputs() const;
   uint32_t pqSyncedHeight() const;
   bool getPqTrackingKeys(PqTrackingKeys& keys) const;
@@ -171,6 +174,9 @@ private:
   void sendTransactionCallback(WalletRequest::Callback callback, std::error_code ec);
   void notifyClients(std::deque<std::shared_ptr<WalletLegacyEvent> >& events);
   void notifyIfBalanceChanged();
+  // Announce PQ ledger history rows discovered since the last call via
+  // externalTransactionCreated, so front-ends print incoming/outgoing notifications.
+  void notifyExternalTransactions();
 
   std::vector<TransactionId> deleteOutdatedUnconfirmedTransactions();
 
@@ -197,6 +203,8 @@ private:
   std::atomic<uint64_t> m_lastNotifiedActualBalance;
   std::atomic<uint64_t> m_lastNotifiedPendingBalance;
   std::atomic<uint64_t> m_lastNotifiedUnmixableBalance;
+  // Number of PQ ledger history rows already announced via externalTransactionCreated.
+  std::atomic<size_t> m_lastNotifiedTransactionCount;
 
   BlockchainSynchronizer m_blockchainSync;
   // PQ output scanning is the sole sync driver. Tracking wallets use

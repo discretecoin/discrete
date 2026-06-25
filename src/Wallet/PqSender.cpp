@@ -132,7 +132,7 @@ Transaction buildFitting(const std::vector<PqSpendInput>& selected,
     }
     if (maxOut <= numDest) {
       throw PqSendError(PqSendErrorCode::TooLarge,
-                        "PQ transaction exceeds the size limit; split into smaller transfers");
+                        "transaction exceeds the size limit; split into smaller transfers");
     }
     --maxOut;
   }
@@ -210,10 +210,29 @@ PqSendResult buildPqSend(const std::vector<PqSpendInput>& available,
                                 ? req.changeDest
                                 : PqSendOutput{keys.viewPub, keys.spendPub, 0, 0, 0};
 
+  // Total spendable funds across all unlocked inputs. growSelection can only take up
+  // to MAX_PQ_INPUTS_PER_TX of them, so distinguish "no funds" from "funds exist but
+  // need more inputs than one tx allows" — the latter is not an insufficient balance.
+  uint64_t totalAvail = 0;
+  for (const auto& si : sorted) {
+    totalAvail += si.amount;
+  }
+  auto shortfall = [&totalAvail](uint64_t need) -> PqSendError {
+    if (totalAvail >= need) {
+      return PqSendError(PqSendErrorCode::TooLarge,
+        "amount is too large to send in one transaction (it would need more than " +
+        std::to_string(P::MAX_PQ_INPUTS_PER_TX) +
+        " inputs); send a smaller amount, or consolidate your outputs first");
+    }
+    // `sorted` holds only spendable (unlocked) inputs, so a true shortfall means the
+    // unlocked balance is too small — typically coinbase still maturing.
+    return PqSendError(PqSendErrorCode::InsufficientFunds, "insufficient unlocked balance");
+  };
+
   std::vector<PqSpendInput> selected;
   uint64_t sumIn = growSelection(sorted, selected, 0, sent);
   if (sumIn < sent) {
-    throw PqSendError(PqSendErrorCode::InsufficientFunds, "insufficient PQ balance");
+    throw shortfall(sent);
   }
 
   // Two-pass fee with a fixed point: raising the fee shrinks the change (never grows
@@ -224,8 +243,7 @@ PqSendResult buildPqSend(const std::vector<PqSpendInput>& available,
     if (sumIn < sent + fee) {
       sumIn = growSelection(sorted, selected, sumIn, sent + fee);
       if (sumIn < sent + fee) {
-        throw PqSendError(PqSendErrorCode::InsufficientFunds,
-                          "insufficient PQ balance to cover the fee");
+        throw shortfall(sent + fee);
       }
     }
     uint64_t change = sumIn - sent - fee;
@@ -242,7 +260,7 @@ PqSendResult buildPqSend(const std::vector<PqSpendInput>& available,
     fee = floor;
   }
   if (sumIn < sent + fee) {
-    throw PqSendError(PqSendErrorCode::InsufficientFunds, "insufficient PQ balance to cover the fee");
+    throw shortfall(sent + fee);
   }
 
   PqSendResult result;

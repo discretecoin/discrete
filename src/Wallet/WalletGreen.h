@@ -253,6 +253,10 @@ protected:
 
   std::string addWallet(const CryptoPQ::SeedMaster& seedMaster, bool tracking, uint64_t creationTimestamp, uint32_t hdIndex = WALLET_INVALID_HD_INDEX);
   void pushEvent(const WalletEvent& event);
+  // Push a TRANSACTION_CREATED event for every PQ ledger history row the scanner has
+  // discovered since the last call, so consumers (walletd's refresh loop) learn of
+  // newly received/sent transactions. Runs on the dispatcher thread under m_readyEvent.
+  void pushNewTransactionEvents();
 
   // Native history index (transaction id) of a PQ transaction by hash, or
   // WALLET_INVALID_TRANSACTION_ID if it is not in the ledger. Takes the wallet lock.
@@ -347,6 +351,10 @@ protected:
   std::string m_path;
   std::string m_extra; // workaround for wallet reset
   std::string m_pqState; // persisted PQ consumer cursor + WalletLedger (see save/loadPqState)
+  // Number of PQ ledger history rows already announced via TRANSACTION_CREATED.
+  // Baselined to the loaded history after restore so a reload does not re-announce
+  // past transactions; rows discovered during this session grow past it and fire.
+  size_t m_pqNotifiedTxCount = 0;
   // Deposit-wallet scheme + how many deposit addresses have been issued. Persisted
   // inside m_pqState (a third framed section); defaults apply to pre-deposit containers.
   PqDepositScheme m_pqDepositScheme = PqDepositScheme::AggregatedMultikey;

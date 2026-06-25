@@ -288,6 +288,22 @@ uint64_t WalletLedger::pendingBalance() const {
   return total;
 }
 
+uint64_t WalletLedger::spendableBalance() const {
+  // Mirror the spendableInputs() filter exactly: an unspent output is offerable to
+  // the spend path once its unlockHeight (0 = none) is reached at the scan tip.
+  uint64_t total = 0;
+  for (const auto& o : m_outputs) {
+    if (o.spent) {
+      continue;
+    }
+    if (o.unlockHeight != 0 && o.unlockHeight > m_lastScannedHeight) {
+      continue;
+    }
+    total += o.amount;
+  }
+  return total;
+}
+
 const PqWalletTransaction* WalletLedger::historyByTxid(const Crypto::Hash& txid) const {
   auto it = m_historyByTxid.find(txid);
   return it == m_historyByTxid.end() ? nullptr : &m_history[it->second];

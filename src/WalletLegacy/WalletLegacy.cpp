@@ -243,6 +243,7 @@ WalletLegacy::WalletLegacy(const CryptoNote::Currency& currency, INode& node, Lo
   m_lastNotifiedActualBalance(0),
   m_lastNotifiedPendingBalance(0),
   m_lastNotifiedUnmixableBalance(0),
+  m_lastNotifiedTransactionCount(0),
   m_blockchainSync(node, m_logger.getLogger(), currency.genesisBlockHash()),
   m_onInitSyncStarter(new SyncStarter(m_blockchainSync))
 {
@@ -521,6 +522,13 @@ void WalletLegacy::doLoad(std::istream& source) {
       // ignore cache loading errors
     }
 
+    // History rows already on disk are this wallet's past; baseline the announce
+    // cursor to them so reloading does not re-announce every old transaction. New
+    // rows discovered during this session's sync grow past the baseline and fire.
+    if (m_pqConsumer) {
+      m_lastNotifiedTransactionCount.store(m_pqConsumer->state().historyCount());
+    }
+
   } catch (std::system_error& e) {
     runAtomic(m_cacheMutex, [this] () {this->m_state = WalletLegacy::NOT_INITIALIZED;} );
     m_observerManager.notify(&IWalletLegacyObserver::initCompleted, e.code());
@@ -569,6 +577,7 @@ void WalletLegacy::shutdown() {
     m_lastNotifiedActualBalance = 0;
     m_lastNotifiedPendingBalance = 0;
     m_lastNotifiedUnmixableBalance = 0;
+    m_lastNotifiedTransactionCount = 0;
   }
 }
 
@@ -744,6 +753,14 @@ uint64_t WalletLegacy::pqActualBalance() const {
     return 0;
   }
   return m_pqConsumer->state().balance();
+}
+
+uint64_t WalletLegacy::pqUnlockedBalance() const {
+  std::unique_lock<std::mutex> lock(m_cacheMutex);
+  if (!m_pqConsumer) {
+    return 0;
+  }
+  return m_pqConsumer->state().spendableBalance();
 }
 
 std::vector<PqSpendInput> WalletLegacy::pqSpendableInputs() const {
@@ -1078,7 +1095,8 @@ void WalletLegacy::synchronizationProgressUpdated(uint32_t current, uint32_t tot
     m_observerManager.notify(&IWalletLegacyObserver::transactionUpdated, transactionId);
   }
 
-  // check if balance has changed and notify client
+  // announce transactions the PQ scan just discovered, then balance changes
+  notifyExternalTransactions();
   notifyIfBalanceChanged();
 }
 
@@ -1096,7 +1114,35 @@ void WalletLegacy::synchronizationCompleted(std::error_code result) {
     m_observerManager.notify(&IWalletLegacyObserver::transactionUpdated, transactionId);
   });
 
+  // The pool path (onPoolUpdated) reports only through synchronizationCompleted,
+  // so newly received mempool transactions are announced here.
+  notifyExternalTransactions();
   notifyIfBalanceChanged();
+}
+
+void WalletLegacy::notifyExternalTransactions() {
+  if (!m_pqConsumer) {
+    return;
+  }
+
+  // The PQ ledger appends a history row the first time a transaction touches this
+  // wallet (its mempool sight, or — for coinbase — the block that mines it). Fire
+  // externalTransactionCreated for every row not yet announced, mirroring the
+  // classical notification simplewallet/walletd print incoming/outgoing lines from.
+  size_t count = m_pqConsumer->state().historyCount();
+  size_t announced = m_lastNotifiedTransactionCount.load();
+
+  // A reorg or a dropped mempool transaction removes rows and re-indexes the rest,
+  // shrinking the history. Re-baseline to the current size; nothing new to announce.
+  if (announced > count) {
+    m_lastNotifiedTransactionCount.store(count);
+    return;
+  }
+
+  for (size_t id = announced; id < count; ++id) {
+    m_observerManager.notify(&IWalletLegacyObserver::externalTransactionCreated, static_cast<TransactionId>(id));
+  }
+  m_lastNotifiedTransactionCount.store(count);
 }
 
 // ITransfersObserver callbacks came from the classical subscription, which no

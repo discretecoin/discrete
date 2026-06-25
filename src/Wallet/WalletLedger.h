@@ -107,6 +107,12 @@ public:
   // Unspent balance still in the mempool (received at UNCONFIRMED_HEIGHT).
   uint64_t pendingBalance() const;
 
+  // Balance that can actually be spent right now: unspent outputs whose per-output
+  // spend lock (coinbase maturity / timelock) has been reached at the current scan
+  // height. This is the sum of spendableInputs(); balance() minus this is the
+  // amount still locked.
+  uint64_t spendableBalance() const;
+
   // Unspent balance attributed to one deposit index (confirmed + pending; for
   // walletd attribution).
   uint64_t depositBalance(uint32_t depositIndex) const;
