@@ -45,8 +45,6 @@
 using namespace Logging;
 using namespace Common;
 
-constexpr auto RESET_WORK_FACTOR_V5 = 1000;
-
 namespace CryptoNote {
 
   const std::vector<uint64_t> Currency::PRETTY_AMOUNTS = {
@@ -331,74 +329,16 @@ namespace CryptoNote {
 
   Difficulty Currency::nextDifficulty(uint32_t height, uint8_t blockMajorVersion, std::vector<uint64_t> timestamps,
     std::vector<Difficulty> cumulativeDifficulties) const {
-    // Discrete: LWMA-1 (V5) is the sole difficulty algorithm from genesis.
-    (void)blockMajorVersion;
-    return nextDifficultyV5(height, blockMajorVersion, timestamps, cumulativeDifficulties);
-  }
-
-  Difficulty Currency::nextDifficultyV5(
-    uint32_t height,
-    uint8_t blockMajorVersion,
-    std::vector<std::uint64_t> timestamps,
-    std::vector<Difficulty> cumulativeDifficulties) const {
-
     // LWMA-1 difficulty algorithm
     // Copyright (c) 2017-2018 Zawy, MIT License
     // See commented link below for required config file changes. Fix FTL and MTP.
     // https://github.com/zawy12/difficulty-algorithms/issues/3
 
-    // begin reset difficulty for new epoch
-
-    height--; // there's difference between karbo1 and karbo2 here (height vs top block index)
-
-    const uint32_t upgradeHeightV5 = upgradeHeight(CryptoNote::BLOCK_MAJOR_VERSION_5);
-
-    /*
-      Mainnet: keep original V5 reset behavior for consensus compatibility.
-      Testnet: skip this reset. On low-height testnet this can produce bad/zero
-      difficulty or interact badly with the small available window.
-
-      Discrete: LWMA (V5) is active from genesis (UPGRADE_HEIGHT_V5 == 0), so there
-      is no prior epoch to reset from. The `height != 0` guard skips the reset for
-      the first block after genesis — without it `cumulativeDifficulties[0] / height`
-      divides by zero (height is 0 here after the decrement above). For any network
-      with a non-zero V5 activation, height == upgradeHeightV5 implies height > 0, so
-      this guard preserves the original behavior.
-    */
-    if (!isTestnet() && height != 0 && height == upgradeHeightV5) {
-      Difficulty resetDifficulty =
-        cumulativeDifficulties[0] / height / RESET_WORK_FACTOR_V5;
-
-      return std::max<Difficulty>(1, resetDifficulty);
-    }
-
-    uint32_t count =
-      static_cast<uint32_t>(difficultyBlocksCountByBlockVersion(blockMajorVersion)) - 1;
-
-    /*
-      Mainnet: keep original post-upgrade window trimming.
-      Testnet: skip this. At low testnet heights, offset can be larger than the
-      available vectors and can break difficulty calculation/template generation.
-    */
-    if (!isTestnet() &&
-      height > upgradeHeightV5 &&
-      height < CryptoNote::parameters::UPGRADE_HEIGHT_V5 + count) {
-
-      uint32_t offset = count - (height - upgradeHeightV5);
-
-      /*
-        Nasty bug guard only. This should not affect normal mainnet behavior,
-        but prevents invalid erase if the available history is shorter than offset.
-      */
-      if (offset >= timestamps.size() || offset >= cumulativeDifficulties.size()) {
-        return 1;
-      }
-
-      timestamps.erase(timestamps.begin(), timestamps.begin() + offset);
-      cumulativeDifficulties.erase(cumulativeDifficulties.begin(), cumulativeDifficulties.begin() + offset);
-    }
-
-    // end reset difficulty for new epoch
+    // Discrete runs LWMA from genesis as its sole difficulty algorithm. The early-block
+    // case (before the window fills) is handled by the size/N guards below, which
+    // return difficulty 1 until enough history exists.
+    (void)height;
+    (void)blockMajorVersion;
 
     assert(timestamps.size() == cumulativeDifficulties.size());
 
