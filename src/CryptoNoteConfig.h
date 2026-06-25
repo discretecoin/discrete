@@ -91,6 +91,12 @@ const uint8_t  DANDELION_STEM_TX_PROPAGATION_PROBABILITY     = 90;
 const size_t   DIFFICULTY_WINDOW                             = 60;
 const size_t   DIFFICULTY_CUT                                = 0;
 const size_t   DIFFICULTY_LAG                                = 0;
+// Mainnet difficulty floor: nextDifficulty never returns below this. Protects a young,
+// low-hashrate chain from cheap reorgs and caps the genesis instamine window. MUST stay
+// comfortably below the honest network hashrate (a floor above it stalls the chain with
+// no recovery, since difficulty can't drop past it): ~MINIMUM_DIFFICULTY / DIFFICULTY_TARGET
+// hashes/sec are required. 0 disables the floor (the absolute minimum is then 1).
+const uint64_t MINIMUM_DIFFICULTY                            = 100000;
 
 const size_t   MAX_BLOCK_SIZE_INITIAL                        = 1000000;
 const uint64_t MAX_BLOCK_SIZE_GROWTH_SPEED_NUMERATOR         = 100 * 1024;

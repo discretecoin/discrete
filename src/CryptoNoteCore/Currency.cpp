@@ -422,9 +422,11 @@ namespace CryptoNote {
       }
     }
 
-    // minimum limit
-    if (!isTestnet() && next_D < 100000) {
-      next_D = 100000;
+    // Mainnet difficulty floor (parameters::MINIMUM_DIFFICULTY; 0 disables it). Keeps a
+    // young chain costly to reorg and caps the genesis instamine window; it must stay
+    // below the honest network hashrate or the chain stalls (see the config comment).
+    if (!isTestnet() && next_D < CryptoNote::parameters::MINIMUM_DIFFICULTY) {
+      next_D = CryptoNote::parameters::MINIMUM_DIFFICULTY;
     }
 
     return std::max<Difficulty>(1, next_D);
