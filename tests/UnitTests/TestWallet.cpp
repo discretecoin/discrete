@@ -44,6 +44,7 @@
 #include "Wallet/WalletUtils.h"
 #include "WalletLegacy/WalletLegacy.h"  // simplewallet engine smoke test
 #include "PqAddress.h"
+#include "AccountNumber.h"
 #include "CryptoNoteCore/CryptoNoteFormatUtils.h"  // verifyMessagePq
 #include "WalletLegacy/WalletUserTransactionsCache.h"
 #include "WalletLegacy/WalletLegacySerializer.h"
@@ -826,4 +827,74 @@ TEST(WalletLegacySmoke, PqIdentityAndSigning) {
   EXPECT_FALSE(words.empty());
 
   wallet.shutdown();
+}
+
+// Full Index (H-I-T-C) receive + spend addressed by the account-number STRING: register,
+// issue an H-I-T-C deposit, receive to it, read its balance by the H-I-T-C string, and
+// spend restricted to it by that same string.
+TEST(PqWalletIntegration, IndexHITCReceiveAndSpendByAddressString) {
+  System::Dispatcher dispatcher;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(1000000).upgradeHeightV6(1000000)
+      .currency();
+  TestBlockchainGenerator generator(currency);
+  INodeTrivialRefreshStub node(generator);
+  CryptoNote::WalletGreen wallet(dispatcher, currency, node, logger);
+
+  const std::string path = "pq_hitc_spend.wallet";
+  boost::filesystem::remove(path);
+  wallet.initialize(path, "pass");
+  wallet.createAddress();
+  wallet.setPqDepositScheme(CryptoNote::PqDepositScheme::SingleKeyIndex);
+
+  Crypto::SecretKey spend = wallet.getAddressSpendKey(0).secretKey;
+  CryptoNote::PqWalletKeys mine = pqKeysFromWalletSeed(spend);
+
+  // Register the base account on-chain so H-I-T-C addresses can be formed.
+  Crypto::Hash refHash = node.getLastLocalBlockHeaderInfo().hash;
+  CryptoNote::Transaction regTx = wallet.buildPqFreeRegTransaction(refHash);
+  generator.addTxToBlockchain(regTx);
+
+  // Reserve two deposits and address deposit #1 (T=1) by its H-I-T-C string.
+  ASSERT_EQ(wallet.reservePqDepositIndex(), 0u);
+  ASSERT_EQ(wallet.reservePqDepositIndex(), 1u);
+  const std::string hitc = wallet.getAddress(2);  // deposit index 1 -> T=1
+  CryptoNote::AccountNumber acct;
+  uint32_t t = 99;
+  ASSERT_TRUE(CryptoNote::AccountNumber::fromStringWithIndex(hitc, acct, t));
+  ASSERT_EQ(t, 1u);
+
+  // Pay 800000 to the deposit (one key, subaddress T=1).
+  Crypto::SecretKey otherSecret;
+  for (std::size_t i = 0; i < sizeof(otherSecret.data); ++i)
+    otherSecret.data[i] = static_cast<uint8_t>(i * 11 + 5);
+  CryptoNote::PqWalletKeys them = CryptoNote::derivePqWalletKeys(otherSecret);
+  CryptoNote::Transaction pqTx = makePqPayTo(them, mine, 1000000, 800000, 0x71, /*T*/ 1);
+  generator.setTxFee(CryptoNote::getObjectHash(pqTx), 1000000 - 800000);
+  generator.addTxToBlockchain(pqTx);
+  node.updateObservers();
+  pumpUntil(dispatcher, wallet, [&wallet]() { return wallet.getActualBalance() == 800000u; });
+
+  // Balance read BY THE H-I-T-C STRING resolves to that deposit bucket.
+  EXPECT_EQ(wallet.getActualBalance(hitc), 800000u);
+
+  // Spend restricted to that deposit BY THE H-I-T-C STRING (SingleKeyIndex -> one key).
+  node.setNextTransactionToPool();
+  CryptoNote::PqSendResult r = wallet.sendPqTransfer(
+      { CryptoNote::PqSendOutput{ them.viewPub, them.spendPub, 300000 } },
+      /*fee*/ 0, /*unlockHeight*/ 0, /*extra*/ {}, /*sourceAddresses*/ { hitc });
+  ASSERT_EQ(r.selected.size(), 1u);
+  EXPECT_EQ(r.selected[0].depositIndex, 1u);  // drew from deposit #1
+  generator.setTxFee(CryptoNote::getObjectHash(r.tx), r.fee);
+  generator.putTxPoolToBlockchain();
+  node.updateObservers();
+  pumpUntil(dispatcher, wallet, [&wallet, &hitc]() { return wallet.getActualBalance(hitc) == 0u; });
+
+  EXPECT_EQ(wallet.getActualBalance(hitc), 0u);  // the deposit was spent
+
+  wallet.shutdown();
+  boost::filesystem::remove(path);
 }

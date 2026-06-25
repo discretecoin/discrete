@@ -99,9 +99,9 @@ multi-record `createAddressList` path is dead and still slated for removal.
 | Operation | Intended (CN) | PQ behavior | Status |
 |---|---|---|---|
 | `getSpendkeys(address)` | per-address spend keypair | any of our addresses → the 32-byte master seed (id = hash(seed)) | ✅ `PaymentGateTest.getSpendKeysAcceptsOwnAddress` |
-| `getViewKey` | classical view secret | none classical; PQ tracking key is the audit credential | 🟡 |
-| `getMnemonicSeed` | per-address electrum words | single identity → master seed as electrum words (address ignored) | 🟡 |
-| `signMessage` / `verifyMessage` | per-address signature | ML-DSA over the one spend key (address ignored — single signing identity) | ⬜ |
+| `getViewKey` | classical view secret | none classical (null); PQ tracking key is the audit credential | ✅ `MessageSigningMnemonicAndViewKeyShape` |
+| `getMnemonicSeed` | per-address electrum words | single identity → master seed as electrum words (address ignored); round-trips to the seed | ✅ `MessageSigningMnemonicAndViewKeyShape` |
+| `signMessage` / `verifyMessage` | per-address signature | ML-DSA over the one spend key (address ignored); **must sign with the seed-master key the address publishes, not the legacy HKDF key** | ✅ `MessageSigningMnemonicAndViewKeyShape` (caught + fixed a wrong-key bug) |
 
 ## G. Lifecycle / sync
 
@@ -110,9 +110,10 @@ multi-record `createAddressList` path is dead and still slated for removal.
 | save / load | persist + restore wallet | v9 container + persisted PQ ledger; balance/history restore without rescan | ✅ `PqWalletIntegration.BalanceSurvivesSaveAndReload` |
 | reorg / detach | roll back balance + history | `WalletLedger::rollbackToHeight` on `onBlockchainDetach` | ✅ primary `ReorgDetachReversesCredit`; ✅ deposit `DepositCreditReversedOnReorg` |
 | tracking / view-only | scan, refuse to spend | zero seed → scan via tracking key, `sendPqTransfer` throws | ✅ `PqWalletIntegration.TrackingWalletCannotSpend` |
-| reset / rescan | re-scan from a height | re-derives the ledger | ⬜ |
+| reset / rescan | re-scan from a height | re-derives the ledger | ✅ `PqWalletIntegration.ResetRescansLedger` |
 | `getStatus` / `getBlockHashes` | node/sync status | pass-through | 🟡 low risk |
 | mining keys from wallet | n/a | `MiningKeyLoader` reads the seed (both wallet formats) | ✅ `PqChainTests`, mining path |
+| simplewallet (`WalletLegacy`) PQ identity | address + message signing | derives identity from the seed; signs ML-DSA verifying against its address | ✅ `WalletLegacySmoke.PqIdentityAndSigning` |
 
 ---
 
@@ -132,12 +133,15 @@ Done (✅), with the test that proves each:
 - Relay-failure rollback — `RelayFailureRollsBackReservation`
 - `--independent-addresses` removed; dead multi-record `createAddressList` RPC removed
 
-Remaining (lower-risk; pieces already covered individually):
-1. A *receive + spend addressed by the H-I-T-C string* end to end (attribution-by-T,
-   registration→H-I-T-C, and spend-with-one-key are each already proven; this is the
-   integration of the three via the address string).
-2. `signMessage`/`verifyMessage`, `getViewKey`/`getMnemonicSeed` shape (single-identity,
-   address-ignored) — 🟡 untested but trivial.
-3. `reset`/rescan re-derives the ledger — ⬜.
-4. simplewallet (`WalletLegacy`) parity for the deposit flows — the engine differs; it
-   has no deposits, so most cells are N/A, but a smoke test is worthwhile.
+All matrix cells above are now covered. Also done:
+- Full Index **H-I-T-C receive + spend addressed by the account-number string** —
+  `PqWalletIntegration.IndexHITCReceiveAndSpendByAddressString` (register → issue H-I-T-C
+  → receive → balance-by-string → spend-restricted-to-it-by-string → deposit empties).
+- `signMessage`/`getMnemonicSeed`/`getViewKey` shape — `MessageSigningMnemonicAndViewKey
+  Shape` (caught + fixed a real wrong-key signing bug).
+- `reset`/rescan — `ResetRescansLedger`.
+- simplewallet PQ-identity smoke — `WalletLegacySmoke.PqIdentityAndSigning`.
+
+Still open (genuinely low-risk, not blocking): `getStatus`/`getBlockHashes` pass-throughs
+(🟡), paid-registration path (free path is covered), and the SingleKeyIndex T=0 ⇄ primary
+conflation noted in §A — a semantic decision, not a bug.
