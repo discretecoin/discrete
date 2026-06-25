@@ -42,6 +42,9 @@
 #include "crypto_pq/PqSeed.h"   // deriveDepositSpendKeys
 #include "Wallet/WalletSerializationV2.h"
 #include "Wallet/WalletUtils.h"
+#include "WalletLegacy/WalletLegacy.h"  // simplewallet engine smoke test
+#include "PqAddress.h"
+#include "CryptoNoteCore/CryptoNoteFormatUtils.h"  // verifyMessagePq
 #include "WalletLegacy/WalletUserTransactionsCache.h"
 #include "WalletLegacy/WalletLegacySerializer.h"
 #include <System/Dispatcher.h>
@@ -741,4 +744,86 @@ TEST(PqWalletIntegration, LockedOutputNotSpendableUntilUnlockHeight) {
 
   wallet.shutdown();
   boost::filesystem::remove(path);
+}
+
+// reset(scanHeight) drops the PQ ledger and re-derives it by rescanning the chain; the
+// balance and history come back identical.
+TEST(PqWalletIntegration, ResetRescansLedger) {
+  System::Dispatcher dispatcher;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(1000000).upgradeHeightV6(1000000)
+      .currency();
+  TestBlockchainGenerator generator(currency);
+  INodeTrivialRefreshStub node(generator);
+  CryptoNote::WalletGreen wallet(dispatcher, currency, node, logger);
+
+  const std::string path = "pq_reset.wallet";
+  boost::filesystem::remove(path);
+  wallet.initialize(path, "pass");
+  wallet.createAddress();
+
+  Crypto::SecretKey spend = wallet.getAddressSpendKey(0).secretKey;
+  CryptoNote::PqWalletKeys mine = pqKeysFromWalletSeed(spend);
+  Crypto::SecretKey otherSecret;
+  for (std::size_t i = 0; i < sizeof(otherSecret.data); ++i)
+    otherSecret.data[i] = static_cast<uint8_t>(i * 7 + 3);
+  CryptoNote::PqWalletKeys them = CryptoNote::derivePqWalletKeys(otherSecret);
+
+  CryptoNote::Transaction pqTx = makePqPayTo(them, mine, 1000000, 800000, 0x55);
+  generator.setTxFee(CryptoNote::getObjectHash(pqTx), 1000000 - 800000);
+  generator.addTxToBlockchain(pqTx);
+  node.updateObservers();
+  pumpUntil(dispatcher, wallet, [&wallet]() { return wallet.getActualBalance() == 800000u; });
+  ASSERT_EQ(wallet.getActualBalance(), 800000u);
+  ASSERT_EQ(wallet.getTransactionCount(), 1u);
+
+  // Rescan from genesis: the ledger is rebuilt from the chain to the same state.
+  wallet.reset(0);
+  pumpUntil(dispatcher, wallet, [&wallet]() { return wallet.getActualBalance() == 800000u; },
+            std::chrono::seconds(20));
+  EXPECT_EQ(wallet.getActualBalance(), 800000u);
+  EXPECT_EQ(wallet.getTransactionCount(), 1u);
+
+  wallet.shutdown();
+  boost::filesystem::remove(path);
+}
+
+// simplewallet engine (WalletLegacy) smoke test: it has a working PQ identity — a valid
+// PQ address and message signing that verifies against that address's spend key.
+TEST(WalletLegacySmoke, PqIdentityAndSigning) {
+  System::Dispatcher dispatcher;
+  (void)dispatcher;  // WalletLegacy manages its own threads
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(1000000).upgradeHeightV6(1000000)
+      .currency();
+  TestBlockchainGenerator generator(currency);
+  INodeTrivialRefreshStub node(generator);
+
+  CryptoNote::WalletLegacy wallet(currency, node, logger);
+  wallet.initAndGenerate("pass");
+
+  // A valid PQ address.
+  const std::string address = wallet.getAddress();
+  CryptoNote::PqAddress pq;
+  ASSERT_TRUE(CryptoNote::decodePqAddress(address, pq));
+
+  // Message signing verifies against the address's published spend key.
+  const std::string msg = "discrete simplewallet";
+  const std::string sig = wallet.sign_message(msg);
+  ASSERT_FALSE(sig.empty());
+  EXPECT_TRUE(CryptoNote::verifyMessagePq(msg, pq.spendPub, sig));
+  EXPECT_FALSE(CryptoNote::verifyMessagePq("tampered", pq.spendPub, sig));
+
+  // Deterministic backup: a non-empty mnemonic.
+  std::string words;
+  EXPECT_TRUE(wallet.getSeed(words));
+  EXPECT_FALSE(words.empty());
+
+  wallet.shutdown();
 }
