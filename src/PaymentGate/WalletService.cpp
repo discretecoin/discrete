@@ -629,12 +629,6 @@ std::error_code WalletService::replaceWithNewWallet(const std::string& viewSecre
       return make_error_code(CryptoNote::error::WalletServiceErrorCode::WRONG_KEY_FORMAT);
     }
 
-    Crypto::PublicKey viewPublicKey;
-    if (!Crypto::secret_key_to_public_key(viewSecretKey, viewPublicKey)) {
-      logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Cannot derive view public key, wrong secret key: " << viewSecretKeyText;
-      return make_error_code(CryptoNote::error::WalletServiceErrorCode::WRONG_KEY_FORMAT);
-    }
-
     replaceWithNewWallet(viewSecretKey);
     logger(Logging::INFO, Logging::BRIGHT_WHITE) << "The container has been replaced";
   } catch (std::system_error& x) {
@@ -655,12 +649,6 @@ std::error_code WalletService::replaceWithNewWallet(const std::string& viewSecre
     Crypto::SecretKey viewSecretKey;
     if (!Common::podFromHex(viewSecretKeyText, viewSecretKey)) {
       logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Cannot restore view secret key: " << viewSecretKeyText;
-      return make_error_code(CryptoNote::error::WalletServiceErrorCode::WRONG_KEY_FORMAT);
-    }
-
-    Crypto::PublicKey viewPublicKey;
-    if (!Crypto::secret_key_to_public_key(viewSecretKey, viewPublicKey)) {
-      logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Cannot derive view public key, wrong secret key: " << viewSecretKeyText;
       return make_error_code(CryptoNote::error::WalletServiceErrorCode::WRONG_KEY_FORMAT);
     }
 

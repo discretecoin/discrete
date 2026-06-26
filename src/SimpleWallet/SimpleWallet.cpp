@@ -1497,11 +1497,11 @@ bool simple_wallet::new_wallet(const std::string &wallet_file, const std::string
     m_initResultPromise.reset(new std::promise<std::error_code>());
     std::future<std::error_code> f_initError = m_initResultPromise->get_future();
 
+    // PQ identity derives from spendSecretKey (the 32-byte seed); the ECC address
+    // public keys are vestigial and stay zero.
     AccountKeys wallet_keys;
     wallet_keys.spendSecretKey = secret_key;
     wallet_keys.viewSecretKey = view_key;
-    Crypto::secret_key_to_public_key(wallet_keys.spendSecretKey, wallet_keys.address.spendPublicKey);
-    Crypto::secret_key_to_public_key(wallet_keys.viewSecretKey, wallet_keys.address.viewPublicKey);
 
     if (m_scan_height != 0) {
       m_wallet->initWithKeys(wallet_keys, password, m_scan_height);

@@ -330,26 +330,13 @@ bool is_valid_decomposed_amount(uint64_t amount) {
   return true;
 }
 
-bool getTransactionProof(const Crypto::Hash& transactionHash, const CryptoNote::AccountPublicAddress& destinationAddress, const Crypto::SecretKey& transactionKey, std::string& transactionProof, Logging::ILogger& log) {
-  LoggerRef logger(log, "get_tx_proof"); 
-  Crypto::KeyImage p = *reinterpret_cast<const Crypto::KeyImage*>(&destinationAddress.viewPublicKey);
-  Crypto::KeyImage k = *reinterpret_cast<const Crypto::KeyImage*>(&transactionKey);
-  Crypto::KeyImage pk = Crypto::scalarmultKey(p, k);
-  Crypto::PublicKey R;
-  Crypto::PublicKey rA = reinterpret_cast<const PublicKey&>(pk);
-  Crypto::secret_key_to_public_key(transactionKey, R);
-  Crypto::Signature sig;
-
-  try {
-    Crypto::generate_tx_proof(transactionHash, R, destinationAddress.viewPublicKey, rA, transactionKey, sig);
-  } catch (const std::runtime_error &e) {
-    logger(ERROR, BRIGHT_RED) << "Proof generation error: " << *e.what();
-    return false;
-  }
-
-  transactionProof = Tools::Base58::encode_addr(CryptoNote::parameters::CRYPTONOTE_TX_PROOF_BASE58_PREFIX, std::string((const char *)&rA, sizeof(Crypto::PublicKey)) + std::string((const char *)&sig, sizeof(Crypto::Signature)));
-
-  return true;
+bool getTransactionProof(const Crypto::Hash& /*transactionHash*/, const CryptoNote::AccountPublicAddress& /*destinationAddress*/, const Crypto::SecretKey& /*transactionKey*/, std::string& /*transactionProof*/, Logging::ILogger& log) {
+  // Classical payment proofs (Ed25519 r*A stealth proofs) have no meaning on the
+  // PQ chain: transactions carry PqOutputs with no shared ECC tx key. The proof
+  // feature is unsupported; callers surface this to the user.
+  LoggerRef logger(log, "get_tx_proof");
+  logger(ERROR, BRIGHT_RED) << "Transaction proofs are not supported on the post-quantum chain";
+  return false;
 }
 
 namespace {
