@@ -43,6 +43,7 @@
 #include "CryptoNoteCore/TransactionUtils.h"
 #include "CryptoNoteCore/CryptoNoteTools.h"
 #include "CryptoNoteCore/CryptoNoteFormatUtils.h"
+#include "PqAddress.h"
 #include "CryptoNoteCore/Core.h"
 #include "CryptoNoteCore/IBlock.h"
 #include "CryptoNoteCore/Miner.h"
@@ -2562,32 +2563,14 @@ bool RpcServer::on_validate_address(const COMMAND_RPC_VALIDATE_ADDRESS::request&
 }
 
 bool RpcServer::on_verify_message(const COMMAND_RPC_VERIFY_MESSAGE::request& req, COMMAND_RPC_VERIFY_MESSAGE::response& res) {
-  AccountPublicAddress acc = boost::value_initialized<AccountPublicAddress>();
-  if (!m_core.currency().parseAccountAddressString(req.address, acc)) {
+  // Discrete identities are post-quantum (ML-DSA). Decode the PQ address to its
+  // spend key and verify the ML-DSA signature against it.
+  CryptoNote::PqAddress addr;
+  if (!CryptoNote::decodePqAddress(req.address, addr)) {
     throw JsonRpc::JsonRpcError{CORE_RPC_ERROR_CODE_WRONG_PARAM, "Failed to parse address" };
   }
 
-  // could just've used this but detailed errors might be more handy
-  //res.sig_valid = CryptoNote::verifyMessage(req.message, acc, req.signature, logger.getLogger());
-
-  std::string decoded;
-  Crypto::Signature s;
-  uint64_t prefix;
-  if (!Tools::Base58::decode_addr(req.signature, prefix, decoded) || prefix != CryptoNote::parameters::CRYPTONOTE_KEYS_SIGNATURE_BASE58_PREFIX) {
-    throw JsonRpc::JsonRpcError{CORE_RPC_ERROR_CODE_WRONG_PARAM, "Signature decoding error" };
-  }
-
-  if (sizeof(s) != decoded.size()) {
-    throw JsonRpc::JsonRpcError{CORE_RPC_ERROR_CODE_WRONG_PARAM, "Signature size wrong" };
-    return false;
-  }
-
-  Crypto::Hash hash;
-  Crypto::cn_fast_hash(req.message.data(), req.message.size(), hash);
-
-  memcpy(&s, decoded.data(), sizeof(s));
-  res.sig_valid = Crypto::check_signature(hash, acc.spendPublicKey, s);
-
+  res.sig_valid = CryptoNote::verifyMessagePq(req.message, addr.spendPub, req.signature);
   res.status = CORE_RPC_STATUS_OK;
   return true;
 }

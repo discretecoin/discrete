@@ -30,6 +30,7 @@
 #include "CryptoNoteCore/CryptoNoteFormatUtils.h"
 #include "CryptoNoteCore/CryptoNoteBasicImpl.h"
 #include "CryptoNoteCore/Account.h"
+#include "PqAddress.h"
 #include "ITransfersContainer.h"
 #include "Rpc/JsonRpc.h"
 #include "WalletLegacy/WalletHelper.h"
@@ -803,24 +804,14 @@ bool wallet_rpc_server::on_sign_message(const wallet_rpc::COMMAND_RPC_SIGN_MESSA
 //------------------------------------------------------------------------------------------------------------------------------
 bool wallet_rpc_server::on_verify_message(const wallet_rpc::COMMAND_RPC_VERIFY_MESSAGE::request& req, wallet_rpc::COMMAND_RPC_VERIFY_MESSAGE::response& res)
 {
-  CryptoNote::AccountPublicAddress address;
-  if (!m_currency.parseAccountAddressString(req.address, address)) {
+  // Discrete identities are post-quantum (ML-DSA). Decode the PQ address to its
+  // spend key and verify the ML-DSA signature against it.
+  CryptoNote::PqAddress addr;
+  if (!CryptoNote::decodePqAddress(req.address, addr)) {
     throw JsonRpc::JsonRpcError(WALLET_RPC_ERROR_CODE_WRONG_ADDRESS, std::string("Failed to parse address"));
   }
 
-  std::string decoded;
-  Crypto::Signature s;
-  uint64_t prefix;
-  if (!Tools::Base58::decode_addr(req.signature, prefix, decoded) || prefix != CryptoNote::parameters::CRYPTONOTE_KEYS_SIGNATURE_BASE58_PREFIX) {
-    throw JsonRpc::JsonRpcError(WALLET_RPC_ERROR_CODE_WRONG_SIGNATURE, std::string("Signature decoding error"));
-  }
-
-  if (sizeof(s) != decoded.size()) {
-    throw JsonRpc::JsonRpcError(WALLET_RPC_ERROR_CODE_WRONG_SIGNATURE, std::string("Signature size wrong"));
-    return false;
-  }
-
-  res.good = m_wallet.verify_message(req.message, address, req.signature);
+  res.good = CryptoNote::verifyMessagePq(req.message, addr.spendPub, req.signature);
   return true;
 }
 

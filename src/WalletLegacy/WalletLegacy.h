@@ -150,7 +150,6 @@ public:
   virtual std::vector<TransactionOutputInformation> getTransactionInputs(const Crypto::Hash& transactionHash, uint32_t flags) const override;
 
   virtual std::string sign_message(const std::string &message) override;
-  virtual bool verify_message(const std::string &message, const CryptoNote::AccountPublicAddress &address, const std::string &signature) override;
 
   virtual bool isTrackingWallet() override;
 

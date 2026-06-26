@@ -35,8 +35,6 @@ bool parseAndValidateTransactionFromBinaryArray(const BinaryArray& transactionBi
 
 bool getTransactionProof(const Crypto::Hash& transactionHash, const CryptoNote::AccountPublicAddress& destinationAddress, const Crypto::SecretKey& transactionKey, std::string& transactionProof, Logging::ILogger& log);
 
-std::string signMessage(const std::string &data, const CryptoNote::AccountKeys &keys);
-bool verifyMessage(const std::string &data, const CryptoNote::AccountPublicAddress &address, const std::string &signature, Logging::ILogger& log);
 
 // PQ message signing (ML-DSA-65). Discrete has no ECC account identity, so a
 // human-signed message is authorized by the wallet's long-term ML-DSA spend key
@@ -61,8 +59,6 @@ void deriveMinerPqKeys(const Crypto::SecretKey& spendSecretKey,
 
 bool is_out_to_acc(const AccountKeys& acc, const KeyOutput& out_key, const Crypto::PublicKey& tx_pub_key, size_t keyIndex);
 bool is_out_to_acc(const AccountKeys& acc, const KeyOutput& out_key, const Crypto::KeyDerivation& derivation, size_t keyIndex);
-bool lookup_acc_outs(const AccountKeys& acc, const Transaction& tx, const Crypto::PublicKey& tx_pub_key, std::vector<size_t>& outs, uint64_t& money_transfered);
-bool lookup_acc_outs(const AccountKeys& acc, const Transaction& tx, std::vector<size_t>& outs, uint64_t& money_transfered);
 bool get_tx_fee(const Transaction& tx, uint64_t & fee);
 uint64_t get_tx_fee(const Transaction& tx);
 std::string short_hash_str(const Crypto::Hash& h);
@@ -123,11 +119,4 @@ void get_tx_tree_hash(const std::vector<Crypto::Hash>& tx_hashes, Crypto::Hash& 
 Crypto::Hash get_tx_tree_hash(const std::vector<Crypto::Hash>& tx_hashes);
 Crypto::Hash get_tx_tree_hash(const Block& b);
 bool is_valid_decomposed_amount(uint64_t amount);
-
-// Deterministic transaction key generation: r = Hs(viewSecretKey || inputsHash), R = r*G.
-// Same formula used by sender and detector — single authoritative implementation.
-bool generateDeterministicTransactionKeys(const Crypto::Hash& inputsHash,
-    const Crypto::SecretKey& secretKey, CryptoNote::KeyPair& keys);
-bool generateDeterministicTransactionKeys(const Transaction& tx,
-    const Crypto::SecretKey& secretKey, CryptoNote::KeyPair& keys);
 }

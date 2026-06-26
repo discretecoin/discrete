@@ -228,35 +228,6 @@ bool is_out_to_acc(const AccountKeys& acc, const KeyOutput& out_key, const Publi
   return is_out_to_acc(acc, out_key, derivation, keyIndex);
 }
 
-bool lookup_acc_outs(const AccountKeys& acc, const Transaction& tx, std::vector<size_t>& outs, uint64_t& money_transfered) {
-  PublicKey transactionPublicKey = getTransactionPublicKeyFromExtra(tx.extra);
-  if (transactionPublicKey == NULL_PUBLIC_KEY)
-    return false;
-  return lookup_acc_outs(acc, tx, transactionPublicKey, outs, money_transfered);
-}
-
-bool lookup_acc_outs(const AccountKeys& acc, const Transaction& tx, const PublicKey& tx_pub_key, std::vector<size_t>& outs, uint64_t& money_transfered) {
-  money_transfered = 0;
-  size_t outputIndex = 0;
-
-  KeyDerivation derivation;
-  if (!generate_key_derivation(tx_pub_key, acc.viewSecretKey, derivation)) {
-    return true;
-  }
-
-  for (const TransactionOutput& o : tx.outputs) {
-    if (o.target.type() == typeid(KeyOutput)) {
-      if (is_out_to_acc(acc, boost::get<KeyOutput>(o.target), derivation, outputIndex)) {
-        outs.push_back(outputIndex);
-        money_transfered += o.amount;
-      }
-    }
-
-    ++outputIndex;
-  }
-  return true;
-}
-
 bool get_block_hashing_blob(const Block& b, BinaryArray& ba) {
   if (!toBinaryArray(static_cast<const BlockHeader&>(b), ba)) {
     return false;
@@ -393,15 +364,6 @@ bool getTransactionProof(const Crypto::Hash& transactionHash, const CryptoNote::
   return true;
 }
 
-std::string signMessage(const std::string &data, const CryptoNote::AccountKeys &keys) {
-  Crypto::Hash hash;
-  Crypto::cn_fast_hash(data.data(), data.size(), hash);
-  
-  Crypto::Signature signature;
-  Crypto::generate_signature(hash, keys.address.spendPublicKey, keys.spendSecretKey, signature);
-  return Tools::Base58::encode_addr(CryptoNote::parameters::CRYPTONOTE_KEYS_SIGNATURE_BASE58_PREFIX, std::string((const char *)&signature, sizeof(signature)));
-}
-
 namespace {
 // Wallet-layer message-signing domain. NOT a consensus constant, but signers and
 // verifiers must agree on it. It is deliberately distinct from every PqDerive
@@ -460,41 +422,5 @@ void deriveMinerPqKeys(const Crypto::SecretKey& masterSeed,
   spendSk = spend.second;
 }
 
-bool verifyMessage(const std::string &data, const CryptoNote::AccountPublicAddress &address, const std::string &signature, Logging::ILogger& log) {
-  LoggerRef logger(log, "verify_message");
-
-  std::string decoded;
-  uint64_t prefix;
-  if (!Tools::Base58::decode_addr(signature, prefix, decoded) || prefix != CryptoNote::parameters::CRYPTONOTE_KEYS_SIGNATURE_BASE58_PREFIX) {
-    logger(Logging::ERROR) << "Signature decoding error";
-    return false;
-  }
-
-  Crypto::Signature s;
-  if (sizeof(s) != decoded.size()) {
-    logger(Logging::ERROR) << "Signature size wrong";
-    return false;
-  }
-
-  Crypto::Hash hash;
-  Crypto::cn_fast_hash(data.data(), data.size(), hash);
-
-  memcpy(&s, decoded.data(), sizeof(s));
-  return Crypto::check_signature(hash, address.spendPublicKey, s);
-}
-
-bool generateDeterministicTransactionKeys(const Crypto::Hash& inputsHash,
-    const Crypto::SecretKey& secretKey, CryptoNote::KeyPair& keys) {
-  BinaryArray ba;
-  Common::append(ba, std::begin(secretKey.data), std::end(secretKey.data));
-  Common::append(ba, std::begin(inputsHash.data), std::end(inputsHash.data));
-  Crypto::hash_to_scalar(ba.data(), ba.size(), keys.secretKey);
-  return Crypto::secret_key_to_public_key(keys.secretKey, keys.publicKey);
-}
-
-bool generateDeterministicTransactionKeys(const Transaction& tx,
-    const Crypto::SecretKey& secretKey, CryptoNote::KeyPair& keys) {
-  return generateDeterministicTransactionKeys(getObjectHash(tx.inputs), secretKey, keys);
-}
 
 }

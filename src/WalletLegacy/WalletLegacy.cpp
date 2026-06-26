@@ -724,9 +724,6 @@ std::string WalletLegacy::sign_message(const std::string &message) {
   return CryptoNote::signMessagePq(message, pq.spendSk);
 }
 
-bool WalletLegacy::verify_message(const std::string &message, const CryptoNote::AccountPublicAddress &address, const std::string &signature) {
-  return CryptoNote::verifyMessage(message, address, signature, m_logger.getLogger());
-}
 
 std::vector<Payments> WalletLegacy::getTransactionsByPaymentIds(const std::vector<PaymentId>& /*paymentIds*/) const {
   // PQ owned-output scanning cannot recover payment IDs, so there is no
