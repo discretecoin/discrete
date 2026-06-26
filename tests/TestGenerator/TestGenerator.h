@@ -113,9 +113,6 @@ public:
     const std::vector<Crypto::Hash>& transactionHashes = std::vector<Crypto::Hash>(), size_t txsSizes = 0, uint64_t fee = 0);
   bool constructBlockManuallyTx(CryptoNote::Block& blk, const CryptoNote::Block& prevBlock,
     const CryptoNote::AccountBase& minerAcc, const std::vector<Crypto::Hash>& transactionHashes, size_t txsSize);
-  bool constructMaxSizeBlock(CryptoNote::Block& blk, const CryptoNote::Block& blkPrev,
-    const CryptoNote::AccountBase& minerAccount, size_t medianBlockCount = 0,
-    const std::list<CryptoNote::Transaction>& txList = std::list<CryptoNote::Transaction>());
 
 private:
   const CryptoNote::Currency& m_currency;
@@ -138,6 +135,3 @@ void fillNonce(CryptoNote::Block& blk, const CryptoNote::Difficulty& diffic,
                CryptoNote::Blockchain* blockchain,
                const CryptoNote::AccountBase& minerAcc);
 
-bool constructMinerTxBySize(const CryptoNote::Currency& currency, CryptoNote::Transaction& baseTransaction, uint8_t blockMajorVersion, uint32_t height,
-  uint64_t alreadyGeneratedCoins, const CryptoNote::AccountPublicAddress& minerAddress,
-  std::vector<size_t>& blockSizes, size_t targetTxSize, size_t targetBlockSize, uint64_t fee = 0);

@@ -124,16 +124,9 @@ TEST(parseTransactionExtra, handles_pub_key_and_padding)
   ASSERT_EQ(typeid(CryptoNote::TransactionExtraPadding), tx_extra_fields[1].type());
 }
 
-TEST(parse_and_validate_tx_extra, fails_on_big_extra_nonce)
-{
-  Logging::LoggerGroup logger;
-  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger).currency();
-  CryptoNote::Transaction tx = AUTO_VAL_INIT(tx);
-  CryptoNote::AccountBase acc;
-  acc.generate();
-  CryptoNote::BinaryArray b(TX_EXTRA_NONCE_MAX_COUNT + 1, 0);
-  ASSERT_FALSE(currency.constructMinerTx(CryptoNote::BLOCK_MAJOR_VERSION_1, 0, 0, 10000000000000, 1000, currency.minimumFee(), acc.getAccountKeys().address, tx, b, 1));
-}
+// (Removed parse_and_validate_tx_extra.fails_on_big_extra_nonce: it exercised the
+// classical Currency::constructMinerTx, which no longer exists — Discrete builds
+// the PQ coinbase via constructMinerTxPq.)
 TEST(parse_and_validate_tx_extra, fails_on_wrong_size_in_extra_nonce)
 {
   CryptoNote::Transaction tx = AUTO_VAL_INIT(tx);

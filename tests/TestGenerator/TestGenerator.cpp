@@ -321,41 +321,6 @@ bool test_generator::constructBlockManuallyTx(CryptoNote::Block& blk, const Cryp
     transactionHashes, txsSize);
 }
 
-bool test_generator::constructMaxSizeBlock(CryptoNote::Block& blk, const CryptoNote::Block& blkPrev,
-                                           const CryptoNote::AccountBase& minerAccount,
-                                           size_t medianBlockCount/* = 0*/,
-                                           const std::list<CryptoNote::Transaction>& txList/* = std::list<CryptoNote::Transaction>()*/) {
-  std::vector<size_t> blockSizes;
-  medianBlockCount = medianBlockCount == 0 ? m_currency.rewardBlocksWindow() : medianBlockCount;
-  getLastNBlockSizes(blockSizes, get_block_hash(blkPrev), medianBlockCount);
-
-  size_t median = Common::medianValue(blockSizes);
-  size_t blockGrantedFullRewardZone = m_currency.blockGrantedFullRewardZoneByBlockVersion(defaultMajorVersion);
-  median = std::max(median, blockGrantedFullRewardZone);
-
-  uint64_t totalFee = 0;
-  size_t txsSize = 0;
-  std::vector<Crypto::Hash> transactionHashes;
-  for (auto& tx : txList) {
-    uint64_t fee = 0;
-    bool r = get_tx_fee(tx, fee);
-    CHECK_AND_ASSERT_MES(r, false, "wrong transaction passed to construct_max_size_block");
-    totalFee += fee;
-    txsSize += getObjectBinarySize(tx);
-    transactionHashes.push_back(getObjectHash(tx));
-  }
-
-  Transaction baseTransaction;
-  bool r = constructMinerTxBySize(m_currency, baseTransaction, defaultMajorVersion, get_block_height(blkPrev) + 1,
-    getAlreadyGeneratedCoins(blkPrev), minerAccount.getAccountKeys().address, blockSizes, 2 * median - txsSize, 2 * median, totalFee);
-  if (!r) {
-    return false;
-  }
-
-  return constructBlockManually(blk, blkPrev, minerAccount, test_generator::bf_miner_tx | test_generator::bf_tx_hashes,
-    0, 0, 0, Crypto::Hash(), 0, baseTransaction, transactionHashes, txsSize, totalFee);
-}
-
 void fillNonce(CryptoNote::Block& blk, const Difficulty& diffic) {
   fillNonce(blk, diffic, /*blockchain=*/nullptr);
 }
@@ -390,37 +355,3 @@ void fillNonce(CryptoNote::Block& blk, const Difficulty& diffic,
   }
 }
 
-bool constructMinerTxBySize(const CryptoNote::Currency& currency, CryptoNote::Transaction& baseTransaction, uint8_t blockMajorVersion, uint32_t height,
-                            uint64_t alreadyGeneratedCoins, const CryptoNote::AccountPublicAddress& minerAddress,
-                            std::vector<size_t>& blockSizes, size_t targetTxSize, size_t targetBlockSize, uint64_t fee/* = 0*/) {
-  Crypto::SecretKey minerTxKey3;
-  if (!currency.constructMinerTx(blockMajorVersion, height, Common::medianValue(blockSizes), alreadyGeneratedCoins, targetBlockSize,
-      fee, minerAddress, baseTransaction, minerTxKey3, CryptoNote::BinaryArray(), 1)) {
-    return false;
-  }
-
-  size_t currentSize = getObjectBinarySize(baseTransaction);
-  size_t tryCount = 0;
-  while (targetTxSize != currentSize) {
-    ++tryCount;
-    if (10 < tryCount) {
-      return false;
-    }
-
-    if (targetTxSize < currentSize) {
-      size_t diff = currentSize - targetTxSize;
-      if (diff <= baseTransaction.extra.size()) {
-        baseTransaction.extra.resize(baseTransaction.extra.size() - diff);
-      } else {
-        return false;
-      }
-    } else {
-      size_t diff = targetTxSize - currentSize;
-      baseTransaction.extra.resize(baseTransaction.extra.size() + diff);
-    }
-
-    currentSize = getObjectBinarySize(baseTransaction);
-  }
-
-  return true;
-}

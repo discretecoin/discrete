@@ -214,15 +214,7 @@ namespace CryptoNote {
     return maxSize;
   }
 
-  bool Currency::constructMinerTx(uint8_t blockMajorVersion, uint32_t height, size_t medianSize, uint64_t alreadyGeneratedCoins, size_t currentBlockSize,
-    uint64_t fee, const AccountPublicAddress& /*minerAddress_ECC_unused*/, Transaction& tx, Crypto::SecretKey& /*txKey_unused*/, const BinaryArray& extraNonce/* = BinaryArray()*/, size_t /*maxOuts*/) const {
-    // ECC miner address path is dead on Discrete. Caller must use the PqAddress overload.
-    // This stub exists only so legacy callers (e.g. test harness) compile.
-    logger(ERROR, BRIGHT_RED) << "constructMinerTx: ECC miner address not supported in Discrete; use the PqAddress overload";
-    return false;
-  }
-
-  bool Currency::constructMinerTxPq(uint8_t blockMajorVersion, uint32_t height, size_t medianSize,
+    bool Currency::constructMinerTxPq(uint8_t blockMajorVersion, uint32_t height, size_t medianSize,
     uint64_t alreadyGeneratedCoins, size_t currentBlockSize, uint64_t fee,
     const CryptoPQ::KemPublicKey& minerViewPub,
     const CryptoPQ::DsaPublicKey& minerSpendPub,

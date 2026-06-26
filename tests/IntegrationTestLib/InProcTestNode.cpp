@@ -154,9 +154,10 @@ bool InProcTestNode::stopDaemon() {
   return true;
 }
 
-bool InProcTestNode::getBlockTemplate(const CryptoNote::AccountKeys& minerKeys, CryptoNote::Block& blockTemplate, uint64_t& difficulty) {
-  uint32_t height = 0;
-  return core->get_block_template(blockTemplate, minerKeys, difficulty, height, BinaryArray());
+bool InProcTestNode::getBlockTemplate(const CryptoNote::AccountKeys& /*minerKeys*/, CryptoNote::Block& /*blockTemplate*/, uint64_t& /*difficulty*/) {
+  // External/classical block-template mining was removed (Discrete mines internally
+  // via the PQ template). Unsupported in the test harness.
+  return false;
 }
 
 bool InProcTestNode::submitBlock(const std::string& block) {

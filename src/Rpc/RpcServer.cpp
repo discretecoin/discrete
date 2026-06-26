@@ -670,7 +670,6 @@ bool RpcServer::processJsonRpcRequest(const CryptoNote::HttpRequest& request, Cr
   
       { "getblockcount", { makeMemberMethod(&RpcServer::on_getblockcount), true } },
       { "getblockhash", { makeMemberMethod(&RpcServer::on_getblockhash), true } },
-      { "getblocktemplate", { makeMemberMethod(&RpcServer::on_getblocktemplate), true } },
       { "getblockheaderbyhash", { makeMemberMethod(&RpcServer::on_get_block_header_by_hash), true } },
       { "getblockheaderbyheight", { makeMemberMethod(&RpcServer::on_get_block_header_by_height), true } },
       { "getblocktimestamp", { makeMemberMethod(&RpcServer::on_get_block_timestamp_by_height), true } },
@@ -696,7 +695,6 @@ bool RpcServer::processJsonRpcRequest(const CryptoNote::HttpRequest& request, Cr
       { "getstatsinrange", { makeMemberMethod(&RpcServer::on_get_stats_by_heights_range), false } },
       { "validateaddress", { makeMemberMethod(&RpcServer::on_validate_address), true } },
       { "verifymessage", { makeMemberMethod(&RpcServer::on_verify_message), true } },
-      { "submitblock", { makeMemberMethod(&RpcServer::on_submitblock), false } },
       { "resolveopenalias", { makeMemberMethod(&RpcServer::on_resolve_open_alias), true } },
       { "search", { makeMemberMethod(&RpcServer::on_explorer_search), true } },
       { "getpqaccount", { makeMemberMethod(&RpcServer::on_get_pq_account), true } },
@@ -1972,101 +1970,11 @@ namespace {
   }
 }
 
-bool RpcServer::on_getblocktemplate(const COMMAND_RPC_GETBLOCKTEMPLATE::request& req, COMMAND_RPC_GETBLOCKTEMPLATE::response& res) {
-  if (req.reserve_size > TX_EXTRA_NONCE_MAX_COUNT) {
-    throw JsonRpc::JsonRpcError{ CORE_RPC_ERROR_CODE_TOO_BIG_RESERVE_SIZE, "To big reserved size, maximum 255" };
-  }
-
-  AccountKeys keys = boost::value_initialized<AccountKeys>();
-
-  Crypto::Hash key_hash;
-  size_t size;
-  if (!Common::fromHex(req.miner_spend_key, &key_hash, sizeof(key_hash), size) || size != sizeof(key_hash)) {
-    throw JsonRpc::JsonRpcError{ CORE_RPC_ERROR_CODE_WRONG_PARAM, "Failed to parse miner spend key" };
-  }
-  keys.spendSecretKey = *(struct Crypto::SecretKey *) &key_hash;
-
-  if (!Common::fromHex(req.miner_view_key, &key_hash, sizeof(key_hash), size) || size != sizeof(key_hash)) {
-    throw JsonRpc::JsonRpcError{ CORE_RPC_ERROR_CODE_WRONG_PARAM, "Failed to parse miner view key" };
-  }
-  keys.viewSecretKey = *(struct Crypto::SecretKey *) &key_hash;
-
-  // NOTE: external getblocktemplate mining is not yet wired to the PQ coinbase
-  // path (get_block_template_pq); this classical path returns false on Discrete.
-  // The internal miner mines via the PQ template. Only keys.spendSecretKey (the
-  // 32-byte seed) is meaningful — no ECC public keys are derived.
-
-  Block b = boost::value_initialized<Block>();
-  CryptoNote::BinaryArray blob_reserve;
-  blob_reserve.resize(req.reserve_size, 0);
-  if (!m_core.get_block_template(b, keys, res.difficulty, res.height, blob_reserve)) {
-    logger(Logging::ERROR) << "Failed to create block template";
-    throw JsonRpc::JsonRpcError{ CORE_RPC_ERROR_CODE_INTERNAL_ERROR, "Internal error: failed to create block template" };
-  }
-
-  BinaryArray block_blob = toBinaryArray(b);
-  Crypto::PublicKey tx_pub_key = CryptoNote::getTransactionPublicKeyFromExtra(b.baseTransaction.extra);
-  if (tx_pub_key == NULL_PUBLIC_KEY) {
-    logger(Logging::ERROR) << "Failed to find tx pub key in coinbase extra";
-    throw JsonRpc::JsonRpcError{ CORE_RPC_ERROR_CODE_INTERNAL_ERROR, "Internal error: failed to find tx pub key in coinbase extra" };
-  }
-
-  if (0 < req.reserve_size) {
-    res.reserved_offset = slow_memmem((void*)block_blob.data(), block_blob.size(), &tx_pub_key, sizeof(tx_pub_key));
-    if (!res.reserved_offset) {
-      logger(Logging::ERROR) << "Failed to find tx pub key in blockblob";
-      throw JsonRpc::JsonRpcError{ CORE_RPC_ERROR_CODE_INTERNAL_ERROR, "Internal error: failed to create block template" };
-    }
-    res.reserved_offset += sizeof(tx_pub_key) + 3; //3 bytes: tag for TX_EXTRA_TAG_PUBKEY(1 byte), tag for TX_EXTRA_NONCE(1 byte), counter in TX_EXTRA_NONCE(1 byte)
-    if (res.reserved_offset + req.reserve_size > block_blob.size()) {
-      logger(Logging::ERROR) << "Failed to calculate offset for reserved bytes";
-      throw JsonRpc::JsonRpcError{ CORE_RPC_ERROR_CODE_INTERNAL_ERROR, "Internal error: failed to create block template" };
-    }
-  } else {
-    res.reserved_offset = 0;
-  }
-
-  BinaryArray hashing_blob;
-  if (!get_block_hashing_blob(b, hashing_blob)) {
-    logger(Logging::ERROR) << "Failed to get blockhashing_blob";
-    throw JsonRpc::JsonRpcError{ CORE_RPC_ERROR_CODE_INTERNAL_ERROR, "Internal error: failed to get blockhashing_blob" };
-  }
-
-  res.blocktemplate_blob = Common::toHex(block_blob);
-  res.blockhashing_blob = Common::toHex(hashing_blob);
-  res.status = CORE_RPC_STATUS_OK;
-
-  return true;
-}
-
 bool RpcServer::on_get_currency_id(const COMMAND_RPC_GET_CURRENCY_ID::request& /*req*/, COMMAND_RPC_GET_CURRENCY_ID::response& res) {
   Crypto::Hash currencyId = m_core.currency().genesisBlockHash();
   res.currency_id_blob = Common::podToHex(currencyId);
   return true;
 }
-
-bool RpcServer::on_submitblock(const COMMAND_RPC_SUBMITBLOCK::request& req, COMMAND_RPC_SUBMITBLOCK::response& res) {
-  if (req.size() != 1) {
-    throw JsonRpc::JsonRpcError{ CORE_RPC_ERROR_CODE_WRONG_PARAM, "Wrong param" };
-  }
-
-  BinaryArray blockblob;
-  if (!Common::fromHex(req[0], blockblob)) {
-    throw JsonRpc::JsonRpcError{ CORE_RPC_ERROR_CODE_WRONG_BLOCKBLOB, "Wrong block blob" };
-  }
-
-  block_verification_context bvc = boost::value_initialized<block_verification_context>();
-
-  m_core.handle_incoming_block_blob(blockblob, bvc, true, true);
-
-  if (!bvc.m_added_to_main_chain) {
-    throw JsonRpc::JsonRpcError{ CORE_RPC_ERROR_CODE_BLOCK_NOT_ACCEPTED, "Block not accepted" };
-  }
-
-  res.status = CORE_RPC_STATUS_OK;
-  return true;
-}
-
 
 namespace {
   uint64_t get_block_reward(const Block& blk) {
