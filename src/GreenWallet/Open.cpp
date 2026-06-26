@@ -14,6 +14,7 @@
 #include <Common/StringTools.h>
 
 #include <crypto/crypto.h>
+#include <crypto/random.h>
 #include <CryptoNoteCore/Account.h>
 #include <CryptoNoteCore/CryptoNoteBasicImpl.h>
 #include <CryptoNoteCore/CryptoNoteTools.h>
@@ -209,7 +210,9 @@ std::shared_ptr<WalletInfo> generateWallet(CryptoNote::WalletGreen &wallet)
     CryptoNote::KeyPair spendKey;
     Crypto::SecretKey privateViewKey;
 
-    Crypto::generate_keys(spendKey.publicKey, spendKey.secretKey);
+    // The PQ wallet identity is a random 32-byte master seed (the spend secret);
+    // every PQ key derives from it. No ECC keypair is involved.
+    Random::randomBytes(sizeof(spendKey.secretKey.data), spendKey.secretKey.data);
 
     CryptoNote::AccountBase::generateViewFromSpend(spendKey.secretKey,
                                                    privateViewKey);
@@ -387,7 +390,6 @@ Crypto::SecretKey getPrivateKey(std::string msg)
     std::string privateKeyString;
     Crypto::Hash privateKeyHash;
     Crypto::SecretKey privateKey;
-    Crypto::PublicKey publicKey;
 
     while (true)
     {
@@ -418,20 +420,8 @@ Crypto::SecretKey getPrivateKey(std::string msg)
 
         privateKey = *(struct Crypto::SecretKey *) &privateKeyHash;
 
-        /* Just used for verification purposes before we pass it to
-           walletgreen */
-        if (!Crypto::secret_key_to_public_key(privateKey, publicKey))
-        {
-            std::cout << std::endl
-                      << WarningMsg("Invalid private key, is not on the ")
-                      << WarningMsg("ed25519 curve!") << std::endl
-                      << WarningMsg("Probably a typo - ensure you entered ")
-                      << WarningMsg("it correctly.")
-                      << std::endl << std::endl;
-
-            continue;
-        }
-
+        // On the PQ chain a private key is just a 32-byte master seed; any
+        // correctly-sized hex value is valid (no curve membership to check).
         return privateKey;
     }
 }

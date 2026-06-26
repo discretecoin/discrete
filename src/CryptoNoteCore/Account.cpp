@@ -23,10 +23,6 @@
 #include "crypto/crypto.h"
 #include "crypto/crypto-util.h"   // secure_random_bytes
 #include "crypto_pq/PqSeed.h"     // deriveViewKeys / deriveSpendKeys
-extern "C"
-{
-#include "crypto/keccak.h"
-}
 
 namespace {
 // The 32-byte master secret is the PQ SeedMaster (fed straight into the PqSeed
@@ -70,10 +66,11 @@ void AccountBase::generateDeterministic() {
 
 //-----------------------------------------------------------------
 void AccountBase::generateViewFromSpend(const Crypto::SecretKey &spendSecret, Crypto::SecretKey &viewSecret, Crypto::PublicKey &viewPublic) {
-  Crypto::SecretKey viewKeySeed;
-  keccak((uint8_t *)&spendSecret, sizeof(spendSecret), (uint8_t *)&viewKeySeed, sizeof(viewKeySeed));
-
-  Crypto::generate_deterministic_keys(viewPublic, viewSecret, viewKeySeed);
+  // Deterministic view secret = SHA3-256(spend secret). This carries no ECC: on
+  // the PQ chain the wallet's real view key is the ML-KEM key derived from the
+  // master seed, so the classical view public key is vestigial and stays zero.
+  Crypto::cn_fast_hash(&spendSecret, sizeof(spendSecret), reinterpret_cast<Crypto::Hash&>(viewSecret));
+  viewPublic = Crypto::PublicKey{};
 }
 
 void AccountBase::generateViewFromSpend(const Crypto::SecretKey &spendSecret, Crypto::SecretKey &viewSecret) {
