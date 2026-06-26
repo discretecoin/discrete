@@ -86,7 +86,6 @@ public:
 
   // signatures
   virtual size_t getRequiredSignaturesCount(size_t inputIndex) const = 0;
-  virtual bool findOutputsToAccount(const AccountPublicAddress& addr, const Crypto::SecretKey& viewSecretKey, std::vector<uint32_t>& outs, uint64_t& outputAmount) const = 0;
 
   // various checks
   virtual bool validateInputs() const = 0;

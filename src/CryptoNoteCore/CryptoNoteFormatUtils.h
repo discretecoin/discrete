@@ -57,8 +57,6 @@ void deriveMinerPqKeys(const Crypto::SecretKey& spendSecretKey,
                        CryptoPQ::DsaPublicKey& spendPub,
                        CryptoPQ::DsaSecretKey& spendSk);
 
-bool is_out_to_acc(const AccountKeys& acc, const KeyOutput& out_key, const Crypto::PublicKey& tx_pub_key, size_t keyIndex);
-bool is_out_to_acc(const AccountKeys& acc, const KeyOutput& out_key, const Crypto::KeyDerivation& derivation, size_t keyIndex);
 bool get_tx_fee(const Transaction& tx, uint64_t & fee);
 uint64_t get_tx_fee(const Transaction& tx);
 std::string short_hash_str(const Crypto::Hash& h);

@@ -98,40 +98,4 @@ const TransactionOutput& getOutputChecked(const CryptoNote::TransactionPrefix& t
   return output;
 }
 
-bool isOutToKey(const Crypto::PublicKey& spendPublicKey, const Crypto::PublicKey& outKey, const Crypto::KeyDerivation& derivation, size_t keyIndex) {
-  Crypto::PublicKey pk;
-  derive_public_key(derivation, keyIndex, spendPublicKey, pk);
-  return pk == outKey;
-}
-
-bool findOutputsToAccount(const CryptoNote::TransactionPrefix& transaction, const AccountPublicAddress& addr,
-                          const SecretKey& viewSecretKey, std::vector<uint32_t>& out, uint64_t& amount) {
-  AccountKeys keys;
-  keys.address = addr;
-  // only view secret key is used, spend key is not needed
-  keys.viewSecretKey = viewSecretKey;
-
-  Crypto::PublicKey txPubKey = getTransactionPublicKeyFromExtra(transaction.extra);
-
-  amount = 0;
-  uint32_t outputIndex = 0;
-
-  Crypto::KeyDerivation derivation;
-  if (!generate_key_derivation(txPubKey, keys.viewSecretKey, derivation)) {
-    return true;
-  }
-
-  for (const TransactionOutput& o : transaction.outputs) {
-    if (o.target.type() == typeid(KeyOutput)) {
-      if (is_out_to_acc(keys, boost::get<KeyOutput>(o.target), derivation, outputIndex)) {
-        out.push_back(outputIndex);
-        amount += o.amount;
-      }
-    }
-    ++outputIndex;
-  }
-
-  return true;
-}
-
 }

@@ -62,7 +62,6 @@ public:
   
   // signatures
   virtual size_t getRequiredSignaturesCount(size_t inputIndex) const override;
-  virtual bool findOutputsToAccount(const AccountPublicAddress& addr, const SecretKey& viewSecretKey, std::vector<uint32_t>& outs, uint64_t& outputAmount) const override;
 
   // various checks
   virtual bool validateInputs() const override;
@@ -186,10 +185,6 @@ void TransactionPrefixImpl::getOutput(size_t index, KeyOutput& output, uint64_t&
 
 size_t TransactionPrefixImpl::getRequiredSignaturesCount(size_t inputIndex) const {
   return ::CryptoNote::getRequiredSignaturesCount(getInputChecked(m_txPrefix, inputIndex));
-}
-
-bool TransactionPrefixImpl::findOutputsToAccount(const AccountPublicAddress& addr, const SecretKey& viewSecretKey, std::vector<uint32_t>& outs, uint64_t& outputAmount) const {
-  return ::CryptoNote::findOutputsToAccount(m_txPrefix, addr, viewSecretKey, outs, outputAmount);
 }
 
 bool TransactionPrefixImpl::validateInputs() const {

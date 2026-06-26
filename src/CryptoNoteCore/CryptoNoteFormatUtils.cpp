@@ -216,18 +216,6 @@ std::string short_hash_str(const Hash& h) {
   return res;
 }
 
-bool is_out_to_acc(const AccountKeys& acc, const KeyOutput& out_key, const KeyDerivation& derivation, size_t keyIndex) {
-  PublicKey pk;
-  derive_public_key(derivation, keyIndex, acc.address.spendPublicKey, pk);
-  return pk == out_key.key;
-}
-
-bool is_out_to_acc(const AccountKeys& acc, const KeyOutput& out_key, const PublicKey& tx_pub_key, size_t keyIndex) {
-  KeyDerivation derivation;
-  generate_key_derivation(tx_pub_key, acc.viewSecretKey, derivation);
-  return is_out_to_acc(acc, out_key, derivation, keyIndex);
-}
-
 bool get_block_hashing_blob(const Block& b, BinaryArray& ba) {
   if (!toBinaryArray(static_cast<const BlockHeader&>(b), ba)) {
     return false;
