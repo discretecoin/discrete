@@ -10,7 +10,6 @@ include_directories(${gtest_SOURCE_DIR}/include ${gtest_SOURCE_DIR} ../version)
 # Transfers*, tx_pool, parse_amount, BlockchainExplorer, ...) were pruned for the same
 # reason; only the PqWalletIntegration gate remains there. The Pq* suites + the pruned
 # UnitTests are the regression gate, and a bare `ctest` is now fully green.
-file(GLOB_RECURSE CryptoTests crypto/*)
 file(GLOB_RECURSE FunctionalTests FunctionalTests/*)
 file(GLOB_RECURSE IntegrationTestLibrary IntegrationTestLib/*)
 file(GLOB_RECURSE IntegrationTests IntegrationTests/*)
@@ -22,13 +21,12 @@ file(GLOB_RECURSE UnitTests UnitTests/*)
 file(GLOB_RECURSE CryptoNoteProtocol ../src/CryptoNoteProtocol/*)
 file(GLOB_RECURSE P2p ../src/P2p/*)
 
-source_group("" FILES ${CryptoTests} ${FunctionalTests} ${IntegrationTestLibrary} ${IntegrationTests} ${NodeRpcProxyTests} ${SystemTests} ${TestGenerator} ${UnitTests})
+source_group("" FILES ${FunctionalTests} ${IntegrationTestLibrary} ${IntegrationTests} ${NodeRpcProxyTests} ${SystemTests} ${TestGenerator} ${UnitTests})
 source_group("" FILES ${CryptoNoteProtocol} ${P2p})
 
 add_library(IntegrationTestLibrary ${IntegrationTestLibrary})
 add_library(TestGenerator ${TestGenerator})
 
-add_executable(CryptoTests ${CryptoTests})
 add_executable(IntegrationTests ${IntegrationTests})
 add_executable(NodeRpcProxyTests ${NodeRpcProxyTests})
 add_executable(SystemTests ${SystemTests})
@@ -56,7 +54,6 @@ add_executable(PqGenesisTests test_pq_genesis.cpp)
 add_executable(DenominationsTests test_denominations.cpp)
 add_executable(PqSenderTests test_pq_sender.cpp)
 
-target_link_libraries(CryptoTests Crypto Common ${Boost_LIBRARIES})
 target_link_libraries(IntegrationTests IntegrationTestLibrary Wallet NodeRpcProxy InProcessNode P2P Rpc Http CryptoNoteProtocol Transfers Serialization System CryptoNoteCore Logging Common Crypto BlockchainExplorer Checkpoints gtest Mnemonics upnpc-static ${Boost_LIBRARIES})
 target_link_libraries(NodeRpcProxyTests NodeRpcProxy CryptoNoteCore Rpc Http Serialization System Logging Common Crypto ${Boost_LIBRARIES})
 target_link_libraries(SystemTests System gtest_main ${Boost_LIBRARIES})
@@ -117,13 +114,12 @@ if(NOT MSVC)
   set_property(TARGET gtest gtest_main IntegrationTestLibrary IntegrationTests TestGenerator UnitTests SystemTests HashTargetTests APPEND_STRING PROPERTY COMPILE_FLAGS " -Wno-undef -Wno-sign-compare")
 endif()
 
-add_custom_target(tests DEPENDS CryptoTests IntegrationTests NodeRpcProxyTests SystemTests UnitTests HashTargetTests HashTests)
+add_custom_target(tests DEPENDS IntegrationTests NodeRpcProxyTests SystemTests UnitTests HashTargetTests HashTests)
 
 set_property(TARGET
   tests
   IntegrationTestLibrary
   TestGenerator
-  CryptoTests
   IntegrationTests
   NodeRpcProxyTests
   SystemTests
@@ -153,7 +149,6 @@ PROPERTY FOLDER "tests")
 
 add_dependencies(IntegrationTestLibrary version)
 
-set_property(TARGET CryptoTests PROPERTY OUTPUT_NAME "crypto_tests")
 set_property(TARGET IntegrationTests PROPERTY OUTPUT_NAME "integration_tests")
 set_property(TARGET NodeRpcProxyTests PROPERTY OUTPUT_NAME "node_rpc_proxy_tests")
 set_property(TARGET SystemTests PROPERTY OUTPUT_NAME "system_tests")
@@ -180,7 +175,6 @@ set_property(TARGET PqGenesisTests PROPERTY OUTPUT_NAME "pq_genesis_tests")
 set_property(TARGET DenominationsTests PROPERTY OUTPUT_NAME "denominations_tests")
 set_property(TARGET PqSenderTests PROPERTY OUTPUT_NAME "pq_sender_tests")
 
-add_test(CryptoTests crypto_tests ${CMAKE_CURRENT_SOURCE_DIR}/crypto/tests.txt)
 foreach(hash IN ITEMS fast slow tree extra-blake extra-groestl extra-jh extra-skein)
   add_test(hash-${hash} hash_tests ${hash} ${CMAKE_CURRENT_SOURCE_DIR}/Hash/tests-${hash}.txt)
 endforeach()

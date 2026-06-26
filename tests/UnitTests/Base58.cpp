@@ -514,24 +514,6 @@ TEST(parseAccountAddressString, fails_on_invalid_address_content)
   ASSERT_FALSE(CryptoNote::parseAccountAddressString(prefix, addr, addr_str));
 }
 
-TEST(parseAccountAddressString, fails_on_invalid_address_spend_key)
-{
-  std::string serialized_keys_copy = test_serialized_keys;
-  serialized_keys_copy[0] = '\0';
-  std::string addr_str = Base58::encode_addr(TEST_PUBLIC_ADDRESS_BASE58_PREFIX, serialized_keys_copy);
-
-  uint64_t prefix;
-  CryptoNote::AccountPublicAddress addr;
-  ASSERT_FALSE(CryptoNote::parseAccountAddressString(prefix, addr, addr_str));
-}
-
-TEST(parseAccountAddressString, fails_on_invalid_address_view_key)
-{
-  std::string serialized_keys_copy = test_serialized_keys;
-  serialized_keys_copy.back() = '\x01';
-  std::string addr_str = Base58::encode_addr(TEST_PUBLIC_ADDRESS_BASE58_PREFIX, serialized_keys_copy);
-
-  uint64_t prefix;
-  CryptoNote::AccountPublicAddress addr;
-  ASSERT_FALSE(CryptoNote::parseAccountAddressString(prefix, addr, addr_str));
-}
+// (Removed fails_on_invalid_address_spend_key / fails_on_invalid_address_view_key:
+// they asserted ed25519 curve-membership rejection, which no longer applies — the
+// classical AccountPublicAddress carries no on-curve PQ keys to validate.)

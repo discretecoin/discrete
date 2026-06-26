@@ -240,7 +240,8 @@ TEST_F(WalletServiceTest_createAddress, invalidPublicKey) {
 TEST_F(WalletServiceTest_createAddress, correctSecretKey) {
   Crypto::PublicKey pub;
   Crypto::SecretKey sec;
-  Crypto::generate_keys(pub, sec);
+  Random::randomBytes(sizeof(pub.data), pub.data);
+  Random::randomBytes(sizeof(sec.data), sec.data);
 
   WalletCreateAddressStub wallet(dispatcher);
   std::unique_ptr<WalletService> service = createWalletService(wallet);
@@ -255,7 +256,8 @@ TEST_F(WalletServiceTest_createAddress, correctSecretKey) {
 TEST_F(WalletServiceTest_createAddress, correctPublicKey) {
   Crypto::PublicKey pub;
   Crypto::SecretKey sec;
-  Crypto::generate_keys(pub, sec);
+  Random::randomBytes(sizeof(pub.data), pub.data);
+  Random::randomBytes(sizeof(sec.data), sec.data);
 
   WalletCreateAddressStub wallet(dispatcher);
   std::unique_ptr<WalletService> service = createWalletService(wallet);
@@ -272,7 +274,8 @@ class WalletServiceTest_getSpendKeys : public WalletServiceTest {
 
 struct WalletgetSpendKeysStub: public IWalletBaseStub {
   WalletgetSpendKeysStub(System::Dispatcher& d) : IWalletBaseStub(d) {
-    Crypto::generate_keys(keyPair.publicKey, keyPair.secretKey);
+    Random::randomBytes(sizeof(keyPair.publicKey.data), keyPair.publicKey.data);
+    Random::randomBytes(sizeof(keyPair.secretKey.data), keyPair.secretKey.data);
   }
 
   virtual KeyPair getAddressSpendKey(const std::string& address) const override {
@@ -415,7 +418,8 @@ class WalletServiceTest_getViewKey : public WalletServiceTest {
 
 struct WalletGetViewKeyStub: public IWalletBaseStub {
   WalletGetViewKeyStub(System::Dispatcher& d) : IWalletBaseStub(d) {
-    Crypto::generate_keys(keyPair.publicKey, keyPair.secretKey);
+    Random::randomBytes(sizeof(keyPair.publicKey.data), keyPair.publicKey.data);
+    Random::randomBytes(sizeof(keyPair.secretKey.data), keyPair.secretKey.data);
   }
 
   virtual KeyPair getViewKey() const override {

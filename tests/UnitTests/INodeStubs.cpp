@@ -291,7 +291,8 @@ void INodeTrivialRefreshStub::doGetRandomOutsByAmounts(std::vector<uint64_t> amo
     {
       Crypto::PublicKey key;
       Crypto::SecretKey sk;
-      generate_keys(key, sk);
+      Random::randomBytes(sizeof(key.data), key.data);
+      Random::randomBytes(sizeof(sk.data), sk.data);
 
       COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::out_entry e;
       e.global_amount_index = i;

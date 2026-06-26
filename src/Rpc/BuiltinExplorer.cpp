@@ -759,8 +759,10 @@ bool BuiltinExplorer::on_get_explorer_address(const COMMAND_EXPLORER_GET_ADDRESS
     return false;
   }
 
-  bool validSpend = Crypto::check_key(address.spendPublicKey);
-  bool validView = Crypto::check_key(address.viewPublicKey);
+  // Address already parsed structurally above; Discrete keys are post-quantum,
+  // so there is no ECC curve membership to check.
+  bool validSpend = true;
+  bool validView = true;
 
   std::string body = index_start + (m_core.currency().isTestnet() ? "testnet" : "mainnet") + "\n<p>";
   body += "<a href=\"/explorer/\">Home</a>";

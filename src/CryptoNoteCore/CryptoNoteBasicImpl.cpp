@@ -88,12 +88,11 @@ namespace CryptoNote {
   bool parseAccountAddressString(uint64_t& prefix, AccountPublicAddress& adr, const std::string& str) {
     std::string data;
 
+    // No ECC curve check: Discrete addresses are post-quantum; the classical
+    // AccountPublicAddress here is only a structural decode.
     return
       Tools::Base58::decode_addr(str, prefix, data) &&
-      fromBinaryArray(adr, asBinaryArray(data)) &&
-      // ::serialization::parse_binary(data, adr) &&
-      check_key(adr.spendPublicKey) &&
-      check_key(adr.viewPublicKey);
+      fromBinaryArray(adr, asBinaryArray(data));
   }
   //-----------------------------------------------------------------------
   bool operator ==(const CryptoNote::Transaction& a, const CryptoNote::Transaction& b) {

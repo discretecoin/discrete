@@ -345,10 +345,7 @@ bool isWellFormedAccountRegistration(const std::vector<uint8_t>& tx_extra) {
   TransactionExtraAccountRegistration reg;
   findTransactionExtraFieldByType(extraFields, reg);
 
-  if (!Crypto::check_key(reg.spendPublicKey) || !Crypto::check_key(reg.viewPublicKey)) {
-    return false;
-  }
-
+  // No ECC curve check (classical AccountRegistration is not the PQ path).
   static const Crypto::PublicKey identity = {};
   if (reg.spendPublicKey == identity || reg.viewPublicKey == identity) {
     return false;

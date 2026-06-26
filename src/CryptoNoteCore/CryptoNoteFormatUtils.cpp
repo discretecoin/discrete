@@ -125,7 +125,6 @@ bool check_inputs_types_supported(const TransactionPrefix& tx) {
 }
 
 bool check_outs_valid(const TransactionPrefix& tx, std::string* error) {
-  std::unordered_set<PublicKey> keys_seen;
   for (const TransactionOutput& out : tx.outputs) {
     if (tx.version >= TRANSACTION_VERSION_1 && out.target.type() == typeid(PqOutput)) {
       if (tx.txType != TX_PQ) {
@@ -140,33 +139,9 @@ bool check_outs_valid(const TransactionPrefix& tx, std::string* error) {
     }
 
     if (out.target.type() == typeid(KeyOutput)) {
-      if (tx.version >= TRANSACTION_VERSION_1) {
-        // Discrete has no classical (ECC) outputs — only PQ outputs exist.
-        if (error) *error = "KeyOutput is not allowed in Discrete";
-        return false;
-      }
-
-      if (out.amount == 0) {
-        if (error) {
-          *error = "Zero amount ouput";
-        }
-        return false;
-      }
-
-      if (!check_key(boost::get<KeyOutput>(out.target).key)) {
-        if (error) {
-          *error = "Output with invalid key";
-        }
-        return false;
-      }
-
-      if (keys_seen.find(boost::get<KeyOutput>(out.target).key) != keys_seen.end()) {
-        if (error) {
-          *error = "The same output target is present more than once";
-        }
-        return false;
-      }
-      keys_seen.insert(boost::get<KeyOutput>(out.target).key);
+      // Discrete has no classical (ECC) outputs — only PQ outputs exist.
+      if (error) *error = "KeyOutput is not allowed in Discrete";
+      return false;
     } else {
       if (error) {
         *error = "Output with invalid type";
