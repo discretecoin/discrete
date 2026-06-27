@@ -101,6 +101,7 @@ public:
   std::error_code getAddressesCount(size_t& addressesCount);
   std::error_code getPqAddress(std::string& pqAddress, bool& pqEnabled);
   std::error_code getPqBalance(uint64_t& availableBalance, uint32_t& scannedHeight, bool& pqEnabled);
+  std::error_code getPqBalance(const std::string& address, uint64_t& availableBalance, uint32_t& scannedHeight, bool& pqEnabled);
   std::error_code registerPqAccount(std::string& transactionHash);
   std::error_code registerPqAccountPaid(std::string& transactionHash);
   std::error_code getPqAccountStatus(bool& registered, std::string& accountNumber, uint32_t& blockHeight, uint32_t& txIndex);

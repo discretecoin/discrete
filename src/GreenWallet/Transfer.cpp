@@ -20,6 +20,9 @@
 #include <CryptoNoteCore/CryptoNoteBasicImpl.h>
 #include <CryptoNoteCore/TransactionExtra.h>
 
+#include "PqAddress.h"
+#include "AccountNumber.h"
+
 #include <iostream>
 
 #include "IWallet.h"
@@ -926,50 +929,31 @@ bool parseFee(std::string feeString)
 
 bool parseAddress(std::string address)
 {
-    uint64_t prefix;
-
-    CryptoNote::AccountPublicAddress addr;
-
-    const bool valid = CryptoNote::parseAccountAddressString(prefix, addr,
-                                                             address);
-
-    if (address.length() != WalletConfig::addressLength)
+    /* Discrete addresses are post-quantum: either a (variable-length) bech32m
+       PQ address, or a human-readable H-I-C / H-I-T-C account number. Both are
+       self-validating offline (bech32m checksum / Luhn check char). The full
+       network + on-chain-existence check happens in wallet.transfer()'s recipient
+       resolution; this is just a fast pre-check so a typo re-prompts the user. */
+    CryptoNote::PqAddress pq;
+    if (CryptoNote::decodePqAddress(address, pq))
     {
-        std::cout << WarningMsg("Address is wrong length!") << std::endl
-                  << "It should be " << WalletConfig::addressLength
-                  << " characters long, but it is " << address.length()
-                  << " characters long!" << std::endl << std::endl;
-
-        return false;
-    }
-    /* We can't get the actual prefix if the address is invalid for other
-       reasons. To work around this, we can just check that the address starts
-       with K, as long as the prefix is the K prefix. This keeps it
-       working on testnets with different prefixes. */
-    else if (address.substr(0, WalletConfig::addressPrefix.length())
-          != WalletConfig::addressPrefix)
-    {
-        std::cout << WarningMsg("Invalid address! It should start with ")
-                  << WarningMsg(WalletConfig::addressPrefix)
-                  << WarningMsg("!")
-                  << std::endl << std::endl;
-
-        return false;
-    }
-    /* We can return earlier by checking the value of valid, but then we don't
-       get to give more detailed error messages about the address */
-    else if (!valid)
-    {
-        std::cout << WarningMsg("Failed to parse address, address is not a ")
-                  << WarningMsg("valid ")
-                  << WarningMsg(WalletConfig::ticker)
-                  << WarningMsg(" address!") << std::endl
-                  << std::endl;
-
-        return false;
+        return true;
     }
 
-    return true;
+    CryptoNote::AccountNumber acct;
+    uint32_t subaddrIndex = 0;
+    if (CryptoNote::AccountNumber::fromStringWithIndex(address, acct, subaddrIndex)
+     || CryptoNote::AccountNumber::fromString(address, acct))
+    {
+        return true;
+    }
+
+    std::cout << WarningMsg("Failed to parse address, it is not a valid ")
+              << WarningMsg(WalletConfig::ticker)
+              << WarningMsg(" address or account number!") << std::endl
+              << std::endl;
+
+    return false;
 }
 
 bool parseAmount(std::string amountString)

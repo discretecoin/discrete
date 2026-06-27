@@ -10,11 +10,13 @@
 /* Make sure everything in here is const - or it won't compile! */
 namespace WalletConfig
 {
-    /* The prefix your coins address starts with */
-    const std::string addressPrefix = "K";
+    /* The human-readable prefix (HRP) a bech32m address starts with. Shown in
+       messages only; address validation no longer length/prefix-matches (see
+       parseAddress in Transfer.cpp), since PQ addresses are variable-length. */
+    const std::string addressPrefix = "disc";
 
     /* Your coins 'Ticker', e.g. Monero = XMR, Bitcoin = BTC */
-    const std::string ticker = "KRB";
+    const std::string ticker = "XDS";
 
     /* The filename to output the CSV to in save_csv */
     const std::string csvFilename = "transactions.csv";
@@ -24,7 +26,7 @@ namespace WalletConfig
     const std::string addressBookFilename = ".addressBook.json";
 
     /* The name of your deamon */
-    const std::string daemonName = "karbowanecd";
+    const std::string daemonName = "discreted";
 
     /* The name to call this wallet */
     const std::string walletName = "GreenWallet";
@@ -33,18 +35,14 @@ namespace WalletConfig
     const std::string walletdName = "walletd";
 
     /* The full name of your crypto */
-    const std::string coinName = "Karbo";
+    const std::string coinName = "Discrete";
 
     /* Where can your users contact you for support? E.g. discord */
-    const std::string contactLink = "https://t.me/karbowanec";
+    const std::string contactLink = "https://discrete.cash";
 
     /* The number of decimals your coin has */
     const int numDecimalPlaces = CryptoNote::parameters
                                            ::CRYPTONOTE_DISPLAY_DECIMAL_POINT;
-
-
-    /* The length of a standard address for your coin */
-    const long unsigned int addressLength = 95;
 
 
     /* The mixin value to use with transactions */

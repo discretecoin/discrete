@@ -1253,6 +1253,36 @@ std::error_code WalletService::getPqBalance(uint64_t& availableBalance, uint32_t
   return std::error_code();
 }
 
+std::error_code WalletService::getPqBalance(const std::string& address, uint64_t& availableBalance, uint32_t& scannedHeight, bool& pqEnabled) {
+  try {
+    System::EventLock lk(readyEvent);
+
+    auto* greenWallet = dynamic_cast<CryptoNote::WalletGreen*>(&wallet);
+    if (greenWallet == nullptr) {
+      pqEnabled = false;
+      availableBalance = 0;
+      scannedHeight = 0;
+      return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
+    }
+    pqEnabled = greenWallet->pqEnabled();
+    scannedHeight = greenWallet->pqSyncedHeight();
+    // Per-deposit balance: resolve the selector (index / PQ address / deposit address)
+    // to its bucket and report that bucket's confirmed balance. An address the wallet
+    // does not own resolves to 0 (rather than leaking the wallet total).
+    const std::string resolved = canonicalizeAddressSelector(wallet, address);
+    availableBalance = greenWallet->getActualBalance(resolved);
+    logger(Logging::DEBUGGING) << "Deposit balance for " << resolved << ": " << availableBalance;
+  } catch (std::system_error& x) {
+    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while getting deposit balance: " << x.what();
+    return x.code();
+  } catch (std::exception& e) {
+    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while getting deposit balance: " << e.what();
+    return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
+  }
+
+  return std::error_code();
+}
+
 std::error_code WalletService::registerPqAccount(std::string& transactionHash) {
   try {
     System::EventLock lk(readyEvent);
@@ -1441,7 +1471,7 @@ std::error_code WalletService::createPqDepositAddress(std::string& address, uint
       }
       if (!registered) {
         logger(Logging::WARNING) << "single-key-index deposit address requested before the account is registered";
-        return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
+        return make_error_code(CryptoNote::error::ACCOUNT_NOT_REGISTERED);
       }
     }
 
@@ -1592,6 +1622,21 @@ std::error_code WalletService::sendTransaction(const SendTransaction::Request& r
     transactionSecretKey = Common::podToHex(tx_key);
 
     logger(Logging::DEBUGGING) << "Transaction " << transactionHash << " has been sent";
+  } catch (const CryptoNote::PqSendError& e) {
+    // Map the builder's failure to a specific, self-explanatory wallet error code so
+    // the client sees the reason instead of a bare "Internal error occurred".
+    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while sending transaction: " << e.what();
+    switch (e.code) {
+      case CryptoNote::PqSendErrorCode::InsufficientFunds:
+        return make_error_code(CryptoNote::error::INSUFFICIENT_FUNDS);
+      case CryptoNote::PqSendErrorCode::TooLarge:
+        return make_error_code(CryptoNote::error::AMOUNT_TOO_LARGE_FOR_ONE_TRANSACTION);
+      case CryptoNote::PqSendErrorCode::ZeroAmount:
+        return make_error_code(CryptoNote::error::WRONG_AMOUNT);
+      case CryptoNote::PqSendErrorCode::NoRecipients:
+        return make_error_code(CryptoNote::error::WRONG_PARAMETERS);
+    }
+    return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
   } catch (std::system_error& x) {
     logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while sending transaction: " << x.what();
     return x.code();

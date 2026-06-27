@@ -210,6 +210,32 @@ TEST(WalletLedger, RemoveUnconfirmedRestoresDroppedSendInputs) {
     EXPECT_EQ(st.spendableInputs().size(), 1u);
 }
 
+// An output still in the mempool (received unconfirmed) is owned but NOT spendable:
+// the network has no confirmed outpoint for it yet, so a tx spending it would be
+// rejected at relay. It becomes spendable once its tx is mined. This is what makes
+// rapid back-to-back sends fail cleanly (insufficient funds) instead of grabbing the
+// previous send's unconfirmed change and bouncing off the daemon.
+TEST(WalletLedger, UnconfirmedReceiveIsNotSpendableUntilMined) {
+    PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
+    PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
+
+    WalletLedger st(me);
+    Funded recv = payTo(them, me, 1000000, 900000, 0x33);
+
+    // Seen first in the mempool.
+    ASSERT_TRUE(st.processTransaction(recv.tx, recv.txid, WalletLedger::UNCONFIRMED_HEIGHT));
+    EXPECT_EQ(st.balance(), 900000u);          // owned...
+    EXPECT_EQ(st.pendingBalance(), 900000u);   // ...but still pending (in the pool)
+    EXPECT_EQ(st.spendableBalance(), 0u);      // not spendable yet
+    EXPECT_TRUE(st.spendableInputs().empty());
+
+    // Same tx mined: promotes to confirmed, now spendable.
+    ASSERT_TRUE(st.processTransaction(recv.tx, recv.txid, 100));
+    EXPECT_EQ(st.pendingBalance(), 0u);
+    EXPECT_EQ(st.spendableBalance(), 900000u);
+    ASSERT_EQ(st.spendableInputs().size(), 1u);
+}
+
 // A spend first seen in the pool then mined must record its real height, so a
 // reorg ABOVE the spend does not wrongly un-spend it.
 TEST(WalletLedger, ConfirmedSpendSurvivesReorgAboveIt) {

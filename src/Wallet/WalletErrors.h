@@ -57,7 +57,10 @@ enum WalletErrorCodes {
   BAD_TRANSACTION_EXTRA,
   MIXIN_COUNT_TOO_SMALL,
   MIXIN_COUNT_TOO_LARGE,
-  WRONG_TX_SECRET_KEY
+  WRONG_TX_SECRET_KEY,
+  INSUFFICIENT_FUNDS,
+  AMOUNT_TOO_LARGE_FOR_ONE_TRANSACTION,
+  ACCOUNT_NOT_REGISTERED
 };
 
 // custom category:
@@ -107,6 +110,10 @@ public:
     case MIXIN_COUNT_TOO_SMALL:         return "MixIn count is below the required minimum";
     case MIXIN_COUNT_TOO_LARGE:         return "MixIn count is over the maximum allowed";
     case WRONG_TX_SECRET_KEY:           return "Wrong transaction secret key";
+    case INSUFFICIENT_FUNDS:            return "Insufficient unlocked balance to cover the amount and fee";
+    case AMOUNT_TOO_LARGE_FOR_ONE_TRANSACTION:
+                                        return "Amount is too large to send in one transaction (too many inputs); send a smaller amount or consolidate your outputs first";
+    case ACCOUNT_NOT_REGISTERED:        return "The account is not registered yet; run registerAccount and wait for it to confirm";
     default:                            return "Unknown error";
     }
   }

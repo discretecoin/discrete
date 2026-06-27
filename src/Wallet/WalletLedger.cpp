@@ -290,10 +290,14 @@ uint64_t WalletLedger::pendingBalance() const {
 
 uint64_t WalletLedger::spendableBalance() const {
   // Mirror the spendableInputs() filter exactly: an unspent output is offerable to
-  // the spend path once its unlockHeight (0 = none) is reached at the scan tip.
+  // the spend path once it is confirmed (out of the mempool) and its unlockHeight
+  // (0 = none) is reached at the scan tip.
   uint64_t total = 0;
   for (const auto& o : m_outputs) {
     if (o.spent) {
+      continue;
+    }
+    if (o.height == UNCONFIRMED_HEIGHT) {
       continue;
     }
     if (o.unlockHeight != 0 && o.unlockHeight > m_lastScannedHeight) {
@@ -356,6 +360,14 @@ std::vector<PqSpendInput> WalletLedger::spendableInputs() const {
   std::vector<PqSpendInput> out;
   for (const auto& o : m_outputs) {
     if (o.spent) {
+      continue;
+    }
+    // Still in the mempool (its tx not yet mined): not spendable. The network has no
+    // confirmed outpoint to reference, so a tx spending it would be rejected at relay.
+    // This is what makes rapid back-to-back sends (which would otherwise grab the
+    // previous send's unconfirmed change) report "insufficient unlocked balance"
+    // cleanly instead of building a doomed tx the daemon bounces.
+    if (o.height == UNCONFIRMED_HEIGHT) {
       continue;
     }
     // Every owned output is spendable; the spend path picks the matching ML-DSA key

@@ -248,6 +248,8 @@ struct GetPqAddress {
 // (unused) classical balance and are never combined. Mirrors `pq_balance`.
 struct GetPqBalance {
   struct Request {
+    std::string address;  // optional: a deposit address/index for its per-deposit balance
+
     void serialize(CryptoNote::ISerializer& serializer);
   };
 

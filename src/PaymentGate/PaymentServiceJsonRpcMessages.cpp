@@ -173,6 +173,7 @@ void GetPqAddress::Response::serialize(CryptoNote::ISerializer& serializer) {
 }
 
 void GetPqBalance::Request::serialize(CryptoNote::ISerializer& serializer) {
+  serializer(address, "address");
 }
 
 void GetPqBalance::Response::serialize(CryptoNote::ISerializer& serializer) {
