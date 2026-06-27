@@ -115,6 +115,62 @@ TEST(WalletLedgerConsumer, MultipleBlocksAndDetach) {
     EXPECT_EQ(consumer.state().unspentCount(), 1u);
 }
 
+// Regression for the live walletd reorg bug (testnet run 2026-06-27): a confirmed
+// receive whose block is orphaned by a reorg, and whose still-valid tx returns to the
+// mempool, must end up PENDING — counted in the total balance but NOT spendable. The
+// aggregate getBalance was reporting the raw total as "available", so it advertised 700
+// while the per-deposit balance and the spend path (which exclude pending) saw 0, and a
+// send then failed with "insufficient unlocked balance". This test pins the ledger split
+// the fix relies on: balance() includes pending, spendableBalance()/spendableInputs() do not.
+TEST(WalletLedgerConsumer, ReorgReturnsReceiveToPoolAsPendingNotSpendable) {
+    Logging::ConsoleLogger logger(Logging::ERROR);
+    PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
+    PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
+
+    WalletLedgerConsumer consumer(me, SynchronizationStart{0, 0}, logger);
+
+    Transaction tx = payTo(them, me, 1000000, 700, 0x55);  // 700 au = the live "deposit" amount
+    Crypto::Hash txid = getObjectHash(tx);
+    CompleteBlock cb = makeBlock(tx);
+
+    // Confirmed in block 14: fully available, and present in history as confirmed.
+    ASSERT_EQ(consumer.onNewBlocks(&cb, 14, 1), 1u);
+    EXPECT_EQ(consumer.state().balance(), 700u);
+    EXPECT_EQ(consumer.state().spendableBalance(), 700u);
+    EXPECT_EQ(consumer.state().spendableInputs().size(), 1u);
+    ASSERT_NE(consumer.state().historyByTxid(txid), nullptr);
+    EXPECT_NE(consumer.state().historyByTxid(txid)->height, WalletLedger::UNCONFIRMED_HEIGHT);
+
+    // The reorg detaches block 14: the orphaned output (and its history row) are dropped.
+    consumer.onBlockchainDetach(14);
+    EXPECT_EQ(consumer.state().balance(), 0u);
+    EXPECT_EQ(consumer.state().spendableBalance(), 0u);
+    EXPECT_EQ(consumer.state().historyByTxid(txid), nullptr);
+
+    // The orphaned tx is still valid, so the daemon returns it to the mempool. It is
+    // re-credited — but PENDING: the total counts it, the spendable amount does not.
+    std::vector<std::unique_ptr<ITransactionReader>> added;
+    added.push_back(createTransactionPrefix(tx));
+    std::vector<Crypto::Hash> noDeletes;
+    ASSERT_FALSE(consumer.onPoolUpdated(added, noDeletes));
+
+    EXPECT_EQ(consumer.state().balance(), 700u);          // raw total (the old "available")
+    EXPECT_EQ(consumer.state().pendingBalance(), 700u);   // ...is entirely in the mempool
+    EXPECT_EQ(consumer.state().spendableBalance(), 0u);   // ...so nothing is actually available
+    EXPECT_TRUE(consumer.state().spendableInputs().empty());
+    ASSERT_NE(consumer.state().historyByTxid(txid), nullptr);
+    EXPECT_EQ(consumer.state().historyByTxid(txid)->height, WalletLedger::UNCONFIRMED_HEIGHT);
+
+    // If the tx never comes back (e.g. it lost to a double-spend on the new chain) the
+    // daemon drops it from the pool, and the pending effect is reconciled away.
+    std::vector<std::unique_ptr<ITransactionReader>> noAdds;
+    std::vector<Crypto::Hash> deleted{ txid };
+    ASSERT_FALSE(consumer.onPoolUpdated(noAdds, deleted));
+    EXPECT_EQ(consumer.state().balance(), 0u);
+    EXPECT_EQ(consumer.state().pendingBalance(), 0u);
+    EXPECT_EQ(consumer.state().historyByTxid(txid), nullptr);
+}
+
 TEST(WalletLedgerConsumer, EmptyBlocksCountButCreditNothing) {
     Logging::ConsoleLogger logger(Logging::ERROR);
     PqWalletKeys me = derivePqWalletKeys(spendSecret(9, 1));

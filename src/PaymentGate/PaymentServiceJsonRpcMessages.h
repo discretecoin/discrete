@@ -254,7 +254,8 @@ struct GetPqBalance {
   };
 
   struct Response {
-    uint64_t availableBalance;
+    uint64_t availableBalance;  // spendable right now (confirmed AND unlocked)
+    uint64_t lockedAmount;      // still-in-mempool (e.g. orphaned by a reorg) + immature
     uint32_t scannedHeight;
     bool pqEnabled;
 

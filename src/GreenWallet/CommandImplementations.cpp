@@ -982,9 +982,21 @@ void pqBalance(std::shared_ptr<WalletInfo> walletInfo)
         return;
     }
 
+    // "Available" must be what can actually be spent now (confirmed AND unlocked), not
+    // the raw total: after a reorg an orphaned receive returns to the mempool and would
+    // otherwise be advertised as available yet rejected at spend time. Show the locked
+    // remainder (immature coinbase + pending) separately, like simplewallet.
+    const uint64_t total = walletInfo->wallet.pqActualBalance();
+    const uint64_t available = walletInfo->wallet.pqSpendableBalance();
+
     std::cout << "Available balance: "
-              << SuccessMsg(formatAmount(walletInfo->wallet.pqActualBalance())) << std::endl
-              << "Scanned to height: "
+              << SuccessMsg(formatAmount(available)) << std::endl;
+    if (total > available)
+    {
+        std::cout << "Locked (immature/unconfirmed): "
+                  << WarningMsg(formatAmount(total - available)) << std::endl;
+    }
+    std::cout << "Scanned to height: "
               << InformationMsg(std::to_string(walletInfo->wallet.pqSyncedHeight())) << std::endl
               << std::endl;
 }

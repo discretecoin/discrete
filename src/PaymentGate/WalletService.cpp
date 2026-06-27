@@ -1226,7 +1226,7 @@ std::error_code WalletService::getPqAddress(std::string& pqAddress, bool& pqEnab
   return std::error_code();
 }
 
-std::error_code WalletService::getPqBalance(uint64_t& availableBalance, uint32_t& scannedHeight, bool& pqEnabled) {
+std::error_code WalletService::getPqBalance(uint64_t& availableBalance, uint64_t& lockedAmount, uint32_t& scannedHeight, bool& pqEnabled) {
   try {
     System::EventLock lk(readyEvent);
     logger(Logging::DEBUGGING) << "Getting balance";
@@ -1235,11 +1235,21 @@ std::error_code WalletService::getPqBalance(uint64_t& availableBalance, uint32_t
     if (greenWallet == nullptr) {
       pqEnabled = false;
       availableBalance = 0;
+      lockedAmount = 0;
       scannedHeight = 0;
       return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
     }
     pqEnabled = greenWallet->pqEnabled();
-    availableBalance = greenWallet->pqActualBalance();
+    // "Available" is what can actually be spent right now (confirmed AND unlocked).
+    // The rest — funds still in the mempool (e.g. a deposit whose funding tx was
+    // orphaned by a reorg and pushed back to the pool) plus immature coinbase — is
+    // reported as locked, NOT available. Reporting the raw total (pqActualBalance)
+    // here was wrong: it let getBalance advertise funds the spend path then rejected
+    // as "insufficient unlocked balance", and disagreed with the per-deposit balance
+    // (which already excludes pending). Mirrors simplewallet's Available/Locked split.
+    uint64_t total = greenWallet->pqActualBalance();
+    availableBalance = greenWallet->pqSpendableBalance();
+    lockedAmount = total >= availableBalance ? total - availableBalance : 0;
     scannedHeight = greenWallet->pqSyncedHeight();
   } catch (std::system_error& x) {
     logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while getting balance: " << x.what();
@@ -1249,11 +1259,12 @@ std::error_code WalletService::getPqBalance(uint64_t& availableBalance, uint32_t
     return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
   }
 
-  logger(Logging::DEBUGGING) << "Available balance: " << availableBalance << ", scanned height: " << scannedHeight;
+  logger(Logging::DEBUGGING) << "Available balance: " << availableBalance << ", locked: " << lockedAmount
+                             << ", scanned height: " << scannedHeight;
   return std::error_code();
 }
 
-std::error_code WalletService::getPqBalance(const std::string& address, uint64_t& availableBalance, uint32_t& scannedHeight, bool& pqEnabled) {
+std::error_code WalletService::getPqBalance(const std::string& address, uint64_t& availableBalance, uint64_t& lockedAmount, uint32_t& scannedHeight, bool& pqEnabled) {
   try {
     System::EventLock lk(readyEvent);
 
@@ -1261,17 +1272,21 @@ std::error_code WalletService::getPqBalance(const std::string& address, uint64_t
     if (greenWallet == nullptr) {
       pqEnabled = false;
       availableBalance = 0;
+      lockedAmount = 0;
       scannedHeight = 0;
       return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
     }
     pqEnabled = greenWallet->pqEnabled();
     scannedHeight = greenWallet->pqSyncedHeight();
     // Per-deposit balance: resolve the selector (index / PQ address / deposit address)
-    // to its bucket and report that bucket's confirmed balance. An address the wallet
-    // does not own resolves to 0 (rather than leaking the wallet total).
+    // to its bucket and report that bucket's confirmed balance as available, with any
+    // still-in-mempool amount (e.g. a funding tx orphaned by a reorg) as locked. An
+    // address the wallet does not own resolves to 0 (rather than leaking the total).
     const std::string resolved = canonicalizeAddressSelector(wallet, address);
     availableBalance = greenWallet->getActualBalance(resolved);
-    logger(Logging::DEBUGGING) << "Deposit balance for " << resolved << ": " << availableBalance;
+    lockedAmount = greenWallet->getPendingBalance(resolved);
+    logger(Logging::DEBUGGING) << "Deposit balance for " << resolved << ": " << availableBalance
+                               << ", locked: " << lockedAmount;
   } catch (std::system_error& x) {
     logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while getting deposit balance: " << x.what();
     return x.code();

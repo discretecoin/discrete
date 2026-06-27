@@ -66,14 +66,21 @@ Response:
   "jsonrpc": "2.0", "id": 1,
   "result": {
     "availableBalance": 0,
+    "lockedAmount": 0,
     "scannedHeight": 12345,
     "enabled": true
   }
 }
 ```
 
-`availableBalance` is in atomic units (divide by 10^`CRYPTONOTE_DISPLAY_DECIMAL_POINT`
-for whole coins). PQ and classical balances are never combined.
+`availableBalance` is what can be spent right now — confirmed AND past its unlock
+height. `lockedAmount` is the rest: funds still in the mempool (including a deposit
+whose funding transaction was orphaned by a reorg and returned to the pool) plus
+immature coinbase. A send can draw at most `availableBalance`; do not treat
+`lockedAmount` as spendable. Both are in atomic units (divide by
+10^`CRYPTONOTE_DISPLAY_DECIMAL_POINT` for whole coins). With an `address` param the
+same two fields are reported for that one deposit bucket. PQ and classical balances
+are never combined.
 
 ## `registerAccount` (free, anti-spam PoW)
 
@@ -205,7 +212,9 @@ index `T` into the payment automatically.
 
 Open the same container with `simplewallet` and run `address` / `balance`.
 The `getAddress.address` must equal the address `address` prints, and
-`getBalance.availableBalance` must equal the `balance` amount (in atomic
-units) once both have scanned to the same height. The PQ address is derived
+`getBalance.availableBalance` must equal simplewallet's "Available balance"
+(both are the spendable amount; immature/pending funds show as
+`getBalance.lockedAmount` and simplewallet's "Locked") once both have scanned to
+the same height. The PQ address is derived
 deterministically from the container's primary spend secret, so it is stable
 across reopen and identical between the two front-ends.

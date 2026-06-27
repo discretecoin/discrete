@@ -178,6 +178,7 @@ void GetPqBalance::Request::serialize(CryptoNote::ISerializer& serializer) {
 
 void GetPqBalance::Response::serialize(CryptoNote::ISerializer& serializer) {
   serializer(availableBalance, "availableBalance");
+  serializer(lockedAmount, "lockedAmount");
   serializer(scannedHeight, "scannedHeight");
   serializer(pqEnabled, "enabled");
 }

@@ -56,6 +56,10 @@ public:
   // key that can scan balance/history but cannot spend or register account numbers.
   bool pqEnabled() const { return static_cast<bool>(m_pqConsumer); }
   uint64_t pqActualBalance() const;
+  // What can actually be spent right now: confirmed (out of the mempool) AND past
+  // its per-output unlock height. pqActualBalance() minus this is the locked/pending
+  // remainder. Mirrors WalletLegacy::pqUnlockedBalance and simplewallet's "Available".
+  uint64_t pqSpendableBalance() const;
   std::vector<PqSpendInput> pqSpendableInputs() const;
   uint32_t pqSyncedHeight() const;
   // The wallet's address (base58). Full wallets derive it from the primary spend

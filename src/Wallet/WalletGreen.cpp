@@ -1871,6 +1871,10 @@ uint64_t WalletGreen::pqActualBalance() const {
   return m_pqConsumer ? m_pqConsumer->state().balance() : 0;
 }
 
+uint64_t WalletGreen::pqSpendableBalance() const {
+  return m_pqConsumer ? m_pqConsumer->state().spendableBalance() : 0;
+}
+
 std::vector<PqSpendInput> WalletGreen::pqSpendableInputs() const {
   return m_pqConsumer ? m_pqConsumer->state().spendableInputs() : std::vector<PqSpendInput>{};
 }

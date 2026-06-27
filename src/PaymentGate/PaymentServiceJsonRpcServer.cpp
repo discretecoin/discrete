@@ -260,9 +260,9 @@ std::error_code PaymentServiceJsonRpcServer::handleGetPqAddress(const GetPqAddre
 
 std::error_code PaymentServiceJsonRpcServer::handleGetPqBalance(const GetPqBalance::Request& request, GetPqBalance::Response& response) {
   if (!request.address.empty()) {
-    return service.getPqBalance(request.address, response.availableBalance, response.scannedHeight, response.pqEnabled);
+    return service.getPqBalance(request.address, response.availableBalance, response.lockedAmount, response.scannedHeight, response.pqEnabled);
   }
-  return service.getPqBalance(response.availableBalance, response.scannedHeight, response.pqEnabled);
+  return service.getPqBalance(response.availableBalance, response.lockedAmount, response.scannedHeight, response.pqEnabled);
 }
 
 std::error_code PaymentServiceJsonRpcServer::handleRegisterPqAccount(const RegisterPqAccount::Request& request, RegisterPqAccount::Response& response) {
