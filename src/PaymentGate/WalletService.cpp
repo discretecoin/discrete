@@ -1447,6 +1447,13 @@ std::error_code WalletService::createPqDepositAddress(std::string& address, uint
 
     index = gw->reservePqDepositIndex();
     address = gw->pqDepositAddress(index, regH, regI);
+
+    // reservePqDepositIndex() only bumped the in-memory deposit count + re-pointed
+    // the scanner; the durable copy lives in the PQ state blob. Persist now so a crash
+    // before the next save can't reset the count and make funds received at deposit
+    // indices T>=1 invisible until a full rescan. SAVE_ALL is required: the deposit
+    // metadata is only written at that level (SAVE_KEYS_ONLY skips the PQ state).
+    wallet.save(CryptoNote::WalletSaveLevel::SAVE_ALL);
   } catch (std::system_error& x) {
     logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while creating deposit address: " << x.what();
     return x.code();

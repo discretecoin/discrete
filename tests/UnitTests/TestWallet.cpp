@@ -538,6 +538,51 @@ TEST(PqWalletIntegration, SingleKeyIndexAttributesDepositsByT) {
   boost::filesystem::remove(path);
 }
 
+// Crash durability of the deposit registry. WalletService::createPqDepositAddress now
+// persists (wallet.save(SAVE_ALL)) right after reservePqDepositIndex(), because the
+// reserved count lives only in the PQ state blob until a save. A process that dies
+// after that create-time save — before any graceful shutdown save — must still report
+// the reserved deposits on reopen; otherwise a single-key-index (exchange) scanner
+// falls back to maxT=1 and funds received at deposit indices T>=1 go invisible until a
+// full rescan. Model the crash exactly: ONE create-time save(), then shutdown() (which
+// does not save), then a fresh load() with no further save.
+TEST(PqWalletIntegration, DepositRegistrySurvivesCrashAfterCreateTimeSave) {
+  System::Dispatcher dispatcher;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(1000000).upgradeHeightV6(1000000)
+      .currency();
+  TestBlockchainGenerator generator(currency);
+  INodeTrivialRefreshStub node(generator);
+
+  const std::string path = "pq_deposit_durable.wallet";
+  boost::filesystem::remove(path);
+
+  {
+    CryptoNote::WalletGreen wallet(dispatcher, currency, node, logger);
+    wallet.initialize(path, "pass");
+    wallet.createAddress();  // primary (spend wallet: deposits allowed)
+    wallet.setPqDepositScheme(CryptoNote::PqDepositScheme::SingleKeyIndex);
+    ASSERT_EQ(wallet.reservePqDepositIndex(), 0u);
+    ASSERT_EQ(wallet.reservePqDepositIndex(), 1u);
+    wallet.save();      // the single create-time save createPqDepositAddress now performs
+    wallet.shutdown();  // no save here: anything not already on disk is lost (== crash)
+  }
+
+  {
+    CryptoNote::WalletGreen reloaded(dispatcher, currency, node, logger);
+    ASSERT_NO_THROW(reloaded.load(path, "pass"));
+    // Scheme + count come straight off disk, so the scanner watches T=0..count-1 again.
+    EXPECT_EQ(reloaded.getPqDepositScheme(), CryptoNote::PqDepositScheme::SingleKeyIndex);
+    EXPECT_EQ(reloaded.getPqDepositCount(), 2u);
+    reloaded.shutdown();
+  }
+
+  boost::filesystem::remove(path);
+}
+
 // A failed relay must roll the spend back: inputs are reserved before relay (so a
 // second send can't reuse them), and on relay failure the reservation is undone and the
 // balance fully restored — no funds stranded.
