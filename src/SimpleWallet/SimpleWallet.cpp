@@ -2877,6 +2877,6 @@ int main(int argc, char* argv[]) {
       logger(INFO) << "Wallet closed";
     }
   }
-  return 1;
+  return 0;
   //CATCH_ENTRY_L0("main", 1);
 }

@@ -44,13 +44,15 @@ must keep running without crashing — confirm by starting Node A alone first.
 
 Alice (terminal 3) and Bob (terminal 4):
 ```
-simplewallet --generate-new-wallet alice.wallet --password pw --daemon-address 127.0.0.1:19331
-simplewallet --generate-new-wallet bob.wallet   --password pw --daemon-address 127.0.0.1:19341
+simplewallet --testnet --generate-new-wallet alice.wallet --password pw --daemon-address 127.0.0.1:19331
+simplewallet --testnet --generate-new-wallet bob.wallet   --password pw --daemon-address 127.0.0.1:19341
 ```
 In each wallet, note the PQ address (all commands are PQ by default):
 ```
 [wallet]> address
 ```
+`greenwallet` also supports testnet; use `greenwallet --testnet --wallet-file
+<file> --password pw --remote-daemon http://127.0.0.1:19331`.
 
 ## 4. Mine to Alice's identity
 

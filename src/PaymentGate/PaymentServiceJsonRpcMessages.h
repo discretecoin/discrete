@@ -278,10 +278,9 @@ struct RegisterPqAccount {
   };
 };
 
-// Paid PQ account registration (no PoW). NOT YET SUPPORTED over walletd: it
-// requires spending PQ funds + fee via a TX_PQ, and walletd has no PQ-send path
-// yet. The handler returns a not-supported error rather than building a tx that
-// consensus would reject. Use the free RegisterPqAccount instead.
+// Paid PQ account registration (no PoW). Requires spendable PQ funds for the
+// registration transaction and fee; walletd submits it through the TX_PQ send
+// path. Use the free RegisterPqAccount path when the wallet has no funds yet.
 struct RegisterPqAccountPaid {
   struct Request {
     void serialize(CryptoNote::ISerializer& serializer);

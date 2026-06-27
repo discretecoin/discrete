@@ -345,10 +345,14 @@ TEST(WalletLedger, RespectsPerOutputUnlockHeight) {
     // Tip below the unlock height: the wallet must NOT offer it (consensus would
     // reject the spend).
     st.setLastScannedHeight(999);
+    EXPECT_EQ(st.spendableBalance(), 0u);
+    EXPECT_EQ(st.depositSpendableBalance(PQ_PRIMARY_DEPOSIT), 0u);
     EXPECT_TRUE(st.spendableInputs().empty());
 
     // Tip at/after the unlock height: now spendable.
     st.setLastScannedHeight(1000);
+    EXPECT_EQ(st.spendableBalance(), 800000u);
+    EXPECT_EQ(st.depositSpendableBalance(PQ_PRIMARY_DEPOSIT), 800000u);
     ASSERT_EQ(st.spendableInputs().size(), 1u);
     EXPECT_EQ(st.spendableInputs()[0].amount, 800000u);
 }

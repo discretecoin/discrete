@@ -152,6 +152,11 @@ Config parseArguments(int argc, char **argv)
       config.disableVerify = true;
     }
 
+    if (cmdOptionExists(argv, argv+argc, "--testnet"))
+    {
+      config.testnet = true;
+    }
+
     return config;
 }
 
@@ -172,6 +177,8 @@ std::vector<CLICommand> getCLICommands()
 
         {"--remote-daemon <url>", "Connect to the remote daemon at <url>", "",
          false, true},
+
+        {"--testnet", "Use testnet network/address parameters", "", false, false},
 
         {"--daemon-cert <path>", "Custom cert file at <path> for performing verification", "",
          false, true},

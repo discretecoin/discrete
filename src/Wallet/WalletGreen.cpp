@@ -1402,8 +1402,8 @@ size_t WalletGreen::transfer(const TransactionParameters& transactionParameters,
 uint64_t WalletGreen::getBalanceMinusDust(const std::vector<std::string>& /*addresses*/)
 {
   // PQ output amounts are drawn from the fixed canonical denomination table, so
-  // there is no unspendable "dust"; the full confirmed balance is spendable.
-  return getActualBalance();
+  // there is no unspendable "dust"; only mempool/lock state can make funds unavailable.
+  return pqSpendableBalance();
 }
 
 WalletTransactionWithTransfers WalletGreen::getTransaction(const Crypto::Hash& transactionHash) const {
@@ -1873,6 +1873,22 @@ uint64_t WalletGreen::pqActualBalance() const {
 
 uint64_t WalletGreen::pqSpendableBalance() const {
   return m_pqConsumer ? m_pqConsumer->state().spendableBalance() : 0;
+}
+
+uint64_t WalletGreen::pqActualBalance(const std::string& address) const {
+  uint32_t bucket = 0;
+  if (!pqResolveAddressBucket(address, bucket) || !m_pqConsumer) {
+    return 0;
+  }
+  return m_pqConsumer->state().depositBalance(bucket);
+}
+
+uint64_t WalletGreen::pqSpendableBalance(const std::string& address) const {
+  uint32_t bucket = 0;
+  if (!pqResolveAddressBucket(address, bucket) || !m_pqConsumer) {
+    return 0;
+  }
+  return m_pqConsumer->state().depositSpendableBalance(bucket);
 }
 
 std::vector<PqSpendInput> WalletGreen::pqSpendableInputs() const {

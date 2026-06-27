@@ -171,18 +171,20 @@ void printPrivateKeys(CryptoNote::WalletGreen &wallet, bool viewWallet)
 void balance(CryptoNote::INode &node, CryptoNote::WalletGreen &wallet,
              bool viewWallet)
 {
-    const uint64_t unconfirmedBalance = wallet.getPendingBalance();
-    const uint64_t confirmedBalance = wallet.getActualBalance();
-    const uint64_t totalBalance = unconfirmedBalance + confirmedBalance;
+    const uint64_t totalBalance = wallet.pqActualBalance();
+    const uint64_t availableBalance = wallet.pqSpendableBalance();
+    const uint64_t lockedBalance = totalBalance >= availableBalance
+        ? totalBalance - availableBalance
+        : 0;
 
     const uint32_t localHeight = node.getLastLocalBlockHeight();
     const uint32_t remoteHeight = node.getLastKnownBlockHeight();
     const uint32_t walletHeight = wallet.getBlockCount();
 
     std::cout << "Available balance: "
-              << SuccessMsg(formatAmount(confirmedBalance)) << std::endl
-              << "Locked (unconfirmed) balance: "
-              << WarningMsg(formatAmount(unconfirmedBalance))
+              << SuccessMsg(formatAmount(availableBalance)) << std::endl
+              << "Locked (immature/unconfirmed) balance: "
+              << WarningMsg(formatAmount(lockedBalance))
               << std::endl << "Total balance: "
               << InformationMsg(formatAmount(totalBalance)) << std::endl;
 

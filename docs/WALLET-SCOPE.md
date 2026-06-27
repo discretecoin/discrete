@@ -1,46 +1,60 @@
-# Wallet scope & support matrix (Discrete)
+# Wallet Scope And Support Matrix
 
-Discrete ships three wallet front-ends. All three are **supported for post-quantum
-(PQ) use**; `simplewallet` is the reference/primary CLI.
+Discrete ships three wallet front-ends. All three are supported for post-quantum
+(PQ) use; `simplewallet` remains the reference CLI.
 
 | Front-end | Binary | Role | PQ support |
 |---|---|---|---|
-| simplewallet | `simplewallet.exe` | Reference CLI | Full (canonical) |
-| greenwallet | `greenwallet.exe` | Alternative interactive CLI (zedwallet-style) | Full parity |
-| walletd | `walletd.exe` | JSON-RPC service (PaymentGate) for exchanges/services | Address, balance, free registration, status (see `docs/WALLETD-PQ.md`) |
+| simplewallet | `simplewallet.exe` | Reference interactive CLI | Full, canonical |
+| greenwallet | `greenwallet.exe` | Alternative zedwallet-style CLI | Full, including `--testnet` |
+| walletd | `walletd.exe` | JSON-RPC wallet for services/exchanges | Full PQ service API; see `docs/WALLETD-PQ.md` |
 
-## Decision: greenwallet IS supported for Discrete PQ
+## Greenwallet
 
-`greenwallet` implements the same PQ command family as `simplewallet`, all wired
-to the same `WalletGreen` / `PqTransactionBuilder` core (no half-wired stubs):
+`greenwallet` is supported for Discrete PQ. It uses the same `WalletGreen`,
+`PqSender`, and `PqTransactionBuilder` core as walletd and exposes the same user
+operations through the interactive command dispatcher.
 
-| Command | simplewallet | greenwallet |
+| Operation | simplewallet | greenwallet |
 |---|---|---|
-| `pq_address` | ✅ | ✅ |
-| `pq_balance` | ✅ | ✅ |
-| `pq_transfer` | ✅ | ✅ (builds + relays a real `TX_PQ`) |
-| `pq_register` (free, anti-spam PoW) | ✅ | ✅ |
-| `pq_register_paid` | ⚠️ (see below) | ⚠️ (see below) |
-| `pq_account` | ✅ | ✅ |
-| `sign_message` / `verify_message` | ✅ ML-DSA (PQ) | ✅ ML-DSA (PQ) |
+| address display | `address` | `address` |
+| balance display | `balance` | `balance` |
+| transfer | `transfer <address-or-account> <amount>` | `transfer` |
+| free account registration | `register` | `register` |
+| paid account registration | `register_paid` | `register_paid` |
+| account lookup | `account` | `account` |
+| message signing / verification | ML-DSA | ML-DSA |
 
-`sign_message`/`verify_message` in **both** CLIs use the post-quantum scheme
-(ML-DSA-65 over the wallet's spend key; `CryptoNoteFormatUtils::signMessagePq` /
-`verifyMessagePq`). `verify_message` takes a PQ address.
+Both interactive wallets report "available" as spendable now: confirmed, out of
+the mempool, and past any coinbase/timelock unlock height. Immature or
+unconfirmed funds are shown as locked.
 
-### Known cross-cutting limitations (not greenwallet-specific)
+## Walletd
 
-- **`pq_register_paid`** routes through the classical fee-paying transfer path.
-  In Discrete only `TX_PQ` is accepted by consensus, so the free, PoW-based
-  `pq_register` is the recommended (and fully PQ-native) registration path. Paid
-  registration over a `TX_PQ` carrying the registration tag is future work shared
-  by all front-ends.
-- **walletd** has no PQ-send path yet, so it exposes free `registerAccount` but
-  returns `not_supported` for `registerAccountPaid` (see `docs/WALLETD-PQ.md`).
+`walletd` is the programmatic interface for custodial/service use. Its PQ JSON-RPC
+surface includes:
+
+- `getAddress`
+- `getBalance` and `getBalance(address)`
+- `getDepositScheme`
+- `createDepositAddress`
+- `listDepositAddresses`
+- `registerAccount`
+- `registerAccountPaid`
+- `getAccountStatus`
+- `sendTransaction`
+- transaction/history/filter methods
+
+`getBalance.availableBalance` is spendable now. `lockedAmount` is the rest of the
+owned balance, including mempool effects after a reorg and immature/timelocked
+outputs. Address-scoped and aggregate balance calls use the same split.
 
 ## Guidance
 
-- Interactive users: either CLI works; `simplewallet` is the reference if you hit
-  a discrepancy.
-- Exchanges / services: use `walletd` (JSON-RPC). PQ deposit-address modes
-  (aggregated-multikey / single-key-index) are tracked separately.
+- Interactive users: use `simplewallet` for the reference flow; `greenwallet` is
+  available when its menu-driven workflow is preferred.
+- Testnet users: pass `--testnet` to `simplewallet`, `greenwallet`, `walletd`, and
+  `discreted` so address HRPs and chain parameters match.
+- Exchanges/services: use `walletd`, choosing `--aggregated-multikey` or
+  `--single-key-index` at container creation. The deposit scheme is persisted and
+  cannot be changed for an existing container.

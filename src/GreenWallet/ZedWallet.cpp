@@ -56,7 +56,7 @@ int main(int argc, char **argv)
 
     /* Currency contains our coin parameters, such as decimal places, supply */
     const CryptoNote::Currency currency
-        = CryptoNote::CurrencyBuilder(logManager).currency();
+        = CryptoNote::CurrencyBuilder(logManager).testnet(config.testnet).currency();
 
     System::Dispatcher dispatcher;
 

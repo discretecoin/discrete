@@ -60,6 +60,8 @@ public:
   // its per-output unlock height. pqActualBalance() minus this is the locked/pending
   // remainder. Mirrors WalletLegacy::pqUnlockedBalance and simplewallet's "Available".
   uint64_t pqSpendableBalance() const;
+  uint64_t pqActualBalance(const std::string& address) const;
+  uint64_t pqSpendableBalance(const std::string& address) const;
   std::vector<PqSpendInput> pqSpendableInputs() const;
   uint32_t pqSyncedHeight() const;
   // The wallet's address (base58). Full wallets derive it from the primary spend

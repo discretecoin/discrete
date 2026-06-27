@@ -1,112 +1,115 @@
-// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2026, The Discrete developers
 //
-// This file is part of Karbo.
-//
-// Karbo is free software: you can redistribute it and/or modify
-// it under the terms of the GNU Lesser General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// Karbo is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU Lesser General Public License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with Karbo.  If not, see <http://www.gnu.org/licenses/>.
+// Current hash/PoW smoke tests for the PQ-only chain. The historical CryptoNote
+// vector runner covered cn_slow_hash and the removed extra hash functions; Discrete
+// uses SHA3-256 for the chain hash and yespower for PoW.
 
-#include <cstddef>
+#include <cstdint>
 #include <cstring>
-#include <fstream>
 #include <iomanip>
-#include <ios>
+#include <iostream>
+#include <sstream>
 #include <string>
 
 #include "crypto/hash.h"
-#include "../Io.h"
 
-using namespace std;
-typedef Crypto::Hash chash;
+namespace {
 
-bool operator !=(const chash &a, const chash &b) {
-  return 0 != std::memcmp(&a, &b, sizeof(chash));
+std::string toHex(const Crypto::Hash& h) {
+  std::ostringstream out;
+  out << std::hex << std::setfill('0');
+  for (uint8_t b : h.data) {
+    out << std::setw(2) << static_cast<unsigned>(b);
+  }
+  return out.str();
 }
 
-extern "C" {
-#ifdef _MSC_VER
-#pragma warning(disable: 4297)
-#endif
-
-  static void hash_tree(const void *data, size_t length, char *hash) {
-    if ((length & 31) != 0) {
-      throw ios_base::failure("Invalid input length for tree_hash");
-    }
-    Crypto::tree_hash((const char (*)[32]) data, length >> 5, hash);
+bool expectEq(const char* name, const std::string& actual, const std::string& expected) {
+  if (actual == expected) {
+    return true;
   }
-
+  std::cerr << name << " mismatch\nexpected: " << expected << "\nactual:   " << actual << "\n";
+  return false;
 }
 
-extern "C" typedef void hash_f(const void *, size_t, char *);
-struct hash_func {
-  const string name;
-  hash_f &f;
-} hashes[] = {{"fast", Crypto::cn_fast_hash}, {"tree", hash_tree}};
+bool hashEq(const Crypto::Hash& a, const Crypto::Hash& b) {
+  return std::memcmp(a.data, b.data, sizeof(a.data)) == 0;
+}
 
-int main(int argc, char *argv[]) {
-  hash_f *f;
-  hash_func *hf;
-  fstream input;
-  vector<char> data;
-  chash expected, actual;
-  size_t test = 0;
-  bool error = false;
-  if (argc != 3) {
-    cerr << "Wrong number of arguments" << endl;
-    return 1;
+Crypto::Hash chainHash(const void* data, std::size_t len) {
+  Crypto::Hash h{};
+  Crypto::cn_fast_hash(data, len, h);
+  return h;
+}
+
+bool testChainSha3() {
+  const Crypto::Hash empty = chainHash("", 0);
+  const Crypto::Hash abc = chainHash("abc", 3);
+
+  bool ok = true;
+  ok &= expectEq("SHA3-256(empty)", toHex(empty),
+                 "a7ffc6f8bf1ed76651c14756a061d662f580ff4de43b49fa82d80a4b80f8434a");
+  ok &= expectEq("SHA3-256(abc)", toHex(abc),
+                 "3a985da74fe225b2045c172d6bd390bd855f086e3e9d525b46bfe24511431532");
+  return ok;
+}
+
+bool testTreeHashUsesCurrentChainHash() {
+  Crypto::Hash leaves[2] = {
+      chainHash("left", 4),
+      chainHash("right", 5),
+  };
+
+  Crypto::Hash root{};
+  Crypto::tree_hash(leaves, 2, root);
+
+  uint8_t concat[64];
+  std::memcpy(concat, leaves[0].data, 32);
+  std::memcpy(concat + 32, leaves[1].data, 32);
+  const Crypto::Hash expected = chainHash(concat, sizeof(concat));
+
+  return expectEq("tree_hash(two leaves)", toHex(root), toHex(expected));
+}
+
+bool testYespowerPowHash() {
+  Crypto::Hash seed{};
+  Crypto::Hash h1{};
+  Crypto::Hash h2{};
+  const char data[] = "Discrete yespower PoW";
+
+  if (!Crypto::y_slow_hash(data, sizeof(data) - 1, seed, h1)) {
+    std::cerr << "yespower failed for baseline input\n";
+    return false;
   }
-  for (hf = hashes;; hf++) {
-    if (hf >= &hashes[sizeof(hashes) / sizeof(hash_func)]) {
-      cerr << "Unknown function" << endl;
-      return 1;
-    }
-    if (argv[1] == hf->name) {
-      f = &hf->f;
-      break;
-    }
+  if (!Crypto::y_slow_hash(data, sizeof(data) - 1, seed, h2)) {
+    std::cerr << "yespower failed for repeat input\n";
+    return false;
   }
-  input.open(argv[2], ios_base::in);
-  for (;;) {
-    ++test;
-    input.exceptions(ios_base::badbit);
-    get(input, expected);
-    if (input.rdstate() & ios_base::eofbit) {
-      break;
-    }
-    input.exceptions(ios_base::badbit | ios_base::failbit | ios_base::eofbit);
-    input.clear(input.rdstate());
-    get(input, data);
-    f(data.data(), data.size(), (char *) &actual);
-    if (expected != actual) {
-      size_t i;
-      cerr << "Hash mismatch on test " << test << endl << "Input: ";
-      if (data.size() == 0) {
-        cerr << "empty";
-      } else {
-        for (i = 0; i < data.size(); i++) {
-          cerr << setbase(16) << setw(2) << setfill('0') << int(static_cast<unsigned char>(data[i]));
-        }
-      }
-      cerr << endl << "Expected hash: ";
-      for (i = 0; i < 32; i++) {
-          cerr << setbase(16) << setw(2) << setfill('0') << int(reinterpret_cast<unsigned char *>(&expected)[i]);
-      }
-      cerr << endl << "Actual hash: ";
-      for (i = 0; i < 32; i++) {
-          cerr << setbase(16) << setw(2) << setfill('0') << int(reinterpret_cast<unsigned char *>(&actual)[i]);
-      }
-      cerr << endl;
-      error = true;
-    }
+  if (!hashEq(h1, h2)) {
+    std::cerr << "yespower is not deterministic for identical input/seed\n";
+    return false;
   }
-  return error ? 1 : 0;
+
+  Crypto::Hash changedInput{};
+  const char other[] = "Discrete yespower PoW!";
+  if (!Crypto::y_slow_hash(other, sizeof(other) - 1, seed, changedInput)) {
+    std::cerr << "yespower failed for alternate input\n";
+    return false;
+  }
+  if (hashEq(h1, changedInput)) {
+    std::cerr << "yespower output did not change when input changed\n";
+    return false;
+  }
+
+  return true;
+}
+
+}  // namespace
+
+int main() {
+  bool ok = true;
+  ok &= testChainSha3();
+  ok &= testTreeHashUsesCurrentChainHash();
+  ok &= testYespowerPowHash();
+  return ok ? 0 : 1;
 }

@@ -72,8 +72,8 @@ multi-record `createAddressList` path is dead and still slated for removal.
 |---|---|---|---|---|
 | Output detection | scan with view key | shared view key decapsulates every owned output | one view key | ✅ `PqScanTests`, `PqWalletSyncE2E` |
 | Bucket attribution | by subaddress | match per-deposit spend pubkey | recover subaddress **T** | ✅ Aggregated `AggregatedDepositReceivesAndSpends`; ✅ Index `SingleKeyIndexAttributesDepositsByT` |
-| `getBalance` (global) | total / unlocked | `getActualBalance` (confirmed) + `getPendingBalance` | same | ✅ `PqWalletSyncE2E` |
-| `getBalance(address)` | per-subaddress actual + locked | per-bucket: `depositBalance − depositPendingBalance` / pending | same | ✅ Aggregated (funded) `AggregatedDepositReceivesAndSpends`; ⬜ Index |
+| `getBalance` (global) | total / unlocked | `availableBalance` = spendable now; `lockedAmount` = pending + immature/timelocked | same | ✅ `PqWalletSyncE2E`, `PqConsumerTests` |
+| `getBalance(address)` | per-subaddress actual + locked | same spendable/locked split for one bucket | same | ✅ Aggregated (funded) `AggregatedDepositReceivesAndSpends`; ⬜ Index |
 | output spend-lock / coinbase maturity | locked until `minedMoneyUnlockWindow` | enforced via `unlockHeight` in `spendableInputs` + chain-context | same | ✅ mechanism `PqWalletIntegration.LockedOutputNotSpendableUntilUnlockHeight` |
 
 ## D. History

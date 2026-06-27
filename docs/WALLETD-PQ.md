@@ -198,15 +198,12 @@ number, or an H-I-T-C deposit subaddress (single-key-index), threading the depos
 index `T` into the payment automatically.
 
 > Status: implemented end-to-end. Scheme selection/persistence, the deposit-address
-> API, and the sender side (H-I-T-C resolution) were already in place; the walletd-side
-> **scan attribution** (crediting an incoming deposit to the specific address/index it
-> was paid to) is now wired into `WalletLedger`. The scanner derives the deposit keys
-> for the container's scheme and, per output, routes via `scanPqOutputAggregate`
-> (Spec 1) or a per-`T` scan (Spec 2), stamping each owned output with its
-> `depositIndex` (persisted across reloads). `WalletGreen::pqDepositBalance(index)` /
-> `pqDepositBalances()` expose the per-deposit balances for attribution. Live
-> end-to-end confirmation (pay each address, observe the right credit) still depends
-> on the 2-node testnet bring-up (Phase 6.2).
+> API, sender-side H-I-T-C resolution, per-deposit scan attribution, and rollback
+> accounting are wired through `WalletLedger`/`WalletGreen`. The scanner derives the
+> deposit keys for the container's scheme and stamps each owned output with its
+> `depositIndex` (persisted across reloads). `getBalance(address)` and aggregate
+> `getBalance` both report spendable funds as `availableBalance` and the pending or
+> immature/timelocked remainder as `lockedAmount`.
 
 ## Verifying parity with simplewallet
 

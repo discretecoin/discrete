@@ -117,6 +117,10 @@ public:
   // walletd attribution).
   uint64_t depositBalance(uint32_t depositIndex) const;
 
+  // Spendable balance attributed to one deposit index. Uses the same confirmed +
+  // unlocked filter as spendableInputs().
+  uint64_t depositSpendableBalance(uint32_t depositIndex) const;
+
   // Unspent balance attributed to one deposit index that is still in the mempool
   // (received at UNCONFIRMED_HEIGHT). Per-bucket counterpart of pendingBalance();
   // a deposit's confirmed balance is depositBalance(idx) - depositPendingBalance(idx).

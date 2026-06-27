@@ -96,6 +96,9 @@ struct Config
     /* Enable SSL mode */
     bool ssl = false;
 
+    /* Use testnet currency parameters/address HRP */
+    bool testnet = false;
+
     /* The wallet file path */
     std::string walletFile = "";
 

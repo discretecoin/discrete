@@ -1278,13 +1278,13 @@ std::error_code WalletService::getPqBalance(const std::string& address, uint64_t
     }
     pqEnabled = greenWallet->pqEnabled();
     scannedHeight = greenWallet->pqSyncedHeight();
-    // Per-deposit balance: resolve the selector (index / PQ address / deposit address)
-    // to its bucket and report that bucket's confirmed balance as available, with any
-    // still-in-mempool amount (e.g. a funding tx orphaned by a reorg) as locked. An
-    // address the wallet does not own resolves to 0 (rather than leaking the total).
+    // Per-address balance uses the same "available means spendable now" split as the
+    // aggregate endpoint: pending mempool effects and immature/timelocked outputs are
+    // locked, not available. Unknown addresses resolve to 0 rather than leaking totals.
     const std::string resolved = canonicalizeAddressSelector(wallet, address);
-    availableBalance = greenWallet->getActualBalance(resolved);
-    lockedAmount = greenWallet->getPendingBalance(resolved);
+    const uint64_t total = greenWallet->pqActualBalance(resolved);
+    availableBalance = greenWallet->pqSpendableBalance(resolved);
+    lockedAmount = total >= availableBalance ? total - availableBalance : 0;
     logger(Logging::DEBUGGING) << "Deposit balance for " << resolved << ": " << availableBalance
                                << ", locked: " << lockedAmount;
   } catch (std::system_error& x) {

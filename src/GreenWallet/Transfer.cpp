@@ -181,7 +181,7 @@ void sendMultipleTransactions(CryptoNote::WalletGreen &wallet,
 
             const uint64_t neededBalance = tx.destinations[0].amount + tx.fee;
 
-            if (neededBalance < wallet.getActualBalance())
+            if (neededBalance <= wallet.pqSpendableBalance())
             {
                 const size_t id = wallet.transfer(tx, txSecretKey);
 
@@ -267,9 +267,16 @@ void splitTx(CryptoNote::WalletGreen &wallet,
         /* If we have to use the minimum fee instead of splitting the total fee,
            then it is possible the user no longer has the balance to cover this
            transaction. So, we slightly lower the amount they are sending. */
-        if (totalCost > wallet.getActualBalance())
+        if (totalCost > wallet.pqSpendableBalance())
         {
-            p.destinations[0].amount = wallet.getActualBalance() - totalFee;
+            const uint64_t available = wallet.pqSpendableBalance();
+            if (available <= totalFee)
+            {
+                std::cout << WarningMsg("You don't have enough unlocked funds to cover the fee.")
+                          << std::endl;
+                return;
+            }
+            p.destinations[0].amount = available - totalFee;
         }
 
         const uint64_t amountPerTx = p.destinations[0].amount / numTransactions;
@@ -311,7 +318,7 @@ void transfer(std::shared_ptr<WalletInfo> walletInfo, uint32_t height, bool send
               << std::endl << std::endl;
 
 
-    const uint64_t balance = walletInfo->wallet.getActualBalance();
+    const uint64_t balance = walletInfo->wallet.pqSpendableBalance();
 
     const uint64_t balanceNoDust = walletInfo->wallet.getBalanceMinusDust
     (
@@ -437,7 +444,13 @@ void transfer(std::shared_ptr<WalletInfo> walletInfo, uint32_t height, bool send
         }
         else
         {
-            amount = balance - fee;
+            if (balance <= fee + nodeFee)
+            {
+                std::cout << WarningMsg("You don't have enough unlocked funds to cover the fee.")
+                          << std::endl;
+                return;
+            }
+            amount = balance - fee - nodeFee;
         }
     }
 
@@ -458,7 +471,7 @@ BalanceInfo doWeHaveEnoughBalance(uint64_t amount, uint64_t fee,
                                   std::shared_ptr<WalletInfo> walletInfo,
                                   uint32_t height, uint64_t nodeFee)
 {
-    const uint64_t balance = walletInfo->wallet.getActualBalance();
+    const uint64_t balance = walletInfo->wallet.pqSpendableBalance();
 
     const uint64_t balanceNoDust = walletInfo->wallet.getBalanceMinusDust
     (
@@ -479,7 +492,7 @@ BalanceInfo doWeHaveEnoughBalance(uint64_t amount, uint64_t fee,
             << InformationMsg(formatAmount(nodeFee))
             << ")"
             << std::endl
-            << "Funds available: "
+            << "Unlocked funds available: "
             << SuccessMsg(formatAmount(balance))
             << std::endl << std::endl;
 
@@ -526,7 +539,7 @@ void doTransfer(std::string address, uint64_t amount, uint64_t fee,
                 std::string nodeAddress, uint64_t nodeFee)
 {
     Crypto::SecretKey txSecretKey;
-    const uint64_t balance = walletInfo->wallet.getActualBalance();
+    const uint64_t balance = walletInfo->wallet.pqSpendableBalance();
 
     if (balance < amount + fee + nodeFee)
     {
@@ -536,7 +549,7 @@ void doTransfer(std::string address, uint64_t amount, uint64_t fee,
                   << InformationMsg("Funds needed: ")
                   << InformationMsg(formatAmount(amount + fee + nodeFee))
                   << std::endl
-                  << SuccessMsg("Funds available: " + formatAmount(balance))
+                  << SuccessMsg("Unlocked funds available: " + formatAmount(balance))
                   << std::endl;
         return;
     }

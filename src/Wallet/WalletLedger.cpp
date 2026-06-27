@@ -323,6 +323,23 @@ uint64_t WalletLedger::depositBalance(uint32_t depositIndex) const {
   return total;
 }
 
+uint64_t WalletLedger::depositSpendableBalance(uint32_t depositIndex) const {
+  uint64_t total = 0;
+  for (const auto& o : m_outputs) {
+    if (o.spent || o.depositIndex != depositIndex) {
+      continue;
+    }
+    if (o.height == UNCONFIRMED_HEIGHT) {
+      continue;
+    }
+    if (o.unlockHeight != 0 && o.unlockHeight > m_lastScannedHeight) {
+      continue;
+    }
+    total += o.amount;
+  }
+  return total;
+}
+
 uint64_t WalletLedger::depositPendingBalance(uint32_t depositIndex) const {
   uint64_t total = 0;
   for (const auto& o : m_outputs) {
