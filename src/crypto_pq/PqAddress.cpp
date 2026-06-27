@@ -20,7 +20,6 @@
 #include <cstring>
 #include <vector>
 
-#include "Common/Base58.h"
 #include "crypto_pq/PqHash.h"
 
 namespace CryptoNote {
@@ -202,29 +201,19 @@ PqAddress makePqAddress(uint64_t networkPrefix,
   return a;
 }
 
-std::string encodePqAddress(const PqAddress& addr, PqAddressEncoding encoding) {
+std::string encodePqAddress(const PqAddress& addr, const std::string& hrp) {
   std::array<uint8_t, 4> chk = pqAddressChecksum(addr);
   std::string payload = addressPayload(addr, chk);
-  switch (encoding) {
-    case PqAddressEncoding::Base58:
-      return Tools::Base58::encode(payload);
-    case PqAddressEncoding::Bech32m:
-      return bech32mEncode(kPqBech32Hrp, payload);
-  }
-  return std::string();
+  return bech32mEncode(hrp, payload);
 }
 
-bool decodePqAddress(const std::string& str, PqAddress& out, PqAddressEncoding encoding) {
+bool decodePqAddress(const std::string& str, PqAddress& out) {
+  // Accept either known Discrete HRP; the bech32m checksum is computed over the
+  // HRP, so any other prefix (a typo, or another coin's address) is rejected.
   std::string payload;
-  switch (encoding) {
-    case PqAddressEncoding::Base58:
-      if (!Tools::Base58::decode(str, payload)) return false;
-      break;
-    case PqAddressEncoding::Bech32m:
-      if (!bech32mDecode(str, kPqBech32Hrp, payload)) return false;
-      break;
-    default:
-      return false;
+  if (!bech32mDecode(str, kPqBech32HrpMainnet, payload) &&
+      !bech32mDecode(str, kPqBech32HrpTestnet, payload)) {
+    return false;
   }
   return parsePayload(payload, out);
 }

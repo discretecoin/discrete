@@ -1887,7 +1887,7 @@ std::string WalletGreen::getPqAddress() const {
     return std::string();
   }
   PqAddress addr = pqWalletAddress(keys, CryptoNote::parameters::CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX);
-  return encodePqAddress(addr, PqAddressEncoding::Base58);
+  return encodePqAddress(addr, pqBech32Hrp(m_currency.isTestnet()));
 }
 
 bool WalletGreen::getPqTrackingKeys(PqTrackingKeys& keys) const {
@@ -2086,7 +2086,7 @@ std::string WalletGreen::pqDepositAddress(uint32_t index, uint32_t regBlockHeigh
   auto depositSpend = CryptoPQ::deriveDepositSpendKeys(base.seedMaster, index);
   PqAddress addr = makePqAddress(CryptoNote::parameters::CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX,
                                  base.viewPub, depositSpend.first);
-  return encodePqAddress(addr, PqAddressEncoding::Base58);
+  return encodePqAddress(addr, pqBech32Hrp(m_currency.isTestnet()));
 }
 
 PqSendOutput WalletGreen::pqChangeTemplate(uint32_t depositIndex) const {

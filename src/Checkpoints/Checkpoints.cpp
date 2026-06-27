@@ -206,15 +206,13 @@ bool Checkpoints::load_checkpoints_from_dns()
   // a Discrete PQ address; we keep its ML-DSA-65 spend public key, which
   // verifyMessagePq checks the record signature against. A mistyped/invalid PQ
   // address is logged and dropped (it can't open the verifier — decodePqAddress
-  // rejects it — but the diagnostic points at the bad entry). PQ addresses are
-  // normally base58; we also accept the bech32m encoding.
+  // rejects it — but the diagnostic points at the bad entry).
   std::vector<CryptoPQ::DsaPublicKey> signerSpendPubs;
   signerSpendPubs.reserve(CryptoNote::DNS_CHECKPOINT_SIGNERS_COUNT);
   for (size_t i = 0; i < CryptoNote::DNS_CHECKPOINT_SIGNERS_COUNT; ++i) {
     const std::string entry(CryptoNote::DNS_CHECKPOINT_SIGNERS[i]);
     CryptoNote::PqAddress addr;
-    if (CryptoNote::decodePqAddress(entry, addr, CryptoNote::PqAddressEncoding::Base58) ||
-        CryptoNote::decodePqAddress(entry, addr, CryptoNote::PqAddressEncoding::Bech32m)) {
+    if (CryptoNote::decodePqAddress(entry, addr)) {
       signerSpendPubs.push_back(addr.spendPub);
     } else {
       logger(Logging::ERROR, BRIGHT_RED)

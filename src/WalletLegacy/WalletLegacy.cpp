@@ -798,7 +798,7 @@ std::string WalletLegacy::getPqAddress() const {
     return std::string();
   }
   PqAddress addr = pqWalletAddress(keys, CryptoNote::parameters::CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX);
-  return encodePqAddress(addr, PqAddressEncoding::Base58);
+  return encodePqAddress(addr, pqBech32Hrp(m_currency.isTestnet()));
 }
 
 PqSendResult WalletLegacy::sendPqTransfer(const std::vector<PqSendOutput>& recipients,

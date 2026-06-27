@@ -81,7 +81,7 @@ Everything is post-quantum by default, so the commands carry no `pq_` prefix.
 
 | Command | Description |
 |---|---|
-| `address [bech32]` | Show this wallet's address (base58, or bech32m/QR) |
+| `address` | Show this wallet's address (bech32m; `disc1…` on mainnet) |
 | `balance` | Show the balance |
 | `transfer <address> <amount>` | Send funds to an address or account number |
 | `register` | Register a free account number (anti-spam PoW, no fee) |

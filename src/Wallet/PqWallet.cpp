@@ -158,19 +158,11 @@ bool isPqAddressString(const std::string& s) {
     return false;
   }
   PqAddress out;
-  return parsePqAddress(s, out, nullptr);
+  return parsePqAddress(s, out);
 }
 
-bool parsePqAddress(const std::string& s, PqAddress& out, PqAddressEncoding* encoding) {
-  if (decodePqAddress(s, out, PqAddressEncoding::Base58)) {
-    if (encoding) *encoding = PqAddressEncoding::Base58;
-    return true;
-  }
-  if (decodePqAddress(s, out, PqAddressEncoding::Bech32m)) {
-    if (encoding) *encoding = PqAddressEncoding::Bech32m;
-    return true;
-  }
-  return false;
+bool parsePqAddress(const std::string& s, PqAddress& out) {
+  return decodePqAddress(s, out);
 }
 
 }  // namespace CryptoNote

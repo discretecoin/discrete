@@ -163,13 +163,13 @@ TEST(PqDepositAddress, Spec1AddressPerIndexIsDistinctAndDecodes) {
     for (uint32_t i = 0; i < 4; ++i) {
         auto dep = deriveDepositSpendKeys(m, i);
         PqAddress addr = makePqAddress(prefix, view.first, dep.first);
-        std::string enc = encodePqAddress(addr, PqAddressEncoding::Base58);
+        std::string enc = encodePqAddress(addr);
         ASSERT_FALSE(enc.empty());
         EXPECT_NE(enc, prev);  // each deposit address differs
         prev = enc;
 
         PqAddress dec;
-        ASSERT_TRUE(decodePqAddress(enc, dec, PqAddressEncoding::Base58));
+        ASSERT_TRUE(decodePqAddress(enc, dec));
         EXPECT_EQ(dec.viewPub, view.first);    // shared view key
         EXPECT_EQ(dec.spendPub, dep.first);    // this deposit's spend key
     }
@@ -185,14 +185,15 @@ TEST(PqAddress, ChecksumDerivation) {
     EXPECT_EQ(a.checksum, pqAddressChecksum(a));
 }
 
-TEST(PqAddress, Base58RoundTrip) {
+TEST(PqAddress, Bech32mRoundTrip) {
     KemPublicKey vp = pat<1184>(3, 1);
     DsaPublicKey sp = pat<1952>(2, 3);
     PqAddress a = makePqAddress(0x2A, vp, sp);
-    std::string enc = encodePqAddress(a, PqAddressEncoding::Base58);
+    std::string enc = encodePqAddress(a);  // defaults to the mainnet "disc" HRP
     ASSERT_FALSE(enc.empty());
+    EXPECT_EQ(enc.rfind("disc1", 0), 0u);  // self-identifying mainnet prefix
     PqAddress b;
-    ASSERT_TRUE(decodePqAddress(enc, b, PqAddressEncoding::Base58));
+    ASSERT_TRUE(decodePqAddress(enc, b));
     EXPECT_EQ(a.version, b.version);
     EXPECT_EQ(a.networkPrefix, b.networkPrefix);
     EXPECT_EQ(a.viewPub, b.viewPub);
@@ -200,18 +201,18 @@ TEST(PqAddress, Base58RoundTrip) {
     EXPECT_EQ(a.checksum, b.checksum);
 }
 
-TEST(PqAddress, Bech32mRoundTrip) {
+TEST(PqAddress, TestnetHrpRoundTripAndDistinct) {
     KemPublicKey vp = pat<1184>(3, 1);
     DsaPublicKey sp = pat<1952>(2, 3);
     PqAddress a = makePqAddress(0x2A, vp, sp);
-    std::string enc = encodePqAddress(a, PqAddressEncoding::Bech32m);
-    ASSERT_FALSE(enc.empty());
+    std::string mainnet = encodePqAddress(a, kPqBech32HrpMainnet);
+    std::string testnet = encodePqAddress(a, kPqBech32HrpTestnet);
+    EXPECT_EQ(testnet.rfind("tdisc1", 0), 0u);
+    EXPECT_NE(mainnet, testnet);  // same keys, visibly different network prefix
+    // Both are accepted on decode (the node knows its own network).
     PqAddress b;
-    ASSERT_TRUE(decodePqAddress(enc, b, PqAddressEncoding::Bech32m));
-    EXPECT_EQ(a.networkPrefix, b.networkPrefix);
-    EXPECT_EQ(a.viewPub, b.viewPub);
+    ASSERT_TRUE(decodePqAddress(testnet, b));
     EXPECT_EQ(a.spendPub, b.spendPub);
-    EXPECT_EQ(a.checksum, b.checksum);
 }
 
 TEST(PqAddress, VaryingNetworkPrefix) {
@@ -219,9 +220,9 @@ TEST(PqAddress, VaryingNetworkPrefix) {
     DsaPublicKey sp = pat<1952>(2, 3);
     for (uint64_t net : {0ull, 1ull, 0x7Full, 0x80ull, 0x3FFFull, 0xFFFFFFFFull}) {
         PqAddress a = makePqAddress(net, vp, sp);
-        std::string enc = encodePqAddress(a, PqAddressEncoding::Base58);
+        std::string enc = encodePqAddress(a);
         PqAddress b;
-        ASSERT_TRUE(decodePqAddress(enc, b, PqAddressEncoding::Base58)) << net;
+        ASSERT_TRUE(decodePqAddress(enc, b)) << net;
         EXPECT_EQ(net, b.networkPrefix);
     }
 }
@@ -230,30 +231,22 @@ TEST(PqAddress, ChecksumTamperRejected) {
     KemPublicKey vp = pat<1184>(3, 1);
     DsaPublicKey sp = pat<1952>(2, 3);
     PqAddress a = makePqAddress(0x2A, vp, sp);
-    std::string enc = encodePqAddress(a, PqAddressEncoding::Base58);
-    // Flip a character near the end (inside the encoded checksum region).
-    enc[enc.size() - 2] = (enc[enc.size() - 2] == 'A') ? 'B' : 'A';
+    std::string enc = encodePqAddress(a);
+    // Flip a character near the end (inside the encoded checksum region). The
+    // bech32m charset is lowercase, so swap within it to stay well-formed.
+    enc[enc.size() - 2] = (enc[enc.size() - 2] == 'a') ? 'q' : 'a';
     PqAddress b;
-    EXPECT_FALSE(decodePqAddress(enc, b, PqAddressEncoding::Base58));
+    EXPECT_FALSE(decodePqAddress(enc, b));
 }
 
-TEST(PqAddress, Bech32mWrongHrpRejected) {
+TEST(PqAddress, WrongHrpRejected) {
     KemPublicKey vp = pat<1184>(3, 1);
     DsaPublicKey sp = pat<1952>(2, 3);
     PqAddress a = makePqAddress(0x2A, vp, sp);
-    std::string enc = encodePqAddress(a, PqAddressEncoding::Bech32m);
-    enc[0] = (enc[0] == 'x') ? 'y' : 'x';  // corrupt the HRP
+    std::string enc = encodePqAddress(a);
+    enc[0] = 'x';  // "disc1..." -> "xisc1...": an unknown HRP
     PqAddress b;
-    EXPECT_FALSE(decodePqAddress(enc, b, PqAddressEncoding::Bech32m));
-}
-
-TEST(PqAddress, CrossEncodingDoesNotDecode) {
-    KemPublicKey vp = pat<1184>(3, 1);
-    DsaPublicKey sp = pat<1952>(2, 3);
-    PqAddress a = makePqAddress(0x2A, vp, sp);
-    std::string b58 = encodePqAddress(a, PqAddressEncoding::Base58);
-    PqAddress b;
-    EXPECT_FALSE(decodePqAddress(b58, b, PqAddressEncoding::Bech32m));
+    EXPECT_FALSE(decodePqAddress(enc, b));
 }
 
 int main(int argc, char** argv) {

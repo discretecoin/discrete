@@ -123,16 +123,14 @@ bool decodePqTrackingKey(const std::string& encoded, PqTrackingKeys& keys);
 
 // --- Address parsing / detection (shared by both front-ends) ---------------
 
-// True if `s` is a well-formed PQ address (correct length + valid checksum) in
-// either supported encoding. Cheap reject for non-PQ strings: a PQ address is
-// far longer than a classical Karbo address, so length screens out the common
-// case before any decode work.
+// True if `s` is a well-formed PQ address (correct length + valid checksum).
+// Cheap reject for non-PQ strings: a PQ address is far longer than an account
+// number, so length screens out the common case before any decode work.
 bool isPqAddressString(const std::string& s);
 
-// Parse a PQ address string, trying base58 then bech32m. Returns false if it is
-// not a valid PQ address in either encoding. On success `out` is fully
-// populated and `encoding` (if non-null) reports which encoding matched.
-bool parsePqAddress(const std::string& s, PqAddress& out, PqAddressEncoding* encoding = nullptr);
+// Parse a bech32m PQ address string. Returns false if it is not a valid PQ
+// address. On success `out` is fully populated.
+bool parsePqAddress(const std::string& s, PqAddress& out);
 
 // PQ identities reuse the shared CryptoNote::AccountNumber ("H-I-C") format for
 // human-readable account numbers — see include/AccountNumber.h. There is no

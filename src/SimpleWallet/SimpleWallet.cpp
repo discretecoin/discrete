@@ -210,10 +210,10 @@ CryptoNote::AccountKeys makeTrackingPlaceholderAccountKeys() {
   return keys;
 }
 
-std::string encodePqTrackingAddress(const CryptoNote::PqTrackingKeys& keys) {
+std::string encodePqTrackingAddress(const CryptoNote::PqTrackingKeys& keys, bool testnet) {
   CryptoNote::PqAddress addr = CryptoNote::pqWalletAddress(
       keys, CryptoNote::parameters::CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX);
-  return CryptoNote::encodePqAddress(addr, CryptoNote::PqAddressEncoding::Base58);
+  return CryptoNote::encodePqAddress(addr, CryptoNote::pqBech32Hrp(testnet));
 }
 
 template <typename IterT, typename ValueT = typename IterT::value_type>
@@ -654,7 +654,7 @@ simple_wallet::simple_wallet(System::Dispatcher& dispatcher, const CryptoNote::C
     "Prepare raw transaction in hex format but do not relay, e.g. for manual relay <addr_1> <amount_1> ... <addr_N> <amount_N> [-p payment_id] [-f fee] [-m ring_size]"
     " - Transfer <amount_1>,... <amount_N> to <address_1>,... <address_N>, respectively. ");
   m_consoleHandler.setHandler("set_log", std::bind(&simple_wallet::set_log, this, std::placeholders::_1), "set_log <level> - Change current log level, <level> is a number 0-4");
-  m_consoleHandler.setHandler("address", std::bind(&simple_wallet::pq_address, this, std::placeholders::_1), "Show this wallet's address, derived from the seed. Add 'bech32' for the QR-friendly encoding.");
+  m_consoleHandler.setHandler("address", std::bind(&simple_wallet::pq_address, this, std::placeholders::_1), "Show this wallet's address, derived from the seed.");
   m_consoleHandler.setHandler("save_address", std::bind(&simple_wallet::save_address_to_file, this, std::placeholders::_1), "Save current wallet public address to file");
   m_consoleHandler.setHandler("save", std::bind(&simple_wallet::save, this, std::placeholders::_1), "Save wallet synchronized data");
   m_consoleHandler.setHandler("reset", std::bind(&simple_wallet::reset, this, std::placeholders::_1), "Discard cache data and start synchronizing from the start");
@@ -1311,7 +1311,7 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
       return false;
     }
 
-    const std::string pqAddress = encodePqTrackingAddress(pqTrackingKeys);
+    const std::string pqAddress = encodePqTrackingAddress(pqTrackingKeys, m_currency.isTestnet());
     if (!writeToFile(walletAddressFile, pqAddress))
     {
       logger(WARNING, BRIGHT_RED) << "Couldn't write wallet address file: " + walletAddressFile;
@@ -1645,7 +1645,7 @@ bool simple_wallet::new_tracking_wallet(AccountKeys &tracking_key, const PqTrack
         m_wallet->getAccountKeys(keys);
 
         logger(INFO, BRIGHT_WHITE) <<
-            "Imported tracking wallet: " << encodePqTrackingAddress(pqTrackingKeys) << std::endl;
+            "Imported tracking wallet: " << encodePqTrackingAddress(pqTrackingKeys, m_currency.isTestnet()) << std::endl;
 
         m_trackingWallet = true;
     }
@@ -1980,7 +1980,7 @@ bool simple_wallet::show_tracking_key(const std::vector<std::string>& args/* = s
   }
 
   success_msg_writer(true) << "Tracking key: " << encodePqTrackingKey(keys);
-  success_msg_writer() << "Address: " << encodePqTrackingAddress(keys);
+  success_msg_writer() << "Address: " << encodePqTrackingAddress(keys, m_currency.isTestnet());
   success_msg_writer() << "This key allows full view-only audit of this address, including spends.\n"
                        << "Share it only with an auditor you trust.";
 
@@ -2298,7 +2298,7 @@ bool simple_wallet::save_address_to_file(const std::vector<std::string> &args/* 
     fail_msg_writer() << "Wallet has no tracking identity.";
     return true;
   }
-  if (writeToFile(walletAddressFile, encodePqTrackingAddress(keys))) {
+  if (writeToFile(walletAddressFile, encodePqTrackingAddress(keys, m_currency.isTestnet()))) {
     success_msg_writer() << "Wallet address saved to file: " + walletAddressFile;
   } else {
     fail_msg_writer() << "Couldn't write wallet address to file: " + walletAddressFile;
@@ -2371,23 +2371,14 @@ bool simple_wallet::pq_address(const std::vector<std::string> &args) {
   const uint64_t networkPrefix = CryptoNote::parameters::CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX;
   CryptoNote::PqAddress addr = CryptoNote::pqWalletAddress(keys, networkPrefix);
 
-  bool bech32 = !args.empty() &&
-                (args[0] == "bech32" || args[0] == "bech32m" || args[0] == "qr");
-  CryptoNote::PqAddressEncoding enc =
-      bech32 ? CryptoNote::PqAddressEncoding::Bech32m : CryptoNote::PqAddressEncoding::Base58;
-
-  std::string encoded = CryptoNote::encodePqAddress(addr, enc);
+  std::string encoded = CryptoNote::encodePqAddress(addr, CryptoNote::pqBech32Hrp(m_currency.isTestnet()));
   if (encoded.empty()) {
     fail_msg_writer() << "Failed to encode address.";
     return true;
   }
 
-  success_msg_writer() << "Address (" << (bech32 ? "bech32m" : "base58")
-                       << ", " << encoded.size() << " chars):";
+  success_msg_writer() << "Address (" << encoded.size() << " chars):";
   success_msg_writer(true) << encoded;
-  if (!bech32) {
-    logger(INFO) << "Tip: 'address bech32' prints the QR-friendlier encoding.";
-  }
   logger(INFO) << "Anyone can pay this address; a tracking wallet can audit it but cannot spend.";
   return true;
 }

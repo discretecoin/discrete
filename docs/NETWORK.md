@@ -16,13 +16,18 @@ the P2P network id lives in `src/P2p/P2pNetworks.h`.
 
 | Item | Value |
 |------|-------|
-| Base58 public-address prefix | `0x3445db` → human-readable **`disc`** |
-| Bech32m HRP (PQ, opt-in) | `disc` (`kPqBech32Hrp` in `include/PqAddress.h`) |
+| Bech32m HRP — mainnet | **`disc`** (`kPqBech32HrpMainnet` in `include/PqAddress.h`) |
+| Bech32m HRP — testnet | **`tdisc`** (`kPqBech32HrpTestnet`) |
+| Network-prefix field (in payload) | `0x3445db` (`CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX`) |
 
-Base58 is the default PQ-address encoding. The prefix was verified: generated
-classical addresses render as `discv…` and the prefix round-trips through
-encode/decode (`tests/test_pq_seed_address.cpp`). PQ addresses use the same
-prefix but, being ~3 KB payloads, do not show `disc` as leading text.
+Bech32m (BIP-350) is the sole PQ-address encoding. Addresses are self-identifying
+by network: mainnet renders as `disc1…`, testnet as `tdisc1…`, so a testnet
+address can't be mistaken for mainnet. The HRP is chosen at encode time from the
+wallet's network (`pqBech32Hrp(currency.isTestnet())`); decode accepts either
+known HRP. The `0x3445db` network-prefix is still carried inside the cemented
+address payload and covered by the checksum, but it is no longer surfaced as
+leading text. Round-trip and HRP behaviour are covered by
+`tests/test_pq_seed_address.cpp`.
 
 ## P2P network id (GUID)
 

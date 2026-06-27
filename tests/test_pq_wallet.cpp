@@ -105,27 +105,26 @@ TEST(PqWallet, ScanKeysExposeViewSecretAndSpendPublic) {
 
 // --- Address detection / parsing for the front-ends ------------------------
 
-TEST(PqWallet, DetectsOwnAddressBothEncodings) {
+TEST(PqWallet, DetectsOwnAddressBothNetworks) {
     PqWalletKeys keys = derivePqWalletKeys(makeSpendSecret(3, 6));
     PqAddress addr = pqWalletAddress(keys, kNet);
 
-    std::string b58 = encodePqAddress(addr, PqAddressEncoding::Base58);
-    std::string b32 = encodePqAddress(addr, PqAddressEncoding::Bech32m);
-    ASSERT_FALSE(b58.empty());
-    ASSERT_FALSE(b32.empty());
+    std::string mainnet = encodePqAddress(addr, kPqBech32HrpMainnet);
+    std::string testnet = encodePqAddress(addr, kPqBech32HrpTestnet);
+    ASSERT_FALSE(mainnet.empty());
+    ASSERT_FALSE(testnet.empty());
+    EXPECT_NE(mainnet, testnet);
 
-    EXPECT_TRUE(isPqAddressString(b58));
-    EXPECT_TRUE(isPqAddressString(b32));
+    // Both networks' HRPs are accepted on decode.
+    EXPECT_TRUE(isPqAddressString(mainnet));
+    EXPECT_TRUE(isPqAddressString(testnet));
 
     PqAddress out;
-    PqAddressEncoding enc;
-    ASSERT_TRUE(parsePqAddress(b58, out, &enc));
-    EXPECT_EQ(enc, PqAddressEncoding::Base58);
+    ASSERT_TRUE(parsePqAddress(mainnet, out));
     EXPECT_EQ(out.viewPub, addr.viewPub);
     EXPECT_EQ(out.spendPub, addr.spendPub);
 
-    ASSERT_TRUE(parsePqAddress(b32, out, &enc));
-    EXPECT_EQ(enc, PqAddressEncoding::Bech32m);
+    ASSERT_TRUE(parsePqAddress(testnet, out));
     EXPECT_EQ(out.spendPub, addr.spendPub);
 }
 
@@ -142,9 +141,9 @@ TEST(PqWallet, RejectsClassicalAndGarbageStrings) {
 
 TEST(PqWallet, ChecksumTamperRejectedThroughParse) {
     PqAddress addr = pqWalletAddress(makeSpendSecret(4, 4), kNet);
-    std::string b58 = encodePqAddress(addr, PqAddressEncoding::Base58);
-    b58[b58.size() - 2] = (b58[b58.size() - 2] == 'A') ? 'B' : 'A';
-    EXPECT_FALSE(isPqAddressString(b58));
+    std::string s = encodePqAddress(addr);
+    s[s.size() - 2] = (s[s.size() - 2] == 'a') ? 'q' : 'a';
+    EXPECT_FALSE(isPqAddressString(s));
 }
 
 // PQ account numbers reuse the shared CryptoNote::AccountNumber format; its
@@ -198,12 +197,12 @@ TEST(PqMessage, RejectsGarbageAndWrongPrefix) {
 TEST(PqMessage, CheckpointStyleSignAndVerify) {
     PqWalletKeys signer = derivePqWalletKeys(makeSpendSecret(13, 2));
     PqAddress addr = pqWalletAddress(signer, kNet);
-    std::string addrStr = encodePqAddress(addr, PqAddressEncoding::Base58);
+    std::string addrStr = encodePqAddress(addr);
     ASSERT_FALSE(addrStr.empty());
 
     // Loader side: decode the published PQ address back to the ML-DSA spend pubkey.
     PqAddress decoded;
-    ASSERT_TRUE(decodePqAddress(addrStr, decoded, PqAddressEncoding::Base58));
+    ASSERT_TRUE(decodePqAddress(addrStr, decoded));
     EXPECT_EQ(decoded.spendPub, signer.spendPub);
 
     const std::string payload = "1000:" + std::string(64, 'a');

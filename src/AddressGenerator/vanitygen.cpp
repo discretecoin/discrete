@@ -89,7 +89,7 @@ bool generate_treasury_reserve_accounts(const po::variables_map& vm, Currency& c
 
         CryptoNote::PqAddress addr =
             CryptoNote::makePqAddress(currency.publicAddressBase58Prefix(), view.first, spend.first);
-        std::string pqAddr = CryptoNote::encodePqAddress(addr, CryptoNote::PqAddressEncoding::Base58);
+        std::string pqAddr = CryptoNote::encodePqAddress(addr, CryptoNote::pqBech32Hrp(currency.isTestnet()));
 
         std::string vh = Common::toHex(view.first.data(),  view.first.size());
         std::string sh = Common::toHex(spend.first.data(), spend.first.size());
