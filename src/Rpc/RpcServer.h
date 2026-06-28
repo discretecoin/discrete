@@ -158,7 +158,6 @@ private:
   void listen(const std::string address, const uint16_t port);
   void listen_ssl(const std::string address, const uint16_t port);
   bool isCoreReady();
-  bool checkIncomingTransactionForFee(const BinaryArray& tx_blob);
 
 
   RpcServerConfig m_config;
@@ -180,8 +179,6 @@ private:
   std::string m_fee_address;
   uint64_t    m_fee_amount;
   std::string m_contact_info;
-  Crypto::SecretKey m_view_key;
-  CryptoNote::AccountPublicAddress m_fee_acc;
 
 };
 

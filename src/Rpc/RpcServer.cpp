@@ -235,8 +235,6 @@ RpcServer::RpcServer(
   m_p2p(p2p),
   m_protocolQuery(protocolQuery),
   blockchainExplorerDataBuilder(core, protocolQuery),
-  m_view_key(NULL_SECRET_KEY),
-  m_fee_acc(boost::value_initialized<AccountPublicAddress>()),
   m_restricted_rpc(m_config.isRestricted()),
   m_cors_domain(m_config.getCors()),
   m_fee_address(""),
@@ -245,15 +243,6 @@ RpcServer::RpcServer(
   if (!m_config.getNodeFeeAddress().empty() && m_config.getNodeFeeAmount() != 0) {
     m_fee_address = m_config.getNodeFeeAddress();
     m_fee_amount = m_config.getNodeFeeAmount();
-  }
-
-  if (!m_config.getNodeFeeViewKey().empty()) {
-    Crypto::Hash private_view_key_hash;
-    size_t size;
-    if (!Common::fromHex(m_config.getNodeFeeViewKey(), &private_view_key_hash, sizeof(private_view_key_hash), size) || size != sizeof(private_view_key_hash)) {
-      throw std::runtime_error("Could not parse private view key");
-    }
-    m_view_key = *(struct Crypto::SecretKey*)&private_view_key_hash;
   }
 
   if (!m_config.getContactInfo().empty()) {
@@ -731,31 +720,6 @@ std::string RpcServer::getCorsDomain() {
 
 bool RpcServer::isCoreReady() {
   return m_core.currency().isTestnet() || m_p2p.get_payload_object().isSynchronized();
-}
-
-bool RpcServer::checkIncomingTransactionForFee(const BinaryArray& tx_blob) {
-  Crypto::Hash tx_hash = NULL_HASH;
-  Crypto::Hash tx_prefixt_hash = NULL_HASH;
-  Transaction tx;
-  if (!parseAndValidateTransactionFromBinaryArray(tx_blob, tx, tx_hash, tx_prefixt_hash)) {
-    logger(Logging::INFO) << "Could not parse tx from blob";
-    return false;
-  }
-
-  const uint32_t currentHeight = m_core.getCurrentBlockchainHeight();
-  const uint8_t blockMajorVersion = m_core.getBlockMajorVersionForHeight(currentHeight);
-  if (tx.version >= TRANSACTION_VERSION_1 &&
-      tx.txType == TX_FREE_REG &&
-      blockMajorVersion >= BLOCK_MAJOR_VERSION_1) {
-    logger(Logging::DEBUGGING) << "Masternode received free PQ account registration transaction, relaying with no fee check";
-    return true;
-  }
-
-  // The masternode relay-fee check scanned for outputs to a classical (ECC) fee
-  // account, which has no meaning on the PQ chain (transactions carry PqOutputs,
-  // not stealth KeyOutputs). A PQ-aware fee check is future work; relay without
-  // the broken ECC fee verification.
-  return true;
 }
 
 //
@@ -1596,14 +1560,6 @@ bool RpcServer::on_send_raw_transaction(const COMMAND_RPC_SEND_RAW_TRANSACTION::
     logger(Logging::INFO) << "[on_send_raw_tx]: transaction accepted, but not relayed";
     res.status = "Not relayed";
     return true;
-  }
-
-  if (!m_fee_address.empty() && m_view_key != NULL_SECRET_KEY) {
-    if (!checkIncomingTransactionForFee(tx_blob)) {
-      logger(Logging::INFO) << "Transaction not relayed due to lack of node fee";
-      res.status = "Not relayed due to lack of node fee";
-      return true;
-    }
   }
 
   try {
