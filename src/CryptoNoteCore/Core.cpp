@@ -297,8 +297,8 @@ bool Core::get_stat_info(core_stat_info& st_inf) {
   return true;
 }
 
-bool Core::check_tx_mixin(const Transaction& /*tx*/, const Crypto::Hash& /*txHash*/, uint32_t /*height*/) {
-  // PQ inputs have no ring-mixin; ECC mixin check is not applicable in Discrete.
+bool Core::check_tx_input_privacy_model(const Transaction& /*tx*/, const Crypto::Hash& /*txHash*/, uint32_t /*height*/) {
+  // PQ inputs have no decoy set; the old ECC input privacy check is not applicable.
   return true;
 }
 
@@ -346,7 +346,7 @@ bool Core::check_tx_fee(const Transaction& tx, const Crypto::Hash& txHash, size_
   return true;
 }
 
-bool Core::check_tx_unmixable(const Transaction& tx, const Crypto::Hash& txHash, uint32_t /*height*/) {
+bool Core::check_tx_classical_output_amounts(const Transaction& tx, const Crypto::Hash& txHash, uint32_t /*height*/) {
   for (const auto& out : tx.outputs) {
     if (!is_valid_decomposed_amount(out.amount)) {
       logger(ERROR) << "Invalid decomposed output amount " << out.amount << " for tx id= " << Common::podToHex(txHash);
@@ -558,10 +558,6 @@ void Core::print_blockchain_index() {
 
 void Core::print_blockchain_outs(const std::string& file) {
   m_blockchain.print_blockchain_outs(file);
-}
-
-bool Core::get_random_outs_for_amounts(const COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::request& req, COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::response& res) {
-  return m_blockchain.getRandomOutsByAmount(req, res);
 }
 
 bool Core::get_tx_outputs_gindexs(const Crypto::Hash& tx_id, std::vector<uint32_t>& indexs) {
@@ -1171,9 +1167,9 @@ bool Core::handleIncomingTransaction(const Transaction& tx, const Crypto::Hash& 
       return false;
     }
   
-    // Legacy fee/mixin accounting reads classical KeyInput amounts and ring
-    // sizes. TX_PQ has neither — its fee floor (MIN_PQ_FEE_PER_4000_BYTES) and the
-    // value balance are enforced in checkPqTransactionInputs.
+    // Legacy fee/accounting reads classical KeyInput amounts and decoy-set sizes.
+    // TX_PQ has neither; its fee floor (MIN_PQ_FEE_PER_4000_BYTES) and the value
+    // balance are enforced in checkPqTransactionInputs.
     const bool pqOnlyInputs = tx.version >= TRANSACTION_VERSION_1 && tx.txType == TX_PQ;
     // The decomposed-amount rule is a classical-output rule; PQ outputs carry
     // arbitrary plain amounts.
@@ -1185,16 +1181,16 @@ bool Core::handleIncomingTransaction(const Transaction& tx, const Crypto::Hash& 
         return false;
       }
 
-      if (!check_tx_mixin(tx, txHash, height)) {
-        logger(INFO) << "Transaction verification failed: mixin count for transaction " << txHash << " is too large, rejected";
+      if (!check_tx_input_privacy_model(tx, txHash, height)) {
+        logger(INFO) << "Transaction verification failed: legacy input privacy model rejected transaction " << txHash;
         tvc.m_verification_failed = true;
         return false;
       }
     }
 
     if (!hasPqOutputs) {
-      if (!check_tx_unmixable(tx, txHash, height)) {
-        logger(ERROR) << "Transaction verification failed: unmixable output for transaction " << txHash << ", rejected";
+      if (!check_tx_classical_output_amounts(tx, txHash, height)) {
+        logger(ERROR) << "Transaction verification failed: invalid classical output amount in transaction " << txHash << ", rejected";
         tvc.m_verification_failed = true;
         return false;
       }
@@ -1258,12 +1254,6 @@ std::unique_ptr<IBlock> Core::getBlock(const Crypto::Hash& blockId) {
   return blockPtr;
 }
 
-bool Core::getMixin(const Transaction& /*transaction*/, uint64_t& mixin) {
-  // PQ transactions have no ring mixins.
-  mixin = 0;
-  return true;
-}
-
 bool Core::resolvePqAccountNumber(uint32_t blockHeight, uint32_t txIndex,
                                   std::array<uint8_t, TX_EXTRA_PQ_VIEW_PUBKEY_SIZE>& viewPub,
                                   std::array<uint8_t, TX_EXTRA_PQ_SPEND_PUBKEY_SIZE>& spendPub) {
@@ -1280,7 +1270,7 @@ bool Core::getCanonicalAccountRegistrationsCount(uint64_t& count) {
 }
 
 bool Core::is_key_image_spent(const Crypto::KeyImage& key_im) {
-  return m_blockchain.have_tx_keyimg_as_spent(key_im);
+  return m_blockchain.have_spend_tag_as_spent(key_im);
 }
 
 bool Core::is_key_image_spent(const Crypto::KeyImage& key_im, uint32_t height) {

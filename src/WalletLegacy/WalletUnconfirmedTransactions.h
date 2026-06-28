@@ -74,7 +74,7 @@ public:
   bool findTransactionId(const Crypto::Hash& hash, TransactionId& id);
   void erase(const Crypto::Hash& hash);
   void add(const CryptoNote::Transaction& tx, TransactionId transactionId, 
-    uint64_t amount, const std::list<TransactionOutputInformation>& usedOutputs, Crypto::SecretKey& tx_key);
+    uint64_t amount, const std::list<TransactionOutputInformation>& usedOutputs, Crypto::SecretKey& reservedKey);
   void updateTransactionId(const Crypto::Hash& hash, TransactionId id);
 
   uint64_t countUnconfirmedOutsAmount() const;

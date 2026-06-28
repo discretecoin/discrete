@@ -1,26 +1,23 @@
-# walletd HD Addresses
+# walletd PQ Deposit Addresses
 
-`walletd` creates HD address containers by default when `--generate-container` is used.
-An HD container keeps one mnemonic seed and derives new walletd addresses from it.
-This makes exchange backups simpler because the mnemonic seed, wallet password, and restore address count are enough to recreate the generated addresses.
+`walletd` creates one PQ master identity from a mnemonic seed. Deposit addresses
+are deterministic children of that seed, so an exchange can back up one wallet
+file, one password, one mnemonic, and the number of issued deposit addresses.
 
-## Creating a New HD Container
+## Creating a Container
 
 ```bash
 walletd --generate-container --container-file exchange.wallet --container-password "password"
 ```
 
-The first generated address uses HD index `0`. Every later address generated through walletd uses the next HD index.
+The primary address is index `0`. Each `createDepositAddress` call reserves the
+next deposit index.
 
-To pre-create more addresses during generation, use:
+## Restoring Deposits
 
-```bash
-walletd --generate-container --container-file exchange.wallet --container-password "password" --restore-address-count 100
-```
-
-`--restore-address-count` is also used when restoring an HD container from a mnemonic seed.
-
-## Restoring an HD Container
+The seed does not store how many deposits were issued. When restoring from a
+mnemonic, pass the total address count to regenerate: primary address plus all
+deposit addresses that may have received funds.
 
 ```bash
 walletd --generate-container \
@@ -30,57 +27,19 @@ walletd --generate-container \
   --restore-address-count 100
 ```
 
-The wallet cannot know how many addresses an exchange created after the seed was backed up.
-Choose a restore count at least as high as the largest address index that may have received funds.
-If you are unsure, restore with a higher count.
+`--scan-height` can be combined with restore to avoid scanning earlier blocks.
 
-`--scan-height` can be combined with restore to avoid scanning the whole chain:
+## Deposit Schemes
 
-```bash
-walletd --generate-container \
-  --container-file restored.wallet \
-  --container-password "password" \
-  --mnemonic-seed "25 word seed ..." \
-  --restore-address-count 100 \
-  --scan-height 123456
-```
+`AggregatedMultikey` is the default. It uses one ML-KEM view key and a derived
+ML-DSA spend key per deposit address. Spending a deposit output requires the
+matching derived spend key.
 
-## Independent Address Containers
+`SingleKeyIndex` uses one spend key and routes deposits by account-number index.
+It requires account registration before deposit subaddresses can be issued.
 
-Older walletd containers created every address with an independent random spend key.
-That behavior is still available for new containers with:
+## Exchange Backup Checklist
 
-```bash
-walletd --generate-container \
-  --container-file legacy-style.wallet \
-  --container-password "password" \
-  --independent-addresses
-```
-
-Use this mode only when you intentionally need the old backup model.
-Each address spend key must be backed up independently.
-
-## How Derivation Works
-
-The mnemonic encodes the HD master spend secret key using the existing 25-word Electrum-style Karbo/Monero mnemonic format.
-The wallet derives the container view key from that master spend key.
-
-Address derivation is deterministic:
-
-- index `0` uses the master spend secret key directly, preserving compatibility with the existing mnemonic model
-- index `1` and later use a domain-separated scalar hash of the master spend key, view secret key, and little-endian address index
-- each derived spend public key is paired with the same container view public key, so the resulting addresses are normal Karbo addresses
-
-The HD mode is stored inside the wallet container.
-Existing containers keep their original address mode when opened by newer walletd builds.
-
-## Notes for Exchanges
-
-Back up the container file, container password, mnemonic seed, and the highest address count you have generated.
-The mnemonic alone cannot reveal how many addresses were created.
-
-Addresses imported from raw spend keys are not recoverable from the HD mnemonic.
-If you use raw key imports, keep those key backups separately.
-
-HD walletd addresses do not change consensus rules or transaction format.
-They remain compatible with normal Karbo transfers and future transaction privacy changes because only local spend-key generation changes.
+Back up the container file, container password, mnemonic seed, deposit scheme,
+and highest issued address count. The mnemonic alone cannot reveal how many
+deposit addresses were created.

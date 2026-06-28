@@ -93,9 +93,6 @@ struct IWalletBaseStub : public CryptoNote::IWallet {
 
   virtual size_t getTransactionCount() const override { return 0; }
   virtual WalletTransaction getTransaction(size_t transactionIndex) const override { return WalletTransaction(); }
-  virtual Crypto::SecretKey getTransactionSecretKey(size_t transactionIndex) const override { return Crypto::SecretKey(); }
-  virtual Crypto::SecretKey getTransactionSecretKey(Crypto::Hash& transactionHash) const override { return Crypto::SecretKey(); }
-  virtual bool getTransactionProof(const Crypto::Hash& transactionHash, const CryptoNote::AccountPublicAddress& destinationAddress, const Crypto::SecretKey& txKey, std::string& transactionProof) override { return false; }
   virtual size_t getTransactionTransferCount(size_t transactionIndex) const override { return 0; }
   virtual WalletTransfer getTransactionTransfer(size_t transactionIndex, size_t transferIndex) const override { return WalletTransfer(); }
 
@@ -786,7 +783,6 @@ void WalletServiceTest_sendTransaction::SetUp() {
   request.sourceAddresses.insert(request.sourceAddresses.end(), {RANDOM_ADDRESS1, RANDOM_ADDRESS2});
   request.transfers.push_back(WalletRpcOrder {RANDOM_ADDRESS3, 11111});
   request.fee = 2021;
-  request.anonymity = currency.minMixin();
   request.unlockHeight = 848309;
 }
 
@@ -824,9 +820,9 @@ bool isEquivalent(const SendTransaction::Request& request, const TransactionPara
     orders.push_back( WalletOrder{order.address, order.amount});
   });
 
-  return std::make_tuple(request.sourceAddresses, orders, request.fee, request.anonymity, extra, request.unlockHeight)
+  return std::make_tuple(request.sourceAddresses, orders, request.fee, extra, request.unlockHeight)
       ==
-      std::make_tuple(params.sourceAddresses, params.destinations, params.fee, params.mixIn, Common::toHex(Common::asBinaryArray(params.extra)), params.unlockHeightstamp);
+      std::make_tuple(params.sourceAddresses, params.destinations, params.fee, Common::toHex(Common::asBinaryArray(params.extra)), params.unlockHeightstamp);
 }
 
 TEST_F(WalletServiceTest_sendTransaction, passesCorrectParameters) {
@@ -834,8 +830,7 @@ TEST_F(WalletServiceTest_sendTransaction, passesCorrectParameters) {
   auto service = createWalletService(wallet);
 
   std::string hash;
-  std::string txSecretKey;
-  auto ec = service->sendTransaction(request, hash, txSecretKey);
+  auto ec = service->sendTransaction(request, hash);
 
   ASSERT_FALSE(ec);
   ASSERT_EQ(Common::podToHex(wallet.hash), hash);
@@ -847,8 +842,7 @@ TEST_F(WalletServiceTest_sendTransaction, incorrectSourceAddress) {
   request.sourceAddresses.push_back("wrong address");
 
   std::string hash;
-  std::string txSecretKey;
-  auto ec = service->sendTransaction(request, hash, txSecretKey);
+  auto ec = service->sendTransaction(request, hash);
   ASSERT_EQ(make_error_code(CryptoNote::error::BAD_ADDRESS), ec);
 }
 
@@ -857,8 +851,7 @@ TEST_F(WalletServiceTest_sendTransaction, incorrectTransferAddress) {
   request.transfers.push_back(WalletRpcOrder{"wrong address", 12131});
 
   std::string hash;
-  std::string txSecretKey;
-  auto ec = service->sendTransaction(request, hash, txSecretKey);
+  auto ec = service->sendTransaction(request, hash);
   ASSERT_EQ(make_error_code(CryptoNote::error::BAD_ADDRESS), ec);
 }
 

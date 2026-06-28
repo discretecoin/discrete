@@ -31,8 +31,8 @@
 // in docs/PQ-OWNERSHIP-FIX.md). These assemble a fully-signed CryptoNote::
 // Transaction the node will accept; tests previously hand-rolled this.
 //
-// This header covers TX_PQ (PQ inputs -> PQ outputs), which is node-independent
-// (no ring/mixin resolution), and TX_FREE_REG (account-number registration).
+// This header covers TX_PQ (PQ inputs -> PQ outputs), which is node-independent,
+// and TX_FREE_REG (account-number registration).
 
 namespace CryptoNote {
 

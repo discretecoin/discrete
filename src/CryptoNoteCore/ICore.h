@@ -34,8 +34,6 @@
 
 namespace CryptoNote {
 
-struct COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_request;
-struct COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_response;
 struct NOTIFY_RESPONSE_GET_OBJECTS_request;
 struct NOTIFY_REQUEST_GET_OBJECTS_request;
 
@@ -78,7 +76,6 @@ public:
   virtual void get_blockchain_top(uint32_t& height, Crypto::Hash& top_id) = 0;
   virtual std::vector<Crypto::Hash> findBlockchainSupplement(const std::vector<Crypto::Hash>& remoteBlockIds, size_t maxCount,
     uint32_t& totalBlockCount, uint32_t& startBlockIndex) = 0;
-  virtual bool get_random_outs_for_amounts(const COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_request& req, COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_response& res) = 0;
   virtual bool get_tx_outputs_gindexs(const Crypto::Hash& tx_id, std::vector<uint32_t>& indexs) = 0;
   virtual i_cryptonote_protocol* get_protocol() = 0;
   virtual bool handle_incoming_tx(const BinaryArray& tx_blob, tx_verification_context& tvc, bool keeped_by_block) = 0; //Deprecated. Should be removed with CryptoNoteProtocolHandler.
@@ -146,7 +143,6 @@ public:
 
   virtual bool getBlockLongHash(Crypto::cn_context &context, const Block& b, Crypto::Hash& res) = 0;
 
-  virtual bool getMixin(const Transaction& transaction, uint64_t& mixin) = 0;
   virtual bool isInCheckpointZone(uint32_t height) const = 0;
   virtual uint32_t getRejectDeepReorgDepth() const = 0;
 

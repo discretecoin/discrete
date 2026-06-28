@@ -50,8 +50,6 @@ PaymentServiceJsonRpcServer::PaymentServiceJsonRpcServer(System::Dispatcher* sys
   handlers.emplace("getTransactions", jsonHandler<GetTransactions::Request, GetTransactions::Response>(std::bind(&PaymentServiceJsonRpcServer::handleGetTransactions, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("getUnconfirmedTransactionHashes", jsonHandler<GetUnconfirmedTransactionHashes::Request, GetUnconfirmedTransactionHashes::Response>(std::bind(&PaymentServiceJsonRpcServer::handleGetUnconfirmedTransactionHashes, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("getTransaction", jsonHandler<GetTransaction::Request, GetTransaction::Response>(std::bind(&PaymentServiceJsonRpcServer::handleGetTransaction, this, std::placeholders::_1, std::placeholders::_2)));
-  handlers.emplace("getTransactionSecretKey", jsonHandler<GetTransactionSecretKey::Request, GetTransactionSecretKey::Response>(std::bind(&PaymentServiceJsonRpcServer::handleGetTransactionSecretKey, this, std::placeholders::_1, std::placeholders::_2)));
-  handlers.emplace("getTransactionProof", jsonHandler<GetTransactionProof::Request, GetTransactionProof::Response>(std::bind(&PaymentServiceJsonRpcServer::handleGetTransactionProof, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("sendTransaction", jsonHandler<SendTransaction::Request, SendTransaction::Response>(std::bind(&PaymentServiceJsonRpcServer::handleSendTransaction, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("getViewKey", jsonHandler<GetViewKey::Request, GetViewKey::Response>(std::bind(&PaymentServiceJsonRpcServer::handleGetViewKey, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("getMnemonicSeed", jsonHandler<GetMnemonicSeed::Request, GetMnemonicSeed::Response>(std::bind(&PaymentServiceJsonRpcServer::handleGetMnemonicSeed, this, std::placeholders::_1, std::placeholders::_2)));
@@ -200,14 +198,6 @@ std::error_code PaymentServiceJsonRpcServer::handleGetTransaction(const GetTrans
   return service.getTransaction(request.transactionHash, response.transaction);
 }
 
-std::error_code PaymentServiceJsonRpcServer::handleGetTransactionSecretKey(const GetTransactionSecretKey::Request& request, GetTransactionSecretKey::Response& response) {
-  return service.getTransactionSecretKey(request.transactionHash, response.transactionSecretKey);
-}
-
-std::error_code PaymentServiceJsonRpcServer::handleGetTransactionProof(const GetTransactionProof::Request& request, GetTransactionProof::Response& response) {
-  return service.getTransactionProof(request.transactionHash, request.destinationAddress, request.transactionSecretKey, response.transactionProof);
-}
-
 std::error_code PaymentServiceJsonRpcServer::handleSignMessage(const SignMessage::Request& request, SignMessage::Response& response) {
   if (request.address.empty()) {
     std::vector<std::string> addresses;
@@ -225,7 +215,7 @@ std::error_code PaymentServiceJsonRpcServer::handleVerifyMessage(const VerifyMes
 }
 
 std::error_code PaymentServiceJsonRpcServer::handleSendTransaction(const SendTransaction::Request& request, SendTransaction::Response& response) {
-  return service.sendTransaction(request, response.transactionHash, response.transactionSecretKey);
+  return service.sendTransaction(request, response.transactionHash);
 }
 
 

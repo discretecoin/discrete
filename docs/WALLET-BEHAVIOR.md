@@ -1,10 +1,10 @@
 # Discrete wallet behavior contract
 
-The PQ wallet machinery **replaced** the classical Karbo/CryptoNote wallet rather than
+The PQ wallet machinery **replaced** the pre-PQ Karbo/CryptoNote wallet rather than
 extending it. This document is the checklist that converts "rediscover each behavior via
 a bug" into "port each behavior deliberately." For every operation it states:
 
-- **Intended (CN)** — what the original CryptoNote/Karbo wallet did. The source of truth
+- **Reference behavior** — what the original CryptoNote/Karbo wallet did. The source of truth
   is the pre-PQ code in git history (before commit `b5833ae6`; a clean tree is
   `da185ed5`). When in doubt, read it: `git show da185ed5:src/Wallet/WalletGreen.cpp`.
 - **Aggregated** / **Index** — behavior in each deposit mode (below).
@@ -22,7 +22,7 @@ The two deposit modes (`PqDepositScheme`):
 | Spend authority for a deposit output | the **per-deposit** spend secret | the one spend secret (T is routing only) |
 
 Everywhere an address is accepted, the same three selector forms are interchangeable
-(commit `7792c1dd`): a raw PQ/classical **address**, an **H-I-C / H-I-T-C** account
+(commit `7792c1dd`): a raw PQ **address**, an **H-I-C / H-I-T-C** account
 number, or a numeric **address index** (0 = primary, 1.. = deposit in issue order).
 
 **Both modes are HD / single-mnemonic.** One 32-byte master seed (the mnemonic) derives
@@ -36,7 +36,7 @@ funds: each deposit output commits to a distinct derived spend key, and the scan
 recognizes an output whose key it has reserved (`generateNewWallet` now reserves
 `restore-address-count − 1` deposits on restore — commit pending in this series).
 
-**Discrete is HD-only:** the classical Karbo "independent spend keys" mode (each address
+**Discrete is HD-only:** the pre-PQ "independent spend keys" mode (each address
 a standalone key with no mnemonic, backed up individually) is **not offered** — PQ secret
 keys are multi-kilobyte (ML-DSA-65 secret ≈ 4 KB), so per-key backup is impractical, and
 the HD deposit model already serves the exchange/many-address use case from one seed.
@@ -49,14 +49,14 @@ multi-record `createAddressList` path is dead and still slated for removal.
 
 ## A. Identity & addresses
 
-| Operation | Intended (CN) | Aggregated | Index | Status |
+| Operation | Reference behavior | Aggregated | Index | Status |
 |---|---|---|---|---|
 | Primary identity | seed → spend/view keys | 32-byte `SeedMaster` → `deriveSpendKeys`/`deriveViewKeys` (no HKDF) | same | ✅ `PqDeriveTests`, `PqWalletSyncE2E` |
 | `getAddresses` / `getAddressesCount` | primary + every subaddress | index 0 = primary PQ address; 1.. = deposit PQ addresses | index 0 = primary; 1.. = H-I-T-C numbers | 🟡 `PaymentGateTest.addressIndexAndAccountNumberSelectors` (1 deposit) |
 | `createPqDepositAddress` | derive next subaddress | derive per-deposit spend key, return PQ address; **no registration needed** | return H-I-T-C; **requires confirmed registration** | ✅ Aggregated `AggregatedDepositReceivesAndSpends`; ✅ Index `IndexModeRegistersAndIssuesHITC` |
 | `listPqDepositAddresses` | enumerate subaddresses | list issued deposits + indices | same (needs registration) | ⬜ |
 | `getPqDepositScheme` | n/a | reports `aggregated-multikey` + count | reports `single-key-index` + count | ⬜ |
-| `validateAddress` (RPC) | parse + report validity | accepts classical, PQ, H-I-C/H-I-T-C, or index | same | ✅ `addressIndexAndAccountNumberSelectors` |
+| `validateAddress` (RPC) | parse + report validity | accepts PQ address, H-I-C/H-I-T-C, or index | same | ✅ `addressIndexAndAccountNumberSelectors` |
 | selector resolution | n/a | index/address/account-number → bucket | same | ✅ same test |
 
 ## B. Registration (PQ-specific)
@@ -68,7 +68,7 @@ multi-record `createAddressList` path is dead and still slated for removal.
 
 ## C. Receiving / balance
 
-| Operation | Intended (CN) | Aggregated | Index | Status |
+| Operation | Reference behavior | Aggregated | Index | Status |
 |---|---|---|---|---|
 | Output detection | scan with view key | shared view key decapsulates every owned output | one view key | ✅ `PqScanTests`, `PqWalletSyncE2E` |
 | Bucket attribution | by subaddress | match per-deposit spend pubkey | recover subaddress **T** | ✅ Aggregated `AggregatedDepositReceivesAndSpends`; ✅ Index `SingleKeyIndexAttributesDepositsByT` |
@@ -78,7 +78,7 @@ multi-record `createAddressList` path is dead and still slated for removal.
 
 ## D. History
 
-| Operation | Intended (CN) | Aggregated | Index | Status |
+| Operation | Reference behavior | Aggregated | Index | Status |
 |---|---|---|---|---|
 | `getTransactions` / `…Hashes` / `getUnconfirmedTransactionHashes` | filter by address(es) + paymentId + block range | per-bucket filter; accepts PQ addr / account number / index | same | 🟡 filter tested with stubs + selectors; ⬜ deposit tx filter not E2E |
 | per-address transfers | one `WalletTransfer` per owned address the tx touched | `transfersByDeposit` → primary + deposit transfers | same | 🟡 `WalletLedger`-level |
@@ -86,7 +86,7 @@ multi-record `createAddressList` path is dead and still slated for removal.
 
 ## E. Sending / spending
 
-| Operation | Intended (CN) | Aggregated | Index | Status |
+| Operation | Reference behavior | Aggregated | Index | Status |
 |---|---|---|---|---|
 | coin selection / fee / denominations | largest-first, two-pass fee, change | shared `buildPqSend` | same | ✅ `PqSenderTests` |
 | **spend authority per input** | sign with the key the output committed to | **per-deposit** key for deposit inputs, primary for primary | the **one** key for all | ✅ `PqTxBuilder.PerInputDepositKeysPassConsensus`, `PqSender.AggregatedDepositInputSignedWithDepositKey` / `SingleKeyIndexUsesOneKeyForDeposits` |
@@ -96,16 +96,16 @@ multi-record `createAddressList` path is dead and still slated for removal.
 
 ## F. Keys / backup / signing
 
-| Operation | Intended (CN) | PQ behavior | Status |
+| Operation | Reference behavior | PQ behavior | Status |
 |---|---|---|---|
 | `getSpendkeys(address)` | per-address spend keypair | any of our addresses → the 32-byte master seed (id = hash(seed)) | ✅ `PaymentGateTest.getSpendKeysAcceptsOwnAddress` |
-| `getViewKey` | classical view secret | none classical (null); PQ tracking key is the audit credential | ✅ `MessageSigningMnemonicAndViewKeyShape` |
+| `getViewKey` | view secret | not used by PQ (null); PQ tracking key is the audit credential | ✅ `MessageSigningMnemonicAndViewKeyShape` |
 | `getMnemonicSeed` | per-address electrum words | single identity → master seed as electrum words (address ignored); round-trips to the seed | ✅ `MessageSigningMnemonicAndViewKeyShape` |
 | `signMessage` / `verifyMessage` | **per-address** signature | ML-DSA; under AggregatedMultikey signs with the addressed deposit's OWN key (SingleKeyIndex/primary use the one key); empty selector = primary | ✅ `MessageSigningMnemonicAndViewKeyShape` (primary; caught+fixed a wrong-key bug) + `AggregatedPerSubaddressMessageSigning` (per-deposit) |
 
 ## G. Lifecycle / sync
 
-| Operation | Intended (CN) | PQ behavior | Status |
+| Operation | Reference behavior | PQ behavior | Status |
 |---|---|---|---|
 | save / load | persist + restore wallet | v9 container + persisted PQ ledger; balance/history restore without rescan | ✅ `PqWalletIntegration.BalanceSurvivesSaveAndReload` |
 | reorg / detach | roll back balance + history | `WalletLedger::rollbackToHeight` on `onBlockchainDetach` | ✅ primary `ReorgDetachReversesCredit`; ✅ deposit `DepositCreditReversedOnReorg` |

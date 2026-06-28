@@ -69,7 +69,6 @@ using CryptoNote::ISerializer;
     {
       std::list<transfer_destination> destinations;
       uint64_t fee = CryptoNote::parameters::MINIMUM_FEE;
-      uint64_t mixin = 0;
       uint64_t unlock_height = 0;
       std::string payment_id;
       std::string extra;
@@ -78,7 +77,6 @@ using CryptoNote::ISerializer;
       {
         KV_MEMBER(destinations)
         KV_MEMBER(fee)
-        KV_MEMBER(mixin)
         KV_MEMBER(unlock_height)
         KV_MEMBER(payment_id)
         KV_MEMBER(extra)
@@ -87,12 +85,10 @@ using CryptoNote::ISerializer;
     struct response
     {
       std::string tx_hash;
-      std::string tx_key;
 
       void serialize(ISerializer& s)
       {
         KV_MEMBER(tx_hash)
-        KV_MEMBER(tx_key)
       }
     };
   };
@@ -324,29 +320,6 @@ using CryptoNote::ISerializer;
     };
   };
 
-  /* Command: get_tx_key */
-  struct COMMAND_RPC_GET_TX_KEY
-  {
-    struct request
-    {
-      std::string tx_hash;
-
-      void serialize(ISerializer& s)
-      {
-        KV_MEMBER(tx_hash)
-      }
-    };
-    struct response
-    {
-      std::string tx_key;
-
-      void serialize(ISerializer& s)
-      {
-        KV_MEMBER(tx_key)
-      }
-    };
-  };
-
   struct COMMAND_RPC_SIGN_MESSAGE
   {
     struct request
@@ -436,33 +409,6 @@ using CryptoNote::ISerializer;
       };
     };
 
-  struct COMMAND_RPC_GET_TX_PROOF
-  {
-    struct request
-    {
-      std::string tx_hash;
-      std::string dest_address;
-      std::string tx_key;
-
-      void serialize(ISerializer& s)
-      {
-        KV_MEMBER(tx_hash);
-        KV_MEMBER(dest_address);
-        KV_MEMBER(tx_key);
-      }
-    };
-
-    struct response
-    {
-      std::string signature;
-
-      void serialize(ISerializer& s)
-      {
-        KV_MEMBER(signature);
-      }
-    };
-  };
-
   struct COMMAND_RPC_VALIDATE_ADDRESS {
     struct request {
       std::string address;
@@ -496,12 +442,10 @@ using CryptoNote::ISerializer;
     struct response
     {
       std::string tx_hash;
-      std::string tx_key;
 
       void serialize(ISerializer& s)
       {
         KV_MEMBER(tx_hash)
-        KV_MEMBER(tx_key)
       }
     };
   };

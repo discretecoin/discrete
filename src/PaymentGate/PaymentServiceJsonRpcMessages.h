@@ -28,8 +28,6 @@
 
 namespace PaymentService {
 
-const uint32_t DEFAULT_ANONYMITY_LEVEL = 6;
-
 class RequestSerializationError: public std::exception {
 public:
   virtual const char* what() const throw() override { return "Request error"; }
@@ -475,36 +473,6 @@ struct GetUnconfirmedTransactionHashes {
   };
 };
 
-struct GetTransactionSecretKey {
-  struct Request {
-    std::string transactionHash;
-
-    void serialize(CryptoNote::ISerializer& serializer);
-  };
-
-  struct Response {
-    std::string transactionSecretKey;
-
-    void serialize(CryptoNote::ISerializer& serializer);
-  };
-};
-
-struct GetTransactionProof {
-  struct Request {
-    std::string transactionHash;
-    std::string destinationAddress;
-    std::string transactionSecretKey;
-
-    void serialize(CryptoNote::ISerializer& serializer);
-  };
-
-  struct Response {
-    std::string transactionProof;
-
-    void serialize(CryptoNote::ISerializer& serializer);
-  };
-};
-
 struct SignMessage {
   struct Request {
     std::string address;
@@ -550,7 +518,6 @@ struct SendTransaction {
     std::vector<WalletRpcOrder> transfers;
     std::string changeAddress;
     uint64_t fee = 0;
-    uint32_t anonymity = DEFAULT_ANONYMITY_LEVEL;
     std::string extra;
     std::string paymentId;
     uint64_t unlockHeight = 0;
@@ -560,7 +527,6 @@ struct SendTransaction {
 
   struct Response {
     std::string transactionHash;
-    std::string transactionSecretKey;
 
     void serialize(CryptoNote::ISerializer& serializer);
   };

@@ -61,8 +61,7 @@ bool handleCommand(const std::string command,
     }
     else if (command == "ab_send")
     {
-        sendFromAddressBook(walletInfo, node.getLastKnownBlockHeight(),
-                            node.feeAddress(), node.feeAmount());
+        sendFromAddressBook(walletInfo, node.getLastKnownBlockHeight());
     }
     else if (command == "change_password")
     {
@@ -94,19 +93,11 @@ bool handleCommand(const std::string command,
     }
     else if (command == "send_all")
     {
-        transfer(walletInfo, node.getLastKnownBlockHeight(), true, node.feeAddress());
+        transfer(walletInfo, node.getLastKnownBlockHeight(), true);
     }
     else if (command == "status")
     {
         status(node, walletInfo->wallet);
-    }
-    else if (command == "tx_key")
-    {
-        txSecretKey(walletInfo->wallet);
-    }
-    else if (command == "tx_proof")
-    {
-        txProof(walletInfo->wallet);
     }
     else if (command == "sign_message")
     {

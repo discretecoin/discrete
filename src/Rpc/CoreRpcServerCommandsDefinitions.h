@@ -178,88 +178,6 @@ struct COMMAND_RPC_GET_TX_GLOBAL_OUTPUTS_INDEXES {
     }
   };
 };
-//-----------------------------------------------
-struct COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_request {
-  std::vector<uint64_t> amounts;
-  uint64_t outs_count;
-
-  void serialize(ISerializer &s) {
-    KV_MEMBER(amounts)
-    KV_MEMBER(outs_count)
-  }
-};
-
-#pragma pack(push, 1)
-struct COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_out_entry {
-  uint64_t global_amount_index;
-  Crypto::PublicKey out_key;
-};
-#pragma pack(pop)
-
-struct COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_out_entry_json : public COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_out_entry {
-  void serialize(ISerializer & s) {
-    s(global_amount_index, "global_index");
-    s(out_key, "public_key");
-  }
-};
-
-struct COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_outs_for_amount {
-  uint64_t amount;
-  std::vector<COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_out_entry> outs;
-
-  void serialize(ISerializer &s) {
-    KV_MEMBER(amount)
-    serializeAsBinary(outs, "outs", s);
-  }
-};
-
-struct COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_outs_for_amount_json {
-  uint64_t amount;
-  std::vector<COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_out_entry_json> outs;
-
-  void serialize(ISerializer &s) {
-    KV_MEMBER(amount)
-    KV_MEMBER(outs)
-  }
-};
-
-struct COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_response {
-  std::vector<COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_outs_for_amount> outs;
-  std::string status;
-
-  void serialize(ISerializer &s) {
-    KV_MEMBER(outs);
-    KV_MEMBER(status)
-  }
-};
-
-struct COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_response_json {
-  std::vector<COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_outs_for_amount_json> outs;
-  std::string status;
-
-  void serialize(ISerializer &s) {
-    KV_MEMBER(outs);
-    KV_MEMBER(status)
-  }
-};
-
-struct COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS {
-  typedef COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_request request;
-  typedef COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_response response;
-
-  typedef COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_out_entry out_entry;
-  typedef COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_outs_for_amount outs_for_amount;
-};
-
-struct COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_JSON {
-  typedef COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_request request;
-  typedef COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_response_json response;
-
-  typedef COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_out_entry_json out_entry;
-  typedef COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_outs_for_amount_json outs_for_amount;
-};
-
-//-----------------------------------------------
 struct COMMAND_RPC_SEND_RAW_TRANSACTION {
   struct request {
     std::string tx_as_hex;
@@ -526,23 +444,6 @@ struct COMMAND_RPC_GET_CONNECTIONS {
 
     void serialize(ISerializer &s) {
       KV_MEMBER(connections)
-      KV_MEMBER(status)
-    }
-  };
-};
-
-//-----------------------------------------------
-struct COMMAND_RPC_GET_FEE_ADDRESS {
-  typedef EMPTY_STRUCT request;
-
-  struct response {
-    std::string fee_address;
-    uint64_t    fee_amount;
-    std::string status;
-
-    void serialize(ISerializer &s) {
-      KV_MEMBER(fee_address)
-      KV_MEMBER(fee_amount)
       KV_MEMBER(status)
     }
   };

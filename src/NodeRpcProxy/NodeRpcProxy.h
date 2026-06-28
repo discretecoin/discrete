@@ -82,7 +82,6 @@ public:
   virtual std::string getNodeVersion() const override;
 
   virtual void relayTransaction(const CryptoNote::Transaction& transaction, const Callback& callback) override;
-  virtual void getRandomOutsByAmounts(std::vector<uint64_t>&& amounts, uint64_t outsCount, std::vector<COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::outs_for_amount>& result, const Callback& callback) override;
   virtual void getNewBlocks(std::vector<Crypto::Hash>&& knownBlockIds, std::vector<CryptoNote::block_complete_entry>& newBlocks, uint32_t& startHeight, const Callback& callback) override;
   virtual void getTransactionOutsGlobalIndices(const Crypto::Hash& transactionHash, std::vector<uint32_t>& outsGlobalIndices, const Callback& callback) override;
   virtual void queryBlocks(std::vector<Crypto::Hash>&& knownBlockIds, uint64_t timestamp, std::vector<BlockShortEntry>& newBlocks, uint32_t& startHeight, const Callback& callback) override;
@@ -102,9 +101,6 @@ public:
 
   virtual void getPqAccount(const std::string& viewPubHex, const std::string& spendPubHex, bool& registered, uint32_t& blockHeight, uint32_t& txIndex, const Callback& callback) override;
   virtual void resolvePqAccount(uint32_t blockHeight, uint32_t txIndex, bool& found, std::string& viewPubHex, std::string& spendPubHex, const Callback& callback) override;
-
-  virtual std::string feeAddress() const override;
-  virtual uint64_t feeAmount() const override;
 
   unsigned int rpcTimeout() const { return m_rpcTimeout; }
   void rpcTimeout(unsigned int val) { m_rpcTimeout = val; }
@@ -130,8 +126,6 @@ private:
   void updatePoolState(const std::vector<std::unique_ptr<ITransactionReader>>& addedTxs, const std::vector<Crypto::Hash>& deletedTxsIds);
 
   std::error_code doRelayTransaction(const CryptoNote::Transaction& transaction);
-  std::error_code doGetRandomOutsByAmounts(std::vector<uint64_t>& amounts, uint64_t outsCount,
-                                           std::vector<COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::outs_for_amount>& result);
   std::error_code doGetNewBlocks(std::vector<Crypto::Hash>& knownBlockIds,
     std::vector<CryptoNote::block_complete_entry>& newBlocks, uint32_t& startHeight);
   std::error_code doGetTransactionOutsGlobalIndices(const Crypto::Hash& transactionHash,
@@ -208,8 +202,6 @@ private:
 
   bool m_connected;
   bool m_initial;
-  std::string m_fee_address;
-  uint64_t m_fee_amount = 0;
   std::string m_daemon_cert;
   bool m_daemon_no_verify;
 };

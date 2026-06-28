@@ -216,203 +216,6 @@ std::string encodePqTrackingAddress(const CryptoNote::PqTrackingKeys& keys, bool
   return CryptoNote::encodePqAddress(addr, CryptoNote::pqBech32Hrp(testnet));
 }
 
-template <typename IterT, typename ValueT = typename IterT::value_type>
-class ArgumentReader {
-public:
-
-  ArgumentReader(IterT begin, IterT end) :
-    m_begin(begin), m_end(end), m_cur(begin) {
-  }
-
-  bool eof() const {
-    return m_cur == m_end;
-  }
-
-  ValueT next() {
-    if (eof()) {
-      throw std::runtime_error("unexpected end of arguments");
-    }
-
-    return *m_cur++;
-  }
-
-private:
-
-  IterT m_cur;
-  IterT m_begin;
-  IterT m_end;
-};
-
-struct TransferCommand {
-  const CryptoNote::Currency& m_currency;
-  const CryptoNote::NodeRpcProxy& m_node;
-  size_t fake_outs_count;
-  std::vector<CryptoNote::WalletLegacyTransfer> dsts;
-  std::vector<uint8_t> extra;
-  uint64_t fee;
-#ifndef __ANDROID__
-  std::map<std::string, std::vector<WalletLegacyTransfer>> aliases;
-#endif
-
-  TransferCommand(const CryptoNote::Currency& currency, const CryptoNote::NodeRpcProxy& node) :
-    m_currency(currency), m_node(node), fake_outs_count(m_currency.minMixin()),
-    fee(m_node.getMinimalFee()) {
-  }
-
-  bool validateMixin(LoggerRef& logger) const {
-    // fake_outs_count is the internal decoy count (= ring size - 1); errors
-    // are surfaced in ring-size terms to match the user-facing -m convention.
-    if (fake_outs_count < m_currency.minMixin() && fake_outs_count != 0) {
-      logger(ERROR, BRIGHT_RED) << "Ring size must be at least " << (m_currency.minMixin() + 1);
-      return false;
-    }
-
-    if (fake_outs_count > m_currency.maxMixin()) {
-      logger(ERROR, BRIGHT_RED) << "Ring size must be at most " << (m_currency.maxMixin() + 1);
-      return false;
-    }
-
-    return true;
-  }
-
-  bool parseArguments(LoggerRef& logger, const std::vector<std::string> &args) {
-
-    ArgumentReader<std::vector<std::string>::const_iterator> ar(args.begin(), args.end());
-
-    try {
-
-      while (!ar.eof()) {
-
-        auto arg = ar.next();
-
-        if (arg.size() && arg[0] == '-') {
-
-          const auto& value = ar.next();
-
-          if (arg == "-p") {
-            if (!createTxExtraWithPaymentId(value, extra)) {
-              logger(ERROR, BRIGHT_RED) << "payment ID has invalid format: \"" << value << "\", expected 64-character string";
-              return false;
-            }
-          } else if (arg == "-f") {
-            bool ok = m_currency.parseAmount(value, fee);
-            if (!ok) {
-              logger(ERROR, BRIGHT_RED) << "Fee value is invalid: " << value;
-              return false;
-            }
-
-            if (m_node.getLastLocalBlockHeaderInfo().majorVersion < CryptoNote::BLOCK_MAJOR_VERSION_4 ? fee < m_currency.minimumFee() : fee < m_node.getMinimalFee()) {
-              logger(ERROR, BRIGHT_RED) << "Fee value is less than minimum: "
-                << (m_node.getLastLocalBlockHeaderInfo().majorVersion < CryptoNote::BLOCK_MAJOR_VERSION_4 ? m_currency.minimumFee() : m_node.getMinimalFee());
-              return false;
-            }
-          } else if (arg == "-m") {
-            // -m is the ring size (total members, real + decoys). Internally
-            // stored as decoys = ringSize - 1 to match the legacy sender's
-            // fake_outs_count convention. Liberal acceptance: snap small or
-            // off-grid values up to the nearest valid ring rather than erroring.
-            uint64_t ringSize = 0;
-            if (!Common::fromString(value, ringSize)) {
-              logger(ERROR, BRIGHT_RED) << "ring_size should be a non-negative integer, got " << value;
-              return false;
-            }
-            if (ringSize == 0) {
-              fake_outs_count = 0;
-            } else {
-              const uint64_t requestedRing = ringSize;
-              // Minimum ring is minMixin + 1 (= 3 by default). Snap up rather
-              // than error so old -m 1/2 typos don't fail.
-              if (ringSize <= m_currency.minMixin()) {
-                ringSize = m_currency.minMixin() + 1;
-              }
-              fake_outs_count = static_cast<size_t>(ringSize - 1);
-              if (!validateMixin(logger)) {
-                return false;
-              }
-              if (requestedRing != ringSize) {
-                logger(INFO, BRIGHT_YELLOW)
-                  << "Ring size adjusted: " << requestedRing << " -> " << ringSize << ".";
-              }
-            }
-          } else {
-            logger(ERROR, BRIGHT_RED) << "Unknown transfer option: " << arg;
-            return false;
-          }
-        } else {
-          WalletLegacyTransfer destination;
-          CryptoNote::AccountPublicAddress deAddr;
-          uint64_t deAmount = 0;
-#ifndef __ANDROID__
-          std::string aliasUrl;
-#endif
-          if (!m_currency.parseAccountAddressString(arg, deAddr)) {
-            Crypto::Hash paymentId;
-            if (CryptoNote::parsePaymentId(arg, paymentId)) {
-              logger(ERROR, BRIGHT_RED) << "Invalid payment ID usage. Please, use -p <payment_id>. See help for details.";
-            } else {
-#ifndef __ANDROID__
-              // if string doesn't contain a dot, we won't consider it a url for now.
-              if (strchr(arg.c_str(), '.') == NULL) {
-                logger(ERROR, BRIGHT_RED) << "Wrong address or alias: " << arg;
-                return false;
-              }
-              aliasUrl = arg;
-#endif
-            }
-          }
-
-          auto value = ar.next();
-          bool ok = m_currency.parseAmount(value, deAmount);
-          if (!ok || 0 == deAmount) {
-#if defined(WIN32)
-#undef max
-#undef min
-#endif 
-            logger(ERROR, BRIGHT_RED) << "amount is wrong: " << arg << ' ' << value <<
-              ", expected number from 0 to " << m_currency.formatAmount(std::numeric_limits<uint64_t>::max());
-            return false;
-          }
-
-#ifndef __ANDROID__
-          if (aliasUrl.empty()) {
-#endif
-            destination.address = arg;
-            destination.amount = deAmount;
-            dsts.push_back(destination);
-#ifndef __ANDROID__
-          } else {
-            aliases[aliasUrl].emplace_back(WalletLegacyTransfer{ "", static_cast<int64_t>(deAmount) });
-          }
-#endif
-          std::string remote_node_fee_address = m_node.feeAddress();
-          if (!remote_node_fee_address.empty()) {
-            destination.address = m_node.feeAddress();
-            int64_t remote_node_fee_amount = (int64_t)m_node.feeAmount();
-            destination.amount = std::min<int64_t>((remote_node_fee_amount == 0 ? static_cast<int64_t>(deAmount * 0.0025) : remote_node_fee_amount),
-              (int64_t)CryptoNote::parameters::MAXIMUM_FEE);
-            dsts.push_back(destination);
-          }
-        }
-      }
-
-      if (dsts.empty()
-#ifndef __ANDROID__
-        && aliases.empty()
-#endif
-        ) {
-        logger(ERROR, BRIGHT_RED) << "At least one destination address is required";
-        return false;
-      }
-    }
-    catch (const std::exception& e) {
-      logger(ERROR, BRIGHT_RED) << e.what();
-      return false;
-    }
-
-    return true;
-  }
-};
-
 JsonValue buildLoggerConfiguration(Level level, const std::string& logfile) {
   JsonValue loggerConfiguration(JsonValue::OBJECT);
   loggerConfiguration.insert("globalLevel", static_cast<int64_t>(level));
@@ -631,9 +434,7 @@ simple_wallet::simple_wallet(System::Dispatcher& dispatcher, const CryptoNote::C
   m_refresh_progress_reporter(*this),
   m_initResultPromise(nullptr),
   m_walletSynchronized(false),
-  m_trackingWallet(false),
-  m_do_not_relay_tx(false),
-  m_initial_remote_fee_mess(false)
+  m_trackingWallet(false)
 {
   m_consoleHandler.setHandler("start_mining", std::bind(&simple_wallet::start_mining, this, std::placeholders::_1), "start_mining [<number_of_threads>] - Start mining in daemon");
   m_consoleHandler.setHandler("stop_mining", std::bind(&simple_wallet::stop_mining, this, std::placeholders::_1), "Stop mining in daemon");
@@ -650,9 +451,6 @@ simple_wallet::simple_wallet(System::Dispatcher& dispatcher, const CryptoNote::C
   m_consoleHandler.setHandler("bc_height", std::bind(&simple_wallet::show_blockchain_height, this, std::placeholders::_1), "Show blockchain height");
   m_consoleHandler.setHandler("transfer", std::bind(&simple_wallet::pq_transfer, this, std::placeholders::_1),
     "transfer <address> <amount> - Send funds to an address (or account number)");
-  m_consoleHandler.setHandler("prepare", std::bind(&simple_wallet::prepare_tx, this, std::placeholders::_1),
-    "Prepare raw transaction in hex format but do not relay, e.g. for manual relay <addr_1> <amount_1> ... <addr_N> <amount_N> [-p payment_id] [-f fee] [-m ring_size]"
-    " - Transfer <amount_1>,... <amount_N> to <address_1>,... <address_N>, respectively. ");
   m_consoleHandler.setHandler("set_log", std::bind(&simple_wallet::set_log, this, std::placeholders::_1), "set_log <level> - Change current log level, <level> is a number 0-4");
   m_consoleHandler.setHandler("address", std::bind(&simple_wallet::pq_address, this, std::placeholders::_1), "Show this wallet's address, derived from the seed.");
   m_consoleHandler.setHandler("save_address", std::bind(&simple_wallet::save_address_to_file, this, std::placeholders::_1), "Save current wallet public address to file");
@@ -660,8 +458,6 @@ simple_wallet::simple_wallet(System::Dispatcher& dispatcher, const CryptoNote::C
   m_consoleHandler.setHandler("reset", std::bind(&simple_wallet::reset, this, std::placeholders::_1), "Discard cache data and start synchronizing from the start");
   m_consoleHandler.setHandler("payment_id", std::bind(&simple_wallet::payment_id, this, std::placeholders::_1), "Generate random Payment ID");
   m_consoleHandler.setHandler("password", std::bind(&simple_wallet::change_password, this, std::placeholders::_1), "Change password");
-  m_consoleHandler.setHandler("get_tx_key", std::bind(&simple_wallet::get_tx_key, this, std::placeholders::_1), "Get secret transaction key for a given <txid>");
-  m_consoleHandler.setHandler("get_tx_proof", std::bind(&simple_wallet::get_tx_proof, this, std::placeholders::_1), "Generate a signature to prove payment: <txid> <address> [<txkey>]");
   m_consoleHandler.setHandler("sign_message", std::bind(&simple_wallet::sign_message, this, std::placeholders::_1), "Sign the message");
   m_consoleHandler.setHandler("verify_message", std::bind(&simple_wallet::verify_message, this, std::placeholders::_1), "Verify a signature of the message");
   m_consoleHandler.setHandler("register", std::bind(&simple_wallet::pq_register, this, std::placeholders::_1), "Register a free account number (anti-spam PoW, no fee)");
@@ -704,89 +500,6 @@ bool simple_wallet::payment_id(const std::vector<std::string> &args) {
   Random::randomBytes(32, result.data);
   std::string pid_str = Common::podToHex(result);
   success_msg_writer() << "Payment ID: " << pid_str;
-  return true;
-}
-
-//----------------------------------------------------------------------------------------------------
-
-bool simple_wallet::get_tx_key(const std::vector<std::string> &args) {
-  if (args.size() != 1)
-  {
-    fail_msg_writer() << "use: get_tx_key <txid>";
-    return true;
-  }
-  const std::string &str_hash = args[0];
-  Crypto::Hash txid;
-  if (!parse_hash256(str_hash, txid)) {
-    fail_msg_writer() << "Failed to parse txid";
-    return true;
-  }
-
-  Crypto::SecretKey tx_key = m_wallet->getTxKey(txid);
-  if (tx_key != NULL_SECRET_KEY) {
-    success_msg_writer() << "Tx key: " << Common::podToHex(tx_key);
-    return true;
-  }
-  else {
-    fail_msg_writer() << "No tx key found for this txid";
-    return true;
-  }
-}
-
-//----------------------------------------------------------------------------------------------------
-
-bool simple_wallet::get_tx_proof(const std::vector<std::string> &args)
-{
-  if(args.size() != 2 && args.size() != 3) {
-    fail_msg_writer() << "Usage: get_tx_proof <txid> <dest_address> [<txkey>]";
-    return true;
-  }
-
-  const std::string &str_hash = args[0];
-  Crypto::Hash txid;
-  if (!parse_hash256(str_hash, txid)) {
-    fail_msg_writer() << "Failed to parse txid";
-    return true;
-  }
-
-  const std::string address_string = args[1];
-  CryptoNote::AccountPublicAddress address;
-  if (!m_currency.parseAccountAddressString(address_string, address)) {
-     fail_msg_writer() << "Failed to parse address " << address_string;
-     return true;
-  }
-
-  std::string sig_str;
-  Crypto::SecretKey tx_key, tx_key2;
-  bool r = m_wallet->get_tx_key(txid, tx_key);
-
-  if (args.size() == 3) {
-    Crypto::Hash tx_key_hash;
-    size_t size;
-    if (!Common::fromHex(args[2], &tx_key_hash, sizeof(tx_key_hash), size) || size != sizeof(tx_key_hash)) {
-      fail_msg_writer() << "failed to parse tx_key";
-      return true;
-    }
-    tx_key2 = *(struct Crypto::SecretKey *) &tx_key_hash;
-
-    if (r) {
-      if (args.size() == 3 && tx_key != tx_key2) {
-        fail_msg_writer() << "Tx secret key was found for the given txid, but you've also provided another tx secret key which doesn't match the found one.";
-        return true;
-      }
-    }
-    tx_key = tx_key2;
-  } else {
-    if (!r) {
-      fail_msg_writer() << "Tx secret key wasn't found in the wallet file. Provide it as the optional third parameter if you have it elsewhere.";
-      return true;
-    }
-  }
-
-  if (m_wallet->getTxProof(txid, address, tx_key, sig_str)) {
-    success_msg_writer() << "Signature: " << sig_str << std::endl;
-  }
-
   return true;
 }
 
@@ -1855,22 +1568,6 @@ void simple_wallet::initCompleted(std::error_code result) {
 void simple_wallet::connectionStatusUpdated(bool connected) {
   if (connected) {
     logger(INFO, GREEN) << "Wallet connected to daemon.";
-
-    if (!m_initial_remote_fee_mess) {
-      std::string remote_node_fee_address = m_node->feeAddress();
-      if (!remote_node_fee_address.empty()) {
-        uint64_t remote_node_fee_amount = m_node->feeAmount();
-        std::stringstream feemsg;
-        feemsg << std::endl << "You have connected to a node that charges "
-          << "a fee to send transactions." << std::endl
-          << "The node's fee for sending transactions is "
-          << (remote_node_fee_amount == 0 ? "0.25% of transaction amount, but no more than "
-            + m_currency.formatAmount(CryptoNote::parameters::MAXIMUM_FEE) : m_currency.formatAmount(remote_node_fee_amount))
-          << " " << CryptoNote::CRYPTONOTE_TICKER << "." << std::endl;
-        std::cout << InformationMsg(feemsg.str()) << std::endl;
-      }
-      m_initial_remote_fee_mess = true;
-    }
   } else {
     printConnectionError();
   }
@@ -2130,133 +1827,7 @@ bool simple_wallet::show_unlocked_outputs_count(const std::vector<std::string>& 
 
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::transfer(const std::vector<std::string> &args) {
-  if (m_trackingWallet){
-    fail_msg_writer() << "This is tracking wallet. Spending is impossible.";
-    return true;
-  }
-
-  try {
-    TransferCommand cmd(m_currency, *m_node);
-
-    if (!cmd.parseArguments(logger, args))
-      return true;
-
-    uint64_t unmixable_balance = m_wallet->unmixableBalance();
-    if (cmd.fake_outs_count != 0 && unmixable_balance != 0) {
-      logger(WARNING, BRIGHT_YELLOW) << "You have unmixable coins " << m_currency.formatAmount(unmixable_balance) << " in your wallet. "
-                                     << "If you encounter problems with sending, sweep them by making transaction with zero ring size (-m 0).";
-    }
-
-#ifndef __ANDROID__
-    for (auto& kv : cmd.aliases) {
-      std::string address;
-
-      try {
-        address = Common::resolveAlias(kv.first);
-
-        AccountPublicAddress ignore;
-        if (!m_currency.parseAccountAddressString(address, ignore))
-          throw std::runtime_error("Address \"" + address + "\" is invalid");
-      }
-      catch (std::exception& e) {
-        fail_msg_writer() << "Couldn't resolve alias: " << e.what() << ", alias: " << kv.first;
-        return true;
-      }
-
-      for (auto& transfer : kv.second) {
-        transfer.address = address;
-      }
-    }
-
-    if (!cmd.aliases.empty()) {
-      if (!askAliasesTransfersConfirmation(cmd.aliases, m_currency))
-        return true;
-
-      for (auto& kv : cmd.aliases) {
-        std::copy(std::move_iterator<std::vector<WalletLegacyTransfer>::iterator>(kv.second.begin()),
-          std::move_iterator<std::vector<WalletLegacyTransfer>::iterator>(kv.second.end()),
-          std::back_inserter(cmd.dsts));
-      }
-    }
-#endif
-
-    CryptoNote::WalletHelper::SendCompleteResultObserver sent;
-
-    std::string extraString;
-    std::copy(cmd.extra.begin(), cmd.extra.end(), std::back_inserter(extraString));
-
-    WalletHelper::IWalletRemoveObserverGuard removeGuard(*m_wallet, sent);
-
-    std::string raw_tx;
-    CryptoNote::TransactionId tx;
-
-    if (!m_do_not_relay_tx) {
-      tx = m_wallet->sendTransaction(cmd.dsts, cmd.fee, extraString, cmd.fake_outs_count, 0);
-    }
-    else {
-      raw_tx = m_wallet->prepareRawTransaction(tx, cmd.dsts, cmd.fee, extraString, cmd.fake_outs_count, 0);
-    }
-
-    if (tx == WALLET_LEGACY_INVALID_TRANSACTION_ID) {
-      fail_msg_writer() << "Can't send money";
-      return true;
-    }
-
-    if (!m_do_not_relay_tx) {
-      std::error_code sendError = sent.wait(tx);
-      removeGuard.removeObserver();
-
-      if (sendError) {
-        fail_msg_writer() << sendError.message();
-        return true;
-      }
-    }
-
-    CryptoNote::WalletLegacyTransaction txInfo;
-    m_wallet->getTransaction(tx, txInfo);
-    Crypto::SecretKey tx_key = reinterpret_cast<const Crypto::SecretKey&>(txInfo.secretKey.get());
-    if (!m_do_not_relay_tx) {
-      success_msg_writer(true) << "Money successfully sent, transaction id: " << Common::podToHex(txInfo.hash) << ", key: " << Common::podToHex(tx_key);
-    }
-    else {
-      const std::string filename = "raw_tx.txt";
-      boost::system::error_code ec;
-      if (boost::filesystem::exists(filename, ec)) {
-        boost::filesystem::remove(filename, ec);
-      }
-      std::ofstream txFile(filename, std::ios::out | std::ios::trunc | std::ios::binary);
-      if (!txFile.good()) {
-        return false;
-      }
-      txFile << raw_tx;
-
-      success_msg_writer(true) << "Raw transaction prepared successfully and saved to file : " << filename
-        << ", id: " << Common::podToHex(txInfo.hash) << ", key: " << Common::podToHex(tx_key);
-      m_do_not_relay_tx = false;
-    }
-
-    try {
-      CryptoNote::WalletHelper::storeWallet(*m_wallet, m_wallet_file);
-    } catch (const std::exception& e) {
-      fail_msg_writer() << e.what();
-      return true;
-    }
-  } catch (const std::system_error& e) {
-    fail_msg_writer() << e.what();
-  } catch (const std::exception& e) {
-    fail_msg_writer() << e.what();
-  } catch (...) {
-    fail_msg_writer() << "unknown error";
-  }
-
-  return true;
-}
-//----------------------------------------------------------------------------------------------------
-bool simple_wallet::prepare_tx(const std::vector<std::string>& args) {
-  m_do_not_relay_tx = true;
-  bool r = transfer(args);
-  m_do_not_relay_tx = false;
-  return r;
+  return pq_transfer(args);
 }
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::run() {
@@ -2817,8 +2388,7 @@ int main(int argc, char* argv[]) {
       walletFileName = ::tryToOpenWalletOrLoadKeysOrThrow(logger, wallet, wallet_file, wallet_password);
 
       logger(INFO) << "available balance: " << currency.formatAmount(wallet->actualBalance())
-                   << ", locked amount: " << currency.formatAmount(wallet->pendingBalance())
-                   << ", unmixable: " << currency.formatAmount(wallet->unmixableBalance());
+                   << ", locked amount: " << currency.formatAmount(wallet->pendingBalance());
 
       logger(INFO, BRIGHT_GREEN) << "Loaded ok";
     } catch (const std::exception& e)  {

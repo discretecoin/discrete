@@ -266,48 +266,6 @@ void INodeTrivialRefreshStub::resolvePqAccount(uint32_t blockHeight, uint32_t tx
   callback(std::error_code());
 }
 
-void INodeTrivialRefreshStub::getRandomOutsByAmounts(std::vector<uint64_t>&& amounts, uint64_t outsCount, std::vector<COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::outs_for_amount>& result, const Callback& callback)
-{
-  m_asyncCounter.addAsyncContext();
-  std::thread task(&INodeTrivialRefreshStub::doGetRandomOutsByAmounts, this, amounts, outsCount, std::ref(result), callback);
-  task.detach();
-}
-
-void INodeTrivialRefreshStub::doGetRandomOutsByAmounts(std::vector<uint64_t> amounts, uint64_t outsCount, std::vector<COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::outs_for_amount>& result, const Callback& callback)
-{
-  ContextCounterHolder counterHolder(m_asyncCounter);
-  std::unique_lock<std::mutex> lock(m_walletLock);
-
-  std::sort(amounts.begin(), amounts.end());
-
-  for (uint64_t amount: amounts)
-  {
-    COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::outs_for_amount out;
-    out.amount = amount;
-
-    uint64_t count = std::min(outsCount, m_maxMixin);
-
-    for (uint32_t i = 0; i < count; ++i)
-    {
-      Crypto::PublicKey key;
-      Crypto::SecretKey sk;
-      Random::randomBytes(sizeof(key.data), key.data);
-      Random::randomBytes(sizeof(sk.data), sk.data);
-
-      COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::out_entry e;
-      e.global_amount_index = i;
-      e.out_key = key;
-
-      out.outs.push_back(e);
-    }
-
-    result.push_back(std::move(out));
-  }
-
-  lock.unlock();
-  callback(std::error_code());
-}
-
 void INodeTrivialRefreshStub::queryBlocks(std::vector<Crypto::Hash>&& knownBlockIds, uint64_t timestamp,
         std::vector<BlockShortEntry>& newBlocks, uint32_t& startHeight, const Callback& callback) {
   auto resultHolder = std::make_shared<std::vector<block_complete_entry>>();
@@ -413,10 +371,6 @@ void INodeTrivialRefreshStub::includeTransactionsFromPoolToBlock() {
 
 INodeTrivialRefreshStub::~INodeTrivialRefreshStub() {
   m_asyncCounter.waitAsyncContextsFinish();
-}
-
-void INodeTrivialRefreshStub::setMaxMixinCount(uint64_t maxMixin) {
-  m_maxMixin = maxMixin;
 }
 
 void INodeTrivialRefreshStub::getBlocks(const std::vector<uint32_t>& blockHeights, std::vector<std::vector<BlockDetails>>& blocks, const Callback& callback) {
@@ -749,4 +703,3 @@ void INodeTrivialRefreshStub::sendPoolChanged() {
 void INodeTrivialRefreshStub::sendLocalBlockchainUpdated(){
   observerManager.notify(&INodeObserver::localBlockchainUpdated, getLastLocalBlockHeight());
 }
-

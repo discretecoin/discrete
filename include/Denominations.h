@@ -32,7 +32,7 @@ namespace CryptoNote {
 //
 // FORWARD-COMPAT (cemented count): the future PQ hidden-amounts design commits each
 // output to a fixed denomination set and proves membership with a Groth-Kohlweiss
-// one-out-of-many proof whose anonymity set is exactly this table — so the COUNT is
+// one-out-of-many proof whose membership set is exactly this table, so the COUNT is
 // fixed at 64. Adopting the table now (plain-amount stage) means output amounts
 // already live in the right universe and need no migration when amounts are hidden.
 //

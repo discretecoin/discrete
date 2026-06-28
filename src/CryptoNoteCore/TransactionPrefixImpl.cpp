@@ -73,8 +73,6 @@ public:
 
   virtual TransactionPrefix getTransactionPrefix() const override;
 
-  virtual bool getTransactionSecretKey(SecretKey& key) const override;
-
 private:
   TransactionPrefix m_txPrefix;
   TransactionExtra m_extra;
@@ -209,11 +207,6 @@ BinaryArray TransactionPrefixImpl::getTransactionData() const {
 TransactionPrefix TransactionPrefixImpl::getTransactionPrefix() const {
    return m_txPrefix;
 }
-
-bool TransactionPrefixImpl::getTransactionSecretKey(SecretKey& key) const {
-  return false;
-}
-
 
 std::unique_ptr<ITransactionReader> createTransactionPrefix(const TransactionPrefix& prefix, const Hash& transactionHash) {
   return std::unique_ptr<ITransactionReader> (new TransactionPrefixImpl(prefix, transactionHash));

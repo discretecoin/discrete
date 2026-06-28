@@ -41,8 +41,7 @@
 // failure mode.
 //
 // `generator()` returns a freshly-seeded std::mt19937 on EVERY call (used
-// for non-cryptographic shuffles — output decoy order, CT mixing bucket
-// selection, peer-list rotation, etc.). The previous "static thread_local
+// for non-cryptographic shuffles such as peer-list rotation). The previous "static thread_local
 // returned by value" idiom looked like a shared PRNG but was a footgun: it
 // returned a fresh copy each call, so callers that did
 //   `std::mt19937 rng = Random::generator(); std::shuffle(..., rng);`

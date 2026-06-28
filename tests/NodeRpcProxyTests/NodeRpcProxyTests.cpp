@@ -45,21 +45,6 @@ public:
 
   virtual void localBlockchainUpdated(uint32_t height) override {
     logger(INFO) << '[' << m_name << "] localBlockchainUpdated " << height << " = " << m_nodeProxy.getLastLocalBlockHeight();
-
-    std::vector<uint64_t> amounts;
-    amounts.push_back(100000000);
-    auto outs = std::make_shared<std::vector<COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::outs_for_amount>>();
-    m_nodeProxy.getRandomOutsByAmounts(std::move(amounts), 10, *outs.get(), [outs, this](std::error_code ec) {
-      if (!ec) {
-        if (1 == outs->size() && 10 == (*outs)[0].outs.size()) {
-          logger(INFO) << "getRandomOutsByAmounts called successfully";
-        } else {
-          logger(ERROR) << "getRandomOutsByAmounts returned invalid result";
-        }
-      } else {
-        logger(ERROR) << "failed to call getRandomOutsByAmounts: " << ec.message() << ':' << ec.value();
-      }
-    });
   }
 
   virtual void lastKnownBlockHeightUpdated(uint32_t height) override {

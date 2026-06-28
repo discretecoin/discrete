@@ -39,7 +39,7 @@ Chancellor on brink of second bailout for banks"*:
   batch unlocks each quarter; the last unlocks at height 1,752,000 ≈ 5.0 years.
   Batch 1 (unlock height 0) is spendable from genesis.
 
-| Batch | Amount (XDS) | Unlock height | Recipient (classical address) |
+| Batch | Amount (XDS) | Unlock height | Recipient reserve address |
 |------:|-------------:|--------------:|-------------------------------|
 | 1  | 50,000 | 0         | discvLkR4dYha5ofRu9WymcCSAM4RJ8Kxd9oJXS8HUNhEJZAUBj6o7wZgZZsQEfZd46x7seW7UfLiZieSuzYFQqvLz2KSevxuuY |
 | 2  | 50,000 | 87,600    | discvJiX2CGZsABoUgaRZEYmjcmMKJ4yY9xgN8LQ7zpoBiHeWUmbwJFRvWt4YnQDZbSyP1XRhwVP8W6fbHp3JTYFhepeCMyNmS1 |
@@ -79,7 +79,7 @@ publication time of the embedded Reuters headline (`m_genesisBlock.timestamp` in
 ## Recipient secrets
 
 `vanitygen --treasury-reserve-accounts 21` wrote the 21 recipients' 25-word
-mnemonics, classical + PQ addresses, and public keys to
+mnemonics, PQ addresses, and public keys to
 `genesis/treasury-reserve-accounts.txt`. That file is **gitignored and must never
 be committed** — it controls 1,050,000 XDS. Move it to cold storage. Each
 mnemonic, loaded into `simplewallet`, recovers its batch (the wallet derives the

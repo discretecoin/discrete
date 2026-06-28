@@ -52,9 +52,6 @@ namespace CryptoNote {
 
   struct NOTIFY_REQUEST_GET_OBJECTS_request;
   struct NOTIFY_RESPONSE_GET_OBJECTS_request;
-  struct COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_request;
-  struct COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_response;
-  struct COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_outs_for_amount;
 
   using CryptoNote::BlockInfo;
   class Blockchain : public CryptoNote::ITransactionValidator {
@@ -120,8 +117,6 @@ namespace CryptoNote {
                                                         uint32_t& startBlockIndex);
     bool handleGetObjects(NOTIFY_REQUEST_GET_OBJECTS_request& arg,
                           NOTIFY_RESPONSE_GET_OBJECTS_request& rsp);
-    bool getRandomOutsByAmount(const COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_request& req,
-                               COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_response& res);
     bool getBackwardBlocksSize(size_t from_height, std::vector<size_t>& sz, size_t count);
     bool getTransactionOutputGlobalIndexes(const Crypto::Hash& tx_id, std::vector<uint32_t>& indexs);
     bool checkTransactionInputs(const Transaction& tx, uint32_t& pmax_used_block_height,
@@ -241,7 +236,7 @@ namespace CryptoNote {
     };
 
     void rollbackBlockchainTo(uint32_t height);
-    bool have_tx_keyimg_as_spent(const Crypto::KeyImage& key_im);
+    bool have_spend_tag_as_spent(const Crypto::KeyImage& tag);
     bool checkIfSpent(const Crypto::KeyImage& keyImage, uint32_t blockIndex);
     bool checkIfSpent(const Crypto::KeyImage& keyImage);
     bool is_tx_spendheight_unlocked(uint64_t unlock_height);
@@ -356,11 +351,6 @@ namespace CryptoNote {
     bool validate_block_signature(const Block& b, const Crypto::Hash& id, uint32_t height);
     bool rollback_blockchain_switching(std::list<Block>& original_chain, size_t rollback_height);
     bool get_last_n_blocks_sizes(std::vector<size_t>& sz, size_t count);
-
-    // New signatures: look up amount+count from DB instead of vector
-    bool add_out_to_get_random_outs(uint64_t amount, size_t globalIdx,
-                                     COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_outs_for_amount& result_outs);
-    size_t find_end_of_allowed_index(uint64_t amount);
 
     bool check_block_timestamp_main(const Block& b);
     bool check_block_timestamp(std::vector<uint64_t> timestamps, const Block& b);

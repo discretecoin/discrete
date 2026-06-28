@@ -23,8 +23,6 @@ std::string formatAmount(uint64_t amount);
 std::string formatDollars(uint64_t amount);
 std::string formatCents(uint64_t amount);
 
-uint64_t calculateNodeFee(uint64_t amount);
-
 std::string getPaymentIDFromExtra(std::string extra);
 
 std::string unixTimeToDate(uint64_t timestamp);

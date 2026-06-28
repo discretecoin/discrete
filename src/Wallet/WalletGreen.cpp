@@ -67,11 +67,6 @@
 #include "WalletErrors.h"
 #include "WalletUtils.h"
 
-extern "C"
-{
-#include "crypto/crypto-ops.h"
-}
-
 #undef ERROR
 
 using namespace Common;
@@ -1497,28 +1492,6 @@ std::vector<TransactionOutputInformation> WalletGreen::getTransfers(size_t /*ind
   // Classical per-address output enumeration is gone; PQ outputs live in the
   // WalletLedger (queried via pqSpendableInputs / the deposit-balance accessors).
   return std::vector<TransactionOutputInformation>();
-}
-
-Crypto::SecretKey WalletGreen::getTransactionSecretKey(size_t transactionIndex) const {
-  throwIfNotInitialized();
-  throwIfStopped();
-
-  // PQ transactions carry no per-tx secret key (stealth delivery is ML-KEM based),
-  // so there is nothing to return for transaction proofs.
-  (void)transactionIndex;
-  return CryptoNote::NULL_SECRET_KEY;
-}
-
-Crypto::SecretKey WalletGreen::getTransactionSecretKey(Crypto::Hash& transactionHash) const {
-  throwIfNotInitialized();
-  throwIfStopped();
-
-  (void)transactionHash;
-  return CryptoNote::NULL_SECRET_KEY;
-}
-
-bool WalletGreen::getTransactionProof(const Crypto::Hash& transactionHash, const CryptoNote::AccountPublicAddress& destinationAddress, const Crypto::SecretKey& txKey, std::string& transactionProof) {
-  return CryptoNote::getTransactionProof(transactionHash, destinationAddress, txKey, transactionProof, m_logger.getLogger());
 }
 
 std::string WalletGreen::signMessage(const std::string &message, const std::string& address) {

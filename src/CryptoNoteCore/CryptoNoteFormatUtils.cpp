@@ -21,7 +21,6 @@
 #include <algorithm>
 #include <set>
 
-#include <Logging/LoggerRef.h>
 #include <Common/BinaryArray.hpp>
 #include <Common/Varint.h>
 #include "Common/Base58.h"
@@ -303,15 +302,6 @@ bool is_valid_decomposed_amount(uint64_t amount) {
     return false;
   }
   return true;
-}
-
-bool getTransactionProof(const Crypto::Hash& /*transactionHash*/, const CryptoNote::AccountPublicAddress& /*destinationAddress*/, const Crypto::SecretKey& /*transactionKey*/, std::string& /*transactionProof*/, Logging::ILogger& log) {
-  // Classical payment proofs (Ed25519 r*A stealth proofs) have no meaning on the
-  // PQ chain: transactions carry PqOutputs with no shared ECC tx key. The proof
-  // feature is unsupported; callers surface this to the user.
-  LoggerRef logger(log, "get_tx_proof");
-  logger(ERROR, BRIGHT_RED) << "Transaction proofs are not supported on the post-quantum chain";
-  return false;
 }
 
 namespace {

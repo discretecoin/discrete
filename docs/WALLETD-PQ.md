@@ -3,7 +3,7 @@
 `walletd` (the PaymentGate service) is the JSON-RPC wallet a service/exchange runs
 against a Discrete node. Discrete is post-quantum from genesis, so the funds a
 service holds are **PQ funds**, addressed by a **PQ address** and tracked as a
-**PQ balance** that is kept entirely separate from the (unused) classical balance.
+**PQ balance**.
 
 This document covers the PQ methods. They mirror what `simplewallet` shows for
 the same seed.
@@ -79,8 +79,7 @@ whose funding transaction was orphaned by a reorg and returned to the pool) plus
 immature coinbase. A send can draw at most `availableBalance`; do not treat
 `lockedAmount` as spendable. Both are in atomic units (divide by
 10^`CRYPTONOTE_DISPLAY_DECIMAL_POINT` for whole coins). With an `address` param the
-same two fields are reported for that one deposit bucket. PQ and classical balances
-are never combined.
+same two fields are reported for that one deposit bucket.
 
 ## `registerAccount` (free, anti-spam PoW)
 

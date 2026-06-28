@@ -26,7 +26,6 @@
 ICoreStub::ICoreStub() :
     topHeight(0),
     globalIndicesResult(false),
-    randomOutsResult(false),
     poolTxVerificationResult(true),
     poolChangesResult(true) {
 }
@@ -34,7 +33,6 @@ ICoreStub::ICoreStub() :
 ICoreStub::ICoreStub(const CryptoNote::Block& genesisBlock) :
     topHeight(0),
     globalIndicesResult(false),
-    randomOutsResult(false),
     poolTxVerificationResult(true),
     poolChangesResult(true) {
   addBlock(genesisBlock);
@@ -68,12 +66,6 @@ std::vector<Crypto::Hash> ICoreStub::findBlockchainSupplement(const std::vector<
   return result;
 }
 
-bool ICoreStub::get_random_outs_for_amounts(const CryptoNote::COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_request& req,
-    CryptoNote::COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_response& res) {
-  res = randomOuts;
-  return randomOutsResult;
-}
-
 bool ICoreStub::get_tx_outputs_gindexs(const Crypto::Hash& tx_id, std::vector<uint32_t>& indexs) {
   std::copy(globalIndices.begin(), globalIndices.end(), std::back_inserter(indexs));
   return globalIndicesResult;
@@ -97,11 +89,6 @@ void ICoreStub::set_outputs_gindexs(const std::vector<uint32_t>& indexs, bool re
   globalIndices.clear();
   std::copy(indexs.begin(), indexs.end(), std::back_inserter(globalIndices));
   globalIndicesResult = result;
-}
-
-void ICoreStub::set_random_outs(const CryptoNote::COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_response& resp, bool result) {
-  randomOuts = resp;
-  randomOutsResult = result;
 }
 
 std::vector<CryptoNote::Transaction> ICoreStub::getPoolTransactions() {
@@ -626,14 +613,6 @@ void ICoreStub::rollbackBlockchain(const uint32_t height) {
 
 bool ICoreStub::getBlockLongHash(Crypto::cn_context &context, const CryptoNote::Block& b, Crypto::Hash& res) {
   res = CryptoNote::get_block_hash(b);
-  return true;
-}
-
-bool ICoreStub::getMixin(const CryptoNote::Transaction& transaction, uint64_t& mixin) {
-  // Discrete has no ring/mixin inputs (KeyInput was removed from the input
-  // variant); PQ inputs carry no mixin.
-  (void)transaction;
-  mixin = 0;
   return true;
 }
 

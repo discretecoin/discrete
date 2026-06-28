@@ -159,14 +159,6 @@ public:
   bool getTxIndex(const Crypto::Hash& txHash, uint32_t& block, uint16_t& txSlot) const;
   bool removeTxIndex(const Crypto::Hash& txHash);
 
-  // ── key_outputs ───────────────────────────────────────────────────────────
-  bool putKeyOutput(uint64_t amount, uint32_t globalIdx,
-                    uint32_t block, uint16_t txSlot, uint16_t outIdx);
-  bool getKeyOutput(uint64_t amount, uint32_t globalIdx,
-                    uint32_t& block, uint16_t& txSlot, uint16_t& outIdx) const;
-  uint32_t getKeyOutputCount(uint64_t amount) const;
-  bool removeLastKeyOutput(uint64_t amount);
-
   // ── payment_id_idx (DUPSORT) ──────────────────────────────────────────────
   bool putPaymentId(const Crypto::Hash& paymentId, const Crypto::Hash& txHash);
   bool getPaymentIdTxHashes(const Crypto::Hash& paymentId,
@@ -249,8 +241,6 @@ private:
   MDB_dbi m_dbiSpentKeys;
   MDB_dbi m_dbiPqAcctReg;
   MDB_dbi m_dbiTxIndices;
-  MDB_dbi m_dbiKeyOutputs;
-  MDB_dbi m_dbiKeyOutputCounts;
   MDB_dbi m_dbiPaymentIdIdx;
   MDB_dbi m_dbiTimestampIdx;
   MDB_dbi m_dbiGenTxIdx;

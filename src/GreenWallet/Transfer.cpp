@@ -29,10 +29,6 @@
 
 #define _GLIBCXX_USE_NANOSLEEP 1
 
-#ifndef __has_cpp_attribute
-#define __has_cpp_attribute(name) 0
-#endif
-
 /* NodeErrors.h and WalletErrors.h have some conflicting enums, e.g. they
    both export NOT_INITIALIZED, we can get round this by using a namespace */
 namespace NodeErrors
@@ -113,7 +109,7 @@ bool parseAmount(std::string strAmount, uint64_t &amount)
 }
 
 bool confirmTransaction(CryptoNote::TransactionParameters t,
-                        std::shared_ptr<WalletInfo> walletInfo, uint64_t nodeFee)
+                        std::shared_ptr<WalletInfo> walletInfo)
 {
     std::cout << std::endl
               << InformationMsg("Confirm Transaction?") << std::endl;
@@ -121,8 +117,6 @@ bool confirmTransaction(CryptoNote::TransactionParameters t,
     std::cout << "You are sending "
               << SuccessMsg(formatAmount(t.destinations[0].amount))
               << ", with a network fee of " << SuccessMsg(formatAmount(t.fee));
-    if(nodeFee != 0)
-        std::cout << " and a node fee of " << SuccessMsg(formatAmount(nodeFee));
 
     const std::string paymentID = getPaymentIDFromExtra(t.extra);
 
@@ -311,19 +305,14 @@ void splitTx(CryptoNote::WalletGreen &wallet,
     }
 }
 
-void transfer(std::shared_ptr<WalletInfo> walletInfo, uint32_t height, bool sendAll, std::string nodeAddress, uint64_t nodeFee)
+void transfer(std::shared_ptr<WalletInfo> walletInfo, uint32_t height, bool sendAll)
 {
+    (void)height;
     std::cout << InformationMsg("Note: You can type cancel at any time to "
                                 "cancel the transaction")
               << std::endl << std::endl;
 
-
     const uint64_t balance = walletInfo->wallet.pqSpendableBalance();
-
-    const uint64_t balanceNoDust = walletInfo->wallet.getBalanceMinusDust
-    (
-        { walletInfo->walletAddress }
-    );
 
     const auto maybeAddress = getDestinationAddress();
 
@@ -339,8 +328,6 @@ void transfer(std::shared_ptr<WalletInfo> walletInfo, uint32_t height, bool send
        the fee from full balance */
     uint64_t amount = 0;
 
-    uint64_t mixin = WalletConfig::defaultMixin;
-
     /* If we're sending everything, obviously we don't need to ask them how
     much to send */
     if (!sendAll)
@@ -353,23 +340,13 @@ void transfer(std::shared_ptr<WalletInfo> walletInfo, uint32_t height, bool send
         }
         amount = maybeAmount.x;
 
-    if (!nodeAddress.empty() && nodeFee == 0)
-      nodeFee = calculateNodeFee(amount);
-    else if (!nodeAddress.empty() && nodeFee != 0)
-      nodeFee = std::min<uint64_t>(nodeFee, (uint64_t)CryptoNote::parameters::COIN);
-
         switch (doWeHaveEnoughBalance(amount, WalletConfig::defaultFee,
-            walletInfo, height, nodeFee))
+            walletInfo, height))
         {
             case NotEnoughBalance:
             {
                 std::cout << WarningMsg("Cancelling transaction.") << std::endl;
                 return;
-            }
-            case SetMixinToZero:
-            {
-                mixin = 0;
-                break;
             }
             default:
             {
@@ -388,17 +365,12 @@ void transfer(std::shared_ptr<WalletInfo> walletInfo, uint32_t height, bool send
 
     const uint64_t fee = maybeFee.x;
 
-    switch (doWeHaveEnoughBalance(amount, fee, walletInfo, height, nodeFee))
+    switch (doWeHaveEnoughBalance(amount, fee, walletInfo, height))
     {
         case NotEnoughBalance:
         {
             std::cout << WarningMsg("Cancelling transaction.") << std::endl;
             return;
-        }
-        case SetMixinToZero:
-        {
-            mixin = 0;
-            break;
         }
         default:
         {
@@ -406,52 +378,15 @@ void transfer(std::shared_ptr<WalletInfo> walletInfo, uint32_t height, bool send
         }
     }
 
-    /* This doesn't account for dust. We should probably make a function to
-       check for balance minus dust */
     if (sendAll)
     {
-        if (WalletConfig::defaultMixin != 0 && balance != balanceNoDust)
+        if (balance <= fee)
         {
-            uint64_t unsendable = balance - balanceNoDust;
-
-            amount = balanceNoDust - fee - nodeFee;
-
-            if (!nodeAddress.empty())
-                nodeFee = calculateNodeFee(amount);
-
-            std::cout << WarningMsg("Due to unmixable inputs, we are unable to ")
-                << WarningMsg("send ")
-                << InformationMsg(formatAmount(unsendable))
-                << WarningMsg("of your balance.") << std::endl;
-
-            if (!WalletConfig::mixinZeroDisabled ||
-                height < WalletConfig::mixinZeroDisabledHeight)
-            {
-                std::cout << "Alternatively, you can set the mixin count to "
-                    << "zero to send it all." << std::endl;
-
-                if (confirm("Set mixin to 0 so we can send your whole balance? "
-                    "This will compromise privacy."))
-                {
-                    mixin = 0;
-                    amount = balance - fee - nodeFee;
-                }
-            }
-            else
-            {
-                std::cout << "Sorry." << std::endl;
-            }
+            std::cout << WarningMsg("You don't have enough unlocked funds to cover the fee.")
+                      << std::endl;
+            return;
         }
-        else
-        {
-            if (balance <= fee + nodeFee)
-            {
-                std::cout << WarningMsg("You don't have enough unlocked funds to cover the fee.")
-                          << std::endl;
-                return;
-            }
-            amount = balance - fee - nodeFee;
-        }
+        amount = balance - fee;
     }
 
     const auto maybeExtra = getExtra();
@@ -464,32 +399,26 @@ void transfer(std::shared_ptr<WalletInfo> walletInfo, uint32_t height, bool send
 
     const std::string extra = maybeExtra.x;
 
-    doTransfer(address, amount, fee, extra, walletInfo, height, mixin, nodeAddress, nodeFee);
+    doTransfer(address, amount, fee, extra, walletInfo, height);
 }
 
 BalanceInfo doWeHaveEnoughBalance(uint64_t amount, uint64_t fee,
                                   std::shared_ptr<WalletInfo> walletInfo,
-                                  uint32_t height, uint64_t nodeFee)
+                                  uint32_t height)
 {
+    (void)height;
     const uint64_t balance = walletInfo->wallet.pqSpendableBalance();
 
-    const uint64_t balanceNoDust = walletInfo->wallet.getBalanceMinusDust
-    (
-        { walletInfo->walletAddress }
-    );
-
     /* They have to include at least a fee of this large */
-    if (balance < amount + fee + nodeFee)
+    if (balance < amount + fee)
     {
         std::cout << std::endl
             << WarningMsg("You don't have enough funds to cover ")
             << WarningMsg("this transaction!") << std::endl << std::endl
             << "Funds needed: "
-            << InformationMsg(formatAmount(amount + fee + nodeFee))
+            << InformationMsg(formatAmount(amount + fee))
             << " (Includes a network fee of "
             << InformationMsg(formatAmount(fee))
-            << " and a node fee of "
-            << InformationMsg(formatAmount(nodeFee))
             << ")"
             << std::endl
             << "Unlocked funds available: "
@@ -497,33 +426,6 @@ BalanceInfo doWeHaveEnoughBalance(uint64_t amount, uint64_t fee,
             << std::endl << std::endl;
 
         return NotEnoughBalance;
-    }
-    else if (WalletConfig::defaultMixin != 0 &&
-        balanceNoDust < amount + WalletConfig::minimumFee + nodeFee)
-    {
-        std::cout << std::endl
-            << WarningMsg("This transaction is unable to be sent ")
-            << WarningMsg("due to unmixable inputs.") << std::endl
-            << "You can send "
-            << InformationMsg(formatAmount(balanceNoDust))
-            << " without issues (includes a network fee of "
-            << InformationMsg(formatAmount(fee)) << " and "
-            << " a node fee of "
-            << InformationMsg(formatAmount(nodeFee))
-            << ")"
-            << std::endl;
-
-        if (!WalletConfig::mixinZeroDisabled ||
-            height < WalletConfig::mixinZeroDisabledHeight)
-        {
-            std::cout << "Alternatively, you can set the mixin "
-                << "count to 0." << std::endl;
-
-            if (confirm("Set mixin to 0? This will compromise privacy."))
-            {
-                return SetMixinToZero;
-            }
-        }
     }
     else
     {
@@ -535,19 +437,19 @@ BalanceInfo doWeHaveEnoughBalance(uint64_t amount, uint64_t fee,
 
 void doTransfer(std::string address, uint64_t amount, uint64_t fee,
                 std::string extra, std::shared_ptr<WalletInfo> walletInfo,
-                uint32_t height, uint64_t mixin,
-                std::string nodeAddress, uint64_t nodeFee)
+                uint32_t height)
 {
+    (void)height;
     Crypto::SecretKey txSecretKey;
     const uint64_t balance = walletInfo->wallet.pqSpendableBalance();
 
-    if (balance < amount + fee + nodeFee)
+    if (balance < amount + fee)
     {
         std::cout << WarningMsg("You don't have enough funds to cover this ")
                   << WarningMsg("transaction!")
                   << std::endl
                   << InformationMsg("Funds needed: ")
-                  << InformationMsg(formatAmount(amount + fee + nodeFee))
+                  << InformationMsg(formatAmount(amount + fee))
                   << std::endl
                   << SuccessMsg("Unlocked funds available: " + formatAmount(balance))
                   << std::endl;
@@ -561,16 +463,11 @@ void doTransfer(std::string address, uint64_t amount, uint64_t fee,
         {address, amount}
     };
 
-    if (!nodeAddress.empty() && nodeFee != 0) {
-        p.destinations.push_back({ nodeAddress, nodeFee });
-    }
-
     p.fee = fee;
-    p.mixIn = mixin;
     p.extra = extra;
     p.changeDestination = walletInfo->walletAddress;
 
-    if (!confirmTransaction(p, walletInfo, nodeFee))
+    if (!confirmTransaction(p, walletInfo))
     {
         std::cout << WarningMsg("Cancelling transaction.") << std::endl;
         return;
@@ -610,62 +507,14 @@ void doTransfer(std::string address, uint64_t amount, uint64_t fee,
                 return;
             }
 
-            bool wrongAmount = false;
-
             switch (e.code().value())
             {
                 case WalletErrors::CryptoNote::error::WRONG_AMOUNT:
                 {
-                    wrongAmount = true;
-#if __has_cpp_attribute(fallthrough)
-                    [[fallthrough]];
-#endif
-                }
-                case WalletErrors::CryptoNote::error::MIXIN_COUNT_TOO_BIG:
-                case NodeErrors::CryptoNote::error::INTERNAL_NODE_ERROR:
-                {
-
-                    if (wrongAmount)
-                    {
-                        std::cout << WarningMsg("Failed to send transaction "
-                                                "- not enough funds!")
-                                  << std::endl
-                                  << "Unable to send dust inputs."
-                                  << std::endl;
-                    }
-                    else
-                    {
-                        std::cout << WarningMsg("Failed to send transaction!")
-                                  << std::endl
-                                  << "Unable to find enough outputs to "
-                                  << "mix with."
-                                  << std::endl;
-                    }
-
-                    std::cout << "Try lowering the amount you are sending "
-                              << "in one transaction." << std::endl;
-
-                    /* If a mixin of zero is allowed, or we are below the
-                       fork height when it's banned, ask them to resend with
-                       zero */
-                    if (!WalletConfig::mixinZeroDisabled ||
-                         height < WalletConfig::mixinZeroDisabledHeight)
-                    {
-                        std::cout << "Alternatively, you can set the mixin "
-                                  << "count to 0." << std::endl;
-
-                        if(confirm("Retry transaction with mixin of 0? "
-                                   "This will compromise privacy."))
-                        {
-                            p.mixIn = 0;
-                            retried = true;
-                            continue;
-                        }
-                    }
-
-                    std::cout << WarningMsg("Cancelling transaction.")
+                    std::cout << WarningMsg("Failed to send transaction - not enough funds!")
+                              << std::endl
+                              << "Try lowering the amount you are sending."
                               << std::endl;
-
                     break;
                 }
                 case NodeErrors::CryptoNote::error::NETWORK_ERROR:

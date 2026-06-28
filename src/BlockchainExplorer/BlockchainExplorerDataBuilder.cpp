@@ -37,11 +37,6 @@ m_core(core),
 protocol(protocol) {
 }
 
-bool BlockchainExplorerDataBuilder::getMixin(const Transaction& /*transaction*/, uint64_t& mixin) {
-  mixin = 0;  // PQ transactions have no ring mixins
-  return true;
-}
-
 bool BlockchainExplorerDataBuilder::getPaymentId(const Transaction& transaction, Crypto::Hash& paymentId) {
   std::vector<TransactionExtraField> txExtraFields;
   parseTransactionExtra(transaction.extra, txExtraFields);
@@ -246,7 +241,6 @@ bool BlockchainExplorerDataBuilder::fillTransactionDetails(const Transaction& tr
     }
     transactionDetails.fee = fee;
     transactionDetails.totalInputsAmount = transactionDetails.totalOutputsAmount + fee;
-    transactionDetails.mixin = 0;
   } else {
     uint64_t inputsAmount;
     if (!get_inputs_money_amount(transaction, inputsAmount)) {
@@ -258,21 +252,14 @@ bool BlockchainExplorerDataBuilder::fillTransactionDetails(const Transaction& tr
   if (transaction.inputs.size() > 0 && transaction.inputs.front().type() == typeid(BaseInput)) {
     //It's gen transaction
     transactionDetails.fee = 0;
-    transactionDetails.mixin = 0;
   } else if (freeRegTransaction) {
     transactionDetails.fee = 0;
-    transactionDetails.mixin = 0;
   } else if (!pqOnlyInputs) {
     uint64_t fee;
     if (!get_tx_fee(transaction, fee)) {
       return false;
     }
     transactionDetails.fee = fee;
-    uint64_t mixin;
-    if (!m_core.getMixin(transaction, mixin)) {
-      return false;
-    }
-    transactionDetails.mixin = mixin;
   }
   Crypto::Hash paymentId;
   if (getPaymentId(transaction, paymentId)) {

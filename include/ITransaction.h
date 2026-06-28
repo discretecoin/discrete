@@ -63,7 +63,6 @@ public:
   virtual Crypto::Hash getTransactionPrefixHash() const = 0;
   virtual Crypto::Hash getTransactionInputsHash() const = 0;
   virtual Crypto::PublicKey getTransactionPublicKey() const = 0;
-  virtual bool getTransactionSecretKey(Crypto::SecretKey& key) const = 0;
   virtual uint64_t getUnlockTime() const = 0;
 
   // extra
@@ -120,9 +119,6 @@ public:
 
   virtual size_t addOutput(uint64_t amount, const AccountPublicAddress& to) = 0;
   virtual size_t addOutput(uint64_t amount, const KeyOutput& out) = 0;
-
-  // transaction info
-  virtual void setTransactionSecretKey(const Crypto::SecretKey& key) = 0;
 
   // Generate deterministic transaction keys: r = Hs(viewSecretKey || inputsHash); R = r*G.
   // Must be called after all inputs are added and before any outputs are added.

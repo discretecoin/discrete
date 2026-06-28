@@ -161,7 +161,6 @@ namespace CryptoNote {
 
      virtual bool get_tx_outputs_gindexs(const Crypto::Hash& tx_id, std::vector<uint32_t>& indexs) override;
      Crypto::Hash get_tail_id();
-     virtual bool get_random_outs_for_amounts(const COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_request& req, COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_response& res) override;
      void pause_mining() override;
      void stop_mining_for_no_peers() override;
      void update_block_template_and_resume_mining() override;
@@ -185,7 +184,6 @@ namespace CryptoNote {
      uint64_t getTotalGeneratedAmount() override;
      bool getPqTransactionFee(const Transaction& tx, uint64_t& fee) override;
      uint8_t getBlockMajorVersionForHeight(uint32_t height) const;
-     virtual bool getMixin(const Transaction& transaction, uint64_t& mixin) override;
 
      virtual bool getCanonicalAccountRegistrationsCount(uint64_t& count) override;
 
@@ -210,11 +208,10 @@ namespace CryptoNote {
      //check correct values, amounts and all lightweight checks not related with database
      bool check_tx_semantic(const Transaction& tx, const Crypto::Hash& txHash, bool keeped_by_block);
      //check if tx already in memory pool or in main blockchain
-     bool check_tx_mixin(const Transaction& tx, const Crypto::Hash& txHash, uint32_t height);
-     //check if the mixin is not too large
+     bool check_tx_input_privacy_model(const Transaction& tx, const Crypto::Hash& txHash, uint32_t height);
+     //check legacy output decomposition rules
      virtual bool check_tx_fee(const Transaction& tx, const Crypto::Hash& txHash, size_t blobSize, tx_verification_context& tvc, uint32_t height) override;
-     //check if tx is not sending unmixable outputs
-     bool check_tx_unmixable(const Transaction& tx, const Crypto::Hash& txHash, uint32_t height);
+     bool check_tx_classical_output_amounts(const Transaction& tx, const Crypto::Hash& txHash, uint32_t height);
 
      bool update_miner_block_template();
      bool handle_command_line(const boost::program_options::variables_map& vm);

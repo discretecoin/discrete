@@ -8,7 +8,7 @@
 void addToAddressBook();
 
 void sendFromAddressBook(std::shared_ptr<WalletInfo> walletInfo,
-                         uint32_t height, std::string feeAddress, uint64_t nodeFee);
+                         uint32_t height);
 
 void deleteFromAddressBook();
 

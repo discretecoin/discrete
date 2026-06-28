@@ -182,9 +182,9 @@ bool Blockchain::haveTransaction(const Crypto::Hash& id) {
   return m_db.getTxIndex(id, block, txSlot);
 }
 
-bool Blockchain::have_tx_keyimg_as_spent(const Crypto::KeyImage& key_im) {
+bool Blockchain::have_spend_tag_as_spent(const Crypto::KeyImage& tag) {
   std::lock_guard<decltype(m_blockchain_lock)> lk(m_blockchain_lock);
-  return m_db.hasSpentKey(key_im);
+  return m_db.hasSpentKey(tag);
 }
 
 bool Blockchain::checkIfSpent(const Crypto::KeyImage& keyImage, uint32_t blockIndex) {
@@ -1010,7 +1010,7 @@ bool Blockchain::getBlockLongHash(Crypto::cn_context& context, const Block& b, C
   const uint32_t currentHeight = boost::get<BaseInput>(b.baseTransaction.inputs[0]).blockIndex;
   const uint32_t unlockWindow = static_cast<uint32_t>(m_currency.minedMoneyUnlockWindow());
 
-  // Early blocks (< unlockWindow + 2) don't have enough prior chain for mixing.
+  // Early blocks (< unlockWindow + 2) don't have enough prior chain for sampling.
   // Skip the 128-round sampling and hash the signed blob directly with yespower.
   if (currentHeight <= unlockWindow + 1) {
     return Crypto::y_slow_hash(pot.data(), pot.size(), hash_1, hash_2)
@@ -1880,107 +1880,6 @@ uint32_t Blockchain::getAlternativeBlocksCount() {
 
 // ─── Random outputs ──────────────────────────────────────────────────────────
 
-bool Blockchain::add_out_to_get_random_outs(uint64_t amount, size_t globalIdx,
-    COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::outs_for_amount& result_outs) {
-  std::lock_guard<decltype(m_blockchain_lock)> lk(m_blockchain_lock);
-
-  uint32_t block; uint16_t txSlot, outIdx;
-  if (!m_db.getKeyOutput(amount, static_cast<uint32_t>(globalIdx), block, txSlot, outIdx)) {
-    logger(ERROR, BRIGHT_RED) << "internal error: getKeyOutput failed for amount="
-      << amount << " globalIdx=" << globalIdx;
-    return false;
-  }
-
-  TransactionEntry te = transactionByIndex({block, txSlot});
-  if (outIdx >= te.tx.outputs.size()) {
-    logger(ERROR, BRIGHT_RED) << "internal error: in global outs index, transaction out index="
-      << outIdx << " more than transaction outputs = " << te.tx.outputs.size();
-    return false;
-  }
-  if (!(te.tx.outputs[outIdx].target.type() == typeid(KeyOutput))) {
-    logger(ERROR, BRIGHT_RED) << "unknown tx out type";
-    return false;
-  }
-  if (!is_tx_spendheight_unlocked(te.tx.unlockHeight)) {
-    return false;
-  }
-
-  COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::out_entry& oen =
-    *result_outs.outs.insert(result_outs.outs.end(),
-                              COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::out_entry());
-  oen.global_amount_index = static_cast<uint32_t>(globalIdx);
-  oen.out_key = boost::get<KeyOutput>(te.tx.outputs[outIdx].target).key;
-  return true;
-}
-
-size_t Blockchain::find_end_of_allowed_index(uint64_t amount) {
-  std::lock_guard<decltype(m_blockchain_lock)> lk(m_blockchain_lock);
-  uint32_t count = m_db.getKeyOutputCount(amount);
-  if (count == 0) return 0;
-
-  uint32_t chainHeight = m_db.getChainHeight();
-  size_t i = count;
-  do {
-    --i;
-    uint32_t block; uint16_t txSlot, outIdx;
-    if (!m_db.getKeyOutput(amount, static_cast<uint32_t>(i), block, txSlot, outIdx)) {
-      continue;
-    }
-    if (block + m_currency.minedMoneyUnlockWindow() <= chainHeight) {
-      return i + 1;
-    }
-  } while (i != 0);
-  return 0;
-}
-
-bool Blockchain::getRandomOutsByAmount(
-    const COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::request& req,
-    COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::response& res) {
-  std::lock_guard<decltype(m_blockchain_lock)> lk(m_blockchain_lock);
-
-  for (uint64_t amount : req.amounts) {
-    COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::outs_for_amount& result_outs =
-      *res.outs.insert(res.outs.end(),
-                       COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::outs_for_amount());
-    result_outs.amount = amount;
-
-    uint32_t outputCount = m_db.getKeyOutputCount(amount);
-    if (outputCount == 0) {
-      logger(ERROR, BRIGHT_RED)
-        << "COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS: not outs for amount " << amount
-        << ", wallet should use some real outs when it lookup for some mix";
-      continue;
-    }
-
-    size_t up_index_limit = find_end_of_allowed_index(amount);
-    if (!(up_index_limit <= outputCount)) {
-      logger(ERROR, BRIGHT_RED) << "internal error: find_end_of_allowed_index returned wrong index="
-        << up_index_limit << ", with outputCount=" << outputCount;
-      return false;
-    }
-
-    if (outputCount > req.outs_count) {
-      std::set<size_t> used;
-      size_t try_count = 0;
-      for (uint64_t j = 0; j != req.outs_count && try_count < up_index_limit;) {
-        uint64_t r = Random::randomValue<size_t>() % ((uint64_t)1 << 53);
-        double frac = std::sqrt((double)r / ((uint64_t)1 << 53));
-        size_t idx = (size_t)(frac * up_index_limit);
-        if (used.count(idx)) continue;
-        bool added = add_out_to_get_random_outs(amount, idx, result_outs);
-        used.insert(idx);
-        if (added) ++j;
-        ++try_count;
-      }
-    } else {
-      for (size_t i = 0; i < up_index_limit; ++i) {
-        add_out_to_get_random_outs(amount, i, result_outs);
-      }
-    }
-  }
-  return true;
-}
-
 // ─── findBlockchainSupplement ────────────────────────────────────────────────
 
 uint32_t Blockchain::findBlockchainSupplement(const std::vector<Crypto::Hash>& qblock_ids) {
@@ -2145,7 +2044,7 @@ bool Blockchain::haveTransactionKeyImagesAsSpent(const Transaction& tx) {
   for (const auto& in : tx.inputs) {
     if (in.type() == typeid(PqInput)) {
       const auto ki = pqInputNullifierAsKeyImage(boost::get<PqInput>(in));
-      if (have_tx_keyimg_as_spent(ki)) {
+      if (have_spend_tag_as_spent(ki)) {
         return true;
       }
     }

@@ -6,7 +6,7 @@
 |---|---|---|
 | `COIN` | 100 | atomic units per XDS (2 decimal places) |
 | `MIN_PQ_FEE_PER_4000_BYTES` | 1 | atoms per 4000 serialized bytes |
-| `MINIMUM_FEE` | 1 | floor for legacy/min-fee display |
+| `MINIMUM_FEE` | 1 | base minimum-fee display/API value |
 | `MAXIMUM_FEE` | 100 | wallet UI cap (1.00 XDS) |
 
 ## Fee floor formula

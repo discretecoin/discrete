@@ -424,29 +424,6 @@ namespace CryptoNote {
     return std::max<Difficulty>(1, next_D);
   }
 
-  size_t Currency::getApproximateMaximumInputCount(size_t transactionSize, size_t outputCount, size_t mixinCount) const {
-    const size_t KEY_IMAGE_SIZE = sizeof(Crypto::KeyImage);
-    const size_t OUTPUT_KEY_SIZE = sizeof(decltype(KeyOutput::key));
-    const size_t AMOUNT_SIZE = sizeof(uint64_t) + 2; //varint
-    const size_t GLOBAL_INDEXES_VECTOR_SIZE_SIZE = sizeof(uint8_t);//varint
-    const size_t GLOBAL_INDEXES_INITIAL_VALUE_SIZE = sizeof(uint32_t);//varint
-    const size_t GLOBAL_INDEXES_DIFFERENCE_SIZE = sizeof(uint32_t);//varint
-    const size_t SIGNATURE_SIZE = sizeof(Crypto::Signature);
-    const size_t EXTRA_TAG_SIZE = sizeof(uint8_t);
-    const size_t INPUT_TAG_SIZE = sizeof(uint8_t);
-    const size_t OUTPUT_TAG_SIZE = sizeof(uint8_t);
-    const size_t PUBLIC_KEY_SIZE = sizeof(Crypto::PublicKey);
-    const size_t TRANSACTION_VERSION_SIZE = sizeof(uint8_t);
-    const size_t TRANSACTION_UNLOCK_TIME_SIZE = sizeof(uint64_t);
-
-    const size_t outputsSize = outputCount * (OUTPUT_TAG_SIZE + OUTPUT_KEY_SIZE + AMOUNT_SIZE);
-    const size_t headerSize = TRANSACTION_VERSION_SIZE + TRANSACTION_UNLOCK_TIME_SIZE + EXTRA_TAG_SIZE + PUBLIC_KEY_SIZE;
-    const size_t inputSize = INPUT_TAG_SIZE + AMOUNT_SIZE + KEY_IMAGE_SIZE + SIGNATURE_SIZE + GLOBAL_INDEXES_VECTOR_SIZE_SIZE + GLOBAL_INDEXES_INITIAL_VALUE_SIZE +
-      mixinCount * (GLOBAL_INDEXES_DIFFERENCE_SIZE + SIGNATURE_SIZE);
-
-    return (transactionSize - headerSize - outputsSize) / inputSize;
-  }
-
   CurrencyBuilder::CurrencyBuilder(Logging::ILogger& log) : m_currency(log) {
     maxBlockNumber(parameters::CRYPTONOTE_MAX_BLOCK_NUMBER);
     maxBlockBlobSize(parameters::CRYPTONOTE_MAX_BLOCK_BLOB_SIZE);
@@ -469,9 +446,6 @@ namespace CryptoNote {
     blockGrantedFullRewardZone(parameters::CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE);
     minerTxBlobReservedSize(parameters::CRYPTONOTE_COINBASE_BLOB_RESERVED_SIZE);
     maxTransactionSizeLimit(parameters::MAX_TRANSACTION_SIZE_LIMIT);
-
-    minMixin(parameters::MIN_TX_MIXIN_SIZE);
-    maxMixin(parameters::MAX_TX_MIXIN_SIZE);
 
     numberOfDecimalPlaces(parameters::CRYPTONOTE_DISPLAY_DECIMAL_POINT);
 

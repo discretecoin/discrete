@@ -30,7 +30,6 @@ enum WalletErrorCodes {
   WRONG_STATE,
   WRONG_PASSWORD,
   INTERNAL_WALLET_ERROR,
-  MIXIN_COUNT_TOO_BIG,
   BAD_ADDRESS,
   TRANSACTION_SIZE_TOO_BIG,
   WRONG_AMOUNT,
@@ -55,9 +54,6 @@ enum WalletErrorCodes {
   DESTINATION_ADDRESS_NOT_FOUND,
   BAD_PAYMENT_ID,
   BAD_TRANSACTION_EXTRA,
-  MIXIN_COUNT_TOO_SMALL,
-  MIXIN_COUNT_TOO_LARGE,
-  WRONG_TX_SECRET_KEY,
   INSUFFICIENT_FUNDS,
   AMOUNT_TOO_LARGE_FOR_ONE_TRANSACTION,
   ACCOUNT_NOT_REGISTERED
@@ -82,7 +78,6 @@ public:
     case WRONG_PASSWORD:                return "The password is wrong";
     case ALREADY_INITIALIZED:           return "The object is already initialized";
     case INTERNAL_WALLET_ERROR:         return "Internal error occurred";
-    case MIXIN_COUNT_TOO_BIG:           return "MixIn count is too big";
     case BAD_ADDRESS:                   return "Bad address";
     case TRANSACTION_SIZE_TOO_BIG:      return "Transaction size is too big";
     case WRONG_AMOUNT:                  return "Wrong amount";
@@ -107,9 +102,6 @@ public:
     case DESTINATION_ADDRESS_NOT_FOUND: return "Destination address not found";
     case BAD_PAYMENT_ID:                return "Wrong payment id format";
     case BAD_TRANSACTION_EXTRA:         return "Wrong transaction extra format";
-    case MIXIN_COUNT_TOO_SMALL:         return "MixIn count is below the required minimum";
-    case MIXIN_COUNT_TOO_LARGE:         return "MixIn count is over the maximum allowed";
-    case WRONG_TX_SECRET_KEY:           return "Wrong transaction secret key";
     case INSUFFICIENT_FUNDS:            return "Insufficient unlocked balance to cover the amount and fee";
     case AMOUNT_TOO_LARGE_FOR_ONE_TRANSACTION:
                                         return "Amount is too large to send in one transaction (too many inputs); send a smaller amount or consolidate your outputs first";

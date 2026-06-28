@@ -155,8 +155,6 @@ bool LMDBBlockchainDB::open(const std::string& path) {
     openDb(setupTxn, "spent_keys",        0,                         m_dbiSpentKeys);
     openDb(setupTxn, "pq_acct_reg",       0,                         m_dbiPqAcctReg);
     openDb(setupTxn, "tx_indices",        0,                         m_dbiTxIndices);
-    openDb(setupTxn, "key_outputs",       0,                         m_dbiKeyOutputs);
-    openDb(setupTxn, "key_output_counts", 0,                         m_dbiKeyOutputCounts);
     openDb(setupTxn, "payment_id_idx",    MDB_DUPSORT | MDB_DUPFIXED, m_dbiPaymentIdIdx);
     openDb(setupTxn, "timestamp_idx",     0,                         m_dbiTimestampIdx);
     openDb(setupTxn, "gen_tx_idx",        0,                         m_dbiGenTxIdx);
@@ -221,8 +219,6 @@ void LMDBBlockchainDB::clear() {
   dropDb(m_dbiSpentKeys);
   dropDb(m_dbiPqAcctReg);
   dropDb(m_dbiTxIndices);
-  dropDb(m_dbiKeyOutputs);
-  dropDb(m_dbiKeyOutputCounts);
   dropDb(m_dbiPaymentIdIdx);
   dropDb(m_dbiTimestampIdx);
   dropDb(m_dbiGenTxIdx);
@@ -758,100 +754,6 @@ bool LMDBBlockchainDB::removeTxIndex(const Crypto::Hash& txHash) {
   int rc = mdb_del(m_writeTxn, m_dbiTxIndices, &k, nullptr);
   if (rc == MDB_NOTFOUND) return false;
   checkRc(rc, "removeTxIndex");
-  return true;
-}
-
-// ─── key_outputs ──────────────────────────────────────────────────────────
-// Key:   {amount_BE(8), globalIdx_BE(4)} = 12 bytes
-// Value: {block_BE(4), txSlot_BE(2), outIdx_BE(2)} = 8 bytes
-
-bool LMDBBlockchainDB::putKeyOutput(uint64_t amount, uint32_t globalIdx,
-                                     uint32_t block, uint16_t txSlot, uint16_t outIdx) {
-  assert(m_writeTxn);
-  uint8_t keyBuf[12];
-  encBE64(keyBuf,   amount);
-  encBE32(keyBuf+8, globalIdx);
-  MDB_val k = {12, keyBuf};
-
-  uint8_t valBuf[8];
-  encBE32(valBuf,   block);
-  valBuf[4] = (txSlot >> 8) & 0xFF;
-  valBuf[5] =  txSlot       & 0xFF;
-  valBuf[6] = (outIdx >> 8) & 0xFF;
-  valBuf[7] =  outIdx       & 0xFF;
-  MDB_val v = {8, valBuf};
-
-  int rc = mdb_put(m_writeTxn, m_dbiKeyOutputs, &k, &v, 0);
-  checkRc(rc, "putKeyOutput");
-
-  // Update count
-  uint8_t cntKeyBuf[8]; encBE64(cntKeyBuf, amount);
-  MDB_val ck = {8, cntKeyBuf}, cv{};
-  uint32_t oldCount = 0;
-  if (mdb_get(m_writeTxn, m_dbiKeyOutputCounts, &ck, &cv) == 0) {
-    oldCount = decBE32(static_cast<const uint8_t*>(cv.mv_data));
-  }
-  uint8_t newCntBuf[4]; encBE32(newCntBuf, oldCount + 1);
-  MDB_val nv = {4, newCntBuf};
-  rc = mdb_put(m_writeTxn, m_dbiKeyOutputCounts, &ck, &nv, 0);
-  checkRc(rc, "putKeyOutput:count");
-  return true;
-}
-
-bool LMDBBlockchainDB::getKeyOutput(uint64_t amount, uint32_t globalIdx,
-                                     uint32_t& block, uint16_t& txSlot, uint16_t& outIdx) const {
-  auto guard = readTxn();
-  uint8_t keyBuf[12];
-  encBE64(keyBuf,   amount);
-  encBE32(keyBuf+8, globalIdx);
-  MDB_val k = {12, keyBuf}, v{};
-  int rc = mdb_get(guard.txn, m_dbiKeyOutputs, &k, &v);
-  if (rc == MDB_NOTFOUND) return false;
-  checkRc(rc, "getKeyOutput");
-  const uint8_t* b = static_cast<const uint8_t*>(v.mv_data);
-  block  = decBE32(b);
-  txSlot = (uint16_t(b[4]) << 8) | b[5];
-  outIdx = (uint16_t(b[6]) << 8) | b[7];
-  return true;
-}
-
-uint32_t LMDBBlockchainDB::getKeyOutputCount(uint64_t amount) const {
-  auto guard = readTxn();
-  uint8_t keyBuf[8]; encBE64(keyBuf, amount);
-  MDB_val k = {8, keyBuf}, v{};
-  int rc = mdb_get(guard.txn, m_dbiKeyOutputCounts, &k, &v);
-  if (rc == MDB_NOTFOUND) return 0;
-  checkRc(rc, "getKeyOutputCount");
-  return decBE32(static_cast<const uint8_t*>(v.mv_data));
-}
-
-bool LMDBBlockchainDB::removeLastKeyOutput(uint64_t amount) {
-  assert(m_writeTxn);
-  uint8_t cntKeyBuf[8]; encBE64(cntKeyBuf, amount);
-  MDB_val ck = {8, cntKeyBuf}, cv{};
-  int rc = mdb_get(m_writeTxn, m_dbiKeyOutputCounts, &ck, &cv);
-  if (rc == MDB_NOTFOUND) return false;
-  checkRc(rc, "removeLastKeyOutput:getCount");
-  uint32_t count = decBE32(static_cast<const uint8_t*>(cv.mv_data));
-  if (count == 0) return false;
-
-  // Delete the last output entry
-  uint8_t keyBuf[12];
-  encBE64(keyBuf,   amount);
-  encBE32(keyBuf+8, count - 1);
-  MDB_val k = {12, keyBuf};
-  rc = mdb_del(m_writeTxn, m_dbiKeyOutputs, &k, nullptr);
-  checkRc(rc, "removeLastKeyOutput:del");
-
-  // Update count
-  if (count == 1) {
-    mdb_del(m_writeTxn, m_dbiKeyOutputCounts, &ck, nullptr);
-  } else {
-    uint8_t newCntBuf[4]; encBE32(newCntBuf, count - 1);
-    MDB_val nv = {4, newCntBuf};
-    rc = mdb_put(m_writeTxn, m_dbiKeyOutputCounts, &ck, &nv, 0);
-    checkRc(rc, "removeLastKeyOutput:updateCount");
-  }
   return true;
 }
 

@@ -249,64 +249,6 @@ std::error_code InProcessNode::doGetTransactionOutsGlobalIndices(const Crypto::H
   return std::error_code();
 }
 
-void InProcessNode::getRandomOutsByAmounts(std::vector<uint64_t>&& amounts, uint64_t outsCount,
-    std::vector<CryptoNote::COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::outs_for_amount>& result, const Callback& callback)
-{
-  std::unique_lock<std::mutex> lock(mutex);
-  if (state != INITIALIZED) {
-    lock.unlock();
-    callback(make_error_code(CryptoNote::error::NOT_INITIALIZED));
-    return;
-  }
-
-  ioService.post(
-    std::bind(&InProcessNode::getRandomOutsByAmountsAsync,
-      this,
-      std::move(amounts),
-      outsCount,
-      std::ref(result),
-      callback
-    )
-  );
-}
-
-void InProcessNode::getRandomOutsByAmountsAsync(std::vector<uint64_t>& amounts, uint64_t outsCount,
-  std::vector<CryptoNote::COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::outs_for_amount>& result, const Callback& callback)
-{
-  std::error_code ec = doGetRandomOutsByAmounts(std::move(amounts), outsCount, result);
-  callback(ec);
-}
-
-//it's always protected with mutex
-std::error_code InProcessNode::doGetRandomOutsByAmounts(std::vector<uint64_t>&& amounts, uint64_t outsCount, std::vector<CryptoNote::COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::outs_for_amount>& result) {
-  {
-    std::unique_lock<std::mutex> lock(mutex);
-    if (state != INITIALIZED) {
-      return make_error_code(CryptoNote::error::NOT_INITIALIZED);
-    }
-  }
-
-  try {
-    CryptoNote::COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::response res;
-    CryptoNote::COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::request req;
-    req.amounts = amounts;
-    req.outs_count = outsCount;
-
-    if(!core.get_random_outs_for_amounts(req, res)) {
-      return make_error_code(CryptoNote::error::REQUEST_ERROR);
-    }
-
-    result = std::move(res.outs);
-  } catch (std::system_error& e) {
-    return e.code();
-  } catch (std::exception&) {
-    return make_error_code(CryptoNote::error::INTERNAL_NODE_ERROR);
-  }
-
-  return std::error_code();
-}
-
-
 void InProcessNode::relayTransaction(const CryptoNote::Transaction& transaction, const Callback& callback)
 {
   std::unique_lock<std::mutex> lock(mutex);

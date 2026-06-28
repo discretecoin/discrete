@@ -227,8 +227,8 @@ TEST_F(PaymentGateTest, ChangeDestinationRuleMatchesCryptoNote) {
     req.fee = 100;
     req.changeAddress = change;
     req.sourceAddresses = sources;
-    std::string hash, txkey;
-    return service->sendTransaction(req, hash, txkey);
+    std::string hash;
+    return service->sendTransaction(req, hash);
   };
   const auto required = make_error_code(CryptoNote::error::CHANGE_ADDRESS_REQUIRED);
   const auto notFound = make_error_code(CryptoNote::error::CHANGE_ADDRESS_NOT_FOUND);
@@ -437,7 +437,6 @@ TEST_F(PaymentGateTest, DISABLED_sendTransaction) {
 
     req.transfers.push_back(WalletRpcOrder{ TEST_AMOUNT, recvAddress });
     req.fee = currency.minimumFee();
-    req.anonymity = 1;
     req.unlockHeight = 0;
     req.paymentId = paymentIdStr;
 
@@ -525,7 +524,6 @@ TEST_F(PaymentGateTest, DISABLED_sendTransaction) {
 
     req.destinations.push_back(TransferDestination{ TEST_AMOUNT/2, recvAddress });
     req.fee = currency.minimumFee();
-    req.mixin = 1;
     req.unlockHeight = 0;
     req.paymentId = paymentIdStr;
 

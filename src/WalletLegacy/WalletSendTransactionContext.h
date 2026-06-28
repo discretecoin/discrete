@@ -40,12 +40,9 @@ struct TxDustPolicy
 struct SendTransactionContext
 {
   TransactionId transactionId;
-  std::vector<CryptoNote::COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::outs_for_amount> outs;
   uint64_t foundMoney;
   std::list<TransactionOutputInformation> selectedTransfers;
   TxDustPolicy dustPolicy;
-  uint64_t mixIn;
-  Crypto::SecretKey tx_key = NULL_SECRET_KEY;
 };
 
 } //namespace CryptoNote

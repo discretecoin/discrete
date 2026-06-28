@@ -278,17 +278,6 @@ std::vector<PaymentService::TransactionHashesInBlockRpcInfo> convertTransactions
   return transactionHashes;
 }
 
-void validateMixin(const uint16_t& mixin, const CryptoNote::Currency& currency, Logging::LoggerRef logger) {
-    if (mixin < currency.minMixin() && mixin != 0) {
-        logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Mixin must be equal to or bigger than " << currency.minMixin();
-        throw std::system_error(make_error_code(CryptoNote::error::MIXIN_COUNT_TOO_SMALL));
-    }
-    if (mixin > currency.maxMixin()) {
-        logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Mixin must be equal to or smaller than " << currency.maxMixin();
-        throw std::system_error(make_error_code(CryptoNote::error::MIXIN_COUNT_TOO_LARGE));
-    }
-}
-
 void validateAddresses(const std::vector<std::string>& addresses, const CryptoNote::Currency& currency, Logging::LoggerRef logger) {
   for (const auto& address: addresses) {
     if (!CryptoNote::validateAddress(address, currency)) {
@@ -1052,85 +1041,6 @@ std::error_code WalletService::getTransaction(const std::string& transactionHash
   return std::error_code();
 }
 
-std::error_code WalletService::getTransactionSecretKey(const std::string& transactionHash, std::string& transactionSecretKey) {
-  try {
-    System::EventLock lk(readyEvent);
-    Crypto::Hash hash = parseHash(transactionHash, logger);
-
-    Crypto::SecretKey txSecretKey = wallet.getTransactionSecretKey(hash);
-
-    if (txSecretKey == CryptoNote::NULL_SECRET_KEY) {
-      logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Transaction " << transactionHash << " secret key is not available";
-      return make_error_code(CryptoNote::error::OBJECT_NOT_FOUND);
-    }
-
-    transactionSecretKey = Common::podToHex(txSecretKey);
-
-  } catch (std::system_error& x) {
-    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while getting transaction secret key: " << x.what();
-    return x.code();
-  } catch (std::exception& x) {
-    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while getting transaction secret key: " << x.what();
-    return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
-  }
-
-  return std::error_code();
-}
-
-std::error_code WalletService::getTransactionProof(const std::string& transactionHash, const std::string& destinationAddress, const std::string& transactionSecretKey, std::string& transactionProof) {
-  try {
-    System::EventLock lk(readyEvent);
-    Crypto::Hash hash = parseHash(transactionHash, logger);
-
-    Crypto::SecretKey txSecretKey = wallet.getTransactionSecretKey(hash);
-
-    if (!transactionSecretKey.empty()) {  
-      Crypto::SecretKey txSecretKeyFromReq;
-      Crypto::Hash tx_key_hash;
-      size_t size;
-      if (!Common::fromHex(transactionSecretKey, &tx_key_hash, sizeof(tx_key_hash), size) || size != sizeof(tx_key_hash)) {
-        logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Failed to parse tx secret key: " << transactionSecretKey;
-        return make_error_code(CryptoNote::error::WRONG_TX_SECRET_KEY);
-      }
-      txSecretKeyFromReq = *(struct Crypto::SecretKey *) &tx_key_hash;
-
-      if (txSecretKey != CryptoNote::NULL_SECRET_KEY && txSecretKey != txSecretKeyFromReq) {
-        logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Transaction secret keys do not match";
-        return make_error_code(CryptoNote::error::WRONG_TX_SECRET_KEY);
-      }
-      txSecretKey = txSecretKeyFromReq;
-    }
-    else if (txSecretKey == CryptoNote::NULL_SECRET_KEY) {
-      logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Transaction secret key not found";
-      return make_error_code(CryptoNote::error::WRONG_PARAMETERS);
-    }
-
-    CryptoNote::AccountPublicAddress destAddress;
-    if (!currency.parseAccountAddressString(destinationAddress, destAddress)) {
-      logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Failed to parse address: " << destinationAddress;
-      return make_error_code(CryptoNote::error::BAD_ADDRESS);
-    }
-
-    std::string sig_str;
-    if (wallet.getTransactionProof(hash, destAddress, txSecretKey, sig_str)) {
-      transactionProof = sig_str;
-    }
-    else {
-      logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Failed to get transaction proof";
-      return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
-    }
-
-  } catch (std::system_error& x) {
-    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while getting transaction proof: " << x.what();
-    return x.code();
-  } catch (std::exception& x) {
-    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while getting transaction proof: " << x.what();
-    return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
-  }
-
-  return std::error_code();
-}
-
 std::error_code WalletService::signMessage(const std::string& message, const std::string& address, std::string& signature) {
   try {
     System::EventLock lk(readyEvent);
@@ -1551,12 +1461,12 @@ std::error_code WalletService::listPqDepositAddresses(std::vector<std::string>& 
   return std::error_code();
 }
 
-std::error_code WalletService::sendTransaction(const SendTransaction::Request& request, std::string& transactionHash, std::string& transactionSecretKey) {
+std::error_code WalletService::sendTransaction(const SendTransaction::Request& request, std::string& transactionHash) {
   try {
     System::EventLock lk(readyEvent);
 
-    // PQ-native path: destinations are PQ addresses / account numbers, the build +
-    // relay go through the common sender, and ring/mixin params are not applicable.
+    // PQ-native path: destinations are PQ addresses / account numbers, and the
+    // build + relay go through the common sender.
     auto* gw = dynamic_cast<CryptoNote::WalletGreen*>(&wallet);
     if (gw != nullptr && gw->pqEnabled()) {
       std::vector<CryptoNote::PqSendOutput> recipients;
@@ -1605,7 +1515,6 @@ std::error_code WalletService::sendTransaction(const SendTransaction::Request& r
       CryptoNote::PqSendResult r = gw->sendPqTransfer(recipients, request.fee, request.unlockHeight,
                                                       std::vector<uint8_t>{}, sourceAddresses, changeAddress);
       transactionHash = Common::podToHex(CryptoNote::getObjectHash(r.tx));
-      transactionSecretKey.clear();  // PQ transactions carry no per-tx secret key
       logger(Logging::DEBUGGING) << "Transaction " << transactionHash << " has been sent";
       return std::error_code();
     }
@@ -1615,8 +1524,6 @@ std::error_code WalletService::sendTransaction(const SendTransaction::Request& r
     if (!request.changeAddress.empty()) {
       validateAddresses({ request.changeAddress }, currency, logger);
     }
-    validateMixin(request.anonymity, currency, logger);
-
     CryptoNote::TransactionParameters sendParams;
     if (!request.paymentId.empty()) {
       addPaymentIdToExtra(request.paymentId, sendParams.extra);
@@ -1627,14 +1534,12 @@ std::error_code WalletService::sendTransaction(const SendTransaction::Request& r
     sendParams.sourceAddresses = request.sourceAddresses;
     sendParams.destinations = convertWalletRpcOrdersToWalletOrders(request.transfers);
     sendParams.fee = request.fee;
-    sendParams.mixIn = request.anonymity;
     sendParams.unlockHeightstamp = request.unlockHeight;
     sendParams.changeDestination = request.changeAddress;
 
-    Crypto::SecretKey tx_key;
-    size_t transactionId = wallet.transfer(sendParams, tx_key);
+    Crypto::SecretKey ignoredSecretKey;
+    size_t transactionId = wallet.transfer(sendParams, ignoredSecretKey);
     transactionHash = Common::podToHex(wallet.getTransaction(transactionId).hash);
-    transactionSecretKey = Common::podToHex(tx_key);
 
     logger(Logging::DEBUGGING) << "Transaction " << transactionHash << " has been sent";
   } catch (const CryptoNote::PqSendError& e) {

@@ -175,7 +175,7 @@ const Maybe<const AddressBookEntry> getAddressBookEntry(AddressBook addressBook)
 }
 
 void sendFromAddressBook(std::shared_ptr<WalletInfo> walletInfo,
-                         uint32_t height, std::string feeAddress, uint64_t nodeFee)
+                         uint32_t height)
 {
     auto addressBook = getAddressBook();
 
@@ -209,14 +209,8 @@ void sendFromAddressBook(std::shared_ptr<WalletInfo> walletInfo,
     auto amount = maybeAmount.x;
     auto fee = WalletConfig::defaultFee;
     auto extra = getExtraFromPaymentID(maybeAddressBookEntry.x.paymentID);
-    auto mixin = WalletConfig::defaultMixin;
 
-    if (!feeAddress.empty() && nodeFee == 0)
-      nodeFee = calculateNodeFee(amount);
-    else if (!feeAddress.empty() && nodeFee != 0)
-      nodeFee = std::min<uint64_t>(nodeFee, (uint64_t)CryptoNote::parameters::COIN);
-
-    doTransfer(address, amount, fee, extra, walletInfo, height, mixin, feeAddress, nodeFee);
+    doTransfer(address, amount, fee, extra, walletInfo, height);
 }
 
 bool isAddressBookEmpty(AddressBook addressBook)

@@ -61,7 +61,6 @@
 extern "C"
 {
 #include "crypto/keccak.h"
-#include "crypto/crypto-ops.h"
 }
 
 using namespace Crypto;
@@ -242,7 +241,6 @@ WalletLegacy::WalletLegacy(const CryptoNote::Currency& currency, INode& node, Lo
   m_isStopping(false),
   m_lastNotifiedActualBalance(0),
   m_lastNotifiedPendingBalance(0),
-  m_lastNotifiedUnmixableBalance(0),
   m_lastNotifiedTransactionCount(0),
   m_blockchainSync(node, m_logger.getLogger(), currency.genesisBlockHash()),
   m_onInitSyncStarter(new SyncStarter(m_blockchainSync))
@@ -576,7 +574,6 @@ void WalletLegacy::shutdown() {
 
     m_lastNotifiedActualBalance = 0;
     m_lastNotifiedPendingBalance = 0;
-    m_lastNotifiedUnmixableBalance = 0;
     m_lastNotifiedTransactionCount = 0;
   }
 }
@@ -838,15 +835,6 @@ uint64_t WalletLegacy::pendingBalance() {
   return m_pqConsumer ? m_pqConsumer->state().pendingBalance() : 0;
 }
 
-uint64_t WalletLegacy::unmixableBalance() {
-  std::unique_lock<std::mutex> lock(m_cacheMutex);
-  throwIfNotInitialised();
-
-  // PQ output amounts come from the fixed canonical denomination table, so there
-  // is no "unmixable" (non-decomposable) balance.
-  return 0;
-}
-
 size_t WalletLegacy::getTransactionCount() {
   std::unique_lock<std::mutex> lock(m_cacheMutex);
   throwIfNotInitialised();
@@ -930,17 +918,17 @@ std::vector<TransactionSpentOutputInformation> WalletLegacy::getSpentOutputs() {
   return {};
 }
 
-TransactionId WalletLegacy::sendTransaction(const WalletLegacyTransfer& transfer, uint64_t fee, const std::string& extra, uint64_t mixIn, uint64_t unlockHeightstamp) {
+TransactionId WalletLegacy::sendTransaction(const WalletLegacyTransfer& transfer, uint64_t fee, const std::string& extra, uint64_t ignoredPrivacyWidth, uint64_t unlockHeightstamp) {
   std::vector<WalletLegacyTransfer> transfers;
   transfers.push_back(transfer);
   throwIfNotInitialised();
 
-  return sendTransaction(transfers, fee, extra, mixIn, unlockHeightstamp);
+  return sendTransaction(transfers, fee, extra, ignoredPrivacyWidth, unlockHeightstamp);
 }
 
-TransactionId WalletLegacy::sendTransaction(const std::vector<WalletLegacyTransfer>& transfers, uint64_t fee, const std::string& extra, uint64_t mixIn, uint64_t unlockHeightstamp) {
+TransactionId WalletLegacy::sendTransaction(const std::vector<WalletLegacyTransfer>& transfers, uint64_t fee, const std::string& extra, uint64_t ignoredPrivacyWidth, uint64_t unlockHeightstamp) {
   throwIfNotInitialised();
-  (void)mixIn;  // not applicable to PQ
+  (void)ignoredPrivacyWidth;
 
   // PQ is the native ledger: resolve each destination as a PQ recipient and build,
   // sign and relay through the common sender. `extra` carries any tx-level tag (e.g.
@@ -985,61 +973,9 @@ TransactionId WalletLegacy::sendTransaction(const std::vector<WalletLegacyTransf
   return txId;
 }
 
-TransactionId WalletLegacy::sendTransaction(const std::vector<WalletLegacyTransfer>& transfers, const std::list<TransactionOutputInformation>& /*selectedOuts*/, uint64_t fee, const std::string& extra, uint64_t mixIn, uint64_t unlockHeightstamp) {
+TransactionId WalletLegacy::sendTransaction(const std::vector<WalletLegacyTransfer>& transfers, const std::list<TransactionOutputInformation>& /*selectedOuts*/, uint64_t fee, const std::string& extra, uint64_t ignoredPrivacyWidth, uint64_t unlockHeightstamp) {
   // PQ input selection is internal to buildPqSend; the caller-chosen output set is ignored.
-  return sendTransaction(transfers, fee, extra, mixIn, unlockHeightstamp);
-}
-
-std::string WalletLegacy::prepareRawTransaction(TransactionId& transactionId, const std::vector<WalletLegacyTransfer>& transfers, uint64_t fee, const std::string& extra, uint64_t mixIn, uint64_t unlockHeightstamp) {
-  throwIfNotInitialised();
-  (void)mixIn;
-  transactionId = WALLET_LEGACY_INVALID_TRANSACTION_ID;
-
-  if (!pqEnabled()) {
-    throw std::runtime_error("Spending is unavailable for this wallet");
-  }
-  AccountKeys keys;
-  getAccountKeys(keys);
-  if (keys.spendSecretKey == NULL_SECRET_KEY) {
-    throw std::runtime_error("tracking wallet cannot spend");
-  }
-
-  std::vector<PqSendOutput> recipients;
-  recipients.reserve(transfers.size());
-  for (const auto& t : transfers) {
-    if (t.amount < 0) {
-      throw std::system_error(make_error_code(std::errc::invalid_argument));
-    }
-    CryptoPQ::KemPublicKey viewPub;
-    CryptoPQ::DsaPublicKey spendPub;
-    uint64_t subaddrT = 0;
-    if (!resolvePqRecipient(m_node, t.address, viewPub, spendPub, subaddrT)) {
-      throw std::system_error(make_error_code(CryptoNote::error::BAD_ADDRESS));
-    }
-    recipients.push_back(PqSendOutput{viewPub, spendPub, static_cast<uint64_t>(t.amount), subaddrT});
-  }
-
-  PqWalletKeys pq = derivePqWalletKeys(toSeedMaster(keys.spendSecretKey));
-  PqSendRequest req;
-  req.recipients = recipients;
-  req.explicitFee = fee;
-  req.unlockHeight = unlockHeightstamp;
-  req.extra = std::vector<uint8_t>(extra.begin(), extra.end());
-  PqSendResult result = buildPqSend(pqSpendableInputs(), pq, req);  // builds, does NOT relay
-
-  return Common::toHex(toBinaryArray(result.tx));
-}
-
-std::string WalletLegacy::prepareRawTransaction(TransactionId& transactionId, const std::vector<WalletLegacyTransfer>& transfers, const std::list<CryptoNote::TransactionOutputInformation>& /*selectedOuts*/, uint64_t fee, const std::string& extra, uint64_t mixIn, uint64_t unlockHeightstamp) {
-  return prepareRawTransaction(transactionId, transfers, fee, extra, mixIn, unlockHeightstamp);
-}
-
-std::string WalletLegacy::prepareRawTransaction(TransactionId& transactionId, const WalletLegacyTransfer& transfer, uint64_t fee, const std::string& extra, uint64_t mixIn, uint64_t unlockHeightstamp) {
-  std::vector<WalletLegacyTransfer> transfers;
-  transfers.push_back(transfer);
-  throwIfNotInitialised();
-
-  return prepareRawTransaction(transactionId, transfers, fee, extra, mixIn, unlockHeightstamp);
+  return sendTransaction(transfers, fee, extra, ignoredPrivacyWidth, unlockHeightstamp);
 }
 
 void WalletLegacy::sendTransactionCallback(WalletRequest::Callback callback, std::error_code ec) {
@@ -1179,13 +1115,6 @@ void WalletLegacy::notifyIfBalanceChanged() {
     m_observerManager.notify(&IWalletLegacyObserver::pendingBalanceUpdated, pending);
   }
 
-  auto unmixable = unmixableBalance();
-  auto prevUnmixable = m_lastNotifiedUnmixableBalance.exchange(unmixable);
-
-  if (prevUnmixable != unmixable) {
-    m_observerManager.notify(&IWalletLegacyObserver::unmixableBalanceUpdated, unmixable);
-  }
-
 }
 
 void WalletLegacy::getAccountKeys(AccountKeys& keys) {
@@ -1207,23 +1136,6 @@ std::vector<TransactionId> WalletLegacy::deleteOutdatedUnconfirmedTransactions()
   // PQ mempool lifecycle is owned by the WalletLedger consumer; there is no
   // classical unconfirmed-transaction cache to prune.
   return {};
-}
-
-Crypto::SecretKey WalletLegacy::getTxKey(Crypto::Hash& txid) {
-  // PQ transactions carry no per-tx secret key (stealth delivery is ML-KEM based).
-  (void)txid;
-  return NULL_SECRET_KEY;
-}
-
-bool WalletLegacy::get_tx_key(Crypto::Hash& txid, Crypto::SecretKey& txSecretKey) {
-  (void)txid;
-  txSecretKey = NULL_SECRET_KEY;
-  m_logger(Logging::INFO) << "Post-quantum transactions carry no secret transaction key.";
-  return false;
-}
-
-bool WalletLegacy::getTxProof(Crypto::Hash& txid, CryptoNote::AccountPublicAddress& address, Crypto::SecretKey& tx_key, std::string& sig_str) {
-  return getTransactionProof(txid, address, tx_key, sig_str, m_logger.getLogger());
 }
 
 // Classical container introspection is gone; these described ECC KeyOutputs/inputs,

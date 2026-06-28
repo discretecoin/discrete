@@ -119,7 +119,6 @@ namespace CryptoNote
     bool show_unlocked_outputs_count(const std::vector<std::string> &args);
     bool list_transfers(const std::vector<std::string> &args);
     bool transfer(const std::vector<std::string> &args);
-    bool prepare_tx(const std::vector<std::string>& args);
     bool print_address(const std::vector<std::string> &args = std::vector<std::string>());
     bool save_address_to_file(const std::vector<std::string> &args = std::vector<std::string>());
     bool save(const std::vector<std::string> &args);
@@ -127,8 +126,6 @@ namespace CryptoNote
     bool set_log(const std::vector<std::string> &args);
     bool payment_id(const std::vector<std::string> &args);
     bool change_password(const std::vector<std::string> &args);
-    bool get_tx_key(const std::vector<std::string> &args);
-    bool get_tx_proof(const std::vector<std::string> &args);
     bool sign_message(const std::vector<std::string> &args);
     bool verify_message(const std::vector<std::string> &args);
     bool pq_address(const std::vector<std::string> &args = std::vector<std::string>());
@@ -228,9 +225,7 @@ namespace CryptoNote
     bool m_non_deterministic;             // old 2-random generation
     bool m_daemon_ssl;
     bool m_daemon_no_verify;
-    bool m_do_not_relay_tx;
     bool m_dump_keys_file;
-    bool m_initial_remote_fee_mess;
     
     std::unique_ptr<std::promise<std::error_code>> m_initResultPromise;
 

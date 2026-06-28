@@ -102,7 +102,6 @@ void serialize(BaseInputDetails& inputBase, ISerializer& serializer) {
 
 void serialize(KeyInputDetails& inputToKey, ISerializer& serializer) {
   serializer(inputToKey.input, "input");
-  serializer(inputToKey.mixin, "mixin");
   serializer(inputToKey.outputs, "outputs");
 }
 
@@ -148,7 +147,6 @@ void serialize(TransactionDetails& transaction, ISerializer& serializer) {
   serializer(transaction.fee, "fee");
   serializer(transaction.totalInputsAmount, "totalInputsAmount");
   serializer(transaction.totalOutputsAmount, "totalOutputsAmount");
-  serializer(transaction.mixin, "mixin");
   serializer(transaction.unlockHeight, "unlockHeight");
   serializer(transaction.timestamp, "timestamp");
   serializer(transaction.version, "version");

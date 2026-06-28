@@ -33,9 +33,6 @@ namespace CryptoNote {
 
 bool parseAndValidateTransactionFromBinaryArray(const BinaryArray& transactionBinaryArray, Transaction& transaction, Crypto::Hash& transactionHash, Crypto::Hash& transactionPrefixHash);
 
-bool getTransactionProof(const Crypto::Hash& transactionHash, const CryptoNote::AccountPublicAddress& destinationAddress, const Crypto::SecretKey& transactionKey, std::string& transactionProof, Logging::ILogger& log);
-
-
 // PQ message signing (ML-DSA-65). Discrete has no ECC account identity, so a
 // human-signed message is authorized by the wallet's long-term ML-DSA spend key
 // (the same key its PQ address publishes). The signed bytes are a domain-separated

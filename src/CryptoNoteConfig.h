@@ -60,8 +60,6 @@ const uint64_t MINIMUM_FEE                                   = UINT64_C(1);
 const uint64_t MAXIMUM_FEE                                   = UINT64_C(100);
 
 const uint64_t DEFAULT_DUST_THRESHOLD                        = UINT64_C(1);
-const uint64_t MIN_TX_MIXIN_SIZE                             = 0;
-const uint64_t MAX_TX_MIXIN_SIZE                             = 0;
 const uint64_t MAX_EXTRA_SIZE                                = 4096;
 const uint64_t MAX_EXTRA_SIZE_PQ                             = 4096;
 
@@ -297,6 +295,5 @@ const char* const SEED_NODES[] = {
 };
 
 } // CryptoNote
-
 
 

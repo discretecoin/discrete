@@ -57,8 +57,6 @@ public:
   virtual uint64_t getWhitePeerlistSize() const override { return 0; };
   virtual uint64_t getGreyPeerlistSize() const override { return 0; };
   virtual std::string getNodeVersion() const override { return ""; };
-  virtual std::string feeAddress() const override { return ""; };
-  virtual uint64_t feeAmount() const override { return 0; };
   virtual uint32_t getNodeHeight() const override { return 0; };
 
   virtual void setRootCert(const std::string &path) override {};
@@ -67,7 +65,6 @@ public:
   virtual void getNewBlocks(std::vector<Crypto::Hash>&& knownBlockIds, std::vector<CryptoNote::block_complete_entry>& newBlocks, uint32_t& height, const Callback& callback) override { callback(std::error_code()); };
 
   virtual void relayTransaction(const CryptoNote::Transaction& transaction, const Callback& callback) override { callback(std::error_code()); };
-  virtual void getRandomOutsByAmounts(std::vector<uint64_t>&& amounts, uint64_t outsCount, std::vector<CryptoNote::COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::outs_for_amount>& result, const Callback& callback) override { callback(std::error_code()); };
   virtual void getTransactionOutsGlobalIndices(const Crypto::Hash& transactionHash, std::vector<uint32_t>& outsGlobalIndices, const Callback& callback) override { callback(std::error_code()); };
   virtual void getPoolSymmetricDifference(std::vector<Crypto::Hash>&& known_pool_tx_ids, Crypto::Hash known_block_id, bool& is_bc_actual,
           std::vector<std::unique_ptr<CryptoNote::ITransactionReader>>& new_txs, std::vector<Crypto::Hash>& deleted_tx_ids, const Callback& callback) override {
@@ -120,7 +117,6 @@ public:
                             uint32_t& blockHeight, uint32_t& txIndex, const Callback& callback) override;
   virtual void resolvePqAccount(uint32_t blockHeight, uint32_t txIndex, bool& found,
                                 std::string& viewPubHex, std::string& spendPubHex, const Callback& callback) override;
-  virtual void getRandomOutsByAmounts(std::vector<uint64_t>&& amounts, uint64_t outsCount, std::vector<CryptoNote::COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::outs_for_amount>& result, const Callback& callback) override;
   virtual void getTransactionOutsGlobalIndices(const Crypto::Hash& transactionHash, std::vector<uint32_t>& outsGlobalIndices, const Callback& callback) override;
   virtual void queryBlocks(std::vector<Crypto::Hash>&& knownBlockIds, uint64_t timestamp, std::vector<CryptoNote::BlockShortEntry>& newBlocks, uint32_t& startHeight, const Callback& callback) override;
   virtual void getPoolSymmetricDifference(std::vector<Crypto::Hash>&& known_pool_tx_ids, Crypto::Hash known_block_id, bool& is_bc_actual,
@@ -138,7 +134,6 @@ public:
   void setNextTransactionError();
   void setNextTransactionToPool();
   void cleanTransactionPool();
-  void setMaxMixinCount(uint64_t maxMixin);
   void includeTransactionsFromPoolToBlock();
 
   void setSynchronizedStatus(bool status);
@@ -159,7 +154,6 @@ protected:
           uint32_t& startHeight, std::vector<CryptoNote::Block> blockchain, const Callback& callback);
   void doGetTransactionOutsGlobalIndices(const Crypto::Hash& transactionHash, std::vector<uint32_t>& outsGlobalIndices, const Callback& callback);
   void doRelayTransaction(const CryptoNote::Transaction& transaction, const Callback& callback);
-  void doGetRandomOutsByAmounts(std::vector<uint64_t> amounts, uint64_t outsCount, std::vector<CryptoNote::COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::outs_for_amount>& result, const Callback& callback);
   void doGetPoolSymmetricDifference(std::vector<Crypto::Hash>&& known_pool_tx_ids, Crypto::Hash known_block_id, bool& is_bc_actual,
           std::vector<std::unique_ptr<CryptoNote::ITransactionReader>>& new_txs, std::vector<Crypto::Hash>& deleted_tx_ids, const Callback& callback);
 
@@ -177,7 +171,6 @@ protected:
   bool m_nextTxToPool;
   std::mutex m_walletLock;
   CryptoNote::WalletAsyncContextCounter m_asyncCounter;
-  uint64_t m_maxMixin = std::numeric_limits<uint64_t>::max();
   bool m_synchronized;
   bool consumerTests;
 };

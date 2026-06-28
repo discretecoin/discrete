@@ -162,10 +162,6 @@ public:
 
   virtual size_t getTransactionCount() const override;
   virtual WalletTransaction getTransaction(size_t transactionIndex) const override;
-  virtual Crypto::SecretKey getTransactionSecretKey(size_t transactionIndex) const override;
-  virtual Crypto::SecretKey getTransactionSecretKey(Crypto::Hash& transactionHash) const override;
-
-  virtual bool getTransactionProof(const Crypto::Hash& transactionHash, const CryptoNote::AccountPublicAddress& destinationAddress, const Crypto::SecretKey& txKey, std::string& transactionProof) override;
 
   virtual size_t getTransactionTransferCount(size_t transactionIndex) const override;
   virtual WalletTransfer getTransactionTransfer(size_t transactionIndex, size_t transferIndex) const override;

@@ -39,8 +39,6 @@ public:
   virtual void get_blockchain_top(uint32_t& height, Crypto::Hash& top_id) override;
   virtual std::vector<Crypto::Hash> findBlockchainSupplement(const std::vector<Crypto::Hash>& remoteBlockIds, size_t maxCount,
     uint32_t& totalBlockCount, uint32_t& startBlockIndex) override;
-  virtual bool get_random_outs_for_amounts(const CryptoNote::COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_request& req,
-      CryptoNote::COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_response& res) override;
   virtual bool get_tx_outputs_gindexs(const Crypto::Hash& tx_id, std::vector<uint32_t>& indexs) override;
   virtual CryptoNote::i_cryptonote_protocol* get_protocol() override;
   virtual bool handle_incoming_tx(CryptoNote::BinaryArray const& tx_blob, CryptoNote::tx_verification_context& tvc, bool keeped_by_block) override;
@@ -119,14 +117,12 @@ public:
   virtual bool getBlockStats(const std::vector<uint32_t>& heights, std::vector<CryptoNote::BlockStatsEntry>& stats) override;
   virtual void rollbackBlockchain(const uint32_t height) override;
   virtual bool getBlockLongHash(Crypto::cn_context &context, const CryptoNote::Block& b, Crypto::Hash& res) override;
-  virtual bool getMixin(const CryptoNote::Transaction& transaction, uint64_t& mixin) override;
   virtual bool isInCheckpointZone(uint32_t height) const override;
   virtual uint32_t getRejectDeepReorgDepth() const override { return 0; }
   virtual bool getCanonicalAccountRegistrationsCount(uint64_t& count) override;
 
   void set_blockchain_top(uint32_t height, const Crypto::Hash& top_id);
   void set_outputs_gindexs(const std::vector<uint32_t>& indexs, bool result);
-  void set_random_outs(const CryptoNote::COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_response& resp, bool result);
 
   void addBlock(const CryptoNote::Block& block);
   void addTransaction(const CryptoNote::Transaction& tx);
@@ -140,9 +136,6 @@ private:
 
   std::vector<uint32_t> globalIndices;
   bool globalIndicesResult;
-
-  CryptoNote::COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_response randomOuts;
-  bool randomOutsResult;
 
   std::unordered_map<Crypto::Hash, CryptoNote::Block> blocks;
   std::unordered_map<uint32_t, Crypto::Hash> blockHashByHeightIndex;

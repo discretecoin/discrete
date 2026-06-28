@@ -95,8 +95,6 @@ public:
   std::error_code getTransactions(const std::vector<std::string>& addresses, uint32_t firstBlockIndex,
     uint32_t blockCount, const std::string& paymentId, std::vector<TransactionsInBlockRpcInfo>& transactionHashes);
   std::error_code getTransaction(const std::string& transactionHash, TransactionRpcInfo& transaction);
-  std::error_code getTransactionSecretKey(const std::string& transactionHash, std::string& transactionSecretKey);
-  std::error_code getTransactionProof(const std::string& transactionHash, const std::string& destinationAddress, const std::string& transactionSecretKey, std::string& transactionProof);
   std::error_code getAddresses(std::vector<std::string>& addresses);
   std::error_code getAddressesCount(size_t& addressesCount);
   std::error_code getPqAddress(std::string& pqAddress, bool& pqEnabled);
@@ -108,7 +106,7 @@ public:
   std::error_code getPqDepositScheme(std::string& scheme, uint32_t& depositCount);
   std::error_code createPqDepositAddress(std::string& address, uint32_t& index);
   std::error_code listPqDepositAddresses(std::vector<std::string>& addresses, std::vector<uint32_t>& indices);
-  std::error_code sendTransaction(const SendTransaction::Request& request, std::string& transactionHash, std::string& transactionSecretKey);
+  std::error_code sendTransaction(const SendTransaction::Request& request, std::string& transactionHash);
   std::error_code getUnconfirmedTransactionHashes(const std::vector<std::string>& addresses, std::vector<std::string>& transactionHashes);
   std::error_code getStatus(uint32_t& blockCount, uint32_t& knownBlockCount, uint32_t& localDaemonBlockCount, std::string& lastBlockHash, uint32_t& peerCount, uint64_t& minimalFee);
   std::error_code validateAddress(const std::string& address, bool& isValid, std::string& _address, std::string& spendPublicKey, std::string& viewPublicKey);

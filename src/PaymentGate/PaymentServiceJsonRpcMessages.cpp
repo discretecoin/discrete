@@ -329,30 +329,6 @@ void GetUnconfirmedTransactionHashes::Response::serialize(CryptoNote::ISerialize
   serializer(transactionHashes, "transactionHashes");
 }
 
-void GetTransactionSecretKey::Request::serialize(CryptoNote::ISerializer& serializer) {
-  if (!serializer(transactionHash, "transactionHash")) {
-    throw RequestSerializationError();
-  }
-}
-
-void GetTransactionSecretKey::Response::serialize(CryptoNote::ISerializer& serializer) {
-  serializer(transactionSecretKey, "transactionSecretKey");
-}
-
-void GetTransactionProof::Request::serialize(CryptoNote::ISerializer& serializer) {
-  if (!serializer(transactionHash, "transactionHash")) {
-    throw RequestSerializationError();
-  }
-  if (!serializer(destinationAddress, "destinationAddress")) {
-    throw RequestSerializationError();
-  }
-  serializer(transactionSecretKey, "transactionSecretKey");
-}
-
-void GetTransactionProof::Response::serialize(CryptoNote::ISerializer& serializer) {
-  serializer(transactionProof, "transactionProof");
-}
-
 void WalletRpcOrder::serialize(CryptoNote::ISerializer& serializer) {
   bool r = serializer(address, "address");
   r &= serializer(amount, "amount");
@@ -398,10 +374,6 @@ void SendTransaction::Request::serialize(CryptoNote::ISerializer& serializer) {
     throw RequestSerializationError();
   }
 
-  if (!serializer(anonymity, "anonymity")) {
-    throw RequestSerializationError();
-  }
-
   bool hasExtra = serializer(extra, "extra");
   bool hasPaymentId = serializer(paymentId, "paymentId");
 
@@ -414,7 +386,6 @@ void SendTransaction::Request::serialize(CryptoNote::ISerializer& serializer) {
 
 void SendTransaction::Response::serialize(CryptoNote::ISerializer& serializer) {
   serializer(transactionHash, "transactionHash");
-  serializer(transactionSecretKey, "transactionSecretKey");
 }
 
 }

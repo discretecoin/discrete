@@ -95,7 +95,6 @@ public:
 
   virtual uint64_t actualBalance() override;
   virtual uint64_t pendingBalance() override;
-  virtual uint64_t unmixableBalance() override;
 
   // --- PQ (post-quantum) balance / spend, concrete (not on IWalletLegacy) ----
   // Full wallets derive the PQ identity from the spend secret. PQ tracking
@@ -125,9 +124,6 @@ public:
   virtual bool getTransaction(TransactionId transactionId, WalletLegacyTransaction& transaction) override;
   virtual bool getTransfer(TransferId transferId, WalletLegacyTransfer& transfer) override;
   virtual std::vector<Payments> getTransactionsByPaymentIds(const std::vector<PaymentId>& paymentIds) const override;
-  virtual bool getTxProof(Crypto::Hash& txid, CryptoNote::AccountPublicAddress& address, Crypto::SecretKey& tx_key, std::string& sig_str) override;
-  virtual Crypto::SecretKey getTxKey(Crypto::Hash& txid) override;
-  virtual bool get_tx_key(Crypto::Hash& txid, Crypto::SecretKey& txSecretKey) override;
   virtual void getAccountKeys(AccountKeys& keys) override;
   virtual bool getSeed(std::string& electrum_words) override;
 
@@ -136,12 +132,9 @@ public:
   virtual std::vector<TransactionOutputInformation> getUnlockedOutputs() override;
   virtual std::vector<TransactionSpentOutputInformation> getSpentOutputs() override;
 
-  virtual TransactionId sendTransaction(const WalletLegacyTransfer& transfer, uint64_t fee, const std::string& extra = "", uint64_t mixIn = 0, uint64_t unlockHeightstamp = 0) override;
-  virtual TransactionId sendTransaction(const std::vector<WalletLegacyTransfer>& transfers, uint64_t fee, const std::string& extra = "", uint64_t mixIn = 0, uint64_t unlockHeightstamp = 0) override;
-  virtual TransactionId sendTransaction(const std::vector<WalletLegacyTransfer>& transfers, const std::list<TransactionOutputInformation>& selectedOuts, uint64_t fee, const std::string& extra = "", uint64_t mixIn = 0, uint64_t unlockHeightstamp = 0) override;
-  virtual std::string prepareRawTransaction(TransactionId& transactionId, const std::vector<WalletLegacyTransfer>& transfers, uint64_t fee, const std::string& extra, uint64_t mixIn, uint64_t unlockHeightstamp) override;
-  virtual std::string prepareRawTransaction(TransactionId& transactionId, const std::vector<WalletLegacyTransfer>& transfers, const std::list<TransactionOutputInformation>& selectedOuts, uint64_t fee, const std::string& extra, uint64_t mixIn, uint64_t unlockHeightstamp) override;
-  virtual std::string prepareRawTransaction(TransactionId& transactionId, const WalletLegacyTransfer& transfer, uint64_t fee, const std::string& extra, uint64_t mixIn, uint64_t unlockHeightstamp) override;
+  virtual TransactionId sendTransaction(const WalletLegacyTransfer& transfer, uint64_t fee, const std::string& extra = "", uint64_t ignoredPrivacyWidth = 0, uint64_t unlockHeightstamp = 0) override;
+  virtual TransactionId sendTransaction(const std::vector<WalletLegacyTransfer>& transfers, uint64_t fee, const std::string& extra = "", uint64_t ignoredPrivacyWidth = 0, uint64_t unlockHeightstamp = 0) override;
+  virtual TransactionId sendTransaction(const std::vector<WalletLegacyTransfer>& transfers, const std::list<TransactionOutputInformation>& selectedOuts, uint64_t fee, const std::string& extra = "", uint64_t ignoredPrivacyWidth = 0, uint64_t unlockHeightstamp = 0) override;
   virtual std::error_code cancelTransaction(size_t transactionId) override;
 
   virtual bool getTransactionInformation(const Crypto::Hash& transactionHash, TransactionInformation& info,
@@ -201,7 +194,6 @@ private:
 
   std::atomic<uint64_t> m_lastNotifiedActualBalance;
   std::atomic<uint64_t> m_lastNotifiedPendingBalance;
-  std::atomic<uint64_t> m_lastNotifiedUnmixableBalance;
   // Number of PQ ledger history rows already announced via externalTransactionCreated.
   std::atomic<size_t> m_lastNotifiedTransactionCount;
 

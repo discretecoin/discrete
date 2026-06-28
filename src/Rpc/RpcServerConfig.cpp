@@ -21,8 +21,6 @@
 #include "RpcServerConfig.h"
 #include "Common/CommandLine.h"
 #include "CryptoNoteConfig.h"
-#include "CryptoNoteCore/CryptoNoteBasicImpl.h"
-#include "Common/FormatTools.h"
 #include "android.h"
 
 namespace CryptoNote {
@@ -46,8 +44,6 @@ namespace CryptoNote {
     const command_line::arg_descriptor<bool>        arg_restricted_rpc  = { "restricted-rpc", "Restrict RPC to view only commands to prevent abuse", false };
     const command_line::arg_descriptor<std::string> arg_enable_cors     = { "enable-cors", "Adds header 'Access-Control-Allow-Origin' to the daemon's RPC responses. Uses the value as domain. Use * for all", "" };
     const command_line::arg_descriptor<std::string> arg_set_contact     = { "contact", "Sets node admin contact", "" };
-    const command_line::arg_descriptor<std::string> arg_set_fee_address = { "fee-address", "Advertises an optional fee address for light wallets.", "" };
-    const command_line::arg_descriptor<std::string> arg_set_fee_amount  = { "fee-amount", "Advertises an optional flat fee for light wallets.", "" };
   }
 
 
@@ -59,8 +55,6 @@ namespace CryptoNote {
     enableSSL(false),
     restrictedRPC(false),
     contactInfo(""),
-    nodeFeeAddress(""),
-    nodeFeeAmountStr(""),
     rpcUser(""),
     rpcPassword(""),
     bindPortSSL(RPC_DEFAULT_SSL_PORT)
@@ -77,8 +71,6 @@ namespace CryptoNote {
   std::string RpcServerConfig::getChainFile() const { return chainFile; }
   std::string RpcServerConfig::getKeyFile() const { return keyFile; }
   std::string RpcServerConfig::getCors() const { return enableCors; }
-  std::string RpcServerConfig::getNodeFeeAddress() const { return nodeFeeAddress; }
-  uint64_t RpcServerConfig::getNodeFeeAmount() const { return nodeFeeAmount; }
   std::string RpcServerConfig::getContactInfo() const { return contactInfo; }
   std::string RpcServerConfig::getRpcUser() const { return rpcUser; }
   std::string RpcServerConfig::getRpcPassword() const { return rpcPassword; }
@@ -93,8 +85,6 @@ namespace CryptoNote {
     command_line::add_arg(desc, arg_restricted_rpc);
     command_line::add_arg(desc, arg_set_contact);
     command_line::add_arg(desc, arg_enable_cors);
-    command_line::add_arg(desc, arg_set_fee_address);
-    command_line::add_arg(desc, arg_set_fee_amount);
     command_line::add_arg(desc, arg_rpc_user);
     command_line::add_arg(desc, arg_rpc_pwd);
   }
@@ -123,33 +113,6 @@ namespace CryptoNote {
       contactInfo = command_line::get_arg(vm, arg_set_contact);
       if (!contactInfo.empty() && contactInfo.size() > 128) {
         throw std::runtime_error("Too long contact info");
-      }
-    }
-
-    if (command_line::has_arg(vm, arg_set_fee_address)) {
-      nodeFeeAddress = command_line::get_arg(vm, arg_set_fee_address);
-    }
-
-    if (command_line::has_arg(vm, arg_set_fee_amount)) {
-      nodeFeeAmountStr = command_line::get_arg(vm, arg_set_fee_amount);
-    }
-
-    if ((nodeFeeAddress.empty() && !nodeFeeAmountStr.empty()) ||
-      (!nodeFeeAddress.empty() && nodeFeeAmountStr.empty())) {
-      throw std::runtime_error("Need to set both, fee-address and fee-amount");
-    }
-    else if (!nodeFeeAddress.empty() && !nodeFeeAmountStr.empty()) {
-      uint64_t prefix;
-      AccountPublicAddress acc;
-      if (!CryptoNote::parseAccountAddressString(prefix, acc, nodeFeeAddress)) {
-        throw std::runtime_error("Bad fee address: " + nodeFeeAddress);
-      }
-
-      if (!Common::Format::parseAmount(nodeFeeAmountStr, nodeFeeAmount)) {
-        throw std::runtime_error("Couldn't parse fee amount");
-      }
-      if (nodeFeeAmount > CryptoNote::parameters::COIN) {
-        throw std::runtime_error("Maximum allowed fee is " + Common::Format::formatAmount(CryptoNote::parameters::COIN));
       }
     }
 

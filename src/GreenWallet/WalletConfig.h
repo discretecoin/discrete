@@ -44,10 +44,6 @@ namespace WalletConfig
     const int numDecimalPlaces = CryptoNote::parameters
                                            ::CRYPTONOTE_DISPLAY_DECIMAL_POINT;
 
-
-    /* The mixin value to use with transactions */
-    const uint64_t defaultMixin = 5;
-
     /* The default fee value to use with transactions (in ATOMIC units!) */
     const uint64_t defaultFee = CryptoNote::parameters::MINIMUM_FEE; 
 
@@ -57,11 +53,4 @@ namespace WalletConfig
     /* The minimum amount allowed to be sent - usually 1 (in ATOMIC units!) */
     const uint64_t minimumSend = 1;
 
-    /* Is a mixin of zero disabled on your network? */
-    const bool mixinZeroDisabled = false;
-
-    /* If a mixin of zero is disabled, at what height was it disabled? E.g.
-       fork height, or 0, if never allowed. This is ignored if a mixin of
-       zero is allowed */
-    const uint32_t mixinZeroDisabledHeight = 0;
 }

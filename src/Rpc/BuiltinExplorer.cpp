@@ -544,9 +544,6 @@ bool BuiltinExplorer::on_get_explorer_tx_by_hash(const COMMAND_EXPLORER_GET_TRAN
       body += "  </li>\n";
     }
     body += "  <li>\n";
-    body += "    Mixin count: " + std::to_string(transactionsDetails.mixin) + "\n";
-    body += "  </li>\n";
-    body += "  <li>\n";
     body += "    Public key: <span class=\"wrap\">" + Common::podToHex(transactionsDetails.extra.publicKey) + "</span>\n";
     body += "  </li>\n";
     if (transactionsDetails.hasPaymentId) {

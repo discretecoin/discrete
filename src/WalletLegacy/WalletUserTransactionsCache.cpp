@@ -135,12 +135,12 @@ TransactionId WalletUserTransactionsCache::addNewTransaction(
 }
 
 void WalletUserTransactionsCache::updateTransaction(
-  TransactionId transactionId, const CryptoNote::Transaction& tx, uint64_t amount, const std::list<TransactionOutputInformation>& usedOutputs, Crypto::SecretKey& tx_key) {
+  TransactionId transactionId, const CryptoNote::Transaction& tx, uint64_t amount, const std::list<TransactionOutputInformation>& usedOutputs, Crypto::SecretKey& reservedKey) {
   // update extra field from created transaction
   auto& txInfo = m_transactions.at(transactionId);
   txInfo.extra.assign(tx.extra.begin(), tx.extra.end());
-  txInfo.secretKey = tx_key;
-  m_unconfirmedTransactions.add(tx, transactionId, amount, usedOutputs, tx_key);
+  txInfo.secretKey = reservedKey;
+  m_unconfirmedTransactions.add(tx, transactionId, amount, usedOutputs, reservedKey);
 }
 
 void WalletUserTransactionsCache::updateTransactionSendingState(TransactionId transactionId, std::error_code ec) {
