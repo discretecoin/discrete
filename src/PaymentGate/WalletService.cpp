@@ -1555,6 +1555,8 @@ std::error_code WalletService::sendTransaction(const SendTransaction::Request& r
         return make_error_code(CryptoNote::error::WRONG_AMOUNT);
       case CryptoNote::PqSendErrorCode::NoRecipients:
         return make_error_code(CryptoNote::error::WRONG_PARAMETERS);
+      case CryptoNote::PqSendErrorCode::UnsupportedUnlockHeight:
+        return make_error_code(CryptoNote::error::WRONG_PARAMETERS);
     }
     return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
   } catch (std::system_error& x) {

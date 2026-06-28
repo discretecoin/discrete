@@ -39,7 +39,7 @@ namespace CryptoNote {
 struct PqSendRequest {
   std::vector<PqSendOutput> recipients;  // each .amount is the lump to that recipient
   uint64_t explicitFee = 0;              // 0 = auto (two-pass measured fee)
-  uint64_t unlockHeight = 0;             // tx-level spend lock (0 = none)
+  uint64_t unlockHeight = 0;             // legacy API tx-level lock; TX_PQ requires 0
   std::vector<uint8_t> extra;            // tx.extra (e.g. a PQ account registration tag)
 
   // Deposit scheme: decides each input's signing key. Under SingleKeyIndex the one
@@ -70,7 +70,13 @@ struct PqSendResult {
   std::vector<PqSpendInput> selected;     // inputs actually spent
 };
 
-enum class PqSendErrorCode { NoRecipients, ZeroAmount, InsufficientFunds, TooLarge };
+enum class PqSendErrorCode {
+  NoRecipients,
+  ZeroAmount,
+  InsufficientFunds,
+  TooLarge,
+  UnsupportedUnlockHeight
+};
 
 struct PqSendError : std::runtime_error {
   PqSendErrorCode code;
@@ -78,9 +84,10 @@ struct PqSendError : std::runtime_error {
 };
 
 // Build (and sign) a TX_PQ paying `req.recipients` from `available`, owned by `keys`.
-// Deterministic; throws PqSendError on no/zero recipients, insufficient funds, or a
-// transaction that cannot be made to fit the consensus caps. Change returns to the
-// wallet's own primary address. The caller relays result.tx.
+// Deterministic; throws PqSendError on no/zero recipients, unsupported tx-level
+// unlockHeight, insufficient funds, or a transaction that cannot be made to fit
+// the consensus caps. Use PqSendOutput::unlockHeight for per-output locks.
+// Change returns to the wallet's own primary address. The caller relays result.tx.
 PqSendResult buildPqSend(const std::vector<PqSpendInput>& available,
                          const PqWalletKeys& keys,
                          const PqSendRequest& req);

@@ -229,6 +229,10 @@ bool get_block_hash(const Block& b, Hash& res) {
     return false;
   }
 
+  // Consensus block IDs intentionally remain the unsigned header/tree hash.
+  // Discrete binds ML-DSA miner signatures into PoW via
+  // get_signed_block_hashing_blob(); changing block IDs to include signatures
+  // would require a hard fork with regenerated genesis/checkpoint hashes.
   // The header of block version 1 differs from headers of blocks starting from v.2
   if (BLOCK_MAJOR_VERSION_2 == b.majorVersion || BLOCK_MAJOR_VERSION_3 == b.majorVersion) {
     BinaryArray parent_blob;

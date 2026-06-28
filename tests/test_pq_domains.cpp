@@ -26,6 +26,9 @@
 using namespace CryptoPQ;
 using namespace CryptoNote;
 
+static_assert(parameters::MAX_TRANSACTION_SIZE_LIMIT == parameters::MAX_PQ_TX_SIZE,
+              "node admission tx size cap must equal TX_PQ consensus cap");
+
 // ===========================================================================
 // Compile-time guards (fire immediately on any change)
 // ===========================================================================
@@ -144,6 +147,11 @@ TEST(PqDomains, SizeConstants) {
     EXPECT_EQ(PQ_AUTH_PUB_SIZE,       1952u);
     EXPECT_EQ(PQ_RHO_SIZE,              32u);
     EXPECT_EQ(PQ_SIGNATURE_SIZE,       3309u);
+}
+
+TEST(PqDomains, TransactionSizeCap) {
+    EXPECT_EQ(parameters::MAX_PQ_TX_SIZE, 256u * 1024u);
+    EXPECT_EQ(parameters::MAX_TRANSACTION_SIZE_LIMIT, parameters::MAX_PQ_TX_SIZE);
 }
 
 TEST(PqDomains, TransactionVersion) {

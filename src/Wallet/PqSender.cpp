@@ -120,13 +120,13 @@ std::vector<PqSendOutput> decomposeOutputs(const std::vector<PqSendOutput>& reci
 Transaction buildFitting(const std::vector<PqSpendInput>& selected,
                          const std::vector<PqInputAuth>& inputAuth,
                          const std::vector<PqSendOutput>& recipients, uint64_t change,
-                         const PqSendOutput& changeTmpl, uint64_t unlockHeight,
+                         const PqSendOutput& changeTmpl,
                          const std::vector<uint8_t>& extra) {
   std::size_t numDest = recipients.size() + (change > 0 ? 1 : 0);
   std::size_t maxOut = P::MAX_PQ_OUTPUTS_PER_TX;
   for (;;) {
     std::vector<PqSendOutput> outs = decomposeOutputs(recipients, change, changeTmpl, maxOut);
-    Transaction tx = buildPqTransaction(selected, outs, inputAuth, unlockHeight, extra);
+    Transaction tx = buildPqTransaction(selected, outs, inputAuth, 0, extra);
     if (toBinaryArray(tx).size() <= P::MAX_PQ_TX_SIZE) {
       return tx;
     }
@@ -145,6 +145,10 @@ PqSendResult buildPqSend(const std::vector<PqSpendInput>& available,
                          const PqSendRequest& req) {
   if (req.recipients.empty()) {
     throw PqSendError(PqSendErrorCode::NoRecipients, "no recipients");
+  }
+  if (req.unlockHeight != 0) {
+    throw PqSendError(PqSendErrorCode::UnsupportedUnlockHeight,
+                      "TX_PQ does not support tx-level unlockHeight; use per-output unlockHeight");
   }
   uint64_t sent = 0;
   for (const auto& r : req.recipients) {
@@ -248,7 +252,7 @@ PqSendResult buildPqSend(const std::vector<PqSpendInput>& available,
     }
     uint64_t change = sumIn - sent - fee;
     tx = buildFitting(selected, authForSelection(selected), req.recipients, change, changeTmpl,
-                      req.unlockHeight, req.extra);
+                      req.extra);
     if (req.explicitFee != 0) {
       break;  // caller fixed the fee
     }

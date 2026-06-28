@@ -82,7 +82,9 @@ const uint64_t FREE_REG_REF_WINDOW                          = 60;
 const uint64_t FREE_REG_PER_BLOCK                           = 100;
 const uint64_t FREE_REG_POW_TARGET                          = UINT64_C(0x0FFFFFFFFFFFFFFF);
 
-const uint64_t MAX_TRANSACTION_SIZE_LIMIT                    = CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_CURRENT / 4 - CRYPTONOTE_COINBASE_BLOB_RESERVED_SIZE;
+// Discrete is PQ-only from genesis: the node admission cap must match the
+// consensus TX_PQ cap that wallets fit against.
+const uint64_t MAX_TRANSACTION_SIZE_LIMIT                    = MAX_PQ_TX_SIZE;
 
 const size_t   DANDELION_EPOCH                               = 600;
 const size_t   DANDELION_STEMS                               = 2;
@@ -295,5 +297,4 @@ const char* const SEED_NODES[] = {
 };
 
 } // CryptoNote
-
 

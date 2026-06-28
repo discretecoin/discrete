@@ -1249,6 +1249,17 @@ bool Blockchain::update_next_cumulative_size_limit() {
 // ─── Miner transaction validation ────────────────────────────────────────────
 
 bool Blockchain::prevalidate_miner_transaction(const Block& b, uint32_t height) {
+  if (b.baseTransaction.version != TRANSACTION_VERSION_1) {
+    logger(ERROR, BRIGHT_RED) << "Coinbase transaction must use transaction version "
+      << static_cast<unsigned>(TRANSACTION_VERSION_1) << ", got "
+      << static_cast<unsigned>(b.baseTransaction.version);
+    return false;
+  }
+  if (b.baseTransaction.txType != TX_COINBASE) {
+    logger(ERROR, BRIGHT_RED) << "Coinbase transaction must have txType TX_COINBASE, got "
+      << static_cast<unsigned>(b.baseTransaction.txType);
+    return false;
+  }
   if (!(b.baseTransaction.inputs.size() == 1)) {
     logger(ERROR, BRIGHT_RED) << "Coinbase transaction in the block has no inputs";
     return false;

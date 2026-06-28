@@ -12,6 +12,7 @@
 #include "CryptoNoteConfig.h"
 #include "PqTxType.h"
 #include "CryptoNoteCore/CryptoNoteSerialization.h"
+#include "CryptoNoteCore/CryptoNoteFormatUtils.h"
 #include "CryptoNoteCore/CryptoNoteTools.h"
 #include "CryptoNoteCore/PqValidation.h"
 
@@ -67,6 +68,27 @@ Transaction makePqTx() {
     for (size_t i = 0; i < PQ_SIGNATURE_SIZE; ++i) sig[i] = static_cast<uint8_t>(i * 7 + 2);
     tx.pqSignatures.push_back(sig);
     return tx;
+}
+
+Block makePqBlock() {
+    Block b;
+    b.majorVersion = BLOCK_MAJOR_VERSION_6;
+    b.minorVersion = 0;
+    b.timestamp = 123456;
+    b.previousBlockHash = hashPat(9, 4);
+    b.nonce = 7;
+
+    Transaction tx;
+    tx.version = TRANSACTION_VERSION_1;
+    tx.txType = TX_COINBASE;
+    tx.unlockHeight = 10;
+    BaseInput bi;
+    bi.blockIndex = 1;
+    tx.inputs.push_back(bi);
+    tx.outputs.push_back(makePqOutput());
+    b.baseTransaction = tx;
+    b.signature = blob(PQ_SIGNATURE_SIZE, 11, 3);
+    return b;
 }
 
 }  // namespace
@@ -162,6 +184,32 @@ TEST(PqWire, SingleVersionAlwaysCarriesTxTypeByte) {
     ASSERT_TRUE(fromBinaryArray(tx2, ba));
     EXPECT_EQ(tx2.version, TRANSACTION_VERSION_1);
     EXPECT_EQ(tx2.txType, TX_PQ);  // read back from wire, not defaulted
+}
+
+TEST(PqWire, BlockIdExcludesSignatureButPowBlobIncludesSignatureHash) {
+    Block a = makePqBlock();
+    Block b = a;
+    b.signature = blob(PQ_SIGNATURE_SIZE, 13, 7);
+
+    Crypto::Hash idA;
+    Crypto::Hash idB;
+    ASSERT_TRUE(get_block_hash(a, idA));
+    ASSERT_TRUE(get_block_hash(b, idB));
+    EXPECT_EQ(idA, idB);
+
+    BinaryArray unsignedA;
+    BinaryArray unsignedB;
+    ASSERT_TRUE(get_block_hashing_blob(a, unsignedA));
+    ASSERT_TRUE(get_block_hashing_blob(b, unsignedB));
+    EXPECT_EQ(unsignedA, unsignedB);
+
+    BinaryArray signedA;
+    BinaryArray signedB;
+    ASSERT_TRUE(get_signed_block_hashing_blob(a, signedA));
+    ASSERT_TRUE(get_signed_block_hashing_blob(b, signedB));
+    EXPECT_EQ(signedA.size(), unsignedA.size() + 32);
+    EXPECT_EQ(signedB.size(), unsignedB.size() + 32);
+    EXPECT_NE(signedA, signedB);
 }
 
 int main(int argc, char** argv) {

@@ -62,6 +62,27 @@ template <std::size_t N> std::vector<uint8_t> toVec(const std::array<uint8_t, N>
   return std::vector<uint8_t>(a.begin(), a.end());
 }
 
+bool signBlockForTest(CryptoNote::Block& blk, const CryptoNote::AccountBase& miner) {
+  CryptoNote::BinaryArray hb;
+  if (!CryptoNote::get_block_hashing_blob(blk, hb)) {
+    return false;
+  }
+  Crypto::Hash hh = Crypto::cn_fast_hash(hb.data(), hb.size());
+  CryptoPQ::DsaSignature sig = CryptoPQ::dsa_sign(miner.pqSpendSk(), hh.data, sizeof(hh.data));
+  blk.signature.assign(sig.begin(), sig.end());
+  return true;
+}
+
+bool refreshBlockProofForTest(CryptoNote::Core& core, CryptoNote::Block& blk,
+                              const CryptoNote::AccountBase& miner) {
+  CryptoNote::Difficulty diff = core.getNextBlockDifficulty();
+  if (diff > 1) {
+    fillNonce(blk, diff, &core.get_blockchain_storage(), miner);
+    return true;
+  }
+  return signBlockForTest(blk, miner);
+}
+
 // Mine one main-chain block at the major version expected for its height.
 bool mineBlock(CryptoNote::Core& core, const CryptoNote::Currency& currency,
                test_generator& gen, const CryptoNote::AccountBase& miner,
@@ -797,6 +818,18 @@ bool runMinerBinding() {
   Block good; std::list<Transaction> txs;
   if (!expect(gen.constructBlock(good, height, tail, attacker, ts, generated, sizes, txs), "binding: construct")) { core.deinit(); return false; }
 
+  bool ok = true;
+
+  // Tamper only the miner tx subtype, then refresh the signature/PoW so the
+  // rejection must come from coinbase prevalidation rather than stale proof data.
+  Block wrongType = good;
+  wrongType.baseTransaction.txType = TX_PQ;
+  if (!expect(refreshBlockProofForTest(core, wrongType, attacker), "binding: wrong txType proof")) { core.deinit(); return false; }
+  block_verification_context bvcWrongType{};
+  core.handle_incoming_block(wrongType, bvcWrongType, false, false);
+  ok &= expect(bvcWrongType.m_verification_failed && !bvcWrongType.m_added_to_main_chain,
+               "binding: coinbase wrong txType REJECTED");
+
   // Tamper a copy: keep the coinbase paying `attacker` but re-point the producer
   // identity to `miner` and re-sign with miner's key. Now recipient != signer.
   Block bad = good;
@@ -804,13 +837,8 @@ bool runMinerBinding() {
   std::array<uint8_t, PQ_AUTH_PUB_SIZE> minerPub{};
   std::copy(miner.pqSpendPk().begin(), miner.pqSpendPk().end(), minerPub.begin());
   addPqMinerSpendPubToExtra(bad.baseTransaction.extra, minerPub);
-  BinaryArray hb;
-  if (!expect(get_block_hashing_blob(bad, hb), "binding: hashing blob")) { core.deinit(); return false; }
-  Crypto::Hash hh = Crypto::cn_fast_hash(hb.data(), hb.size());
-  CryptoPQ::DsaSignature sig = CryptoPQ::dsa_sign(miner.pqSpendSk(), hh.data, sizeof(hh.data));
-  bad.signature.assign(sig.begin(), sig.end());
+  if (!expect(refreshBlockProofForTest(core, bad, miner), "binding: bad proof")) { core.deinit(); return false; }
 
-  bool ok = true;
   block_verification_context bvcBad{};
   core.handle_incoming_block(bad, bvcBad, false, false);
   ok &= expect(bvcBad.m_verification_failed && !bvcBad.m_added_to_main_chain,

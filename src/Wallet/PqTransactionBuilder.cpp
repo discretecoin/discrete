@@ -64,6 +64,9 @@ Transaction buildPqTransaction(const std::vector<PqSpendInput>& inputs,
   if (outputs.empty()) {
     throw std::runtime_error("buildPqTransaction: no outputs");
   }
+  if (unlockHeight != 0) {
+    throw std::runtime_error("buildPqTransaction: tx-level unlockHeight is not supported for TX_PQ");
+  }
   if (inputAuth.size() != inputs.size()) {
     throw std::runtime_error("buildPqTransaction: input auth count mismatch");
   }

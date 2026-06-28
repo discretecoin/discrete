@@ -92,6 +92,8 @@ CryptoPQ::Hash256 pqTransactionInputsHash(const TransactionPrefix& tx);
 // Every input is authorized by an ML-DSA signature over the canonical signing
 // digest (pqSigningDigest). `spendSk` is used only here and should be derived on
 // demand and discarded by the caller after the call returns.
+// `unlockHeight` is the legacy tx-level field. TX_PQ consensus requires it to be
+// zero; use PqSendOutput::unlockHeight for per-output spend locks.
 // `extra` (default empty) is placed verbatim in tx.extra before the signing digest
 // is computed, so it is authorized along with the rest of the transaction. It is
 // used to carry a PQ account registration (a paid registration is a fee-paying

@@ -240,6 +240,17 @@ TEST(PqTxBuilder, RejectsOverspend) {
                  std::runtime_error);
 }
 
+TEST(PqTxBuilder, RejectsTxLevelUnlockHeight) {
+    PqWalletKeys sender = derivePqWalletKeys(spendSecret(7, 3));
+    PqWalletKeys recip  = derivePqWalletKeys(spendSecret(9, 1));
+    PqResolvedInput resolved;
+    PqSpendInput in = fund(sender, 1000000, 0x12, 0, resolved);
+    PqSendOutput out{recip.viewPub, recip.spendPub, 900000};
+
+    EXPECT_THROW(buildPqTransaction({in}, {out}, sender.spendPub, sender.spendSk, 5),
+                 std::runtime_error);
+}
+
 // --- TX_FREE_REG (zero-fee account registration) ---------------------------
 
 TEST(PqFreeReg, BuildsValidRegistration) {

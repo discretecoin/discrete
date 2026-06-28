@@ -185,6 +185,23 @@ TEST(PqSender, InsufficientFundsThrows) {
     }
 }
 
+TEST(PqSender, RejectsTxLevelUnlockHeight) {
+    PqWalletKeys me = derivePqWalletKeys(spendSecret(9, 1));
+    PqWalletKeys to = derivePqWalletKeys(spendSecret(7, 3));
+
+    std::vector<PqSpendInput> inputs = {mkInput(1000, 0x61)};
+    PqSendRequest req;
+    req.recipients.push_back(PqSendOutput{to.viewPub, to.spendPub, 250});
+    req.unlockHeight = 5;
+
+    try {
+        buildPqSend(inputs, me, req);
+        FAIL() << "expected PqSendError";
+    } catch (const PqSendError& e) {
+        EXPECT_EQ(e.code, PqSendErrorCode::UnsupportedUnlockHeight);
+    }
+}
+
 TEST(PqSender, CoarsensToOutputCap) {
     PqWalletKeys me = derivePqWalletKeys(spendSecret(9, 1));
     PqWalletKeys to = derivePqWalletKeys(spendSecret(7, 3));
