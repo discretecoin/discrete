@@ -299,6 +299,89 @@ TEST(WalletLedger, ReorgRestoresSpentAndDropsOrphanedOutputs) {
     EXPECT_EQ(st.unspentCount(), 1u);
 }
 
+// Finding A regression: an output is spent UNCONFIRMED by one tx, then a DIFFERENT
+// tx (a fee-bumped/replacement spend, or a sibling process sharing the seed) spends
+// the same output and is the one that gets MINED. Both carry the same nullifier but
+// different txids. The confirmed spend must supersede the unconfirmed one, so a later
+// pool-drop of the original does NOT restore an output that is already spent on-chain
+// (which would inflate the balance and then build consensus-invalid transactions).
+TEST(WalletLedger, ConfirmedReplacementSupersedesUnconfirmedSpend) {
+    PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
+    PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
+    PqWalletKeys dest = derivePqWalletKeys(spendSecret(4, 4));
+
+    WalletLedger st(me);
+    Funded recv = payTo(them, me, 1000000, 900000, 0x70);
+    ASSERT_TRUE(st.processTransaction(recv.tx, recv.txid, 100));
+    ASSERT_EQ(st.balance(), 900000u);
+
+    std::vector<PqSpendInput> ins = st.spendableInputs();
+    ASSERT_EQ(ins.size(), 1u);
+
+    // Two distinct transactions spending the SAME owned output. Output kemCt/rho are
+    // randomized per build, so the txids differ while the input nullifier is identical.
+    Transaction spendA = buildPqTransaction(ins, {PqSendOutput{dest.viewPub, dest.spendPub, 850000}},
+                                            me.spendPub, me.spendSk);
+    Transaction spendB = buildPqTransaction(ins, {PqSendOutput{dest.viewPub, dest.spendPub, 840000}},
+                                            me.spendPub, me.spendSk);
+    Crypto::Hash idA = getObjectHash(spendA);
+    Crypto::Hash idB = getObjectHash(spendB);
+    ASSERT_NE(idA, idB);
+
+    // spendA is seen first in the mempool (marks the owned output spent by A).
+    ASSERT_TRUE(st.processTransaction(spendA, idA, WalletLedger::UNCONFIRMED_HEIGHT));
+    ASSERT_EQ(st.balance(), 0u);
+
+    // spendB is the replacement that actually gets MINED.
+    ASSERT_TRUE(st.processTransaction(spendB, idB, 105));
+    EXPECT_EQ(st.balance(), 0u);
+
+    // spendA is dropped from the pool. The output stays spent (spent on-chain by B);
+    // the balance must NOT be restored.
+    st.removeUnconfirmedTransaction(idA);
+    EXPECT_EQ(st.balance(), 0u);
+    EXPECT_TRUE(st.spendableInputs().empty());
+
+    // The confirmed spend (B at 105) survives a reorg above it, and is undone only
+    // when its own block detaches.
+    st.rollbackToHeight(106);
+    EXPECT_EQ(st.balance(), 0u);
+    st.rollbackToHeight(105);
+    EXPECT_EQ(st.balance(), 900000u);
+}
+
+// Finding B regression: a reorg of CONFIRMED blocks must not clear a spend that is
+// still only in the mempool. UNCONFIRMED_HEIGHT (0xFFFFFFFF) satisfies `>= h` for
+// every h, so the rollback guard must explicitly exclude it — the mempool spend is
+// unaffected by a reorg of mined blocks and is owned by removeUnconfirmedTransaction.
+TEST(WalletLedger, ReorgLeavesUnconfirmedSpendInPlace) {
+    PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
+    PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
+    PqWalletKeys dest = derivePqWalletKeys(spendSecret(4, 4));
+
+    WalletLedger st(me);
+    Funded recv = payTo(them, me, 1000000, 900000, 0x71);
+    ASSERT_TRUE(st.processTransaction(recv.tx, recv.txid, 100));
+
+    std::vector<PqSpendInput> ins = st.spendableInputs();
+    Transaction spend = buildPqTransaction(ins, {PqSendOutput{dest.viewPub, dest.spendPub, 850000}},
+                                           me.spendPub, me.spendSk);
+    Crypto::Hash spendId = getObjectHash(spend);
+
+    // Spend seen only in the mempool.
+    ASSERT_TRUE(st.processTransaction(spend, spendId, WalletLedger::UNCONFIRMED_HEIGHT));
+    ASSERT_EQ(st.balance(), 0u);
+
+    // A reorg detaching confirmed blocks must NOT un-spend the still-pending spend.
+    st.rollbackToHeight(105);
+    EXPECT_EQ(st.balance(), 0u);
+    EXPECT_TRUE(st.spendableInputs().empty());
+
+    // The pending spend is still owned by the mempool path, which can drop it.
+    st.removeUnconfirmedTransaction(spendId);
+    EXPECT_EQ(st.balance(), 900000u);
+}
+
 TEST(WalletLedger, SpendableInputsCarryRho) {
     PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
     PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));

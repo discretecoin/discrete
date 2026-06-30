@@ -126,12 +126,26 @@ bool WalletLedger::processTransaction(const TransactionPrefix& tx, const Crypto:
         o.spentTxid = txid;       // remember which tx spent it (to undo on drop/reorg)
         debited += o.amount;
         affected = true;
-      } else if (o.spentHeight == UNCONFIRMED_HEIGHT && height != UNCONFIRMED_HEIGHT &&
-                 o.spentTxid == txid) {
-        // Same spend, first seen in the mempool, now confirmed: promote its height
-        // so reorg accounting (rollbackToHeight) treats it correctly. Do not touch
-        // `debited` here — the history row already exists and is upserted below.
+      } else if (o.spentHeight == UNCONFIRMED_HEIGHT && height != UNCONFIRMED_HEIGHT) {
+        // An unconfirmed spend of this output is now superseded by a CONFIRMED one.
+        // Promote its height so reorg accounting (rollbackToHeight) treats it as a
+        // real spend.
         o.spentHeight = height;
+        if (o.spentTxid != txid) {
+          // A DIFFERENT txid is the real (mined) spender — a fee-bumped/replacement
+          // spend, or a sibling process sharing the seed. Only one spend of an
+          // output can ever confirm, so re-point the record to the mined tx and
+          // count it as debited, both so this tx's history row is classified as our
+          // outgoing send AND so a later pool-drop of the original unconfirmed
+          // spender (removeUnconfirmedTransaction) no longer matches spentTxid and
+          // thus can't wrongly un-spend an output that is spent on-chain. The stale
+          // unconfirmed row for the original spender is dropped when it leaves the
+          // pool.
+          o.spentTxid = txid;
+          debited += o.amount;
+        }
+        // Same txid (a pool sighting that just mined): the history row already
+        // exists and is upserted below; `debited` must stay untouched.
         affected = true;
       }
     }
@@ -419,9 +433,13 @@ std::size_t WalletLedger::unspentCount() const {
 }
 
 void WalletLedger::rollbackToHeight(uint32_t h) {
-  // Un-spend outputs whose spend was seen at or above the rollback height.
+  // Un-spend outputs whose spend was seen in a now-orphaned block (spentHeight >= h).
+  // Unconfirmed (mempool) spends are NOT touched here: a reorg of confirmed blocks
+  // does not invalidate a still-pending spend, and those are owned by
+  // removeUnconfirmedTransaction. (UNCONFIRMED_HEIGHT == 0xFFFFFFFF would otherwise
+  // satisfy `>= h` for every h and get wrongly cleared.)
   for (auto& o : m_outputs) {
-    if (o.spent && o.spentHeight >= h) {
+    if (o.spent && o.spentHeight != UNCONFIRMED_HEIGHT && o.spentHeight >= h) {
       o.spent = false;
       o.spentHeight = 0;
       o.spentTxid = Crypto::Hash{};
