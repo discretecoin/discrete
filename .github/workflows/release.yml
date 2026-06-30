@@ -36,21 +36,34 @@ jobs:
         id: build
         run: |
           $build_folder = "build"
-          $krb_ver = "${{ github.ref }}" -replace 'refs/tags/'
-          $release_name = "Karbo-cli-win64-$krb_ver"
+          $krb_ver = "${{ github.ref }}" -replace '^refs/tags/', ''
+          $release_name = "discrete-cli-win64-$krb_ver"
           mkdir "$build_folder"
           cd "$build_folder"
           cmake -G "Visual Studio 17 2022" -A x64 `
-            -DCMAKE_BUILD_TYPE=Release `
             -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded `
             -DBOOST_ROOT="$env:BOOST_ROOT" `
-            -DBOOST_INCLUDE_DIRS="$env:BOOST_ROOT/include" `
+            -DBoost_INCLUDE_DIR="$env:BOOST_ROOT/include" `
+            -DOQS_BUILD_ONLY_LIB=ON `
             ..
-          msbuild Karbowanec.sln /p:Configuration=Release /m /v:detailed
-          cd src\Release
-          Compress-Archive -Path *.exe -DestinationPath "$release_name.zip"
+
+          cmake --build . --config Release --target Daemon SimpleWallet GreenWallet PaymentGateService AddressGenerator -- /m /v:minimal
+
+          $bin_dir = "src\Release"
+          $package_dir = "$release_name"
+          $bins = @("discreted.exe", "simplewallet.exe", "greenwallet.exe", "walletd.exe", "vanitygen.exe")
+          New-Item -ItemType Directory -Force -Path "$package_dir" | Out-Null
+          foreach ($bin in $bins) {
+            $path = Join-Path "$bin_dir" "$bin"
+            if (!(Test-Path "$path")) {
+              throw "Expected binary not found: $path"
+            }
+            Copy-Item "$path" "$package_dir/"
+          }
+
+          Compress-Archive -Path "$package_dir" -DestinationPath "$release_name.zip" -Force
           $sha256 = (Get-FileHash "$release_name.zip").Hash
-          $asset_path = "./$build_folder/src/Release/$release_name.zip"
+          $asset_path = "./$build_folder/$release_name.zip"
           echo "sha256=${sha256}" >> $env:GITHUB_OUTPUT
           echo "release_name=${release_name}.zip" >> $env:GITHUB_OUTPUT
           echo "asset_path=${asset_path}" >> $env:GITHUB_OUTPUT
@@ -60,7 +73,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ steps.build.outputs.asset_path }}
-          name: Karbo CLI Suite ${{ steps.build.outputs.krb_ver }}
+          name: Discrete CLI Suite ${{ steps.build.outputs.krb_ver }}
           append_body: true
           body: |
             [Download for Windows](../../releases/download/${{ steps.build.outputs.krb_ver }}/${{ steps.build.outputs.release_name }}) `SHA256: ${{ steps.build.outputs.sha256 }}`
@@ -97,7 +110,7 @@ jobs:
 
           build_folder="build"
           krb_ver="${GITHUB_REF#refs/tags/}"
-          release_name="Karbo-cli-macOS-ARM64-$krb_ver"
+          release_name="discrete-cli-macos-arm64-$krb_ver"
 
           brew install openssl@3
           brew link openssl@3 --force
@@ -142,7 +155,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ steps.build.outputs.asset_path }}
-          name: Karbo CLI Suite ${{ steps.build.outputs.krb_ver }}
+          name: Discrete CLI Suite ${{ steps.build.outputs.krb_ver }}
           append_body: true
           body: |
             [Download for macOS ARM64](../../releases/download/${{ steps.build.outputs.krb_ver }}/${{ steps.build.outputs.release_name }})  
@@ -162,10 +175,10 @@ jobs:
       - name: Build
         id: build
         run: |
-          sudo apt-get update && sudo apt-get install -y libboost-all-dev
+          sudo apt-get update && sudo apt-get install -y build-essential cmake git libboost-all-dev libssl-dev pkg-config
           build_folder="build/release"
           krb_ver=$(echo "$GITHUB_REF" | sed 's|refs/tags/||')
-          release_name=Karbo-cli-ubuntu24.04-"$krb_ver"
+          release_name=discrete-cli-ubuntu24.04-"$krb_ver"
           mkdir -p "$build_folder"
           cd "$build_folder"
           cmake -D ARCH=default -D CMAKE_BUILD_TYPE=Release \
@@ -173,15 +186,22 @@ jobs:
             -DCMAKE_CXX_FLAGS_RELEASE="-O3 -DNDEBUG" \
             -D CMAKE_POSITION_INDEPENDENT_CODE:BOOL=true \
             -D BOOST_IGNORE_SYSTEM_PATHS_DEFAULT=ON \
-            -D BOOST_ROOT=/usr ../..
-          make
-          cd src
-          exeFiles=()
-          for f in ./*; do [[ -x $f && -f $f ]] && exeFiles+=( "$f" ); done
-          strip "${exeFiles[@]}"
-          tar -czf "$release_name".tar.gz "${exeFiles[@]}"
-          mv "$release_name".tar.gz ../
-          cd ..
+            -D BOOST_ROOT=/usr \
+            -DOQS_BUILD_ONLY_LIB=ON \
+            ../..
+          cmake --build . --config Release --target Daemon SimpleWallet GreenWallet PaymentGateService AddressGenerator -- -j"$(nproc)"
+
+          mkdir -p "$release_name"
+          for bin in discreted simplewallet greenwallet walletd vanitygen; do
+            f="src/$bin"
+            if [[ ! -x "$f" || ! -f "$f" ]]; then
+              echo "Expected binary not found: $f"
+              exit 1
+            fi
+            strip "$f"
+            cp "$f" "$release_name/"
+          done
+          tar -czf "$release_name".tar.gz -C "$release_name" .
           sha256=$(shasum -a 256 "$release_name".tar.gz | awk '{print toupper($1)}')
           asset_path="./$build_folder/$release_name.tar.gz"
           echo "sha256=${sha256}" >> $GITHUB_OUTPUT
@@ -193,7 +213,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ steps.build.outputs.asset_path }}
-          name: Karbo CLI Suite ${{ steps.build.outputs.krb_ver }}
+          name: Discrete CLI Suite ${{ steps.build.outputs.krb_ver }}
           append_body: true
           body: |
             [Download for Ubuntu 24.04](../../releases/download/${{ steps.build.outputs.krb_ver }}/${{ steps.build.outputs.release_name }}) `SHA256: ${{ steps.build.outputs.sha256 }}`
@@ -234,7 +254,7 @@ jobs:
         run: |
           build_folder="build/release"
           krb_ver=$(echo "$GITHUB_REF" | sed 's|refs/tags/||')
-          release_name="Karbo-cli-linux-universal-$krb_ver"
+          release_name="discrete-cli-linux-universal-$krb_ver"
 
           mkdir -p "$build_folder"
           cd "$build_folder"
@@ -245,19 +265,24 @@ jobs:
 
           cmake ../.. \
             -DCMAKE_BUILD_TYPE=Release \
+            -DSTATIC=ON \
             -DBUILD_SHARED_LIBS=OFF \
             -DBoost_USE_STATIC_LIBS=ON \
             -DOPENSSL_USE_STATIC_LIBS=ON \
+            -DOQS_BUILD_ONLY_LIB=ON \
             -DCMAKE_EXE_LINKER_FLAGS="-static"
 
-          make -j$(nproc)
+          cmake --build . --config Release --target Daemon SimpleWallet GreenWallet PaymentGateService AddressGenerator -- -j"$(nproc)"
 
           mkdir -p "$release_name"
-          for f in src/*; do
-            if [ -x "$f" ] && [ -f "$f" ]; then
-              strip "$f"
-              cp "$f" "$release_name/"
+          for bin in discreted simplewallet greenwallet walletd vanitygen; do
+            f="src/$bin"
+            if [ ! -x "$f" ] || [ ! -f "$f" ]; then
+              echo "Expected binary not found: $f"
+              exit 1
             fi
+            strip "$f"
+            cp "$f" "$release_name/"
           done
 
           tar -czf "$release_name".tar.gz -C "$release_name" .
@@ -272,16 +297,15 @@ jobs:
       - name: Verify static linkage
         run: |
           FAILED=0
-          for f in build/release/src/*; do
-            if [ -x "$f" ] && [ -f "$f" ]; then
-              echo "=== $f ==="
-              file "$f"
-              if readelf -d "$f" | grep NEEDED; then
-                echo "FAIL: dynamic dependency found"
-                FAILED=1
-              else
-                echo "OK: fully static"
-              fi
+          for bin in discreted simplewallet greenwallet walletd vanitygen; do
+            f="build/release/src/$bin"
+            echo "=== $f ==="
+            file "$f"
+            if readelf -d "$f" | grep NEEDED; then
+              echo "FAIL: dynamic dependency found"
+              FAILED=1
+            else
+              echo "OK: fully static"
             fi
           done
           if [ "$FAILED" = "1" ]; then
@@ -292,7 +316,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ steps.build.outputs.asset_path }}
-          name: Karbo CLI Suite ${{ steps.build.outputs.krb_ver }}
+          name: Discrete CLI Suite ${{ steps.build.outputs.krb_ver }}
           append_body: true
           body: |
             [Download Universal Binaries for Linux](../../releases/download/${{ steps.build.outputs.krb_ver }}/${{ steps.build.outputs.release_name }}) `SHA256: ${{ steps.build.outputs.sha256 }}`
@@ -406,27 +430,30 @@ jobs:
             -DCMAKE_POLICY_DEFAULT_CMP0167=OLD \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+            -DOQS_BUILD_ONLY_LIB=ON \
             -DCMAKE_VERBOSE_MAKEFILE=ON \
             -G Ninja
 
       - name: Build binaries
         run: |
           cd $BUILD_DIR
-          ninja
+          cmake --build . --config Release --target Daemon SimpleWallet GreenWallet PaymentGateService AddressGenerator -- -j"$(nproc)"
 
       - name: Package binaries
         id: package
         run: |
           cd $BUILD_DIR/src
           krb_ver=$(echo "$GITHUB_REF" | sed 's|refs/tags/||')
-          release_name="Karbo-cli-android-${ANDROID_ABI}-$krb_ver"
+          release_name="discrete-cli-android-${ANDROID_ABI}-$krb_ver"
           mkdir -p "$release_name"
           STRIP=$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip
-          for bin in karbowanecd simplewallet greenwallet optimizer walletd vanitygen; do
-            if [ -f "$bin" ]; then
-              $STRIP "$bin" || true
-              cp "$bin" "$release_name/"
+          for bin in discreted simplewallet greenwallet walletd vanitygen; do
+            if [ ! -f "$bin" ]; then
+              echo "Expected binary not found: $bin"
+              exit 1
             fi
+            $STRIP "$bin" || true
+            cp "$bin" "$release_name/"
           done
           zip -r "$release_name.zip" "$release_name"
           sha256=$(shasum -a 256 "$release_name.zip" | awk '{print toupper($1)}')
@@ -439,7 +466,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ steps.package.outputs.asset_path }}
-          name: Karbo CLI Suite ${{ steps.package.outputs.krb_ver }}
+          name: Discrete CLI Suite ${{ steps.package.outputs.krb_ver }}
           append_body: true
           body: |
             [Download for Android arm64-v8a](../../releases/download/${{ steps.package.outputs.krb_ver }}/${{ steps.package.outputs.release_name }}) `SHA256: ${{ steps.package.outputs.sha256 }}`
