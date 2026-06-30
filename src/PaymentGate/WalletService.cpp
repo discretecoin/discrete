@@ -1625,18 +1625,12 @@ std::error_code WalletService::validateAddress(const std::string& address, bool&
     System::EventLock lk(readyEvent);
 
     // Accept any selector form: a numeric index resolves to one of our addresses,
-    // then classical / PQ / H-I-C / H-I-T-C account number are all recognized.
+    // then a PQ address / H-I-C / H-I-T-C account number is recognized. Discrete is
+    // PQ-only — the classical base58 ECC address form is never valid.
     const std::string resolved = canonicalizeAddressSelector(wallet, address);
 
-    CryptoNote::AccountPublicAddress acc = boost::value_initialized<AccountPublicAddress>();
-    if (currency.parseAccountAddressString(resolved, acc)) {
-      isValid = true;
-      _address = currency.accountAddressAsString(acc);
-      spendPublicKey = Common::podToHex(acc.spendPublicKey);
-      viewPublicKey = Common::podToHex(acc.viewPublicKey);
-    }
-    else if (CryptoNote::validateAddress(resolved, currency)) {
-      // A PQ address or an H-I-C / H-I-T-C account number: valid, but its spend/view
+    if (CryptoNote::validateAddress(resolved, currency)) {
+      // A PQ address or an H-I-C / H-I-T-C account number: valid. Its spend/view
       // authority is not a classical 32-byte keypair (PQ keys are large; account-
       // number keys live on-chain), so only echo the normalized address.
       isValid = true;
