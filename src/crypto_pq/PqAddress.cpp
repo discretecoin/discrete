@@ -218,4 +218,14 @@ bool decodePqAddress(const std::string& str, PqAddress& out) {
   return parsePayload(payload, out);
 }
 
+bool decodePqAddress(const std::string& str, bool testnet, PqAddress& out) {
+  // Accept ONLY this network's HRP. The numeric networkPrefix embedded in the
+  // payload is the same on both networks, so the HRP is the sole discriminator.
+  std::string payload;
+  if (!bech32mDecode(str, pqBech32Hrp(testnet), payload)) {
+    return false;
+  }
+  return parsePayload(payload, out);
+}
+
 }  // namespace CryptoNote

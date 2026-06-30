@@ -2190,7 +2190,7 @@ bool simple_wallet::pq_account(const std::vector<std::string> &args) {
 bool simple_wallet::resolvePqRecipient(const std::string& s, CryptoPQ::KemPublicKey& viewPub,
                                        CryptoPQ::DsaPublicKey& spendPub, uint64_t& subaddrIndexT) {
   // Delegate to the shared resolver so every front-end parses addresses identically.
-  return CryptoNote::resolvePqRecipient(*m_node, s, viewPub, spendPub, subaddrIndexT);
+  return CryptoNote::resolvePqRecipient(*m_node, m_currency.isTestnet(), s, viewPub, spendPub, subaddrIndexT);
 }
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::process_command(const std::vector<std::string> &args) {

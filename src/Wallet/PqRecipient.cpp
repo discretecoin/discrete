@@ -27,13 +27,16 @@
 
 namespace CryptoNote {
 
-bool resolvePqRecipient(INode& node, const std::string& s, CryptoPQ::KemPublicKey& viewPub,
+bool resolvePqRecipient(INode& node, bool testnet, const std::string& s,
+                        CryptoPQ::KemPublicKey& viewPub,
                         CryptoPQ::DsaPublicKey& spendPub, uint64_t& subaddrIndexT) {
   subaddrIndexT = 0;
 
-  // 1. A raw PQ address carries both keys directly (subaddress T = 0).
+  // 1. A raw PQ address carries both keys directly (subaddress T = 0). Only this
+  //    network's HRP is accepted, so a foreign-network address (e.g. a "tdisc…"
+  //    testnet address pasted into a mainnet wallet) is rejected here.
   CryptoNote::PqAddress addr;
-  if (CryptoNote::parsePqAddress(s, addr)) {
+  if (CryptoNote::decodePqAddress(s, testnet, addr)) {
     viewPub = addr.viewPub;
     spendPub = addr.spendPub;
     return true;

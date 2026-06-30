@@ -1373,7 +1373,7 @@ size_t WalletGreen::transfer(const TransactionParameters& transactionParameters,
     CryptoPQ::KemPublicKey viewPub;
     CryptoPQ::DsaPublicKey spendPub;
     uint64_t subaddrT = 0;
-    if (!resolvePqRecipient(m_node, dst.address, viewPub, spendPub, subaddrT)) {
+    if (!resolvePqRecipient(m_node, m_currency.isTestnet(), dst.address, viewPub, spendPub, subaddrT)) {
       m_logger(ERROR, BRIGHT_RED) << "Invalid recipient: " << dst.address;
       throw std::system_error(make_error_code(error::BAD_ADDRESS));
     }
@@ -1539,7 +1539,7 @@ bool WalletGreen::verifyMessage(const std::string &message, const std::string& a
     CryptoPQ::KemPublicKey viewPub;
     CryptoPQ::DsaPublicKey spendPub;
     uint64_t subaddrT = 0;
-    if (!CryptoNote::resolvePqRecipient(m_node, address, viewPub, spendPub, subaddrT)) {
+    if (!CryptoNote::resolvePqRecipient(m_node, m_currency.isTestnet(), address, viewPub, spendPub, subaddrT)) {
       m_logger(ERROR, BRIGHT_RED) << "Failed to verify message: not an address / account number: " << address;
       return false;
     }
@@ -1842,6 +1842,10 @@ void WalletGreen::restorePqStateBlob() {
 
 uint64_t WalletGreen::pqActualBalance() const {
   return m_pqConsumer ? m_pqConsumer->state().balance() : 0;
+}
+
+bool WalletGreen::isTestnet() const {
+  return m_currency.isTestnet();
 }
 
 uint64_t WalletGreen::pqSpendableBalance() const {

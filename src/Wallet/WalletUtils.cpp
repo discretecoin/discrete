@@ -33,9 +33,11 @@ bool validateAddress(const std::string& address, const CryptoNote::Currency& cur
   // PQ-native addresses (what the wallet actually issues) are not classical base58,
   // so accept them too — otherwise per-address RPCs (getTransactions/getBalance/
   // sendTransaction source filters) would reject the wallet's own addresses.
+  // Restrict to THIS network's HRP: mainnet and testnet share the same numeric
+  // networkPrefix, so the bech32m HRP is the only thing that tells a "disc…"
+  // mainnet address apart from a "tdisc…" testnet one.
   CryptoNote::PqAddress pq;
-  if (CryptoNote::decodePqAddress(address, pq) &&
-      pq.networkPrefix == currency.publicAddressBase58Prefix()) {
+  if (CryptoNote::decodePqAddress(address, currency.isTestnet(), pq)) {
     return true;
   }
   // H-I-T-C deposit subaddress (SingleKeyIndex scheme) or its H-I-C base account.

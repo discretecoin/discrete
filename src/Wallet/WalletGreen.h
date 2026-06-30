@@ -49,6 +49,7 @@ public:
   virtual ~WalletGreen();
 
   INode& getNode() { return m_node; }
+  bool isTestnet() const;
 
   // --- PQ (post-quantum) balance / spend (concrete; not on IWallet) ----------
   // Mirrors WalletLegacy. PQ is active from genesis. Full wallets derive this

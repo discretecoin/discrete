@@ -32,12 +32,16 @@
 namespace CryptoNote {
 
 // Resolve `s` into recipient keys + subaddress index T. Accepts:
-//   - a raw PQ address (base58 or bech32m) — keys carried directly, T = 0;
+//   - a raw bech32m PQ address — keys carried directly, T = 0;
 //   - an H-I-C account number — base account resolved via the node, T = 0;
 //   - an H-I-T-C deposit subaddress — same account resolved via the node, T = parsed.
 // Account-number forms block on `node` for the registry lookup. Returns false if `s`
 // is not a valid PQ recipient or the referenced account is not registered.
-bool resolvePqRecipient(INode& node, const std::string& s,
+//
+// `testnet` selects which address HRP is accepted (testnet "tdisc" vs mainnet
+// "disc"); a raw address for the other network is rejected, so a wallet can't
+// pay a foreign-network address. Pass currency.isTestnet().
+bool resolvePqRecipient(INode& node, bool testnet, const std::string& s,
                         CryptoPQ::KemPublicKey& viewPub,
                         CryptoPQ::DsaPublicKey& spendPub,
                         uint64_t& subaddrIndexT);

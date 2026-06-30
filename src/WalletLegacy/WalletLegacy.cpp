@@ -943,7 +943,7 @@ TransactionId WalletLegacy::sendTransaction(const std::vector<WalletLegacyTransf
     CryptoPQ::KemPublicKey viewPub;
     CryptoPQ::DsaPublicKey spendPub;
     uint64_t subaddrT = 0;
-    if (!resolvePqRecipient(m_node, t.address, viewPub, spendPub, subaddrT)) {
+    if (!resolvePqRecipient(m_node, m_currency.isTestnet(), t.address, viewPub, spendPub, subaddrT)) {
       throw std::system_error(make_error_code(CryptoNote::error::BAD_ADDRESS));
     }
     recipients.push_back(PqSendOutput{viewPub, spendPub, static_cast<uint64_t>(t.amount), subaddrT});

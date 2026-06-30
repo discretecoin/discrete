@@ -76,6 +76,18 @@ std::string encodePqAddress(const PqAddress& addr,
 // Decode and verify. Accepts either known Discrete HRP (mainnet or testnet);
 // anything else fails the bech32m checksum. Returns false on malformed input,
 // wrong length, or a checksum mismatch. On success, out is fully populated.
+//
+// NOTE: this form does NOT enforce which network the address belongs to (it is
+// used by network-agnostic paths such as message-signature verification). A
+// send path must use the network-restricted overload below — the embedded
+// numeric networkPrefix is identical on mainnet and testnet, so only the HRP
+// distinguishes them.
 bool decodePqAddress(const std::string& str, PqAddress& out);
+
+// Decode and verify, accepting ONLY the HRP for the given network (testnet ?
+// "tdisc" : "disc"). An address from the other network is rejected even though
+// its bech32m checksum is valid — this is what stops a mainnet wallet from
+// paying a testnet "tdisc1…" address (and vice versa).
+bool decodePqAddress(const std::string& str, bool testnet, PqAddress& out);
 
 }  // namespace CryptoNote
