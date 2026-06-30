@@ -4,6 +4,9 @@
 are deterministic children of that seed, so an exchange can back up one wallet
 file, one password, one mnemonic, and the number of issued deposit addresses.
 
+For the full exchange workflow, mode selection, and H-I-T-C guidance, see
+`docs/WALLETD-EXCHANGE-GUIDE.md`.
+
 ## Creating a Container
 
 ```bash

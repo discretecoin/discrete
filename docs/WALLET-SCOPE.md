@@ -7,7 +7,7 @@ Discrete ships three wallet front-ends. All three are supported for post-quantum
 |---|---|---|---|
 | simplewallet | `simplewallet.exe` | Reference interactive CLI | Full, canonical |
 | greenwallet | `greenwallet.exe` | Alternative zedwallet-style CLI | Full, including `--testnet` |
-| walletd | `walletd.exe` | JSON-RPC wallet for services/exchanges | Full PQ service API; see `docs/WALLETD-PQ.md` |
+| walletd | `walletd.exe` | JSON-RPC wallet for services/exchanges | Full PQ service API; see `docs/WALLETD-PQ.md` and `docs/WALLETD-EXCHANGE-GUIDE.md` |
 
 ## Greenwallet
 

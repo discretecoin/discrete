@@ -31,6 +31,9 @@ so pooling hash power requires sharing a spend secret.
 
 The consensus-frozen wire format, domain-separation tags, and blob sizes are
 documented in `docs/PQ-WIRE-FROZEN.md` and pinned by `tests/test_pq_domains.cpp`.
+For exchange and service wallet operation, including the two `walletd` deposit
+modes and the recommended H-I-T-C workflow, see
+`docs/WALLETD-EXCHANGE-GUIDE.md`.
 
 ## Building (Windows / Visual Studio 2022, x64)
 

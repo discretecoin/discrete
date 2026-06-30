@@ -5,6 +5,9 @@ against a Discrete node. Discrete is post-quantum from genesis, so the funds a
 service holds are **PQ funds**, addressed by a **PQ address** and tracked as a
 **PQ balance**.
 
+For an operator-focused exchange runbook, including the recommended
+single-key-index / H-I-T-C workflow, see `docs/WALLETD-EXCHANGE-GUIDE.md`.
+
 This document covers the PQ methods. They mirror what `simplewallet` shows for
 the same seed.
 
@@ -20,7 +23,7 @@ All examples below POST JSON-RPC 2.0 to `http://127.0.0.1:8070/json_rpc`.
 
 ## `getAddress`
 
-Returns the wallet's PQ address (base58). This is the address payers send PQ
+Returns the wallet's primary PQ address. This is the address payers send PQ
 funds to; it is identical to `simplewallet`'s `address` for the same seed.
 
 Request:
@@ -37,7 +40,7 @@ Response:
 {
   "jsonrpc": "2.0", "id": 1,
   "result": {
-    "address": "<base58 PQ address>",
+    "address": "<primary PQ address>",
     "enabled": true
   }
 }
@@ -172,15 +175,19 @@ curl ... -d '{ "jsonrpc":"2.0","id":1,"method":"getDepositScheme","params":{} }'
 ### `createDepositAddress`
 
 Returns a new deposit address and its index. In aggregated-multikey mode the
-address is a base58 PQ address with its own spend key; in single-key-index mode it
+address is a full PQ address with its own spend key; in single-key-index mode it
 is the **H-I-T-C** account number (the base account's `H-I` plus the new index `T`
 and a Luhn check char). single-key-index requires the account to be **registered
 first** (run `registerAccount` and wait for confirmation), because H-I-T-C
 embeds the account's on-chain registration coordinates.
 
+The returned `index` is deposit `T` (first deposit is `0`). Numeric address
+selectors are offset by one because selector `"0"` is the primary address and
+selector `"1"` is deposit `T=0`.
+
 ```
 curl ... -d '{ "jsonrpc":"2.0","id":1,"method":"createDepositAddress","params":{} }'
-# aggregated-multikey -> { "result": { "address": "<base58 PQ address>", "index": 3 } }
+# aggregated-multikey -> { "result": { "address": "<full PQ address>", "index": 3 } }
 # single-key-index    -> { "result": { "address": "<H-I-T-C>", "index": 3 } }
 ```
 
