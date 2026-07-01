@@ -18,6 +18,7 @@
 
 #include "Core.h"
 
+#include <ctime>
 #include <sstream>
 #include <unordered_set>
 #include <boost/utility/value_init.hpp>

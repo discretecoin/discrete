@@ -25,6 +25,7 @@
 #include <unordered_set>
 #include <cstdio>
 #include <cmath>
+#include <ctime>
 #include <cstring>
 #include <filesystem>
 #include <boost/foreach.hpp>

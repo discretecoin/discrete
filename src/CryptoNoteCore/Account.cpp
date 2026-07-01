@@ -17,6 +17,7 @@
 
 #include "Account.h"
 
+#include <ctime>
 #include <cstring>
 
 #include "CryptoNoteSerialization.h"

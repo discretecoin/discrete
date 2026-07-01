@@ -22,6 +22,7 @@
 
 #include "CryptoNoteProtocolHandler.h"
 
+#include <ctime>
 #include <future>
 #include <list>
 #include <random>

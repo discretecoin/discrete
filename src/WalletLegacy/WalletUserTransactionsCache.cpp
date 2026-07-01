@@ -23,9 +23,11 @@
 #include "WalletLegacy/WalletLegacySerialization.h"
 #include "WalletLegacy/WalletUtils.h"
 
+#include <algorithm>
+#include <ctime>
+
 #include "Serialization/ISerializer.h"
 #include "Serialization/SerializationOverloads.h"
-#include <algorithm>
 
 using namespace Crypto;
 

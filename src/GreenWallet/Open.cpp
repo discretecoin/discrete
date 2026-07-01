@@ -7,6 +7,8 @@
 #include <GreenWallet/Open.h>
 ///////////////////////////
 
+#include <ctime>
+
 #include <boost/algorithm/string.hpp>
 #include <boost/filesystem.hpp>
 

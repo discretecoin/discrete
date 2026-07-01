@@ -23,6 +23,7 @@
 #include <mutex>              
 #include <condition_variable> 
 #include <queue>
+#include <ctime>
 
 #include <boost/noncopyable.hpp>
 #include <boost/program_options.hpp>

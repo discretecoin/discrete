@@ -26,6 +26,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <ctime>
 #include <fstream>
 #include <thread>
 #include <cstdio>
