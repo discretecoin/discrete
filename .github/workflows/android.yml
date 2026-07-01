@@ -128,32 +128,35 @@ jobs:
             -DCMAKE_POLICY_DEFAULT_CMP0167=OLD \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+            -DOQS_BUILD_ONLY_LIB=ON \
             -DCMAKE_VERBOSE_MAKEFILE=ON \
             -G Ninja
 
       - name: Build binaries
         run: |
           cd $BUILD_DIR
-          ninja
+          cmake --build . --config Release --target Daemon SimpleWallet GreenWallet PaymentGateService AddressGenerator -- -j"$(nproc)"
 
       - name: Package binaries
         run: |
           cd $BUILD_DIR/src
-          mkdir -p karbo-$ANDROID_ABI
-          # FIX: use NDK's llvm-strip instead of host strip
+          package_dir="discrete-$ANDROID_ABI"
+          mkdir -p "$package_dir"
           STRIP=$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip
-          for bin in karbowanecd simplewallet greenwallet walletd vanitygen; do
-            if [ -f "$bin" ]; then
-              $STRIP "$bin" || true
-              cp "$bin" karbo-$ANDROID_ABI/
+          for bin in discreted simplewallet greenwallet walletd vanitygen; do
+            if [ ! -f "$bin" ]; then
+              echo "Expected binary not found: $bin"
+              exit 1
             fi
+            $STRIP "$bin" || true
+            cp "$bin" "$package_dir/"
           done
-          cd karbo-$ANDROID_ABI
-          zip -r ../karbo-$ANDROID_ABI.zip .
-          echo "artifact_path=$BUILD_DIR/src/karbo-$ANDROID_ABI.zip"
+          cd "$package_dir"
+          zip -r ../discrete-$ANDROID_ABI.zip .
+          echo "artifact_path=$BUILD_DIR/src/discrete-$ANDROID_ABI.zip"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: karbo-${{ env.ANDROID_ABI }}
-          path: build/arm64-v8a/src/karbo-arm64-v8a.zip
+          name: discrete-${{ env.ANDROID_ABI }}
+          path: build/arm64-v8a/src/discrete-arm64-v8a.zip

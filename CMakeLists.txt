@@ -1,4 +1,17 @@
 cmake_minimum_required(VERSION 3.8)
+if(POLICY CMP0074)
+  cmake_policy(SET CMP0074 NEW)
+endif()
+if(POLICY CMP0167)
+  # Keep FindBoost behavior for CI/package-manager installs until the project
+  # migrates to Boost's CMake config packages.
+  cmake_policy(SET CMP0167 OLD)
+endif()
+if(POLICY CMP0148)
+  # Bundled gtest still uses FindPythonInterp/FindPythonLibs.
+  cmake_policy(SET CMP0148 OLD)
+endif()
+project(Discrete)
 if(WIN32)
  option(CMAKE_USE_WIN32_THREADS_INIT "using WIN32 threads" ON)
 endif()
@@ -86,15 +99,13 @@ endif()
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 # set(CMAKE_CONFIGURATION_TYPES "Debug;Release")
-set(CMAKE_CONFIGURATION_TYPES Debug RelWithDebInfo Release CACHE TYPE INTERNAL)
+set(CMAKE_CONFIGURATION_TYPES "Debug;RelWithDebInfo;Release" CACHE STRING "Available build configurations" FORCE)
 set(CMAKE_SKIP_INSTALL_RULES ON)
 set(CMAKE_SKIP_PACKAGE_ALL_DEPENDENCY ON)
 set(CMAKE_SUPPRESS_REGENERATION ON)
 
 # copy CTestCustom.cmake to build dir to disable long running tests in 'make test'
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/CTestCustom.cmake ${CMAKE_CURRENT_BINARY_DIR})
-
-project(Discrete)
 
 include_directories(include src external "${CMAKE_CURRENT_BINARY_DIR}/version")  
 
