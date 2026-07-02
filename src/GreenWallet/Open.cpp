@@ -12,7 +12,6 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/filesystem.hpp>
 
-#include <Common/Base58.h>
 #include <Common/StringTools.h>
 
 #include <crypto/crypto.h>
@@ -93,61 +92,6 @@ std::shared_ptr<WalletInfo> importWallet(CryptoNote::WalletGreen &wallet)
         = getPrivateKey("Enter your private view key: ");
 
     return importFromKeys(wallet, privateSpendKey, privateViewKey);
-}
-
-std::shared_ptr<WalletInfo> importGUIWallet(CryptoNote::WalletGreen &wallet)
-{
-    // GUI private key is base58-encoded AccountKeys (spend+view keys).
-    // Format: 128 bytes (spendPub|viewPub|spendSec|viewSec) -> 184 base58 chars.
-    static constexpr size_t kLegacyKeyBytes = 128;  // old format without extra fields
-    static constexpr size_t kNewKeyBytes    = sizeof(CryptoNote::AccountKeys);
-
-    std::string guiPrivateKey;
-
-    uint64_t addressPrefix;
-    std::string data;
-
-    while (true)
-    {
-        std::cout << "GUI Private Key: ";
-        std::getline(std::cin, guiPrivateKey);
-        boost::algorithm::trim(guiPrivateKey);
-
-        if (!Tools::Base58::decode_addr(guiPrivateKey, addressPrefix, data)
-          || (data.size() != kLegacyKeyBytes && data.size() != kNewKeyBytes))
-        {
-            std::cout << WarningMsg("Invalid GUI Private Key — failed to decode or wrong size. "
-                                    "Try again.")
-                      << std::endl;
-
-            continue;
-        }
-
-        if (addressPrefix !=
-            CryptoNote::parameters::CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX)
-        {
-            std::cout << WarningMsg("Invalid GUI Private Key, it should begin ")
-                      << WarningMsg("with ")
-                      << WarningMsg(WalletConfig::addressPrefix)
-                      << WarningMsg("! Try again.")
-                      << std::endl;
-
-            continue;
-        }
-
-        break;
-    }
-
-    // Extract keys from known fixed offsets (identical in both legacy and new format):
-    //   offset  0: spendPublicKey  (32 bytes)
-    //   offset 32: viewPublicKey   (32 bytes)
-    //   offset 64: spendSecretKey  (32 bytes)
-    //   offset 96: viewSecretKey   (32 bytes)
-    Crypto::SecretKey spendSecretKey, viewSecretKey;
-    memcpy(&spendSecretKey, data.data() + 64, sizeof(Crypto::SecretKey));
-    memcpy(&viewSecretKey,  data.data() + 96, sizeof(Crypto::SecretKey));
-
-    return importFromKeys(wallet, spendSecretKey, viewSecretKey);
 }
 
 std::shared_ptr<WalletInfo> mnemonicImportWallet(CryptoNote::WalletGreen

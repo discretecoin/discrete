@@ -13,7 +13,6 @@
 #include <chrono>
 #include <thread>
 
-#include <Common/Base58.h>
 #include <Common/StringTools.h>
 
 #include <CryptoNoteCore/CryptoNoteBasicImpl.h>
@@ -203,28 +202,6 @@ std::string unixTimeToDate(uint64_t timestamp)
     char buffer[100];
     std::strftime(buffer, sizeof(buffer), "%F %R", std::localtime(&time));
     return std::string(buffer);
-}
-
-std::string createIntegratedAddress(std::string address, std::string paymentID)
-{
-    uint64_t prefix;
-
-    CryptoNote::AccountPublicAddress addr;
-
-    /* Get the private + public key from the address */
-    CryptoNote::parseAccountAddressString(prefix, addr, address);
-
-    /* Pack as a binary array */
-    CryptoNote::BinaryArray ba;
-    CryptoNote::toBinaryArray(addr, ba);
-    std::string keys = Common::asString(ba);
-
-    /* Encode prefix + paymentID + keys as an address */
-    return Tools::Base58::encode_addr
-    (
-        CryptoNote::parameters::CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX,
-        paymentID + keys
-    );
 }
 
 uint64_t getScanHeight()

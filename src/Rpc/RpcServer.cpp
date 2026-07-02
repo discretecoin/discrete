@@ -1985,13 +1985,18 @@ bool RpcServer::on_get_block_timestamp_by_height(const COMMAND_RPC_GET_BLOCK_TIM
 }
 
 bool RpcServer::on_validate_address(const COMMAND_RPC_VALIDATE_ADDRESS::request& req, COMMAND_RPC_VALIDATE_ADDRESS::response& res) {
-  AccountPublicAddress acc = boost::value_initialized<AccountPublicAddress>();
-  bool r = m_core.currency().parseAccountAddressString(req.address, acc);
-  res.is_valid = r;
-  if (r) {
-    res.address = m_core.currency().accountAddressAsString(acc);
-    res.spend_public_key = Common::podToHex(acc.spendPublicKey);
-    res.view_public_key = Common::podToHex(acc.viewPublicKey);
+  // Discrete is PQ-only: valid forms are a bech32m PQ address (this network's HRP)
+  // or an H-I-C / H-I-T-C account number. The classical base58 ECC form is never valid.
+  CryptoNote::PqAddress pq;
+  CryptoNote::AccountNumber acct;
+  uint32_t subaddrIndex = 0;
+  res.is_valid = CryptoNote::decodePqAddress(req.address, m_core.currency().isTestnet(), pq) ||
+                 CryptoNote::AccountNumber::fromStringWithIndex(req.address, acct, subaddrIndex) ||
+                 CryptoNote::AccountNumber::fromString(req.address, acct);
+  if (res.is_valid) {
+    // PQ spend/view keys are large (ML-DSA-65 / ML-KEM-768) and account-number keys
+    // live on-chain, so only the address itself is echoed back.
+    res.address = req.address;
   }
   res.status = CORE_RPC_STATUS_OK;
   return true;
@@ -2016,8 +2021,9 @@ bool RpcServer::on_resolve_open_alias(const COMMAND_RPC_RESOLVE_OPEN_ALIAS::requ
   try {
     res.address = Common::resolveAlias(req.url);
 
-    AccountPublicAddress ignore;
-    if (!m_core.currency().parseAccountAddressString(res.address, ignore)) {
+    // The alias must resolve to a PQ address on this network (bech32m HRP check).
+    CryptoNote::PqAddress pq;
+    if (!CryptoNote::decodePqAddress(res.address, m_core.currency().isTestnet(), pq)) {
       throw JsonRpc::JsonRpcError{ CORE_RPC_ERROR_CODE_INTERNAL_ERROR, "Address \"" + res.address + "\" is invalid" };
     }
   }

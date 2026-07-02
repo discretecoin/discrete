@@ -679,13 +679,18 @@ bool wallet_rpc_server::on_reset(const wallet_rpc::COMMAND_RPC_RESET::request& r
 bool wallet_rpc_server::on_validate_address(const wallet_rpc::COMMAND_RPC_VALIDATE_ADDRESS::request& req,
   wallet_rpc::COMMAND_RPC_VALIDATE_ADDRESS::response& res)
 {
-  AccountPublicAddress acc = boost::value_initialized<AccountPublicAddress>();
-  bool r = m_currency.parseAccountAddressString(req.address, acc);
-  res.is_valid = r;
-  if (r) {
-    res.address          = m_currency.accountAddressAsString(acc);
-    res.spend_public_key = Common::podToHex(acc.spendPublicKey);
-    res.view_public_key  = Common::podToHex(acc.viewPublicKey);
+  // Discrete is PQ-only: a bech32m PQ address (this network's HRP) or an
+  // H-I-C / H-I-T-C account number. The classical base58 ECC form is never valid.
+  CryptoNote::PqAddress pq;
+  CryptoNote::AccountNumber acct;
+  uint32_t subaddrIndex = 0;
+  res.is_valid = CryptoNote::decodePqAddress(req.address, m_currency.isTestnet(), pq) ||
+                 CryptoNote::AccountNumber::fromStringWithIndex(req.address, acct, subaddrIndex) ||
+                 CryptoNote::AccountNumber::fromString(req.address, acct);
+  if (res.is_valid) {
+    // PQ spend/view keys are large (ML-DSA-65 / ML-KEM-768) and account-number keys
+    // live on-chain, so only the address itself is echoed back.
+    res.address = req.address;
   }
   res.status = CORE_RPC_STATUS_OK;
   return true;

@@ -31,6 +31,7 @@
 #include "BlockchainExplorerData.h"
 #include "Common/StringTools.h"
 #include "AccountNumber.h"
+#include "PqAddress.h"
 #include "CryptoNoteCore/Core.h"
 #include "CryptoNoteCore/CryptoNoteBasicImpl.h"
 #include "CryptoNoteCore/CryptoNoteTools.h"
@@ -306,11 +307,14 @@ bool BuiltinExplorer::on_get_explorer(const COMMAND_EXPLORER::request& req, COMM
 }
 
 bool BuiltinExplorer::on_explorer_search(const COMMAND_RPC_EXPLORER_SEARCH::request& req, COMMAND_RPC_EXPLORER_SEARCH::response& res) {
-  // Try as address
+  // Try as address (PQ bech32m for this network, or an H-I-C / H-I-T-C account number)
   {
-    AccountPublicAddress address;
-    uint64_t prefix;
-    if (parseAccountAddressString(prefix, address, req.query)) {
+    PqAddress pq;
+    AccountNumber acct;
+    uint32_t subaddrIndex = 0;
+    if (decodePqAddress(req.query, m_core.currency().isTestnet(), pq) ||
+        AccountNumber::fromStringWithIndex(req.query, acct, subaddrIndex) ||
+        AccountNumber::fromString(req.query, acct)) {
       res.result = "/explorer/address/" + req.query;
       res.status = CORE_RPC_STATUS_OK;
       return true;
@@ -750,16 +754,18 @@ bool BuiltinExplorer::on_get_explorer_txs_by_payment_id(const COMMAND_EXPLORER_G
 }
 
 bool BuiltinExplorer::on_get_explorer_address(const COMMAND_EXPLORER_GET_ADDRESS::request& req, COMMAND_EXPLORER_GET_ADDRESS::response& res) {
-  AccountPublicAddress address;
-  uint64_t prefix;
-  if (!parseAccountAddressString(prefix, address, req.address)) {
+  // Discrete addresses are PQ: a bech32m address for this network, or an
+  // H-I-C / H-I-T-C account number. Both are self-validating (bech32m checksum /
+  // Luhn check char), so a successful decode means the address is well-formed.
+  PqAddress pq;
+  AccountNumber acct;
+  uint32_t subaddrIndex = 0;
+  const bool isPq = decodePqAddress(req.address, m_core.currency().isTestnet(), pq);
+  const bool isAcct = !isPq && (AccountNumber::fromStringWithIndex(req.address, acct, subaddrIndex) ||
+                                AccountNumber::fromString(req.address, acct));
+  if (!isPq && !isAcct) {
     return false;
   }
-
-  // Address already parsed structurally above; Discrete keys are post-quantum,
-  // so there is no ECC curve membership to check.
-  bool validSpend = true;
-  bool validView = true;
 
   std::string body = index_start + (m_core.currency().isTestnet() ? "testnet" : "mainnet") + "\n<p>";
   body += "<a href=\"/explorer/\">Home</a>";
@@ -770,10 +776,17 @@ bool BuiltinExplorer::on_get_explorer_address(const COMMAND_EXPLORER_GET_ADDRESS
 
   body += "<h3>Validation</h3>\n";
   body += "<ul>\n";
-  body += "  <li>Spend public key: <span class=\"wrap\">" + Common::podToHex(address.spendPublicKey) + "</span>"
-       + (validSpend ? " &#10004;" : " &#10008; <b>INVALID</b>") + "</li>\n";
-  body += "  <li>View public key: <span class=\"wrap\">" + Common::podToHex(address.viewPublicKey) + "</span>"
-       + (validView ? " &#10004;" : " &#10008; <b>INVALID</b>") + "</li>\n";
+  if (isPq) {
+    body += "  <li>Form: post-quantum bech32m address &#10004;</li>\n";
+    body += "  <li>View public key (ML-KEM-768, " + std::to_string(pq.viewPub.size()) + " bytes): <span class=\"wrap\">"
+         + Common::toHex(pq.viewPub.data(), pq.viewPub.size()) + "</span></li>\n";
+    body += "  <li>Spend public key (ML-DSA-65, " + std::to_string(pq.spendPub.size()) + " bytes): <span class=\"wrap\">"
+         + Common::toHex(pq.spendPub.data(), pq.spendPub.size()) + "</span></li>\n";
+  } else {
+    body += "  <li>Form: registered account number (keys are stored on-chain) &#10004;</li>\n";
+    body += "  <li>Registration block height: " + std::to_string(acct.blockHeight) + "</li>\n";
+    body += "  <li>Transaction index: " + std::to_string(acct.txIndex) + "</li>\n";
+  }
   body += "</ul>\n";
 
   body += index_finish;
