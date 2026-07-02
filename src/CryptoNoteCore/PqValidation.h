@@ -98,11 +98,11 @@ uint64_t grindFreeRegPow(const std::array<uint8_t, 1184>& viewPub,
 //  - spend_commit(authPub, rhoReveal) == referenced spendCommit
 //  - intra-tx nullifier uniqueness
 //  - balance: sum(referenced amounts) == sum(output amounts) + fee, fee >= 0
-//  - fee >= ceil(minFeePer4000Bytes * serialized_size / 4000)
+//  - fee >= pqTxFeeFloor(minFee, extra size): flat minimum + tx_extra surcharge
 //  - ML-DSA verify each input over the recomputed txSigningDigest
 bool checkPqTransactionInputs(const Transaction& tx,
                              const std::vector<PqResolvedInput>& resolved,
-                             uint64_t minFeePer4000Bytes,
+                             uint64_t minFee,
                              std::vector<Crypto::Hash>* outNullifiers,
                              std::string* error);
 

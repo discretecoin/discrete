@@ -143,6 +143,9 @@ bool checkPqTransactionSemantic(const Transaction& tx, std::string* error) {
   if (tx.pqSignatures.size() != tx.inputs.size()) {
     return fail(error, "pqSignatures count must equal input count");
   }
+  if (tx.extra.size() > parameters::MAX_EXTRA_SIZE_PQ) {
+    return fail(error, "tx_extra exceeds MAX_EXTRA_SIZE_PQ");
+  }
   for (const auto& out : tx.outputs) {
     if (out.target.type() != typeid(PqOutput)) {
       return fail(error, "TX_PQ output is not a PqOutput");
@@ -242,7 +245,7 @@ bool checkFreeRegTransactionSemantic(const Transaction& tx, std::string* error, 
 
 bool checkPqTransactionInputs(const Transaction& tx,
                              const std::vector<PqResolvedInput>& resolved,
-                             uint64_t minFeePer4000Bytes,
+                             uint64_t minFee,
                              std::vector<Crypto::Hash>* outNullifiers,
                              std::string* error) {
   if (resolved.size() != tx.inputs.size()) {
@@ -309,13 +312,12 @@ bool checkPqTransactionInputs(const Transaction& tx,
   }
   uint64_t fee = sumIn - sumOut;
 
-  // Fee floor: fee >= ceil(minFeePer4000Bytes * size / 4000).
-  uint64_t size = toBinaryArray(tx).size();
-  if (minFeePer4000Bytes != 0 && size != 0) {
-    if (size > (UINT64_MAX - 3999) / minFeePer4000Bytes) {
-      return fail(error, "fee floor overflow");  // implausibly large tx
-    }
-    uint64_t floor = (minFeePer4000Bytes * size + 3999) / 4000;
+  // Fee floor: flat minFee plus the tx_extra surcharge. The serialized size of a
+  // PQ tx is dominated by signatures/ciphertexts the user cannot shrink, so it is
+  // not charged; the user-controllable bloat (tx_extra) is. extra.size() is capped
+  // by checkPqTransactionSemantic at MAX_EXTRA_SIZE_PQ, so no overflow is possible.
+  if (minFee != 0) {
+    uint64_t floor = parameters::pqTxFeeFloor(minFee, tx.extra.size());
     if (fee < floor) {
       return fail(error, "fee below minimum");
     }

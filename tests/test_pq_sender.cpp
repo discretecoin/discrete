@@ -1,9 +1,9 @@
 // Copyright (c) 2026, The Karbo developers
 //
 // Tests for the common engine-agnostic PQ sender (src/Wallet/PqSender): input
-// selection, canonical denomination decomposition, two-pass fee, change, and the
-// consensus size/count caps. The sender is the single deterministic spend path used
-// by every front-end.
+// selection, canonical denomination decomposition, the flat fee (MINIMUM_FEE +
+// tx_extra surcharge), change, and the consensus size/count caps. The sender is
+// the single deterministic spend path used by every front-end.
 
 #include "gtest/gtest.h"
 

@@ -239,33 +239,20 @@ PqSendResult buildPqSend(const std::vector<PqSpendInput>& available,
     throw shortfall(sent);
   }
 
-  // Two-pass fee with a fixed point: raising the fee shrinks the change (never grows
-  // the tx), so the measured floor is monotonically non-increasing and converges.
-  uint64_t fee = req.explicitFee;
-  Transaction tx;
-  for (int iter = 0; iter < 8; ++iter) {
-    if (sumIn < sent + fee) {
-      sumIn = growSelection(sorted, selected, sumIn, sent + fee);
-      if (sumIn < sent + fee) {
-        throw shortfall(sent + fee);
-      }
-    }
-    uint64_t change = sumIn - sent - fee;
-    tx = buildFitting(selected, authForSelection(selected), req.recipients, change, changeTmpl,
-                      req.extra);
-    if (req.explicitFee != 0) {
-      break;  // caller fixed the fee
-    }
-    uint64_t size = toBinaryArray(tx).size();
-    uint64_t floor = (size * P::MIN_PQ_FEE_PER_4000_BYTES + 3999) / 4000 + 1;
-    if (fee >= floor) {
-      break;  // fee covers the floor for the final size
-    }
-    fee = floor;
-  }
+  // Flat fee: MINIMUM_FEE plus the tx_extra surcharge. It does not depend on the
+  // serialized size, so it is exact up front — no size-measurement fixed point.
+  uint64_t fee = req.explicitFee != 0
+                     ? req.explicitFee
+                     : P::pqTxFeeFloor(P::MINIMUM_FEE, req.extra.size());
   if (sumIn < sent + fee) {
-    throw shortfall(sent + fee);
+    sumIn = growSelection(sorted, selected, sumIn, sent + fee);
+    if (sumIn < sent + fee) {
+      throw shortfall(sent + fee);
+    }
   }
+  uint64_t change = sumIn - sent - fee;
+  Transaction tx = buildFitting(selected, authForSelection(selected), req.recipients, change,
+                                changeTmpl, req.extra);
 
   PqSendResult result;
   result.tx = std::move(tx);

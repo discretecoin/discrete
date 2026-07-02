@@ -56,8 +56,9 @@ struct BuiltTx {
 };
 
 // One spender owns one input (amountIn) and sends amountOut to a recipient,
-// leaving fee = amountIn - amountOut.
-BuiltTx buildSignedTx(uint64_t amountIn, uint64_t amountOut) {
+// leaving fee = amountIn - amountOut. `extra` is signed into the digest.
+BuiltTx buildSignedTx(uint64_t amountIn, uint64_t amountOut,
+                      const std::vector<uint8_t>& extra = {}) {
     BuiltTx b;
 
     CryptoPQ::SeedMaster ms = pat<32>(2, 7);   // spender
@@ -110,6 +111,7 @@ BuiltTx buildSignedTx(uint64_t amountIn, uint64_t amountOut) {
     b.tx.version = TRANSACTION_VERSION_1;
     b.tx.txType = TX_PQ;
     b.tx.unlockHeight = 0;
+    b.tx.extra = extra;
     b.tx.outputs.push_back(out);
 
     // Sign: digest over (tx, fee), ML-DSA with the spender's spend secret.
@@ -193,19 +195,54 @@ TEST(PqValidation, RejectsAmountTamperWithoutResign) {
     EXPECT_FALSE(checkPqTransactionInputs(b.tx, b.resolved, kMinFee, nullptr, &err));
 }
 
-TEST(PqValidation, RejectsFeeBelowFloor) {
-    BuiltTx b = buildSignedTx(1000000, 999999);  // fee = 1 atom
+TEST(PqValidation, RejectsFeeBelowFlatMinimum) {
+    BuiltTx b = buildSignedTx(1000000, 1000000);  // fee = 0
     std::string err;
-    // A 1-atom fee on a multi-KB TX_PQ is below the per-4000-bytes floor.
-    EXPECT_FALSE(checkPqTransactionInputs(b.tx, b.resolved, parameters::MIN_PQ_FEE_PER_4000_BYTES, nullptr, &err));
+    // The flat floor is MINIMUM_FEE (1 atom); a zero fee is below it regardless of size.
+    EXPECT_FALSE(checkPqTransactionInputs(b.tx, b.resolved, parameters::MINIMUM_FEE, nullptr, &err));
 }
 
-TEST(PqValidation, AcceptsFeeMeetsFloor) {
-    // fee=100 atoms comfortably exceeds the floor for any valid tx (≤256 KB → floor ≤66).
-    BuiltTx b = buildSignedTx(1000000, 999900);  // fee = 100 atoms
+TEST(PqValidation, AcceptsFlatMinimumFee) {
+    // The fee is flat: exactly MINIMUM_FEE (1 atom = 0.01 XDS) for any tx whose
+    // extra fits the free allowance, independent of serialized size.
+    BuiltTx b = buildSignedTx(1000000, 999999);  // fee = 1 atom
     std::string err;
     EXPECT_TRUE(checkPqTransactionInputs(b.tx, b.resolved,
-        parameters::MIN_PQ_FEE_PER_4000_BYTES, nullptr, &err)) << err;
+        parameters::MINIMUM_FEE, nullptr, &err)) << err;
+}
+
+TEST(PqValidation, ChargesExtraFieldSurcharge) {
+    // A large tx_extra is the only user-controllable bloat, so it is surcharged:
+    // one MINIMUM_FEE per started TX_EXTRA_FEE_CHUNK_BYTES chunk beyond the free
+    // allowance (sized to fit a paid account registration, 3137 bytes). The max
+    // 4096-byte extra needs 1 + ceil(896/100) = 10 atoms; 1 atom must fail,
+    // 10 must pass.
+    const std::vector<uint8_t> bigExtra(parameters::MAX_EXTRA_SIZE_PQ, 0x00);
+    const uint64_t floor =
+        parameters::pqTxFeeFloor(parameters::MINIMUM_FEE, bigExtra.size());
+    ASSERT_EQ(floor, 10u);
+
+    BuiltTx low = buildSignedTx(1000000, 999999, bigExtra);   // fee = 1 atom
+    std::string err;
+    EXPECT_FALSE(checkPqTransactionInputs(low.tx, low.resolved, parameters::MINIMUM_FEE,
+                                          nullptr, &err));
+
+    BuiltTx ok = buildSignedTx(1000000, 1000000 - floor, bigExtra);
+    EXPECT_TRUE(checkPqTransactionInputs(ok.tx, ok.resolved, parameters::MINIMUM_FEE,
+                                         nullptr, &err)) << err;
+}
+
+TEST(PqValidation, RejectsOversizedExtra) {
+    // tx_extra above MAX_EXTRA_SIZE_PQ fails the semantic check outright, while
+    // the same tx with a maximal-but-legal extra passes it.
+    const std::vector<uint8_t> oversized(parameters::MAX_EXTRA_SIZE_PQ + 1, 0x00);
+    BuiltTx b = buildSignedTx(1000000, 900000, oversized);
+    std::string err;
+    EXPECT_FALSE(checkPqTransactionSemantic(b.tx, &err));
+
+    const std::vector<uint8_t> maximal(parameters::MAX_EXTRA_SIZE_PQ, 0x00);
+    BuiltTx ok = buildSignedTx(1000000, 900000, maximal);
+    EXPECT_TRUE(checkPqTransactionSemantic(ok.tx, &err)) << err;
 }
 
 TEST(PqValidation, RejectsExtraTamper) {

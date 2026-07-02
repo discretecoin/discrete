@@ -313,10 +313,11 @@ namespace CryptoNote {
     return CryptoNote::parameters::MINIMUM_FEE;
   }
 
-  // All that exceeds 100 bytes is charged per byte,
-  // the cost of one byte is 1/100 of minimal fee
+  // tx_extra surcharge: bytes beyond the free allowance cost one minFee per
+  // started chunk. Same rule the PQ consensus floor uses (pqTxExtraSurcharge);
+  // the old Karbo `minFee / 100 * bytes` form rounded to zero with COIN = 100.
   uint64_t Currency::getFeePerByte(const uint64_t txExtraSize, const uint64_t minFee) const {
-    return txExtraSize > 100 ? minFee / 100 * (txExtraSize - 100) : 0;
+    return CryptoNote::parameters::pqTxExtraSurcharge(minFee, txExtraSize);
   }
 
   Difficulty Currency::nextDifficulty(uint32_t height, uint8_t blockMajorVersion, std::vector<uint64_t> timestamps,

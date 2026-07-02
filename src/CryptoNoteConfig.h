@@ -31,7 +31,6 @@ const uint64_t CRYPTONOTE_MAX_BLOCK_NUMBER                   = 500000000;
 const size_t   CRYPTONOTE_MAX_BLOCK_BLOB_SIZE                = 500000000;
 const size_t   CRYPTONOTE_MAX_TX_SIZE                        = 1000000000;
 const uint64_t CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX       = 0x3445db; // disc
-const uint64_t CRYPTONOTE_TX_PROOF_BASE58_PREFIX             = 3576968;
 const uint64_t CRYPTONOTE_KEYS_SIGNATURE_BASE58_PREFIX       = 176103705;
 const size_t   CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW          = 10;
 const size_t   CRYPTONOTE_TX_SPENDABLE_AGE                   = 3;
@@ -63,6 +62,31 @@ const uint64_t DEFAULT_DUST_THRESHOLD                        = UINT64_C(1);
 const uint64_t MAX_EXTRA_SIZE                                = 4096;
 const uint64_t MAX_EXTRA_SIZE_PQ                             = 4096;
 
+// Flat-fee model. A transaction pays MINIMUM_FEE (0.01 XDS) regardless of its
+// serialized size: PQ signatures make every tx intrinsically large, so size is
+// not a user choice and charging for it is bad UX. The only user-controllable
+// bloat is tx_extra, so bytes beyond TX_EXTRA_FEE_FREE_BYTES are surcharged at
+// MINIMUM_FEE per TX_EXTRA_FEE_CHUNK_BYTES started (ceiling division). The free
+// allowance is sized so every protocol-required extra fits without surcharge —
+// in particular a paid account-number registration, whose tag is
+// 1 + 1184 (ML-KEM view pub) + 1952 (ML-DSA spend pub) = 3137 bytes, plus a
+// payment-id nonce (~35 bytes) of headroom. The max 4096-byte extra costs
+// MINIMUM_FEE + 9 atoms = 0.10 XDS.
+const uint64_t TX_EXTRA_FEE_FREE_BYTES                       = 3200;
+const uint64_t TX_EXTRA_FEE_CHUNK_BYTES                      = 100;
+
+// Consensus fee floor for TX_PQ: flat minimum plus the tx_extra surcharge.
+inline uint64_t pqTxExtraSurcharge(uint64_t minFee, uint64_t extraSize) {
+  if (extraSize <= TX_EXTRA_FEE_FREE_BYTES) {
+    return 0;
+  }
+  uint64_t chargeable = extraSize - TX_EXTRA_FEE_FREE_BYTES;
+  return minFee * ((chargeable + TX_EXTRA_FEE_CHUNK_BYTES - 1) / TX_EXTRA_FEE_CHUNK_BYTES);
+}
+inline uint64_t pqTxFeeFloor(uint64_t minFee, uint64_t extraSize) {
+  return minFee + pqTxExtraSurcharge(minFee, extraSize);
+}
+
 // PQ Phase 1 transaction limits (spec §1.2). These are consensus caps. A PQ input is
 // ~5.3 KB (ML-DSA-65 auth pub 1952 + signature 3309 + outpoint) and a PQ output is
 // ~1.2 KB (ML-KEM-768 ct 1088 + enc payload 56 + commit 32). The size cap is sized so
@@ -70,11 +94,6 @@ const uint64_t MAX_EXTRA_SIZE_PQ                             = 4096;
 const uint64_t MAX_PQ_INPUTS_PER_TX                          = 32;
 const uint64_t MAX_PQ_OUTPUTS_PER_TX                         = 64;
 const uint64_t MAX_PQ_TX_SIZE                                = 256 * 1024;
-// Minimum PQ fee per 4000 serialized bytes (consensus floor): fee >= ceil(rate*size/4000).
-// A typical 1-in/2-out TX_PQ is ~7.7 KB; rate=1 gives floor = 2 atoms (0.02 XDS). The
-// largest valid tx (MAX_PQ_TX_SIZE = 256 KB) gives ~66 atoms (~0.66 XDS). Wallet pads
-// with +1 atom margin.
-const uint64_t MIN_PQ_FEE_PER_4000_BYTES                    = 1;
 
 // Free-fee account registration (spec §11). FREE_REG_POW_TARGET is 1/16 expected
 // trials (~16 yespower calls); recalibrate against target hardware before launch.
