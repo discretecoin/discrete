@@ -18,6 +18,7 @@
 #include "PqKem.h"
 
 #include <cstring>
+#include <mutex>
 #include <stdexcept>
 
 #include "PqHash.h"
@@ -36,6 +37,14 @@ namespace {
 // in thread-local state. Stream = SHA3-256(seed || LE64(counter)) blocks.
 thread_local std::array<uint8_t, 32> g_derandSeed{};
 thread_local uint64_t                g_derandCounter = 0;
+
+// OQS's random-algorithm selection is PROCESS-GLOBAL, so kem_encaps_derand must
+// not run concurrently with itself or with any other OQS randomized call
+// (kem_keygen, dsa_keygen, kem_encaps...) — otherwise that call could transiently
+// observe the deterministic algorithm. This mutex serializes derand encapsulations
+// with each other; the caller (offline, single-threaded genesis construction) is
+// responsible for ensuring no other OQS randomized operation is in flight.
+std::mutex g_derandMutex;
 
 void derandRng(uint8_t* out, size_t n) {
   size_t off = 0;
@@ -95,6 +104,8 @@ std::pair<KemCiphertext, KemShared> kem_encaps_derand(const KemPublicKey& pub,
                                                       const std::array<uint8_t, 32>& seed) {
     KemCiphertext ct;
     KemShared     ss;
+    // Serialize the process-global RNG swap so two derand calls cannot interleave.
+    std::lock_guard<std::mutex> derandGuard(g_derandMutex);
     g_derandSeed = seed;
     g_derandCounter = 0;
     OQS_randombytes_custom_algorithm(&derandRng);
@@ -102,6 +113,9 @@ std::pair<KemCiphertext, KemShared> kem_encaps_derand(const KemPublicKey& pub,
     // Always restore the secure system RNG, even on failure — otherwise later
     // randomized OQS calls (e.g. kem_keygen) would inherit the deterministic RNG.
     OQS_randombytes_switch_algorithm(OQS_RAND_alg_system);
+    // Don't leave the deterministic seed sitting in thread-local state.
+    g_derandSeed.fill(0);
+    g_derandCounter = 0;
     if (rc != OQS_SUCCESS) {
         throw std::runtime_error("OQS_KEM_ml_kem_768_encaps (derand) failed");
     }

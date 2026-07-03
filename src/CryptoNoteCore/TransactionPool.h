@@ -209,6 +209,11 @@ namespace CryptoNote {
     mutable std::recursive_mutex m_transactions_lock;
     key_images_container m_spent_key_images;
     std::unordered_map<Crypto::Hash, std::unordered_set<Crypto::Hash>> m_pq_account_registrations;
+    // Count of zero-fee TX_FREE_REG transactions currently in the pool. Bounded by
+    // Currency::freeRegPoolLimit() at admission (see add_tx) to stop free (fee-less)
+    // registrations from bloating the pool. Maintained by add/removeTransactionInputs
+    // and rebuilt by buildIndices.
+    size_t m_freeRegPoolCount = 0;
 
     std::string m_config_folder;
     CryptoNote::ITransactionValidator& m_validator;

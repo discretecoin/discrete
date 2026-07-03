@@ -193,6 +193,16 @@ bool getPqAccountRegistrationId(const Transaction& tx, Crypto::Hash& accountId) 
         tvc.m_verification_failed = true;
         return false;
       }
+      // Zero-fee TX_FREE_REG cannot be shed by fee-priority eviction and uses a
+      // fresh identity each time (bypassing the per-account duplicate check), so
+      // cap how many may sit in the pool at once. The memory-hard registration
+      // PoW is the primary anti-spam cost; this is defense in depth.
+      if (freeRegTransaction && m_freeRegPoolCount >= m_currency.freeRegPoolLimit()) {
+        logger(INFO) << "Transaction with id= " << id
+                     << " rejected: free-registration mempool is full (" << m_freeRegPoolCount << ")";
+        tvc.m_verification_failed = true;
+        return false;
+      }
     }
 
     BlockInfo maxUsedBlock;
@@ -525,6 +535,7 @@ bool getPqAccountRegistrationId(const Transaction& tx, Crypto::Hash& accountId) 
       m_transactions.clear();
       m_spent_key_images.clear();
       m_pq_account_registrations.clear();
+      m_freeRegPoolCount = 0;
       m_paymentIdIndex.clear();
       m_timestampIndex.clear();
     } else {
@@ -696,6 +707,12 @@ bool getPqAccountRegistrationId(const Transaction& tx, Crypto::Hash& accountId) 
       }
     }
 
+    if (tx.version >= TRANSACTION_VERSION_1 && tx.txType == TX_FREE_REG) {
+      if (m_freeRegPoolCount > 0) {
+        --m_freeRegPoolCount;
+      }
+    }
+
     return true;
   }
 
@@ -741,6 +758,10 @@ bool getPqAccountRegistrationId(const Transaction& tx, Crypto::Hash& accountId) 
       }
     }
 
+    if (tx.version >= TRANSACTION_VERSION_1 && tx.txType == TX_FREE_REG) {
+      ++m_freeRegPoolCount;
+    }
+
     return true;
   }
 
@@ -773,12 +794,16 @@ bool getPqAccountRegistrationId(const Transaction& tx, Crypto::Hash& accountId) 
   void tx_memory_pool::buildIndices() {
     std::lock_guard<std::recursive_mutex> lock(m_transactions_lock);
     m_pq_account_registrations.clear();
+    m_freeRegPoolCount = 0;
     for (auto it = m_transactions.begin(); it != m_transactions.end(); it++) {
       m_paymentIdIndex.add(it->tx);
       m_timestampIndex.add(it->receiveTime, it->id);
       Crypto::Hash accountId;
       if (getPqAccountRegistrationId(it->tx, accountId)) {
         m_pq_account_registrations[accountId].insert(it->id);
+      }
+      if (it->tx.version >= TRANSACTION_VERSION_1 && it->tx.txType == TX_FREE_REG) {
+        ++m_freeRegPoolCount;
       }
     }
   }

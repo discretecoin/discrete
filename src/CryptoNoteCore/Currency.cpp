@@ -169,16 +169,25 @@ namespace CryptoNote {
     }
   }
 
+  // Per-block emission. Discrete has NO fixed supply cap: the block reward is the
+  // larger of a decaying exponential term and a PERPETUAL 2%-per-year tail
+  // (Friedman's k-percent rule). See the EMISSION_CURVE_TARGET note in
+  // CryptoNoteConfig.h and docs/EMISSION.md for the full policy rationale.
   uint64_t Currency::calculateReward(uint64_t alreadyGeneratedCoins) const {
     assert(m_emissionSpeedFactor > 0 && m_emissionSpeedFactor <= 8 * sizeof(uint64_t));
-    // Initial exponential emission curve with fallback to flat rate tail emission
+    // Exponential term: decays toward zero as circulating supply approaches
+    // m_moneySupply (EMISSION_CURVE_TARGET). Front-loads issuance over the early
+    // years. TAIL_EMISSION_REWARD is only its floor once the supply reaches
+    // m_moneySupply, but the 2% tail below overtakes it long before that.
     uint64_t baseRewardInitial = alreadyGeneratedCoins < m_moneySupply ? (m_moneySupply - alreadyGeneratedCoins) >> m_emissionSpeedFactor : CryptoNote::parameters::TAIL_EMISSION_REWARD;
-    // Friedman's k-percent rule, inflation 2% of total coins in circulation p.a.
+    // Perpetual tail: 2% of the circulating supply per annum, spread evenly over
+    // the blocks in a year. This term never stops, so total supply grows without
+    // bound at a long-run ~2%/yr rate.
     const uint64_t blocksInOneYear = expectedNumberOfBlocksPerDay() * 365;
     assert(blocksInOneYear > 0);
     uint64_t twoPercentOfEmission = alreadyGeneratedCoins / 100 * 2;
     uint64_t baseRewardTail = twoPercentOfEmission / blocksInOneYear;
-    // Transition from exponential to tail emission (whichever reward is larger)
+    // Effective reward is whichever term is larger (exponential early, tail later).
     return std::max(baseRewardInitial, baseRewardTail);
   }
 
@@ -488,6 +497,7 @@ namespace CryptoNote {
 
     freeRegPerBlock(parameters::FREE_REG_PER_BLOCK);
     freeRegPowTarget(parameters::FREE_REG_POW_TARGET);
+    freeRegPoolLimit(parameters::FREE_REG_POOL_LIMIT);
 
     testnet(false);
   }

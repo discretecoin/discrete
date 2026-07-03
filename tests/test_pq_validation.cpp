@@ -334,6 +334,11 @@ std::array<uint8_t, TX_EXTRA_PQ_SPEND_PUBKEY_SIZE> freeRegSpendPub() {
     return sp;
 }
 
+// Lenient PoW target for tests (1/16 per trial → grinds in O(1) iterations).
+// The production parameters::FREE_REG_POW_TARGET is deliberately strong
+// (~2^17 expected yespower calls), which would make these structural tests slow.
+constexpr uint64_t kTestFreeRegPowTarget = UINT64_C(0x0FFFFFFFFFFFFFFF);
+
 Transaction makeFreeRegTx() {
     Transaction tx;
     tx.version = TRANSACTION_VERSION_1;
@@ -343,7 +348,7 @@ Transaction makeFreeRegTx() {
     addPqAccountRegistrationToExtra(tx.extra, freeRegViewPub(), freeRegSpendPub());
     TransactionExtraPow pow{};
     pow.refBlockHash = hashPat(1, 1);
-    while (!checkFreeRegPow(freeRegViewPub(), pow.refBlockHash, pow.nonce)) {
+    while (!checkFreeRegPow(freeRegViewPub(), pow.refBlockHash, pow.nonce, kTestFreeRegPowTarget)) {
         ++pow.nonce;
     }
     appendPowTagToExtra(tx.extra, pow);  // PoW must be the last field
@@ -355,7 +360,7 @@ Transaction makeFreeRegTx() {
 TEST(PqValidation, FreeRegAcceptsValid) {
     Transaction tx = makeFreeRegTx();
     std::string err;
-    EXPECT_TRUE(checkFreeRegTransactionSemantic(tx, &err)) << err;
+    EXPECT_TRUE(checkFreeRegTransactionSemantic(tx, &err, kTestFreeRegPowTarget)) << err;
 }
 
 TEST(PqValidation, FreeRegRejectsWrongSubtype) {
@@ -413,8 +418,8 @@ TEST(PqValidation, FreeRegRejectsMissingPow) {
 
 TEST(PqValidation, FreeRegRejectsBadPow) {
     // Find the first nonce that does NOT satisfy the production target.
-    // With target=0x0FFF… (1/16 per trial), a non-passing nonce is found in
-    // O(1) expected iterations.
+    // The production target is strong (~2^17 expected trials to PASS), so a
+    // non-passing nonce is found almost immediately (nonce 0 fails w.h.p.).
     std::array<uint8_t, TX_EXTRA_PQ_VIEW_PUBKEY_SIZE> vp = freeRegViewPub();
     Crypto::Hash ref = hashPat(1, 1);
     uint64_t badNonce = 0;

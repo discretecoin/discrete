@@ -259,10 +259,12 @@ TEST(PqFreeReg, BuildsValidRegistration) {
     for (int i = 0; i < 32; ++i) ref.data[i] = static_cast<uint8_t>(i + 1);
 
     // Grind the anti-spam PoW via the shared helper (the same one simplewallet
-    // and walletd call). Instant under the current max-target placeholder.
-    uint64_t nonce = CryptoNote::grindFreeRegPow(me.viewPub, ref);
+    // and walletd call). Use a lenient test target so grinding stays instant —
+    // the production parameters::FREE_REG_POW_TARGET is deliberately strong.
+    constexpr uint64_t kTestFreeRegPowTarget = UINT64_C(0x0FFFFFFFFFFFFFFF);
+    uint64_t nonce = CryptoNote::grindFreeRegPow(me.viewPub, ref, kTestFreeRegPowTarget);
     // The helper must return a nonce that actually satisfies the predicate.
-    EXPECT_TRUE(CryptoNote::checkFreeRegPow(me.viewPub, ref, nonce));
+    EXPECT_TRUE(CryptoNote::checkFreeRegPow(me.viewPub, ref, nonce, kTestFreeRegPowTarget));
 
     Transaction tx = buildFreeRegTransaction(me.viewPub, me.spendPub, ref, nonce);
     EXPECT_EQ(tx.version, TRANSACTION_VERSION_1);
@@ -272,7 +274,7 @@ TEST(PqFreeReg, BuildsValidRegistration) {
     EXPECT_TRUE(tx.pqSignatures.empty());
 
     std::string err;
-    EXPECT_TRUE(checkFreeRegTransactionSemantic(tx, &err)) << err;
+    EXPECT_TRUE(checkFreeRegTransactionSemantic(tx, &err, kTestFreeRegPowTarget)) << err;
 }
 
 int main(int argc, char** argv) {
