@@ -184,13 +184,11 @@ bool WalletLedger::processTransaction(const TransactionPrefix& tx, const Crypto:
     if (m_depositScheme == PqDepositScheme::SingleKeyIndex) {
       // One key pair; deposits are distinguished by the subaddress index T.
       // T=0 is the wallet's own address (and deposit #0); try every reserved T.
+      // scanPqOutputTWindow decapsulates once; each T trial is a cheap SHA3+AEAD.
       uint32_t maxT = std::max(m_depositCount, 1u);
-      for (uint32_t t = 0; t < maxT; ++t) {
-        owned = CryptoPQ::scanPqOutput(m_scanKeys, ih, so, t);
-        if (owned) {
-          depositIndex = t;
-          break;
-        }
+      owned = CryptoPQ::scanPqOutputTWindow(m_scanKeys, ih, so, maxT);
+      if (owned) {
+        depositIndex = static_cast<uint32_t>(owned->subaddrIndexT);
       }
     } else {
       // AggregatedMultikey: the wallet's own primary address (T=0), then the

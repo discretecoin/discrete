@@ -424,6 +424,15 @@ void WalletGreen::load(const std::string& path, const std::string& password, std
   }
 
   if (version < WalletSerializerV2::MIN_VERSION) {
+    // A simplewallet (single-identity) file starts with its varint
+    // serialization version (1 or 2), below the first container format
+    // version (6) — point the user at the right product instead of the
+    // generic legacy-wallet error.
+    if (version < 6) {
+      walletFileStream.close();
+      m_logger(ERROR, BRIGHT_RED) << "The file is a simplewallet wallet, not a container: " << path;
+      throw std::system_error(make_error_code(error::SIMPLE_WALLET_FILE));
+    }
     convertAndLoadWalletFile(path, std::move(walletFileStream));
   } else {
     walletFileStream.close();

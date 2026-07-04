@@ -82,6 +82,17 @@ std::vector<PqOwnedOutput> scanPqOutputs(const PqScanKeys& keys,
                                          const std::vector<PqScanOutput>& outputs,
                                          uint64_t subaddrIndexT = 0);
 
+// Try to recognize ONE output for any subaddress index T in [0, maxT).
+// T is bound into the AEAD key derivation, so the receiver has to enumerate
+// candidate indices; this decapsulates ONCE and each T trial costs only a
+// SHA3 (outContext) + one AEAD attempt. Returns the owned record with
+// subaddrIndexT = the matching T, or nullopt. Same garbage-output discipline
+// as scanPqOutput.
+std::optional<PqOwnedOutput> scanPqOutputTWindow(const PqScanKeys& keys,
+                                                 const Hash256& inputsHash,
+                                                 const PqScanOutput& out,
+                                                 uint64_t maxT);
+
 // --- Aggregated scanning (exchange / service wallets) ----------------------
 // A service issues many deposit addresses sharing ONE ML-KEM view key but with
 // distinct ML-DSA spend keys: addr_i = shared_viewPub || deposit_spendPub_i.

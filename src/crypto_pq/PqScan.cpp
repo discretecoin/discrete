@@ -24,19 +24,19 @@
 
 namespace CryptoPQ {
 
-std::optional<PqOwnedOutput> scanPqOutput(const PqScanKeys& keys,
-                                          const Hash256& inputsHash,
-                                          const PqScanOutput& out,
-                                          uint64_t subaddrIndexT) {
-  // 1. Recover the shared secret. FIPS 203 decaps never errors; on a non-owned
-  //    or malformed ciphertext it returns a pseudorandom secret, so the AEAD
-  //    tag below is the real ownership filter.
-  KemShared ss = kem_decaps(keys.viewSk, out.kemCt);
+namespace {
 
-  // 2. Per-output context (binds inputs_hash, kem_ct, output_index, T).
+// Recognition steps for one candidate T, given the already-recovered KEM shared
+// secret (kem_decaps is T-independent, so callers trying several T do it once).
+std::optional<PqOwnedOutput> tryOwnedWithT(const KemShared& ss,
+                                           const PqScanKeys& keys,
+                                           const Hash256& inputsHash,
+                                           const PqScanOutput& out,
+                                           uint64_t subaddrIndexT) {
+  // 1. Per-output context (binds inputs_hash, kem_ct, output_index, T).
   Hash256 oc = outContext(inputsHash, out.kemCt, out.outputIndex, subaddrIndexT);
 
-  // 3. Decrypt rho||T. aad = out_context || LE64(amount) — binds the on-chain
+  // 2. Decrypt rho||T. aad = out_context || LE64(amount) — binds the on-chain
   //    amount, so a tampered amount fails here.
   Hash256 aeadKey = deriveAeadKey(ss, oc);  // Hash256 == AeadKey
   AeadNonce nonce{};                        // 12 zero bytes
@@ -65,7 +65,7 @@ std::optional<PqOwnedOutput> scanPqOutput(const PqScanKeys& keys,
     return std::nullopt;
   }
 
-  // 4. Final ownership gate: recompute spend_commit with OUR long-term spend
+  // 3. Final ownership gate: recompute spend_commit with OUR long-term spend
   //    public key. A garbage output that decrypts under our key but binds a
   //    different spend key is discarded here.
   if (spendCommit(keys.spendPub, rho) != out.spendCommit) {
@@ -79,6 +79,32 @@ std::optional<PqOwnedOutput> scanPqOutput(const PqScanKeys& keys,
   owned.rho = rho;
   owned.outContext = oc;
   return owned;
+}
+
+}  // namespace
+
+std::optional<PqOwnedOutput> scanPqOutput(const PqScanKeys& keys,
+                                          const Hash256& inputsHash,
+                                          const PqScanOutput& out,
+                                          uint64_t subaddrIndexT) {
+  // Recover the shared secret. FIPS 203 decaps never errors; on a non-owned
+  // or malformed ciphertext it returns a pseudorandom secret, so the AEAD
+  // tag inside tryOwnedWithT is the real ownership filter.
+  KemShared ss = kem_decaps(keys.viewSk, out.kemCt);
+  return tryOwnedWithT(ss, keys, inputsHash, out, subaddrIndexT);
+}
+
+std::optional<PqOwnedOutput> scanPqOutputTWindow(const PqScanKeys& keys,
+                                                 const Hash256& inputsHash,
+                                                 const PqScanOutput& out,
+                                                 uint64_t maxT) {
+  KemShared ss = kem_decaps(keys.viewSk, out.kemCt);
+  for (uint64_t t = 0; t < maxT; ++t) {
+    if (auto owned = tryOwnedWithT(ss, keys, inputsHash, out, t)) {
+      return owned;
+    }
+  }
+  return std::nullopt;
 }
 
 std::vector<PqOwnedOutput> scanPqOutputs(const PqScanKeys& keys,

@@ -31,6 +31,7 @@
 #pragma once
 
 #include <list>
+#include <map>
 #include <vector>
 #include <unordered_map>
 #include <memory>
@@ -114,6 +115,11 @@ public:
   PqSendResult sendPqTransfer(const std::vector<PqSendOutput>& recipients,
                               uint64_t fee = 0, uint64_t unlockHeight = 0,
                               const std::vector<uint8_t>& extra = {});
+
+  // Net amount of one transaction split by subaddress index T (SingleKeyIndex
+  // attribution; both 0 and PQ_PRIMARY_DEPOSIT mean the primary address). Empty
+  // map if the tx is unknown. Display-only: T routes attribution, not funds.
+  std::map<uint32_t, int64_t> getTransactionSubaddressAmounts(TransactionId transactionId);
 
   virtual size_t getTransactionCount() override;
   virtual size_t getTransferCount() override;

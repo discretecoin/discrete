@@ -56,7 +56,14 @@ enum WalletErrorCodes {
   BAD_TRANSACTION_EXTRA,
   INSUFFICIENT_FUNDS,
   AMOUNT_TOO_LARGE_FOR_ONE_TRANSACTION,
-  ACCOUNT_NOT_REGISTERED
+  ACCOUNT_NOT_REGISTERED,
+  // Cross-format wallet-file detection: the two wallet products keep distinct,
+  // deliberately incompatible file formats (single-identity simplewallet file
+  // vs. multi-address greenwallet/walletd container). These codes replace the
+  // misleading generic failures ("wrong password") when a file of the other
+  // format is opened.
+  CONTAINER_WALLET_FILE,
+  SIMPLE_WALLET_FILE
 };
 
 // custom category:
@@ -106,6 +113,8 @@ public:
     case AMOUNT_TOO_LARGE_FOR_ONE_TRANSACTION:
                                         return "Amount is too large to send in one transaction (too many inputs); send a smaller amount or consolidate your outputs first";
     case ACCOUNT_NOT_REGISTERED:        return "The account is not registered yet; run registerAccount and wait for it to confirm";
+    case CONTAINER_WALLET_FILE:         return "This file is a greenwallet/walletd wallet container; open it with greenwallet or walletd, or restore the address in simplewallet from its mnemonic seed";
+    case SIMPLE_WALLET_FILE:            return "This file is a simplewallet wallet file; open it with simplewallet, or restore it in greenwallet/walletd from its mnemonic seed";
     default:                            return "Unknown error";
     }
   }

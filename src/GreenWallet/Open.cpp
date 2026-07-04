@@ -281,6 +281,14 @@ std::shared_ptr<WalletInfo> openWallet(CryptoNote::WalletGreen &wallet,
 
                     return nullptr;
                 }
+                case CryptoNote::error::SIMPLE_WALLET_FILE:
+                {
+                    std::cout << std::endl
+                              << WarningMsg(e.code().message())
+                              << std::endl << std::endl;
+
+                    return nullptr;
+                }
             }
 
             if (handled)

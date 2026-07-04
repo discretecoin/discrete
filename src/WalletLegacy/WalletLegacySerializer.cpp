@@ -34,6 +34,24 @@
 
 using namespace Common;
 
+namespace {
+
+// A simplewallet file starts with its varint serialization version (1 or 2); a
+// greenwallet/walletd container starts with the ContainerStoragePrefix version
+// byte (6 was the first container format, 9 is current — see WalletIndices.h).
+// Peek at the first byte to refuse a container with a pointed error instead of
+// decrypting garbage and reporting a wrong password.
+const int FIRST_CONTAINER_FORMAT_VERSION = 6;
+
+void throwIfContainerFile(std::istream& stream) {
+  const int first = stream.peek();
+  if (first != std::char_traits<char>::eof() && first >= FIRST_CONTAINER_FORMAT_VERSION) {
+    throw std::system_error(make_error_code(CryptoNote::error::CONTAINER_WALLET_FILE));
+  }
+}
+
+} // anonymous namespace
+
 namespace CryptoNote {
 
 uint32_t WALLET_LEGACY_SERIALIZATION_VERSION = 2;
@@ -107,6 +125,8 @@ Crypto::chacha8_iv WalletLegacySerializer::encrypt(const std::string& plain, con
 
 
 void WalletLegacySerializer::deserialize(std::istream& stream, const std::string& password, std::string& cache) {
+  throwIfContainerFile(stream);
+
   StdInputStream stdStream(stream);
   CryptoNote::BinaryInputStreamSerializer serializerEncrypted(stdStream);
 
