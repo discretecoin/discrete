@@ -93,6 +93,53 @@ production.
   challenges, weak per-round soundness with admittedly untuned rejection
   rules). Use the paper's challenge distribution.
 
+### Design decision: denomination bundles over an integrated range proof (2026-07-05)
+
+The BTX/SMILE amount layer was evaluated as an alternative to denomination
+bundles: amounts encoded as 32 base-4 digits in the NTT slot constants
+(exact 64-bit values), with digit constraints and a carry polynomial folded
+into the single SMILE proof. **Verdict: keep denomination bundles.**
+
+- **No carry surface.** The base-4 encoding needs a carry polynomial to lift
+  digit-wise equality mod q to integer equality, and that exact component is
+  where BTX's audit trouble concentrated (the C1 inflation-forge claim; the
+  mandatory carry-validity checks retrofitted in their wire v3, without
+  which a forger absorbs the fee). The CRT-large-Q route deletes the class:
+  balance is one zero-opening, and per-slot membership in D bounds every
+  committed value. The soundness story fits on a page.
+- **Prover stays wallet-friendly.** Denomination membership runs over
+  |D| ≈ 8–16 per slot. BTX's folded amount machinery lives inside a proof
+  that took 10–22 s to build at ring 32 — prover cost is why their full
+  anonymity-set configuration never shipped.
+- **Zero migration.** The slot encoding requires X^d+1 to split into
+  degree-4 factors (their d=128, q=2^32−959). The groundwork ring (d=256,
+  48-bit q, fully splitting) is exactly the incompatible shape their own
+  spec §3.1 rules out. Adopting it means a new prime search, new NTT, and
+  redone security estimation; denominations build on the module that is
+  already green.
+- **Matches the chain.** The plain-amount tier already decomposes every
+  value through the 64-denomination table; Phase 2 keeps that model and
+  hides which denominations. The SMILE encoding would replace the amount
+  model entirely.
+- **Comparable size anyway.** Their measured 1x2 proof is 51 KB (including
+  ring-32 membership); the denomination estimate is 45–65 KB per 1-in/2-out
+  with no size knobs pulled yet. Bimodal masking, t0 compression, and
+  entropy coding apply to both schemes equally.
+
+**Accepted cost (state in any spec/whitepaper):** quantization. An amount
+needing more nonzero digits than K slots must split across outputs, so
+output count can correlate with amount complexity — a mild structural leak
+the SMILE encoding does not have. Uniform zero-padded K slots hide digit
+count within an output; a fixed output-count policy or padding outputs
+mitigate the rest.
+
+**Upgrade path if the expressiveness wall is ever hit:** base-β digit
+encoding done paper-faithfully — with the mandatory carry-validity checks
+BTX learned about in production — priced honestly as a ring-parameter
+migration. The piece worth taking from their amount layer regardless is the
+amortization architecture (one commitment and one masked opening shared
+across the K slot proofs), which is the planned aggregate bundle proof.
+
 ### Worth borrowing for the later untraceability fork
 
 Recorded here as reference for the unlinkability stage, which remains out of
