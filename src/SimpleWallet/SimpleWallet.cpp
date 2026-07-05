@@ -274,7 +274,7 @@ std::string tryToOpenWalletOrLoadKeysOrThrow(LoggerRef& logger, std::unique_ptr<
 
     walletFile.close();
     if (initError) {
-      throw std::runtime_error("can't load wallet file '" + walletFileName + "', check password");
+      throw std::runtime_error("can't load wallet file '" + walletFileName + "': " + initError.message());
     } else { //new wallet ok
       return walletFileName;
     }
@@ -311,7 +311,27 @@ void printListTransfersHeader(LoggerRef& logger) {
   logger(INFO) << std::string(header.size(), '-');
 }
 
-void printListTransfersItem(LoggerRef& logger, const WalletLegacyTransaction& txInfo, IWalletLegacy& wallet, const Currency& currency) {
+// Attribution lines for amounts routed to a subaddress index T > 0 of this
+// wallet's identity (H-I-T-C deposits). T routes attribution only; the funds
+// belong to the wallet's single key pair either way.
+void printSubaddressAmounts(LoggerRef& logger, const std::string& rowColor,
+                            IWalletLegacy& wallet, CryptoNote::TransactionId transactionId,
+                            const Currency& currency) {
+  auto* legacy = dynamic_cast<CryptoNote::WalletLegacy*>(&wallet);
+  if (legacy == nullptr) {
+    return;
+  }
+  for (const auto& bucket : legacy->getTransactionSubaddressAmounts(transactionId)) {
+    if (bucket.first == 0 || bucket.first == CryptoNote::PQ_PRIMARY_DEPOSIT || bucket.second <= 0) {
+      continue;  // primary-address amounts are already the row's total
+    }
+    logger(INFO, rowColor) << "received to subaddress " << bucket.first << ": "
+                           << currency.formatAmount(bucket.second);
+  }
+}
+
+void printListTransfersItem(LoggerRef& logger, const WalletLegacyTransaction& txInfo, IWalletLegacy& wallet, const Currency& currency,
+                            CryptoNote::TransactionId transactionId) {
   std::vector<uint8_t> extraVec = Common::asBinaryArray(txInfo.extra);
 
   Crypto::Hash paymentId;
@@ -334,6 +354,10 @@ void printListTransfersItem(LoggerRef& logger, const WalletLegacyTransaction& tx
 
   if (!paymentIdStr.empty()) {
     logger(INFO, rowColor) << "payment ID: " << paymentIdStr;
+  }
+
+  if (txInfo.totalAmount > 0) {
+    printSubaddressAmounts(logger, rowColor, wallet, transactionId, currency);
   }
 
   if (txInfo.totalAmount < 0) {
@@ -1588,6 +1612,7 @@ void simple_wallet::externalTransactionCreated(CryptoNote::TransactionId transac
     logger(INFO, GREEN) <<
       logPrefix.str() << " transaction " << Common::podToHex(txInfo.hash) <<
       ", received " << m_currency.formatAmount(txInfo.totalAmount);
+    printSubaddressAmounts(logger, GREEN, *m_wallet, transactionId, m_currency);
   } else {
     logger(INFO, MAGENTA) <<
       logPrefix.str() << " transaction " << Common::podToHex(txInfo.hash) <<
@@ -1746,7 +1771,7 @@ bool simple_wallet::list_transfers(const std::vector<std::string>& args) {
       haveTransfers = true;
     }
 
-    printListTransfersItem(logger, txInfo, *m_wallet, m_currency);
+    printListTransfersItem(logger, txInfo, *m_wallet, m_currency, transactionNumber);
   }
 
   if (!haveTransfers) {

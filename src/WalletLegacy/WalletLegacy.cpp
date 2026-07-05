@@ -69,6 +69,11 @@ namespace {
 
 const uint64_t ACCOUNT_CREATE_TIME_ACCURACY = 24 * 60 * 60;
 
+// How many subaddress indices T this single-identity wallet tries when scanning
+// (see initSync). Payments to H-I-T-C addresses with T >= this window are not
+// recognized; raising it costs one SHA3 + AEAD per extra T per foreign output.
+const uint32_t SUBADDRESS_SCAN_WINDOW = 64;
+
 // Header on the wallet cache blob once it carries PQ sections. Absent on legacy
 // (pre-PQ) caches, which were a bare transfers-sync blob.
 constexpr char PQ_CACHE_MAGIC[] = {'K', 'P', 'Q', 'C', 'A', 'C', 'H', '1'};
@@ -478,6 +483,18 @@ void WalletLegacy::initSync() {
     m_blockchainSync.addConsumer(m_pqConsumer.get());
   }
 
+  // Subaddress deciphering: the sender bakes the routing index T into the AEAD
+  // key, so the scanner must enumerate candidate indices — with no window
+  // configured only T=0 is tried and payments to H-I-T-C variants of this
+  // identity would be invisible. This wallet holds one key pair, so the
+  // SingleKeyIndex scheme applies: T attributes, spend authority stays with the
+  // primary key. The window is a scan cost/coverage trade-off (one SHA3 + AEAD
+  // per T per foreign output).
+  if (m_pqConsumer) {
+    m_pqConsumer->state().setDepositConfig(PqDepositScheme::SingleKeyIndex,
+                                           SUBADDRESS_SCAN_WINDOW);
+  }
+
   m_state = INITIALIZED;
 
   m_blockchainSync.addObserver(this);
@@ -816,6 +833,9 @@ PqSendResult WalletLegacy::sendPqTransfer(const std::vector<PqSendOutput>& recip
   req.explicitFee = fee;
   req.unlockHeight = unlockHeight;
   req.extra = extra;
+  // Single key pair: outputs attributed to a subaddress index T (see initSync)
+  // are still authorized by the primary spend key.
+  req.scheme = PqDepositScheme::SingleKeyIndex;
   PqSendResult result = buildPqSend(pqSpendableInputs(), pq, req);
 
   std::promise<std::error_code> promise;
@@ -894,6 +914,20 @@ bool WalletLegacy::getTransfer(TransferId /*transferId*/, WalletLegacyTransfer& 
   throwIfNotInitialised();
 
   return false;  // no per-destination transfer detail on the PQ ledger
+}
+
+std::map<uint32_t, int64_t> WalletLegacy::getTransactionSubaddressAmounts(TransactionId transactionId) {
+  std::unique_lock<std::mutex> lock(m_cacheMutex);
+  throwIfNotInitialised();
+
+  if (!m_pqConsumer) {
+    return {};
+  }
+  const auto& hist = m_pqConsumer->state().history();
+  if (transactionId >= hist.size()) {
+    return {};
+  }
+  return m_pqConsumer->state().transfersByDeposit(hist[transactionId].txid);
 }
 
 // Classical per-output enumeration is gone; PQ outputs live in the WalletLedger

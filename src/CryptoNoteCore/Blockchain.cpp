@@ -1051,9 +1051,13 @@ bool Blockchain::getBlockLongHash(Crypto::cn_context& context, const Block& b, C
 
       bool found_alt = false; // reset for each j
 
-      // Alt-chain lookup first
+      // Alt-chain lookup first. Use find() rather than at(): a missing entry
+      // must fail the PoW computation, not throw std::out_of_range out of the
+      // hashing path (which the alt-block verifier does not catch).
       for (const auto& ch_ent : alt_chain) {
-        const Block& ab = m_alternative_chains.at(ch_ent).bl;
+        auto altIt = m_alternative_chains.find(ch_ent);
+        if (altIt == m_alternative_chains.end()) return false;
+        const Block& ab = altIt->second.bl;
         uint32_t ah = boost::get<BaseInput>(ab.baseTransaction.inputs[0]).blockIndex;
         if (ah == height_j) {
           BinaryArray ba;
@@ -2140,7 +2144,7 @@ bool Blockchain::checkPqInputs(const Transaction& tx, uint32_t* pmax_used_block_
 
   std::vector<Crypto::Hash> nullifiers;
   std::string err;
-  if (!checkPqTransactionInputs(tx, resolved, parameters::MIN_PQ_FEE_PER_4000_BYTES, &nullifiers, &err)) {
+  if (!checkPqTransactionInputs(tx, resolved, parameters::MINIMUM_FEE, &nullifiers, &err)) {
     logger(INFO, BRIGHT_WHITE) << "PQ input check failed (" << err << ") for tx " << getObjectHash(tx);
     return false;
   }

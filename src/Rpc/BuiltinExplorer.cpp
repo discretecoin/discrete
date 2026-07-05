@@ -31,11 +31,13 @@
 #include "BlockchainExplorerData.h"
 #include "Common/StringTools.h"
 #include "AccountNumber.h"
+#include "PqAddress.h"
 #include "CryptoNoteCore/Core.h"
 #include "CryptoNoteCore/CryptoNoteBasicImpl.h"
 #include "CryptoNoteCore/CryptoNoteTools.h"
 #include "CryptoNoteCore/CryptoNoteFormatUtils.h"
 #include "CryptoNoteCore/TransactionExtra.h"
+#include "PqTxType.h"
 #include "CryptoNoteCore/TransactionUtils.h"
 #include "CryptoNoteProtocol/ICryptoNoteProtocolQuery.h"
 #include "P2p/NetNode.h"
@@ -51,13 +53,51 @@ namespace {
 
 // Common page chrome — opening <html>…<body> with the SVG logo and the
 // node version, plus the closing tags. Held here because every explorer
-// page renders them; previously lived at the top of RpcServer.cpp.
+// page renders them. Palette matches the discrete-cash website: dark
+// background, whitish text, mint (#5FE29F) accent.
 const std::string index_start =
-R"(<!DOCTYPE html><html><head><meta http-equiv='refresh' content='60'/><style>* { font-family: monospace; } .wrap { word-break: break-all; word-wrap: break-word; } table.counter tbody tr td:first-child { text-align: right; }</style></head><body><svg xmlns="http://www.w3.org/2000/svg" xml:space="preserve" version="1.1" style="vertical-align:middle; padding-right: 10px; shape-rendering:geometricPrecision; text-rendering:geometricPrecision; image-rendering:optimizeQuality; fill-rule:evenodd; clip-rule:evenodd" viewBox="0 0 2500000 2500000" xmlns:xlink="http://www.w3.org/1999/xlink" width="64px" height="64px">
-<g><circle fill="#0AACFC" cx="1250000" cy="1250000" r="1214062" /><path fill="#FFED00" d="M1251219 1162750c18009,-3203 34019,-10006 48025,-20412 14009,-10407 27215,-28016 39622,-52029l275750 -538290c10803,-18010 24012,-32419 39218,-43625 15210,-10806 33219,-16410 53232,-16410l174893 0 -343384 633144c-15209,26016 -32419,47228 -51628,63635 -19613,16409 -41225,28815 -64838,37221 36822,9604 67638,25213 92854,47225 24812,21610 48425,52025 70437,91247l330578 668363 -192503 0c-38822,0 -70041,-21213 -93653,-63235l-270947 -566303c-14006,-25215 -29216,-43225 -45622,-54034 -16409,-10803 -37222,-17206 -62034,-18809l0 287359 -151281 0 0 -288559 -111263 0 0 703581 -213716 0 0 -1540835 213716 0 0 673166 111263 0 0 -332981 151281 0 0 330581z"/></g></svg>
+R"(<!DOCTYPE html><html><head><meta http-equiv='refresh' content='60'/>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 600 600'><g fill='none' stroke='%235FE29F' stroke-width='40' stroke-miterlimit='10'><circle cx='297.4' cy='300.4' r='264.8'/><line x1='300.4' y1='35.2' x2='300.4' y2='564.8'/><line x1='211.1' y1='50.4' x2='211.1' y2='550.8'/><line x1='124' y1='100.2' x2='124' y2='500.6'/></g></svg>"/>
+<style>
+:root { color-scheme: dark; }
+* { font-family: monospace; }
+body { background: #0D1115; color: #AEB8BF; }
+h1, h2, h3, b, th { color: #E4E9EC; }
+a { color: #5FE29F; text-decoration: none; }
+a:hover { text-decoration: underline; }
+::selection { background: #5FE29F; color: #08110D; }
+.wrap { word-break: break-all; word-wrap: break-word; }
+table { border-collapse: collapse; }
+th, td { text-align: left; vertical-align: top; border-bottom: 1px solid rgba(154,167,178,.25); }
+table.counter tbody tr td:first-child { text-align: right; }
+details summary { cursor: pointer; color: #9AA7B2; }
+details p { margin: 4px 0; }
+hr { border: none; border-top: 1px solid rgba(154,167,178,.25); }
+input[type=text] { background: #10171B; color: #E4E9EC; border: 1px solid rgba(154,167,178,.32); border-radius: 6px; padding: 6px 10px; }
+input[type=submit] { background: #5FE29F; color: #08110D; border: none; border-radius: 6px; padding: 6px 14px; cursor: pointer; }
+</style></head><body>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" width="48" height="48" style="vertical-align:middle; padding-right: 10px;">
+<g fill="none" stroke="#5FE29F" stroke-width="40" stroke-miterlimit="10"><circle cx="297.4" cy="300.4" r="264.8"/><line x1="300.4" y1="35.2" x2="300.4" y2="564.8"/><line x1="211.1" y1="50.4" x2="211.1" y2="550.8"/><line x1="124" y1="100.2" x2="124" y2="500.6"/></g></svg>
 )" + std::string(CRYPTONOTE_NAME) + " node v. " PROJECT_VERSION_LONG R"( &bull; )";
 
 const std::string index_finish = " </body></html>";
+
+// Collapsible hex dump for large binary fields (ML-DSA/ML-KEM keys and
+// signatures run to kilobytes). Closed it reads "<summary> (N bytes)"; open it
+// shows the full hex.
+std::string foldedHex(const std::string& summary, const uint8_t* data, size_t size) {
+  return "<details><summary>" + summary + " (" + std::to_string(size) +
+         " bytes)</summary><p class=\"wrap\">" + Common::toHex(data, size) + "</p></details>";
+}
+
+const char* txTypeName(uint8_t txType) {
+  switch (txType) {
+    case TX_COINBASE: return "coinbase";
+    case TX_PQ:       return "transfer";
+    case TX_FREE_REG: return "account registration";
+    default:          return "unknown";
+  }
+}
 
 } // anonymous namespace
 
@@ -144,10 +184,10 @@ bool BuiltinExplorer::on_get_explorer(const COMMAND_EXPLORER::request& req, COMM
     "</p>\n";
 
   const uint32_t print_blocks_count = 10;
-  uint32_t req_height = std::max<uint32_t>(req.height == 0 ? top_block_index : req.height, print_blocks_count);
-  uint32_t last_height = req_height - print_blocks_count;
-  if (last_height < print_blocks_count)
-      last_height = 0;
+  // Clamp to the actual chain: a fresh chain shorter than one page used to make
+  // the loop below ask for nonexistent heights and 500 the whole page.
+  uint32_t req_height = std::min<uint32_t>(req.height == 0 ? top_block_index : req.height, top_block_index);
+  uint32_t last_height = req_height >= print_blocks_count ? req_height - (print_blocks_count - 1) : 0;
 
   // Search
   body += R"(
@@ -210,7 +250,7 @@ bool BuiltinExplorer::on_get_explorer(const COMMAND_EXPLORER::request& req, COMM
         body += m_core.currency().formatAmount(txd.fee);
         body += "</td>\n    <td>";
         body += std::to_string(txd.blobSize);
-        body += "</td>\n    <td>";
+        body += "</td>\n";
         body += "  </tr>\n";
       }
       body += "</tbody>\n";
@@ -228,7 +268,9 @@ bool BuiltinExplorer::on_get_explorer(const COMMAND_EXPLORER::request& req, COMM
   body += "</thead>\n";
   body += "<tbody>\n";
 
-  for (uint32_t i = req_height; i > last_height; i--) {
+  // Inclusive [last_height, req_height], newest first — the old exclusive lower
+  // bound could never show the genesis block.
+  for (uint32_t i = req_height; ; i--) {
     Crypto::Hash blockHash = m_core.getBlockIdByHeight(i);
     Block blk;
     if (!m_core.getBlockByHash(blockHash, blk)) {
@@ -267,7 +309,7 @@ bool BuiltinExplorer::on_get_explorer(const COMMAND_EXPLORER::request& req, COMM
     body += "</td>\n";
     body += "  </tr>\n";
 
-    if (i == 0)
+    if (i == last_height)
       break;
   }
 
@@ -306,11 +348,14 @@ bool BuiltinExplorer::on_get_explorer(const COMMAND_EXPLORER::request& req, COMM
 }
 
 bool BuiltinExplorer::on_explorer_search(const COMMAND_RPC_EXPLORER_SEARCH::request& req, COMMAND_RPC_EXPLORER_SEARCH::response& res) {
-  // Try as address
+  // Try as address (PQ bech32m for this network, or an H-I-C / H-I-T-C account number)
   {
-    AccountPublicAddress address;
-    uint64_t prefix;
-    if (parseAccountAddressString(prefix, address, req.query)) {
+    PqAddress pq;
+    AccountNumber acct;
+    uint32_t subaddrIndex = 0;
+    if (decodePqAddress(req.query, m_core.currency().isTestnet(), pq) ||
+        AccountNumber::fromStringWithIndex(req.query, acct, subaddrIndex) ||
+        AccountNumber::fromString(req.query, acct)) {
       res.result = "/explorer/address/" + req.query;
       res.status = CORE_RPC_STATUS_OK;
       return true;
@@ -421,40 +466,70 @@ bool BuiltinExplorer::on_get_explorer_block_by_hash(const COMMAND_EXPLORER_GET_B
     }
     body += "    Difficulty: " + std::to_string(blockDifficulty) + "\n";
     body += "  </li>\n";
+
+    // Fetch the block's transactions once: the header shows reward and total
+    // fees, the table below shows per-tx details instead of bare hashes.
+    std::list<Crypto::Hash> missedTxs;
+    std::list<Transaction> blockTxs;
+    if (!blk.transactionHashes.empty()) {
+      std::vector<Crypto::Hash> txHashes(blk.transactionHashes.begin(), blk.transactionHashes.end());
+      m_core.getTransactions(txHashes, blockTxs, missedTxs, true);
+    }
+    uint64_t totalFees = 0;
+    for (const Transaction& tx : blockTxs) {
+      uint64_t fee = 0;
+      if (tx.txType == TX_PQ && m_core.getPqTransactionFee(tx, fee)) {
+        totalFees += fee;
+      }
+    }
+
+    body += "  <li>\n";
+    body += "    Reward: " + m_core.currency().formatAmount(get_outs_money_amount(blk.baseTransaction)) + "\n";
+    body += "  </li>\n";
+    body += "  <li>\n";
+    body += "    Fees: " + m_core.currency().formatAmount(totalFees) + "\n";
+    body += "  </li>\n";
     body += "  <li>\n";
     body += "    Previous block: ";
     body += "<a class=\"wrap\" href=\"/explorer/block/" + Common::podToHex(blk.previousBlockHash) + "\">";
     body += Common::podToHex(blk.previousBlockHash);
     body += "</a>\n";
     body += "  </li>\n";
-    {
-      body += "  <li>\n";
-      body += "    Miner signature: <span class=\"wrap\">" + Common::toHex(blk.signature.data(), blk.signature.size()) + "</span>";
-      body += "  </li>\n";
-    }
+    body += "  <li>\n";
+    body += "    " + foldedHex("Miner signature, ML-DSA-65", blk.signature.data(), blk.signature.size()) + "\n";
+    body += "  </li>\n";
     body += "</ul>";
 
     body += "<h3>Transactions</h3>\n";
 
-    // simple list of tx hashes without details, add coinbase first
-    body += "<ol>\n";
-    body += "  <li>\n";
-    Crypto::Hash coinbaseHash = getObjectHash(blk.baseTransaction);
-    std::string txHashStr = Common::podToHex(coinbaseHash);
-    body += "    <a class=\"wrap\" href=\"/explorer/tx/" + txHashStr + "\">";
-    body += txHashStr;
-    body += "</a>";
-    body += "  </li>\n";
+    body += "<table cellpadding=\"10px\">\n";
+    body += "  <thead>\n";
+    body += "  <tr>\n";
+    body += "    <th>Hash</th><th>Type</th><th>Amount</th><th>Fee</th><th>Size</th>\n";
+    body += "  </tr>\n";
+    body += "</thead>\n";
+    body += "<tbody>\n";
 
-    for (const auto& t : blk.transactionHashes) {
-      body += "  <li>\n";
-      body += "    <a class=\"wrap\" href=\"/explorer/tx/" + Common::podToHex(t) + "\">";
-      body += Common::podToHex(t);
-      body += "    </a>";
-      body += "  </li>\n";
+    auto appendTxRow = [&](const Transaction& tx) {
+      const std::string hashStr = Common::podToHex(getObjectHash(tx));
+      uint64_t fee = 0;
+      const bool paysFee = tx.txType == TX_PQ && m_core.getPqTransactionFee(tx, fee);
+      body += "  <tr>\n";
+      body += "    <td><a class=\"wrap\" href=\"/explorer/tx/" + hashStr + "\">" + hashStr + "</a></td>\n";
+      body += "    <td>" + std::string(txTypeName(tx.txType)) + "</td>\n";
+      body += "    <td>" + m_core.currency().formatAmount(get_outs_money_amount(tx)) + "</td>\n";
+      body += "    <td>" + (paysFee ? m_core.currency().formatAmount(fee) : std::string("&mdash;")) + "</td>\n";
+      body += "    <td>" + std::to_string(getObjectBinarySize(tx)) + "</td>\n";
+      body += "  </tr>\n";
+    };
+
+    appendTxRow(blk.baseTransaction);
+    for (const Transaction& tx : blockTxs) {
+      appendTxRow(tx);
     }
 
-    body += "</ol>\n";
+    body += "</tbody>\n";
+    body += "</table>\n";
 
     body += index_finish;
 
@@ -526,43 +601,60 @@ bool BuiltinExplorer::on_get_explorer_tx_by_hash(const COMMAND_EXPLORER_GET_TRAN
       body += "    Unconfirmed\n";
       body += "  </li>\n";
     }
+    const bool isCoinbase = transactionsDetails.txType == TX_COINBASE;
     body += "  <li>\n";
-    body += "    Sum of outputs: " + m_core.currency().formatAmount(transactionsDetails.totalOutputsAmount) + "\n";
+    body += "    Type: " + std::string(txTypeName(transactionsDetails.txType)) + " (v" + std::to_string(transactionsDetails.version) + ")\n";
     body += "  </li>\n";
     body += "  <li>\n";
-    body += "    Size: " + std::to_string(transactionsDetails.size) + "\n";
+    body += std::string(isCoinbase ? "    Reward: " : "    Sum of outputs: ") + m_core.currency().formatAmount(transactionsDetails.totalOutputsAmount) + "\n";
     body += "  </li>\n";
-    body += "  <li>\n";
-    body += "    Unlock time: " + std::to_string(transactionsDetails.unlockHeight) + "\n";
-    body += "  </li>\n";
-    body += "  <li>\n";
-    body += "    Version: " + std::to_string(transactionsDetails.version) + "\n";
-    body += "  </li>\n";
-    if (transactionsDetails.version >= TRANSACTION_VERSION_1) {
+    if (transactionsDetails.txType == TX_PQ) {
       body += "  <li>\n";
-      body += "    TX type: " + std::to_string(transactionsDetails.txType) + "\n";
+      body += "    Fee: " + m_core.currency().formatAmount(transactionsDetails.fee) + "\n";
+      body += "  </li>\n";
+    } else if (transactionsDetails.txType == TX_FREE_REG) {
+      body += "  <li>\n";
+      body += "    Fee: none (priced by anti-spam proof-of-work)\n";
       body += "  </li>\n";
     }
     body += "  <li>\n";
-    body += "    Public key: <span class=\"wrap\">" + Common::podToHex(transactionsDetails.extra.publicKey) + "</span>\n";
+    body += "    Size: " + std::to_string(transactionsDetails.size) + " bytes\n";
     body += "  </li>\n";
+    if (transactionsDetails.unlockHeight != 0) {
+      body += "  <li>\n";
+      body += "    Unlocks at height: " + std::to_string(transactionsDetails.unlockHeight) + "\n";
+      body += "  </li>\n";
+    }
     if (transactionsDetails.hasPaymentId) {
       body += "  <li>\n";
       body += "    Payment ID: <span class=\"wrap\">" + Common::podToHex(transactionsDetails.paymentId) + "</span>\n";
       body += "  </li>\n";
+    }
+    if (!transactionsDetails.extra.raw.empty()) {
+      body += "  <li>\n";
+      body += "    " + foldedHex("Extra", transactionsDetails.extra.raw.data(), transactionsDetails.extra.raw.size()) + "\n";
+      body += "  </li>\n";
+    }
+    if (isCoinbase) {
+      std::array<uint8_t, TX_EXTRA_PQ_SPEND_PUBKEY_SIZE> minerSpendPub;
+      if (getPqMinerSpendPubFromExtra(txs.back().extra, minerSpendPub)) {
+        body += "  <li>\n";
+        body += "    " + foldedHex("Miner spend public key, ML-DSA-65", minerSpendPub.data(), minerSpendPub.size()) + "\n";
+        body += "  </li>\n";
+      }
     }
     // Check for account registration in tx extra
     {
       TransactionExtraPqAccountRegistration reg;
       if (getPqAccountRegistrationFromExtra(txs.back().extra, reg)) {
         body += "  <li>\n";
-        body += "    Account registration\n";
+        body += "    Registers account identity: <span class=\"wrap\">" + Common::podToHex(getPqAccountIdentityHash(reg)) + "</span>\n";
         body += "  </li>\n";
         body += "  <li>\n";
-        body += "    View public key: <span class=\"wrap\">" + Common::toHex(reg.viewPub.data(), reg.viewPub.size()) + "</span>\n";
+        body += "    " + foldedHex("View public key, ML-KEM-768", reg.viewPub.data(), reg.viewPub.size()) + "\n";
         body += "  </li>\n";
         body += "  <li>\n";
-        body += "    Spend public key: <span class=\"wrap\">" + Common::toHex(reg.spendPub.data(), reg.spendPub.size()) + "</span>\n";
+        body += "    " + foldedHex("Spend public key, ML-DSA-65", reg.spendPub.data(), reg.spendPub.size()) + "\n";
         body += "  </li>\n";
 
         if (transactionsDetails.inBlockchain) {
@@ -589,7 +681,7 @@ bool BuiltinExplorer::on_get_explorer_tx_by_hash(const COMMAND_EXPLORER_GET_TRAN
     body += "<table class=\"counter\" cellpadding=\"10px\">\n";
     body += "  <thead>\n";
     body += "  <tr>\n";
-    body += "    <th>No</th><th>Amount</th><th>Key image</th><th>Output indexes (references)</th>\n";
+    body += "    <th>No</th><th>Amount</th><th>Nullifier</th><th>Spent output</th>\n";
     body += "  </tr>\n";
     body += "</thead>\n";
     body += "<tbody>\n";
@@ -627,8 +719,7 @@ bool BuiltinExplorer::on_get_explorer_tx_by_hash(const COMMAND_EXPLORER_GET_TRAN
         body += "</td>\n    <td>";
         body += "    <a href=\"/explorer/tx/" + Common::podToHex(p.output.transactionHash) + "\">";
         body += "output No " + std::to_string(p.output.number) + "</a>";
-        body += "<br/>auth_pub bytes: " + std::to_string(p.input.authPub.size());
-        body += "<br/>signature bytes: " + std::to_string(CryptoNote::PQ_SIGNATURE_SIZE);
+        body += foldedHex("Authorization public key, ML-DSA-65", p.input.authPub.data(), p.input.authPub.size());
         body += "    </td>\n";
       }
       body += "  </tr>\n";
@@ -641,7 +732,7 @@ bool BuiltinExplorer::on_get_explorer_tx_by_hash(const COMMAND_EXPLORER_GET_TRAN
     body += "<table class=\"counter\" cellpadding=\"10px\">\n";
     body += "  <thead>\n";
     body += "  <tr>\n";
-    body += "    <th>No</th><th>Amount</th><th>Output target</th><th>Global index</th>\n";
+    body += "    <th>No</th><th>Amount</th><th>Output target</th><th>Spend lock</th>\n";
     body += "  </tr>\n";
     body += "</thead>\n";
     body += "<tbody>\n";
@@ -657,15 +748,15 @@ bool BuiltinExplorer::on_get_explorer_tx_by_hash(const COMMAND_EXPLORER_GET_TRAN
         body += Common::podToHex(ko);
       } else if (o.output.target.type() == typeid(PqOutput)) {
         PqOutput po = boost::get<PqOutput>(o.output.target);
-        body += "spend_commit: " + Common::podToHex(po.spendCommit);
-        body += "<br/>kem_ct bytes: " + std::to_string(po.kemCt.size());
-        body += "<br/>enc_payload bytes: " + std::to_string(po.encPayload.size());
+        body += "spend commit: " + Common::podToHex(po.spendCommit);
+        body += foldedHex("Key encapsulation, ML-KEM-768", po.kemCt.data(), po.kemCt.size());
+        body += foldedHex("Encrypted payload", po.encPayload.data(), po.encPayload.size());
       }
       body += "</td>\n    <td>";
-      if (o.output.target.type() == typeid(KeyOutput)) {
-        body += std::to_string(o.globalIndex);
+      if (o.output.unlockHeight != 0) {
+        body += "until height " + std::to_string(o.output.unlockHeight);
       } else {
-        body += "n/a";
+        body += "&mdash;";
       }
       body += "    </td>\n";
       body += "  </tr>\n";
@@ -673,20 +764,17 @@ bool BuiltinExplorer::on_get_explorer_tx_by_hash(const COMMAND_EXPLORER_GET_TRAN
     body += "</tbody>\n";
     body += "</table>\n";
 
-    // no signatures e.g. in coinbase
-    if (!transactionsDetails.signatures.empty()) {
+    // ML-DSA-65 signatures, one per input (none in coinbase and free
+    // registrations).
+    const Transaction& rawTx = txs.back();
+    if (!rawTx.pqSignatures.empty()) {
       body += "<h3>Signatures</h3>\n";
-
+      body += "<p>" + std::to_string(rawTx.pqSignatures.size()) + " ML-DSA-65 signature(s), one per input, "
+           + std::to_string(CryptoNote::PQ_SIGNATURE_SIZE) + " bytes each.</p>\n";
       body += "<ol>\n";
-      for (const auto& s0 : transactionsDetails.signatures) {
+      for (const auto& sig : rawTx.pqSignatures) {
         body += "  <li>\n";
-        body += "    <ol>\n";
-        for (const auto& s1 : s0) {
-          body += "      <li class=\"wrap\">\n";
-          body += "    " + Common::podToHex(s1) + "\n";
-          body += "      </li>\n";
-        }
-        body += "    </ol>\n";
+        body += "    " + foldedHex("Signature", sig.data(), sig.size()) + "\n";
         body += "  </li>\n";
       }
       body += "</ol>\n";
@@ -750,16 +838,18 @@ bool BuiltinExplorer::on_get_explorer_txs_by_payment_id(const COMMAND_EXPLORER_G
 }
 
 bool BuiltinExplorer::on_get_explorer_address(const COMMAND_EXPLORER_GET_ADDRESS::request& req, COMMAND_EXPLORER_GET_ADDRESS::response& res) {
-  AccountPublicAddress address;
-  uint64_t prefix;
-  if (!parseAccountAddressString(prefix, address, req.address)) {
+  // Discrete addresses are PQ: a bech32m address for this network, or an
+  // H-I-C / H-I-T-C account number. Both are self-validating (bech32m checksum /
+  // Luhn check char), so a successful decode means the address is well-formed.
+  PqAddress pq;
+  AccountNumber acct;
+  uint32_t subaddrIndex = 0;
+  const bool isPq = decodePqAddress(req.address, m_core.currency().isTestnet(), pq);
+  const bool isAcct = !isPq && (AccountNumber::fromStringWithIndex(req.address, acct, subaddrIndex) ||
+                                AccountNumber::fromString(req.address, acct));
+  if (!isPq && !isAcct) {
     return false;
   }
-
-  // Address already parsed structurally above; Discrete keys are post-quantum,
-  // so there is no ECC curve membership to check.
-  bool validSpend = true;
-  bool validView = true;
 
   std::string body = index_start + (m_core.currency().isTestnet() ? "testnet" : "mainnet") + "\n<p>";
   body += "<a href=\"/explorer/\">Home</a>";
@@ -770,10 +860,17 @@ bool BuiltinExplorer::on_get_explorer_address(const COMMAND_EXPLORER_GET_ADDRESS
 
   body += "<h3>Validation</h3>\n";
   body += "<ul>\n";
-  body += "  <li>Spend public key: <span class=\"wrap\">" + Common::podToHex(address.spendPublicKey) + "</span>"
-       + (validSpend ? " &#10004;" : " &#10008; <b>INVALID</b>") + "</li>\n";
-  body += "  <li>View public key: <span class=\"wrap\">" + Common::podToHex(address.viewPublicKey) + "</span>"
-       + (validView ? " &#10004;" : " &#10008; <b>INVALID</b>") + "</li>\n";
+  if (isPq) {
+    body += "  <li>Form: post-quantum bech32m address &#10004;</li>\n";
+    body += "  <li>View public key (ML-KEM-768, " + std::to_string(pq.viewPub.size()) + " bytes): <span class=\"wrap\">"
+         + Common::toHex(pq.viewPub.data(), pq.viewPub.size()) + "</span></li>\n";
+    body += "  <li>Spend public key (ML-DSA-65, " + std::to_string(pq.spendPub.size()) + " bytes): <span class=\"wrap\">"
+         + Common::toHex(pq.spendPub.data(), pq.spendPub.size()) + "</span></li>\n";
+  } else {
+    body += "  <li>Form: registered account number (keys are stored on-chain) &#10004;</li>\n";
+    body += "  <li>Registration block height: " + std::to_string(acct.blockHeight) + "</li>\n";
+    body += "  <li>Transaction index: " + std::to_string(acct.txIndex) + "</li>\n";
+  }
   body += "</ul>\n";
 
   body += index_finish;

@@ -116,6 +116,7 @@ public:
 
   size_t freeRegPerBlock() const { return m_freeRegPerBlock; }
   uint64_t freeRegPowTarget() const { return m_freeRegPowTarget; }
+  size_t freeRegPoolLimit() const { return m_freeRegPoolLimit; }
 
   bool isTestnet() const { return m_testnet; }
 
@@ -219,6 +220,7 @@ private:
 
   size_t m_freeRegPerBlock;
   uint64_t m_freeRegPowTarget;
+  size_t m_freeRegPoolLimit;
 
   bool m_testnet;
 
@@ -304,6 +306,7 @@ public:
   
   CurrencyBuilder& freeRegPerBlock(size_t val) { m_currency.m_freeRegPerBlock = val; return *this; }
   CurrencyBuilder& freeRegPowTarget(uint64_t val) { m_currency.m_freeRegPowTarget = val; return *this; }
+  CurrencyBuilder& freeRegPoolLimit(size_t val) { m_currency.m_freeRegPoolLimit = val; return *this; }
 
   CurrencyBuilder& testnet(bool val) { m_currency.m_testnet = val; return *this; }
 

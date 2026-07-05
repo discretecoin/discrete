@@ -28,13 +28,13 @@
 
 int main(int argc, char **argv)
 {
-    /* Fix wallet not responding when enter cyrillic (non-latin) characters
-       by setting operating system default locale.
-       Set cyrillic locale on Windows explicitly - this is Karbovanets after all. */
+    /* Fix wallet not responding when entering non-latin characters by setting
+       the operating system default locale, and use UTF-8 for the Windows
+       console so any script renders correctly. */
     setlocale(LC_CTYPE, "");
 #ifdef WIN32
-    SetConsoleCP(1251);
-    SetConsoleOutputCP(1251);
+    SetConsoleCP(CP_UTF8);
+    SetConsoleOutputCP(CP_UTF8);
 #endif
     /* On ctrl+c the program seems to throw "zedwallet.exe has stopped
        working" when calling exit(0)... I'm not sure why, this is a bit of

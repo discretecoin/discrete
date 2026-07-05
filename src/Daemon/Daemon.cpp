@@ -58,8 +58,6 @@
 #include <crtdbg.h>
 #endif
 
-#define CHECK_FOR_UPDATE_ENDPOINT "/repos/seredat/karbowanec/tags"
-
 using Common::JsonValue;
 using namespace CryptoNote;
 using namespace Logging;

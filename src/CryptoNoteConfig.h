@@ -31,7 +31,6 @@ const uint64_t CRYPTONOTE_MAX_BLOCK_NUMBER                   = 500000000;
 const size_t   CRYPTONOTE_MAX_BLOCK_BLOB_SIZE                = 500000000;
 const size_t   CRYPTONOTE_MAX_TX_SIZE                        = 1000000000;
 const uint64_t CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX       = 0x3445db; // disc
-const uint64_t CRYPTONOTE_TX_PROOF_BASE58_PREFIX             = 3576968;
 const uint64_t CRYPTONOTE_KEYS_SIGNATURE_BASE58_PREFIX       = 176103705;
 const size_t   CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW          = 10;
 const size_t   CRYPTONOTE_TX_SPENDABLE_AGE                   = 3;
@@ -40,9 +39,31 @@ const uint64_t CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT_V1         = DIFFICULTY_TARGET
 const size_t   BLOCKCHAIN_TIMESTAMP_CHECK_WINDOW             = 60;
 const size_t   BLOCKCHAIN_TIMESTAMP_CHECK_WINDOW_V1          = 11;
 
-// EMISSION_CURVE_TARGET - asymptotic supply ceiling; emission approaches but never reaches this
-const uint64_t EMISSION_CURVE_TARGET                         = UINT64_C(2100000000); // 21,000,000.00 XDS
+// Monetary policy — Discrete has NO fixed supply cap.
+//
+// Per-block emission is max(exponential, tail), computed in
+// Currency::calculateReward():
+//   * Exponential phase: (EMISSION_CURVE_TARGET - alreadyGeneratedCoins) >>
+//     EMISSION_SPEED_FACTOR. This decays toward zero as circulating supply
+//     approaches EMISSION_CURVE_TARGET, front-loading issuance over the early
+//     years.
+//   * Perpetual tail (Milton Friedman's k-percent rule): a fixed 2% of the
+//     circulating supply per YEAR, spread evenly over the blocks in a year.
+//     This term never stops.
+//
+// EMISSION_CURVE_TARGET is therefore NOT a supply ceiling — it only shapes the
+// initial exponential curve. Because the 2% tail is a percentage of an
+// ever-growing base, total supply grows without bound at a long-run rate of
+// ~2% per annum (the exponential term dominates early; once 2%/yr exceeds the
+// decaying exponential reward, the tail takes over). Every atom minted is
+// validated exactly against calculateReward() by validate_miner_transaction(),
+// so this inflation is fully deterministic and publicly auditable — a
+// deliberate policy choice, NOT uncapped or hidden emission. See docs/EMISSION.md.
+const uint64_t EMISSION_CURVE_TARGET                         = UINT64_C(2100000000); // shapes the initial curve (~21,000,000.00 XDS issued before the 2%/yr tail dominates)
 const uint64_t COIN                                          = UINT64_C(100);
+// Vestigial: floor of the EXPONENTIAL term once alreadyGeneratedCoins reaches
+// EMISSION_CURVE_TARGET. In practice the 2% Friedman tail (calculateReward())
+// exceeds it long before that point, so it is never the effective reward.
 const uint64_t TAIL_EMISSION_REWARD                          = UINT64_C(100);
 const size_t CRYPTONOTE_COIN_VERSION                         = 1;
 const unsigned EMISSION_SPEED_FACTOR                         = 18;
@@ -63,6 +84,31 @@ const uint64_t DEFAULT_DUST_THRESHOLD                        = UINT64_C(1);
 const uint64_t MAX_EXTRA_SIZE                                = 4096;
 const uint64_t MAX_EXTRA_SIZE_PQ                             = 4096;
 
+// Flat-fee model. A transaction pays MINIMUM_FEE (0.01 XDS) regardless of its
+// serialized size: PQ signatures make every tx intrinsically large, so size is
+// not a user choice and charging for it is bad UX. The only user-controllable
+// bloat is tx_extra, so bytes beyond TX_EXTRA_FEE_FREE_BYTES are surcharged at
+// MINIMUM_FEE per TX_EXTRA_FEE_CHUNK_BYTES started (ceiling division). The free
+// allowance is sized so every protocol-required extra fits without surcharge —
+// in particular a paid account-number registration, whose tag is
+// 1 + 1184 (ML-KEM view pub) + 1952 (ML-DSA spend pub) = 3137 bytes, plus a
+// payment-id nonce (~35 bytes) of headroom. The max 4096-byte extra costs
+// MINIMUM_FEE + 9 atoms = 0.10 XDS.
+const uint64_t TX_EXTRA_FEE_FREE_BYTES                       = 3200;
+const uint64_t TX_EXTRA_FEE_CHUNK_BYTES                      = 100;
+
+// Consensus fee floor for TX_PQ: flat minimum plus the tx_extra surcharge.
+inline uint64_t pqTxExtraSurcharge(uint64_t minFee, uint64_t extraSize) {
+  if (extraSize <= TX_EXTRA_FEE_FREE_BYTES) {
+    return 0;
+  }
+  uint64_t chargeable = extraSize - TX_EXTRA_FEE_FREE_BYTES;
+  return minFee * ((chargeable + TX_EXTRA_FEE_CHUNK_BYTES - 1) / TX_EXTRA_FEE_CHUNK_BYTES);
+}
+inline uint64_t pqTxFeeFloor(uint64_t minFee, uint64_t extraSize) {
+  return minFee + pqTxExtraSurcharge(minFee, extraSize);
+}
+
 // PQ Phase 1 transaction limits (spec §1.2). These are consensus caps. A PQ input is
 // ~5.3 KB (ML-DSA-65 auth pub 1952 + signature 3309 + outpoint) and a PQ output is
 // ~1.2 KB (ML-KEM-768 ct 1088 + enc payload 56 + commit 32). The size cap is sized so
@@ -70,17 +116,39 @@ const uint64_t MAX_EXTRA_SIZE_PQ                             = 4096;
 const uint64_t MAX_PQ_INPUTS_PER_TX                          = 32;
 const uint64_t MAX_PQ_OUTPUTS_PER_TX                         = 64;
 const uint64_t MAX_PQ_TX_SIZE                                = 256 * 1024;
-// Minimum PQ fee per 4000 serialized bytes (consensus floor): fee >= ceil(rate*size/4000).
-// A typical 1-in/2-out TX_PQ is ~7.7 KB; rate=1 gives floor = 2 atoms (0.02 XDS). The
-// largest valid tx (MAX_PQ_TX_SIZE = 256 KB) gives ~66 atoms (~0.66 XDS). Wallet pads
-// with +1 atom margin.
-const uint64_t MIN_PQ_FEE_PER_4000_BYTES                    = 1;
 
-// Free-fee account registration (spec §11). FREE_REG_POW_TARGET is 1/16 expected
-// trials (~16 yespower calls); recalibrate against target hardware before launch.
+// Free-fee account registration (spec §11).
+//
+// TX_FREE_REG carries no fee, so its ONLY anti-spam cost is a memory-hard
+// yespower proof-of-work (checkFreeRegPow). The predicate accepts a nonce when
+// the top 64 bits of the yespower hash are <= FREE_REG_POW_TARGET, so the
+// expected number of yespower evaluations per registration is
+//   D = 2^64 / (FREE_REG_POW_TARGET + 1).
+//
+// Strong anti-spam setting: target 0x00007FFFFFFFFFFF => D = 2^17 = 131072
+// expected yespower calls. With the block PoW params (N=2048, r=32, ~8 MiB),
+// that is on the order of minutes of single-core work / tens of seconds on a
+// multicore machine for a ONE-TIME registration, while making bulk squatting or
+// mempool-flooding with fresh-identity registrations cost real CPU-hours. To
+// retarget after measuring yespower throughput H (hashes/sec) on reference
+// hardware for a desired wall-clock t: D = H * t, FREE_REG_POW_TARGET =
+// (2^64 / D) - 1. This is a launch parameter — recalibrate before mainnet.
+//
+// Defense in depth: FREE_REG_PER_BLOCK caps how many registrations are MINED per
+// block; parameters::FREE_REG_POOL_LIMIT caps how many zero-fee registrations
+// may sit in the mempool at once (see tx_memory_pool::add_tx).
 const uint64_t FREE_REG_REF_WINDOW                          = 60;
 const uint64_t FREE_REG_PER_BLOCK                           = 100;
-const uint64_t FREE_REG_POW_TARGET                          = UINT64_C(0x0FFFFFFFFFFFFFFF);
+const uint64_t FREE_REG_POW_TARGET                          = UINT64_C(0x00007FFFFFFFFFFF);
+
+// Mempool admission cap on pending zero-fee TX_FREE_REG transactions. Because
+// free registrations pay no fee, the fee-priority pool eviction cannot shed
+// them, and an attacker using a fresh keypair each time bypasses the
+// per-identity duplicate check — so without an explicit cap they could bloat the
+// pool up to the tx-livetime horizon. Sized at ~20 blocks of registration
+// capacity (FREE_REG_PER_BLOCK * 20) so miners always have a full block to draw
+// from while bounding pool occupancy (~20*100*3.2KB ~= 6.4 MB worst case).
+const uint64_t FREE_REG_POOL_LIMIT                          = FREE_REG_PER_BLOCK * 20;
 
 // Discrete is PQ-only from genesis: the node admission cap must match the
 // consensus TX_PQ cap that wallets fit against.
