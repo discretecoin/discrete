@@ -698,7 +698,20 @@ std::error_code NodeRpcProxy::doRelayTransaction(const CryptoNote::Transaction& 
   COMMAND_RPC_SEND_RAW_TRANSACTION::request req;
   COMMAND_RPC_SEND_RAW_TRANSACTION::response rsp;
   req.tx_as_hex = toHex(toBinaryArray(transaction));
-  return jsonCommand("sendrawtransaction", req, rsp);
+  std::error_code ec = jsonCommand("sendrawtransaction", req, rsp);
+  if (ec) {
+    return ec;
+  }
+
+  if (rsp.status == CORE_RPC_STATUS_OK) {
+    return std::error_code();
+  }
+
+  if (rsp.status == CORE_RPC_STATUS_BUSY) {
+    return make_error_code(error::NODE_BUSY);
+  }
+
+  return make_error_code(error::REQUEST_ERROR);
 }
 
 std::error_code NodeRpcProxy::doGetNewBlocks(std::vector<Crypto::Hash>& knownBlockIds,
