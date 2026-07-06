@@ -42,10 +42,6 @@
 
 namespace CryptoNote {
 
-// Legacy domain kept only so older references still compile; PQ-native Discrete
-// wallet identities do not HKDF the account secret before PqSeed derivation.
-constexpr char kPqWalletSeedDomain[] = "karbo-pq-wallet-seed-v1";
-
 // Deposit-wallet scheme, chosen once at container creation and persisted (it
 // changes how deposit keys are derived and how the encPayload routing field is
 // interpreted, so it cannot be a per-run toggle). See docs/WALLETD-PQ.md and the
