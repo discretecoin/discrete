@@ -63,15 +63,15 @@ TEST(PqOutputBuilder, DeterministicKat) {
 
     // Cross-check against the published PqDerive KATs (same fixed inputs, T=0):
     EXPECT_EQ(to_hex(o.outContext),
-              "cee70686b1b69606e2ba1b8ce1fea066090ef92dd73c033d0cea3551e8bbf59e");
+              "32cfc3d894c9c87a8d5f7ca9b0dfc69760b39f3c267b7e7cdd41c8f65492fb1b");
     EXPECT_EQ(to_hex(o.spendCommit),
-              "e68cb8c9336055b6627ca1a23f7b1a0962a2952d1f58466d28039c67405ca46d");
+              "0efa5a91ce3a6df44730c7d0cbebbc3d3896264f6826991914bac993684a151a");
 
     // encPayload is 56 bytes (40 ct + 16 tag); pinned KAT.
     ASSERT_EQ(o.encPayload.size(), 56u);
     EXPECT_EQ(to_hex(o.encPayload),
-              "16d5102ddb87c7c70dc33f3eb8358d6b4cb69d5c84d6b3f250af18dc88cc884"
-              "c695665410c349d37411aa21191777ea72a765375cd8892e1");
+              "f11845aad534497826243aa9391ea7a015c921c66cb702d340afa42dc16ee68"
+              "3f6846fb6bdb5733919f342bd0983a429d40c6b54bfe7c998");
 }
 
 TEST(PqOutputBuilder, DeterministicReproducible) {

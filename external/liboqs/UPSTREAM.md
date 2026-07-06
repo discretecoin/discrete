@@ -45,11 +45,12 @@ What was added:
   - `OQS_SIG_ml_dsa_65_keypair_derand(pk, sk, seed)` thin wrapper plus the
     `OQS_SIG_ml_dsa_65_length_keypair_seed = 32` constant.
 
-Why: PQ Phase 1 spec §6.2 derives per-output ML-DSA-65 spend keys
-deterministically from `spend_seed = HKDF(ss, "karbo-pq-spend-seed-v1" ||
-out_context)`. Without a derand keygen, the same spend key cannot be
-re-derived on demand (wallet recovery, reorg replay). Upstream liboqs only
-ships the `_derand` variant for ML-KEM, not ML-DSA, hence the patch.
+Why: the wallet's long-term ML-DSA-65 spend keypair is derived
+deterministically from `spend_seed = HKDF(seed_master,
+"discrete-pq-spend-root-v1", L=32)` (PqSeed.h; see docs/PQ-OWNERSHIP-FIX.md).
+Without a derand keygen, the same spend key cannot be re-derived on demand
+(wallet recovery from the seed). Upstream liboqs only ships the `_derand`
+variant for ML-KEM, not ML-DSA, hence the patch.
 
 Upstream tracking: open-quantum-safe/liboqs#2128 covers a similar request.
 If upstream ships an equivalent API, drop our patch in favour of it.

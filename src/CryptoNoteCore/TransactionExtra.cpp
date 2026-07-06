@@ -380,7 +380,7 @@ Crypto::Hash getPqAccountIdentityHash(const TransactionExtraPqAccountRegistratio
 Crypto::Hash getPqAccountIdentityHash(
     const std::array<uint8_t, TX_EXTRA_PQ_VIEW_PUBKEY_SIZE>& viewPub,
     const std::array<uint8_t, TX_EXTRA_PQ_SPEND_PUBKEY_SIZE>& spendPub) {
-  static const char domain[] = "karbo-pq-account-id-v1";
+  static const char domain[] = "discrete-pq-account-id-v1";
   std::vector<uint8_t> buf;
   buf.reserve(sizeof(domain) - 1 + viewPub.size() + spendPub.size());
   buf.insert(buf.end(), domain, domain + sizeof(domain) - 1);

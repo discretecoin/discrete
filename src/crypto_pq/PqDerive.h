@@ -42,17 +42,17 @@ namespace CryptoPQ {
 
 // --- Domain-separation tags (spec §6 / §8) -------------------------------
 // Bytes hashed are the string contents WITHOUT a trailing NUL.
-constexpr char kDomainInputsHash[]  = "karbo-pq-inputs-hash-v1";
-constexpr char kDomainOutContext[]  = "karbo-pq-out-context-v1";
-constexpr char kDomainAeadKey[]     = "karbo-pq-aead-key-v1";
-constexpr char kDomainSpendCommit[] = "karbo-pq-spend-commit-v1";
-constexpr char kDomainNullifier[]   = "karbo-pq-nullifier-v1";
-constexpr char kDomainTxSign[]      = "karbo-pq-tx-sign-v1";
+constexpr char kDomainInputsHash[]  = "discrete-pq-inputs-hash-v1";
+constexpr char kDomainOutContext[]  = "discrete-pq-out-context-v1";
+constexpr char kDomainAeadKey[]     = "discrete-pq-aead-key-v1";
+constexpr char kDomainSpendCommit[] = "discrete-pq-spend-commit-v1";
+constexpr char kDomainNullifier[]   = "discrete-pq-nullifier-v1";
+constexpr char kDomainTxSign[]      = "discrete-pq-tx-sign-v1";
 constexpr char kDomainCoinbaseRho[] = "discrete-coinbase-rho-v1";
 
 // RESERVED for Phase 2 (KDSK-CT) — MUST NOT be used by any v1-plain code.
 // A unit test asserts none of the tags above collides with this string.
-constexpr char kReservedCtMask[]    = "karbo-pq-ct-mask-v1";
+constexpr char kReservedCtMask[]    = "discrete-pq-ct-mask-v1";
 
 // RESERVED for Phase 3 (shielded / untraceable spends) — MUST NOT be used by any
 // Phase-1/2 code. A shielded spend reveals a serial S = H_lat(s) as its

@@ -5,8 +5,8 @@ the wallet seed (see `src/crypto_pq/PqSeed.h`):
 
 | Key | Primitive | Secret derives from | Public lives in |
 |-----|-----------|---------------------|-----------------|
-| **view** | ML-KEM-768 | `view_seed = HKDF(seed, "karbo-pq-view-root-v1", L=64)` | the address |
-| **spend** | ML-DSA-65 | `spend_seed = HKDF(seed, "karbo-pq-spend-root-v1", L=32)` | the address |
+| **view** | ML-KEM-768 | `view_seed = HKDF(seed, "discrete-pq-view-root-v1", L=64)` | the address |
+| **spend** | ML-DSA-65 | `spend_seed = HKDF(seed, "discrete-pq-spend-root-v1", L=32)` | the address |
 
 This is the post-quantum analogue of the CryptoNote (view, spend) key pair.
 The view key handles *detection and decryption*; the spend key handles

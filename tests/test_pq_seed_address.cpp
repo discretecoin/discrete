@@ -44,14 +44,14 @@ template <std::size_t N> std::array<uint8_t, N> pat(uint8_t a, uint8_t b) {
 TEST(PqSeed, ViewSeedKat) {
     SeedMaster m = pat<32>(1, 0);  // bytes 0..31
     EXPECT_EQ(to_hex(deriveViewSeed(m)),
-              "79c534a401ab72ff802da7441fbfa1d027f5f38e81192b6e0e81e5b840341ef3"
-              "3fd6632bafa1a8cfb124118b33d6d3346335c2b2adc3d053a664dca0e7bce3b7");
+              "64017a543bed8ff3a6724f478fae6a4426dae3c87bf6fe649b8f738293539721"
+              "1f9d87ac3c8a18ce18712323fbc7d48671e81e85ede1eaceff0fc8d0ce8efda9");
 }
 
 TEST(PqSeed, SpendSeedKat) {
     SeedMaster m = pat<32>(1, 0);
     EXPECT_EQ(to_hex(deriveSpendSeed(m)),
-              "a79a34b7614d62dfc1e0a9364557e342c92cce4a09b814e96f7e8381043a2ad0");
+              "56e791279e5d6af0ffd876fb54bc739d8ea53c59f15a9bdb3c587c333a92c17a");
 }
 
 TEST(PqSeed, ViewSeedAndSpendSeedDiffer) {

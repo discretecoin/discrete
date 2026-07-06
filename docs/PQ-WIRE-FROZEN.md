@@ -46,26 +46,26 @@ NUL terminator.
 
 | Constant | String (ASCII) | Len |
 |---|---|---|
-| `kDomainInputsHash` | `karbo-pq-inputs-hash-v1` | 23 |
-| `kDomainOutContext` | `karbo-pq-out-context-v1` | 23 |
-| `kDomainAeadKey` | `karbo-pq-aead-key-v1` | 20 |
-| `kDomainSpendCommit` | `karbo-pq-spend-commit-v1` | 24 |
-| `kDomainNullifier` | `karbo-pq-nullifier-v1` | 21 |
-| `kDomainTxSign` | `karbo-pq-tx-sign-v1` | 19 |
+| `kDomainInputsHash` | `discrete-pq-inputs-hash-v1` | 26 |
+| `kDomainOutContext` | `discrete-pq-out-context-v1` | 26 |
+| `kDomainAeadKey` | `discrete-pq-aead-key-v1` | 23 |
+| `kDomainSpendCommit` | `discrete-pq-spend-commit-v1` | 27 |
+| `kDomainNullifier` | `discrete-pq-nullifier-v1` | 24 |
+| `kDomainTxSign` | `discrete-pq-tx-sign-v1` | 22 |
 | `kDomainCoinbaseRho` | `discrete-coinbase-rho-v1` | 24 |
 
 ### Seed / key derivation (PqSeed.h)
 
 | Constant | String (ASCII) | Len |
 |---|---|---|
-| `kDomainViewRoot` | `karbo-pq-view-root-v1` | 21 |
-| `kDomainSpendRoot` | `karbo-pq-spend-root-v1` | 22 |
+| `kDomainViewRoot` | `discrete-pq-view-root-v1` | 24 |
+| `kDomainSpendRoot` | `discrete-pq-spend-root-v1` | 25 |
 
 ### Reserved (Phase 2, must not be used by Phase 1 code)
 
 | Constant | String (ASCII) | Len |
 |---|---|---|
-| `kReservedCtMask` | `karbo-pq-ct-mask-v1` | 19 |
+| `kReservedCtMask` | `discrete-pq-ct-mask-v1` | 22 |
 
 ---
 
@@ -92,7 +92,7 @@ plaintext so that a tampered routing hint breaks AEAD tag verification.
 
 ```
 outContext = SHA3-256(
-    kDomainOutContext          ||   // "karbo-pq-out-context-v1", 23 bytes
+    kDomainOutContext          ||   // "discrete-pq-out-context-v1", 26 bytes
     inputsHash                 ||   // 32 bytes
     kemCt                      ||   // 1088 bytes
     LE32(outputIndex)          ||   // 4 bytes
@@ -108,7 +108,7 @@ outContext = SHA3-256(
 
 ```
 txSigningDigest = SHA3-256(
-    kDomainTxSign              ||   // "karbo-pq-tx-sign-v1", 19 bytes
+    kDomainTxSign              ||   // "discrete-pq-tx-sign-v1", 22 bytes
     version (1 byte)           ||   // TRANSACTION_VERSION_1 = 1
     txType  (1 byte)           ||
     LE64(unlockHeight)           ||

@@ -59,28 +59,28 @@ static_assert(TX_FREE_REG == 0x03, "TX_FREE_REG changed — hard fork");
 
 TEST(PqDomains, DeriveDomainStrings) {
     // kDomainInputsHash — used in inputsHash()
-    EXPECT_STREQ(kDomainInputsHash,  "karbo-pq-inputs-hash-v1");
-    EXPECT_EQ(std::strlen(kDomainInputsHash), 23u);
+    EXPECT_STREQ(kDomainInputsHash,  "discrete-pq-inputs-hash-v1");
+    EXPECT_EQ(std::strlen(kDomainInputsHash), 26u);
 
     // kDomainOutContext — used in outContext()
-    EXPECT_STREQ(kDomainOutContext,  "karbo-pq-out-context-v1");
-    EXPECT_EQ(std::strlen(kDomainOutContext), 23u);
+    EXPECT_STREQ(kDomainOutContext,  "discrete-pq-out-context-v1");
+    EXPECT_EQ(std::strlen(kDomainOutContext), 26u);
 
     // kDomainAeadKey — used in deriveAeadKey()
-    EXPECT_STREQ(kDomainAeadKey,     "karbo-pq-aead-key-v1");
-    EXPECT_EQ(std::strlen(kDomainAeadKey), 20u);
+    EXPECT_STREQ(kDomainAeadKey,     "discrete-pq-aead-key-v1");
+    EXPECT_EQ(std::strlen(kDomainAeadKey), 23u);
 
     // kDomainSpendCommit — used in spendCommit()
-    EXPECT_STREQ(kDomainSpendCommit, "karbo-pq-spend-commit-v1");
-    EXPECT_EQ(std::strlen(kDomainSpendCommit), 24u);
+    EXPECT_STREQ(kDomainSpendCommit, "discrete-pq-spend-commit-v1");
+    EXPECT_EQ(std::strlen(kDomainSpendCommit), 27u);
 
     // kDomainNullifier — used in nullifier()
-    EXPECT_STREQ(kDomainNullifier,   "karbo-pq-nullifier-v1");
-    EXPECT_EQ(std::strlen(kDomainNullifier), 21u);
+    EXPECT_STREQ(kDomainNullifier,   "discrete-pq-nullifier-v1");
+    EXPECT_EQ(std::strlen(kDomainNullifier), 24u);
 
     // kDomainTxSign — used in txSigningDigest()
-    EXPECT_STREQ(kDomainTxSign,      "karbo-pq-tx-sign-v1");
-    EXPECT_EQ(std::strlen(kDomainTxSign), 19u);
+    EXPECT_STREQ(kDomainTxSign,      "discrete-pq-tx-sign-v1");
+    EXPECT_EQ(std::strlen(kDomainTxSign), 22u);
 
     // kDomainCoinbaseRho — used in coinbaseRho() (identity-bound mining)
     EXPECT_STREQ(kDomainCoinbaseRho, "discrete-coinbase-rho-v1");
@@ -89,12 +89,12 @@ TEST(PqDomains, DeriveDomainStrings) {
 
 TEST(PqDomains, SeedDomainStrings) {
     // kDomainViewRoot — HKDF info for view keypair seed derivation
-    EXPECT_STREQ(kDomainViewRoot,    "karbo-pq-view-root-v1");
-    EXPECT_EQ(std::strlen(kDomainViewRoot), 21u);
+    EXPECT_STREQ(kDomainViewRoot,    "discrete-pq-view-root-v1");
+    EXPECT_EQ(std::strlen(kDomainViewRoot), 24u);
 
     // kDomainSpendRoot — HKDF info for spend keypair seed derivation
-    EXPECT_STREQ(kDomainSpendRoot,   "karbo-pq-spend-root-v1");
-    EXPECT_EQ(std::strlen(kDomainSpendRoot), 22u);
+    EXPECT_STREQ(kDomainSpendRoot,   "discrete-pq-spend-root-v1");
+    EXPECT_EQ(std::strlen(kDomainSpendRoot), 25u);
 
     // kDomainDepositSpendRoot — HKDF info prefix for the Spec-1 deposit spend-key
     // family (followed by LE32(index)). CEMENTED recovery contract.
@@ -106,8 +106,8 @@ TEST(PqDomains, ReservedCtMaskNotReused) {
     // kReservedCtMask is reserved for Phase 2 and must never collide with any
     // Phase 1 tag.  This test is belt-and-braces over the existing check in
     // test_pq_derive.cpp::ReservedCtMaskNamespaceUnused.
-    EXPECT_STREQ(kReservedCtMask, "karbo-pq-ct-mask-v1");
-    EXPECT_EQ(std::strlen(kReservedCtMask), 19u);
+    EXPECT_STREQ(kReservedCtMask, "discrete-pq-ct-mask-v1");
+    EXPECT_EQ(std::strlen(kReservedCtMask), 22u);
 
     const char* phase1[] = {
         kDomainInputsHash, kDomainOutContext, kDomainAeadKey,

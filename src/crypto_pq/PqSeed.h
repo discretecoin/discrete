@@ -25,17 +25,17 @@
 #include "PqKem.h"
 #include "PqDsa.h"
 
-// Wallet seed -> key derivation chain for the Karbo PQ transaction family.
+// Wallet seed -> key derivation chain for the Discrete PQ transaction family.
 // CEMENTED v2 surface: recovery from a seed must always produce the same keys.
 //
 //   seed_master  (32 bytes, BIP39 or CSPRNG)
 //
 //   view branch (scanning / stealth delivery):
-//     view_seed  = HKDF-SHA3-256(seed_master, salt=0, info="karbo-pq-view-root-v1", L=64)
+//     view_seed  = HKDF-SHA3-256(seed_master, salt=0, info="discrete-pq-view-root-v1", L=64)
 //     (view_pub, view_sk) = ML-KEM-768.KeyGen(seed = view_seed)
 //
 //   spend branch (spending authority):
-//     spend_seed = HKDF-SHA3-256(seed_master, salt=0, info="karbo-pq-spend-root-v1", L=32)
+//     spend_seed = HKDF-SHA3-256(seed_master, salt=0, info="discrete-pq-spend-root-v1", L=32)
 //     (spend_pub, spend_sk) = ML-DSA-65.KeyGen(xi = spend_seed)
 //
 // OWNERSHIP-MODEL FIX (decided 2026-06-04, deviates from draft spec §4/§6):
@@ -52,8 +52,8 @@
 
 namespace CryptoPQ {
 
-constexpr char kDomainViewRoot[]  = "karbo-pq-view-root-v1";
-constexpr char kDomainSpendRoot[] = "karbo-pq-spend-root-v1";
+constexpr char kDomainViewRoot[]  = "discrete-pq-view-root-v1";
+constexpr char kDomainSpendRoot[] = "discrete-pq-spend-root-v1";
 // Deposit-wallet Spec 1 (aggregated-multikey): a FAMILY of ML-DSA spend keys, one
 // per deposit index, all sharing the single view key above. CEMENTED recovery
 // contract — see deriveDepositSpendKeys.

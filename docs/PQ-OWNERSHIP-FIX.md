@@ -40,20 +40,20 @@ Give each identity a **long-term ML-DSA-65 spend keypair**, derived from the
 seed's spend branch (which the draft left "reserved"):
 
 ```
-spend_seed            = HKDF-SHA3-256(seed_master, salt=0, info="karbo-pq-spend-root-v1", L=32)
+spend_seed            = HKDF-SHA3-256(seed_master, salt=0, info="discrete-pq-spend-root-v1", L=32)
 (spend_pub, spend_sk) = ML-DSA-65.KeyGen(xi = spend_seed)
 ```
 
 - `spend_pub` (1952 B) is published **in the address**, alongside the ML-KEM
   `view_pub`. The address checksum covers both keys.
-- Output binding becomes `spend_commit = SHA3-256("karbo-pq-spend-commit-v1" ||
+- Output binding becomes `spend_commit = SHA3-256("discrete-pq-spend-commit-v1" ||
   spend_pub || rho)`. The sender knows `spend_pub` (public, from the address) and
   chooses `rho`, so it can still build the output — but it **cannot sign**
   (no `spend_sk`).
 - To spend, the owner reveals `auth_pub = spend_pub` and `rho_reveal = rho`, and
   signs the tx digest with `spend_sk`. The sender, lacking `spend_sk`, is
   excluded. ✓
-- `nullifier = SHA3-256("karbo-pq-nullifier-v1" || spend_pub || rho)`. `rho` is
+- `nullifier = SHA3-256("discrete-pq-nullifier-v1" || spend_pub || rho)`. `rho` is
   per-output unique, so reusing one spend key across many outputs still yields
   distinct nullifiers; double-spend = reusing the same `(spend_pub, rho)`.
 

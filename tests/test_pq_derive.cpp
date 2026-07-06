@@ -58,7 +58,7 @@ std::vector<InputRef> fixedInputs() {
 
 TEST(PqDerive, InputsHash) {
     EXPECT_EQ(to_hex(inputsHash(fixedInputs())),
-              "05369b29b04c0150080312173ec816f49955043648896ac46d21c15860122400");
+              "b48fdcb804a368c257fd9fa500023cda6dd9013da90b6c2f8186bda6e85a7d9b");
 }
 
 TEST(PqDerive, OutContext) {
@@ -66,7 +66,7 @@ TEST(PqDerive, OutContext) {
     KemCiphertext kemCt = pat<1088>(7, 3);
     // T=0 (default) appended as LE64 after outputIndex.
     EXPECT_EQ(to_hex(outContext(ih, kemCt, 1)),
-              "cee70686b1b69606e2ba1b8ce1fea066090ef92dd73c033d0cea3551e8bbf59e");
+              "32cfc3d894c9c87a8d5f7ca9b0dfc69760b39f3c267b7e7cdd41c8f65492fb1b");
 }
 
 TEST(PqDerive, OutContextTIsolation) {
@@ -87,14 +87,14 @@ TEST(PqDerive, AeadKey) {
     Hash256 oc = outContext(ih, pat<1088>(7, 3), 1);  // T=0 default
     KemShared ss = pat<32>(1, 0);
     EXPECT_EQ(to_hex(deriveAeadKey(ss, oc)),
-              "209b5f2f0f66f5ff98ff3ac7f71acc659b3fbd02228ce0274ba3edf5d4edb1d1");
+              "933dac581886ce415e06756358cf6fc60e6c9f2f8bd9574e25e2af912171f680");
 }
 
 TEST(PqDerive, SpendCommit) {
     DsaPublicKey pk = pat<1952>(5, 1);
     Rho rho = pat<32>(3, 9);
     EXPECT_EQ(to_hex(spendCommit(pk, rho)),
-              "e68cb8c9336055b6627ca1a23f7b1a0962a2952d1f58466d28039c67405ca46d");
+              "0efa5a91ce3a6df44730c7d0cbebbc3d3896264f6826991914bac993684a151a");
 }
 
 TEST(PqDerive, Nullifier) {
@@ -102,7 +102,7 @@ TEST(PqDerive, Nullifier) {
     Rho rho = pat<32>(3, 9);
     Hash256 prevTxid = pat<32>(1, 0);
     EXPECT_EQ(to_hex(nullifier(pk, rho, prevTxid, 7)),
-              "7be545e4a7f67980cea96103f183e71dd85b652ae891e2bc08df8226610db4a8");
+              "94e9b820f5cd5da4d39a0a0855fe9d317fdec71228d922ba8a17799e8d64278e");
 }
 
 TEST(PqDerive, NullifierBindsOutpoint) {
@@ -150,7 +150,7 @@ TEST(PqDerive, TxSigningDigest) {
     tx.outputs.push_back(out);
 
     EXPECT_EQ(to_hex(txSigningDigest(tx)),
-              "edbbbf3f1ad8217f704a7abd253ea134c64347f75c30ce682ea91519e2d48057");
+              "02de2e91449a463ae7dc71adde97eeab211a7a1ecbd22e1b0c3232348d5ebbd3");
 }
 
 TEST(PqDerive, TxSigningDigestIsTamperSensitive) {

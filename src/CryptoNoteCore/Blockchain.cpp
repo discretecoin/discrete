@@ -2748,7 +2748,7 @@ void Blockchain::popBlock() {
   m_upgradeDetectorV6.blockPopped();
 }
 
-// Recompute a PQ input's nullifier (= SHA3-256("karbo-pq-nullifier-v1" ||
+// Recompute a PQ input's nullifier (= SHA3-256("discrete-pq-nullifier-v1" ||
 // auth_pub || rho_reveal || prev_txid || LE32(prev_out_index))). Binding the
 // outpoint makes the double-spend tag unique per output even if two outputs
 // share (auth_pub, rho). Fields are fixed-size after serialization; a malformed
