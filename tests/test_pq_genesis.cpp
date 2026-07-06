@@ -80,7 +80,7 @@ TEST(PqGenesis, GenesisBlockHashPinned) {
   Logging::ConsoleLogger logger;
   Currency currency = makeCurrency(logger);
   EXPECT_EQ(Common::podToHex(currency.genesisBlockHash()),
-            "6f4ea49572eb19bbfc27e6ccb50c02efa19d9a2f9d2f4fac783e8e38eeb41b6b");
+            "ffeb0c033173217949eb3dc358bb8346d85a18f0b9ddace9c2e19a718581bf19");
 }
 
 int main(int argc, char** argv) {

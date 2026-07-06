@@ -17,7 +17,7 @@ The genesis coinbase `extra` also carries a headline, embedded as a
 `TX_EXTRA_NONCE` — Discrete's analogue of Bitcoin's *"The Times 03/Jan/2009
 Chancellor on brink of second bailout for banks"*:
 
-> Reuters 16/Jun/2026 — France to stop certifying products without quantum-safe encryption
+> The White House 22/Jun/2026 — EO 14412: Securing the Nation Against Advanced Cryptographic Attacks
 
 ### Monetary policy
 
@@ -39,41 +39,42 @@ Chancellor on brink of second bailout for banks"*:
   batch unlocks each quarter; the last unlocks at height 1,752,000 ≈ 5.0 years.
   Batch 1 (unlock height 0) is spendable from genesis.
 
-| Batch | Amount (XDS) | Unlock height | Recipient reserve address |
-|------:|-------------:|--------------:|-------------------------------|
-| 1  | 50,000 | 0         | discvLkR4dYha5ofRu9WymcCSAM4RJ8Kxd9oJXS8HUNhEJZAUBj6o7wZgZZsQEfZd46x7seW7UfLiZieSuzYFQqvLz2KSevxuuY |
-| 2  | 50,000 | 87,600    | discvJiX2CGZsABoUgaRZEYmjcmMKJ4yY9xgN8LQ7zpoBiHeWUmbwJFRvWt4YnQDZbSyP1XRhwVP8W6fbHp3JTYFhepeCMyNmS1 |
-| 3  | 50,000 | 175,200   | discvGtwVvwVaUiyTvJf2EazYx5fgHFVP6KZLB6sDDhALPb9uprSWGDFkgPL84kpZhNJojbL964vQTsA45WTRMzyXra5b6JMF9V |
-| 4  | 50,000 | 262,800   | discvHBVdRM8W4xnXuARR87x4La8Lo2FSYJCo2DFreNVXPP4SbuWaWTbD6UHyr2R8DWkBk1cnNBahRdFFSY6Xqe2iSqGVztkGTk |
-| 5  | 50,000 | 350,400   | discvNN8RQLjYRfVAHJiQkK4UArXyt37VUrUqEVAvoTHhzbEan35ZKq4LAMkfcCNYW94gekoy8sdQ85KE4FFXvaa3buWKryeDey |
-| 6  | 50,000 | 438,000   | discvGx4wyp9hXxUPE9YPS6rYBSjTisWJdhmKg8Qb2zWCegkfGpzRczfkUYNPDe6T1eQpiNNb34m5V5PNTyHdq597HsEJzybq8k |
-| 7  | 50,000 | 525,600   | discvHCK6CubyVi98ApA3hHZe6upLsQFBgxynvP6Qh8YVvmsm8KGmh5jo8pgBRi3hnMzHzBwdYLTr5VGbttzrbay4fmcnmjzGL4 |
-| 8  | 50,000 | 613,200   | discvMQMcojCZEu2ftC4VJjTcWNoKC7BzVaoacJ6VLV1U1JRErbRSui6sbFD3niNYYDeBRTxMuSoP46JY3dqPdogPHMrSm4hNB8 |
-| 9  | 50,000 | 700,800   | discvHqUUHDUcoMS5rhBrk1SLogbuvJrtJ8C2ELHF8AXiojEbgaJzyG1qQDrsvSU763i9rRYbsWzoe6WnqNnwxFU1jfv6FDevEW |
-| 10 | 50,000 | 788,400   | discvN6sfcei19H5di7DhTCX3A3iRtGGy7Qjd7TvarANY79qwdPhgy5ao9TixPMngNMhE4L9qtPsZWRKQCpvJwUGUfDmeQBb7qu |
-| 11 | 50,000 | 876,000   | discvP3X1kUUYoN27qG9ePRjrPDdJwM6hAzm6SF7HjByScivyyphTjJjEi5xPxzMaXZn4P4gkwqJr8SZXpJMv3PoYVPvDB8L1q1 |
-| 12 | 50,000 | 963,600   | discvM5Byex9PXCQ3EBi4eCHNeqa5SCbUXtqkMs5dmcnY8nzPVAqUUQLmJYikqPzxwcSivU2LytcpCAhuwfitqksKYnM16HDLwP |
-| 13 | 50,000 | 1,051,200 | discvNYfnh7T162gwWFiPbTVZms3KFbyxFseYvR67madZdeCGV9Pbnv3gZM15Xi4j9dooj7tyDJfV1n7DrJTUB2wLq6dDkFRBU7 |
-| 14 | 50,000 | 1,138,800 | discvMmRc8b69cmap97R88YdcdnhmXE7UdzGTa91A3pQCtkV1kEj8LAGYG54Ttsi6HW27x3Q94MKe8oxMMGKKHm7GSt9xiCr3qq |
-| 15 | 50,000 | 1,226,400 | discvMDUnoFhXdRLU6bTo5RBLP4x9QGEs79xi38GSAcBcqMERQYxghnTXepni8MPqY8yZvGCXpAFs7FGUudRVbvkeAangvYd5xW |
-| 16 | 50,000 | 1,314,000 | discvKrfdhE3GE8Vn4imDk3qiJkgFmtkEYNRqe9viUhWVpnctcekaNXVWJiQJwDmgw9YnS9ZZh2sge8nh5B8LuhmLsDA5qp6oP8 |
-| 17 | 50,000 | 1,401,600 | discvLoeXB5iQ5DsetxjG5VWMrgEFo1neCEQ3ny4ymGBZUcVnL9XQB83ErRd9LC3ZLCxcD3XZ27ZJd8HUV8Kttn8APJsMavN5d6 |
-| 18 | 50,000 | 1,489,200 | discvKMgdJ4Xfdez8zthBKg6Yf8hHibC7GUm7AnUMzMLMKovJNUYgY647pDkMfhPyaRx7WLZ2NjtREngWAbfpf37epuimYcK7Sn |
-| 19 | 50,000 | 1,576,800 | discvLQEHjYBGbu2xcr4HNN4opLn9SBd68RQdgzk68EFC32vT3YPTVwKcmwRvWKLVfNvWyEa9qAEpdAPjA3VQYucZnDTg8yEsyZ |
-| 20 | 50,000 | 1,664,400 | discvK6a8MzJQ78SPRLJaEGrnncRnsGcmHr4StT33Lu3iXQbrvWPVigEwmdrkdq6ghMjjgnf4weEKgNsbCwD8xMzQwvNrYtj6ut |
-| 21 | 50,000 | 1,752,000 | discvKDfytnhr5bww3aqipLUtts17A1mxVLzvpxKMhCELbC5ZdEAtfh7sYNoX528LoKd7F9nMzpJzeV6xvdFFvNheQc8JNoAZFJ |
+| Batch | Amount (XDS) | Unlock height |
+|------:|-------------:|--------------:|
+| 1  | 50,000 | 0         |
+| 2  | 50,000 | 87,600    |
+| 3  | 50,000 | 175,200   |
+| 4  | 50,000 | 262,800   |
+| 5  | 50,000 | 350,400   |
+| 6  | 50,000 | 438,000   |
+| 7  | 50,000 | 525,600   |
+| 8  | 50,000 | 613,200   |
+| 9  | 50,000 | 700,800   |
+| 10 | 50,000 | 788,400   |
+| 11 | 50,000 | 876,000   |
+| 12 | 50,000 | 963,600   |
+| 13 | 50,000 | 1,051,200 |
+| 14 | 50,000 | 1,138,800 |
+| 15 | 50,000 | 1,226,400 |
+| 16 | 50,000 | 1,314,000 |
+| 17 | 50,000 | 1,401,600 |
+| 18 | 50,000 | 1,489,200 |
+| 19 | 50,000 | 1,576,800 |
+| 20 | 50,000 | 1,664,400 |
+| 21 | 50,000 | 1,752,000 |
 
 The recipients' **public** ML-KEM/ML-DSA keys are baked into
 `src/CryptoNoteCore/GenesisTreasuryReserveKeys.inc` (auto-generated; committed).
-Each batch also has a full PQ address (the spendable address) recorded in the
-offline secrets file below.
+Each batch's full bech32m PQ address (~2.6 KB — too long to table here) is
+recorded in the offline secrets file below, and is recomputable by anyone from
+the committed `.inc` public keys (`makePqAddress(viewPub, spendPub)`).
 
-**Genesis block timestamp:** 2026-06-16 14:21:00 UTC (9:21 AM CDT) — the
-publication time of the embedded Reuters headline (`m_genesisBlock.timestamp` in
-`Currency::generateGenesisBlock`).
+**Genesis block timestamp:** 2026-06-22 16:00:00 UTC — the day Executive Order
+14412 (the embedded headline) was signed at the White House
+(`m_genesisBlock.timestamp` in `Currency::generateGenesisBlock`).
 
 **Genesis block hash (mainnet):**
-`a77e3f242f03f8ebe1d6bc4b50873fe157f4c2c95d9ff4207107991439c399ee`
+`ffeb0c033173217949eb3dc358bb8346d85a18f0b9ddace9c2e19a718581bf19`
 (pinned by `tests/test_pq_genesis.cpp`).
 
 ## Recipient secrets
@@ -99,7 +100,7 @@ deterministically so two runs on any host produce identical bytes:
   recipient can still decapsulate, made reproducible via a seed-driven RNG.
 - `buildPqOutput(kemCt, ss, spendPub_i, inputsHash=0, outputIndex=i, 5,000,000,
   rho, T=0)`, then `unlockHeight = i × 87,600`.
-- Input is a `BaseInput` at height 0; `extra` carries the Reuters headline
+- Input is a `BaseInput` at height 0; `extra` carries the headline
   (`TX_EXTRA_NONCE`) followed by an all-zero ML-DSA miner spend pub (genesis is
   trusted — its block signature is skipped at height 0).
 

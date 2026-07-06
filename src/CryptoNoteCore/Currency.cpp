@@ -120,9 +120,10 @@ namespace CryptoNote {
 
     m_genesisBlock.majorVersion = BLOCK_MAJOR_VERSION_1;
     m_genesisBlock.minorVersion = BLOCK_MINOR_VERSION_0;
-    // Genesis timestamp: 2026-06-16 14:21:00 UTC (9:21 AM CDT) — the publication
-    // time of the Reuters headline embedded in the genesis coinbase.
-    m_genesisBlock.timestamp = 1781619660;
+    // Genesis timestamp: 2026-06-22 16:00:00 UTC — the day Executive Order 14412
+    // ("Securing the Nation Against Advanced Cryptographic Attacks", the headline
+    // embedded in the genesis coinbase) was signed at the White House.
+    m_genesisBlock.timestamp = 1782144000;
     m_genesisBlock.nonce = 70;
     if (m_testnet) {
       ++m_genesisBlock.nonce;
