@@ -845,8 +845,8 @@ bool BuiltinExplorer::on_get_explorer_address(const COMMAND_EXPLORER_GET_ADDRESS
   AccountNumber acct;
   uint32_t subaddrIndex = 0;
   const bool isPq = decodePqAddress(req.address, m_core.currency().isTestnet(), pq);
-  const bool isAcct = !isPq && (AccountNumber::fromStringWithIndex(req.address, acct, subaddrIndex) ||
-                                AccountNumber::fromString(req.address, acct));
+  const bool isSubaddr = !isPq && AccountNumber::fromStringWithIndex(req.address, acct, subaddrIndex);
+  const bool isAcct = !isPq && (isSubaddr || AccountNumber::fromString(req.address, acct));
   if (!isPq && !isAcct) {
     return false;
   }
@@ -866,10 +866,31 @@ bool BuiltinExplorer::on_get_explorer_address(const COMMAND_EXPLORER_GET_ADDRESS
          + Common::toHex(pq.viewPub.data(), pq.viewPub.size()) + "</span></li>\n";
     body += "  <li>Spend public key (ML-DSA-65, " + std::to_string(pq.spendPub.size()) + " bytes): <span class=\"wrap\">"
          + Common::toHex(pq.spendPub.data(), pq.spendPub.size()) + "</span></li>\n";
+    // If this identity is registered on-chain, show its account number too.
+    uint32_t regHeight = 0, regTxIndex = 0;
+    if (m_core.getPqAccountNumber(getPqAccountIdentityHash(pq.viewPub, pq.spendPub), regHeight, regTxIndex)) {
+      std::string an = AccountNumber{regHeight, regTxIndex}.toString();
+      body += "  <li>Registered account number: <a href=\"/explorer/address/" + an + "\">" + an + "</a></li>\n";
+    }
   } else {
     body += "  <li>Form: registered account number (keys are stored on-chain) &#10004;</li>\n";
     body += "  <li>Registration block height: " + std::to_string(acct.blockHeight) + "</li>\n";
     body += "  <li>Transaction index: " + std::to_string(acct.txIndex) + "</li>\n";
+    if (isSubaddr) {
+      body += "  <li>Subaddress index: " + std::to_string(subaddrIndex)
+           + " (routes attribution; spend authority is the base account)</li>\n";
+    }
+    // Resolve the registration coordinates to the on-chain keys and show the
+    // bech32m address they encode to.
+    std::array<uint8_t, TX_EXTRA_PQ_VIEW_PUBKEY_SIZE> viewPub;
+    std::array<uint8_t, TX_EXTRA_PQ_SPEND_PUBKEY_SIZE> spendPub;
+    if (m_core.resolvePqAccountNumber(acct.blockHeight, acct.txIndex, viewPub, spendPub)) {
+      PqAddress resolved = makePqAddress(m_core.currency().publicAddressBase58Prefix(), viewPub, spendPub);
+      std::string bech = encodePqAddress(resolved, pqBech32Hrp(m_core.currency().isTestnet()));
+      body += "  <li>Resolves to address: <a class=\"wrap\" href=\"/explorer/address/" + bech + "\">" + bech + "</a></li>\n";
+    } else {
+      body += "  <li>No account registration found at these coordinates &#10060;</li>\n";
+    }
   }
   body += "</ul>\n";
 
