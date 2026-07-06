@@ -1001,6 +1001,9 @@ TransactionId WalletLegacy::sendTransaction(const std::vector<WalletLegacyTransf
     }
   }
 
+  notifyExternalTransactions();
+  notifyIfBalanceChanged();
+
   std::deque<std::shared_ptr<WalletLegacyEvent>> events;
   events.push_back(std::make_shared<WalletSendTransactionCompletedEvent>(txId, std::error_code()));
   notifyClients(events);

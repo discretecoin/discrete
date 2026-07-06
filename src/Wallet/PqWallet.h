@@ -25,29 +25,25 @@
 #include "crypto_pq/PqScan.h"
 
 // Wallet-core link between a wallet's mnemonic-backed account secret and its
-// post-quantum identity. The PQ keypairs are derived deterministically from the
-// account's spend secret key, so the SAME 25-word mnemonic that backs up the
-// wallet also recovers its PQ funds — no second seed to store.
+// post-quantum identity. In Discrete, the account spend secret is already the
+// PQ-native 32-byte SeedMaster. The PQ keypairs are derived deterministically
+// from that seed, so the SAME 25-word mnemonic that backs up the wallet also
+// recovers its PQ funds — no second seed to store.
 //
-//   seed_master = HKDF-SHA3-256(IKM = classical spendSecretKey (32 B),
-//                               salt = 0x00*32,
-//                               info = "karbo-pq-wallet-seed-v1",
-//                               L = 32)
+//   seed_master = account spendSecretKey bytes (32 B)
 //   then the cemented PqSeed chain (PqSeed.h):
 //     (viewPub,  viewSk)  = ML-KEM-768.KeyGen(HKDF(seed_master, "...view-root-v1"))
 //     (spendPub, spendSk) = ML-DSA-65 .KeyGen(HKDF(seed_master, "...spend-root-v1"))
 //
-// CEMENTED (wallet layer): the seed_master derivation above is part of the
-// recovery contract. Changing the info string, the IKM source, or the HKDF
-// parameters silently orphans every existing PQ balance on restore. It must
-// never change once a PQ-capable wallet ships. (This complements the cemented
-// CONSENSUS surface in PqSeed.h / PqAddress.h.)
+// CEMENTED (wallet layer): the raw seed_master mapping above is part of the
+// recovery contract. Adding an intermediate KDF or changing the source bytes
+// silently orphans every existing PQ balance on restore. It must never change.
+// (This complements the cemented CONSENSUS surface in PqSeed.h / PqAddress.h.)
 
 namespace CryptoNote {
 
-// Domain string for the wallet-layer seed_master derivation. Distinct from the
-// reserved "karbo-pq-ct-*-v1" Phase-2 namespace and from the consensus
-// derivations in PqDerive.h. CEMENTED — see file header.
+// Legacy domain kept only so older references still compile; PQ-native Discrete
+// wallet identities do not HKDF the account secret before PqSeed derivation.
 constexpr char kPqWalletSeedDomain[] = "karbo-pq-wallet-seed-v1";
 
 // Deposit-wallet scheme, chosen once at container creation and persisted (it
@@ -91,12 +87,11 @@ CryptoPQ::SeedMaster pqSeedMasterFromSpendSecret(const Crypto::SecretKey& spendS
 // keypair anywhere in the wallet identity.
 CryptoPQ::SeedMaster generatePqSeedMaster();
 
-// Full PQ identity (view + spend keypairs) for a classical wallet.
+// Full PQ identity (view + spend keypairs) from the account's PQ-native seed.
 PqWalletKeys derivePqWalletKeys(const Crypto::SecretKey& spendSecretKey);
 
-// Full PQ identity straight from a PQ-native master seed (the new wallet path).
-// Unlike the spend-secret overload there is no intermediate HKDF: the seed IS the
-// seed_master consumed by the cemented PqSeed chain.
+// Full PQ identity straight from a PQ-native master seed. This is equivalent to
+// the spend-secret overload; both feed the seed directly into PqSeed.
 PqWalletKeys derivePqWalletKeys(const CryptoPQ::SeedMaster& seedMaster);
 
 // Strip a full wallet identity down to the view-only audit credential.

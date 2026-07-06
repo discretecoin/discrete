@@ -55,12 +55,11 @@ TEST(PqWallet, DistinctSecretsGiveDistinctIdentities) {
     EXPECT_NE(a.spendPub, b.spendPub);
 }
 
-TEST(PqWallet, SeedMasterIsNotTheSpendSecret) {
-    // Domain separation: the PQ master seed must differ from the raw classical
-    // key it is derived from.
+TEST(PqWallet, SeedMasterIsTheSpendSecret) {
+    // Discrete is PQ-native: the account spend secret is the raw SeedMaster.
     Crypto::SecretKey s = makeSpendSecret(2, 9);
     CryptoPQ::SeedMaster m = pqSeedMasterFromSpendSecret(s);
-    EXPECT_NE(0, std::memcmp(m.data(), s.data, sizeof(s.data)));
+    EXPECT_EQ(0, std::memcmp(m.data(), s.data, sizeof(s.data)));
 }
 
 TEST(PqWallet, SeedMasterIsCemented) {
@@ -73,10 +72,10 @@ TEST(PqWallet, SeedMasterIsCemented) {
     std::string hex; hex.reserve(64);
     static const char* h = "0123456789abcdef";
     for (uint8_t x : m) { hex += h[x >> 4]; hex += h[x & 0xf]; }
-    // HKDF-SHA3-256(IKM=0x00..0x1f, salt=0x00*32, info="karbo-pq-wallet-seed-v1").
+    // Raw PQ-native SeedMaster = bytes 0x00..0x1f.
     // Recompute and update this line ONLY when deliberately changing the
     // recovery derivation (which orphans existing PQ balances).
-    EXPECT_EQ(hex, "54b4cced4677aca6e56bc905484a7cc6e0d66a37de82b1537cdf31bd78b8cbd5");
+    EXPECT_EQ(hex, "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f");
 }
 
 // --- The wallet's own address ----------------------------------------------
