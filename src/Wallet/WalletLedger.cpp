@@ -23,6 +23,7 @@
 #include <ostream>
 
 #include "CryptoNoteConfig.h"
+#include "CryptoNoteCore/TransactionExtra.h"
 #include "PqTxType.h"
 #include "crypto_pq/PqScan.h"
 #include "crypto_pq/PqDerive.h"
@@ -49,10 +50,11 @@ void readPod(std::istream& is, T& v) {
 
 // v2 added PqWalletOutput::unlockHeight. v3 added PqWalletOutput::depositIndex.
 // v4 appended the PqWalletTransaction history. v5 appended PqWalletOutput::spentTxid
-// (the tx that spent each output, so a dropped/rejected spend can be undone). Older
-// blobs load with the missing fields defaulted (history empty / depositIndex primary
-// / spentTxid zero) and repopulate on the next rescan.
-constexpr uint8_t kPqStateFormatVersion = 5;
+// (the tx that spent each output, so a dropped/rejected spend can be undone).
+// v6 appended PqWalletTransaction::paymentId. Older blobs load with the missing
+// fields defaulted (history empty / depositIndex primary / spentTxid zero /
+// paymentId zero) and repopulate on the next rescan.
+constexpr uint8_t kPqStateFormatVersion = 6;
 
 }  // namespace
 
@@ -263,6 +265,9 @@ bool WalletLedger::processTransaction(const TransactionPrefix& tx, const Crypto:
     h.height = height;
     h.timestamp = timestamp;
     h.outgoing = debited > 0;  // we spent at least one owned output
+    // Classic CryptoNote payment id, if the sender put one in tx_extra (used by
+    // exchanges and other CryptoNote-familiar integrations alongside H-I-T-C).
+    getPaymentIdFromTxExtra(tx.extra, h.paymentId);
     if (h.outgoing) {
       // All inputs of a TX_PQ we sign are ours, so our input total == debited.
       // fee = inputs - outputs; net = what came back (change) minus what we spent.
@@ -555,6 +560,7 @@ void WalletLedger::save(std::ostream& os) const {
     writePod(os, t.fee);
     uint8_t outgoing = t.outgoing ? 1 : 0;
     writePod(os, outgoing);
+    os.write(reinterpret_cast<const char*>(t.paymentId.data), 32);  // v6
   }
 }
 
@@ -567,10 +573,11 @@ void WalletLedger::load(std::istream& is) {
 
   uint8_t version = 0;
   readPod(is, version);
-  // Accept v2 (no depositIndex), v3 (no history), v4 (no spentTxid), and the current
-  // v5. Missing fields default (depositIndex = PQ_PRIMARY_DEPOSIT, empty history,
-  // spentTxid = zero) and repopulate on rescan. Anything older/unknown -> start empty.
-  if (!is || (version != 2 && version != 3 && version != 4 && version != kPqStateFormatVersion)) {
+  // Accept v2 (no depositIndex), v3 (no history), v4 (no spentTxid), v5 (no history
+  // paymentId), and the current v6. Missing fields default (depositIndex =
+  // PQ_PRIMARY_DEPOSIT, empty history, spentTxid / paymentId = zero) and repopulate
+  // on rescan. Anything older/unknown -> start empty.
+  if (!is || (version != 2 && version != 3 && version != 4 && version != 5 && version != kPqStateFormatVersion)) {
     m_outputs.clear();
     m_byNullifier.clear();
     m_history.clear();
@@ -623,6 +630,9 @@ void WalletLedger::load(std::istream& is) {
       uint8_t outgoing = 0;
       readPod(is, outgoing);
       t.outgoing = outgoing != 0;
+      if (version >= 6) {
+        is.read(reinterpret_cast<char*>(t.paymentId.data), 32);
+      }
       if (!is) break;
       m_historyByTxid.emplace(t.txid, m_history.size());
       m_history.push_back(t);

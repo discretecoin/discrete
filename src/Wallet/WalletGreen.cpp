@@ -1218,6 +1218,15 @@ WalletTransaction pqRowToWalletTx(const PqWalletTransaction& h) {
   tx.creationTime = h.timestamp;
   tx.unlockHeight = 0;
   tx.extra.clear();
+  // A payment id captured at scan time is re-encoded as the classic tx_extra
+  // nonce so existing consumers (walletd listings/filters) parse it as before.
+  if (h.paymentId != Crypto::Hash{}) {
+    BinaryArray extraNonce;
+    setPaymentIdToTransactionExtraNonce(extraNonce, h.paymentId);
+    std::vector<uint8_t> extraVec;
+    addExtraNonceToTransactionExtra(extraVec, extraNonce);
+    tx.extra.assign(extraVec.begin(), extraVec.end());
+  }
   tx.isBase = false;
   return tx;
 }

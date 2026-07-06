@@ -1512,8 +1512,21 @@ std::error_code WalletService::sendTransaction(const SendTransaction::Request& r
         return make_error_code(CryptoNote::error::CHANGE_ADDRESS_REQUIRED);
       }
 
+      // Payment id / raw extra — same precedence as the classical path below: an
+      // explicit paymentId wins, else the raw extra field (validated hex).
+      std::vector<uint8_t> extra;
+      if (!request.paymentId.empty()) {
+        validatePaymentId(request.paymentId, logger);
+        std::string extraString;
+        addPaymentIdToExtra(request.paymentId, extraString);
+        extra.assign(extraString.begin(), extraString.end());
+      } else if (!request.extra.empty()) {
+        std::string extraString = getValidatedTransactionExtraString(request.extra);
+        extra.assign(extraString.begin(), extraString.end());
+      }
+
       CryptoNote::PqSendResult r = gw->sendPqTransfer(recipients, request.fee, request.unlockHeight,
-                                                      std::vector<uint8_t>{}, sourceAddresses, changeAddress);
+                                                      extra, sourceAddresses, changeAddress);
       transactionHash = Common::podToHex(CryptoNote::getObjectHash(r.tx));
       logger(Logging::DEBUGGING) << "Transaction " << transactionHash << " has been sent";
       return std::error_code();

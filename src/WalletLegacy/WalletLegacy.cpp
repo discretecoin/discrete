@@ -56,6 +56,7 @@
 #include "Common/StringTools.h"
 #include "CryptoNoteCore/CryptoNoteTools.h"
 #include "CryptoNoteCore/TransactionApi.h"
+#include "CryptoNoteCore/TransactionExtra.h"
 #include "Mnemonics/electrum-words.h"
 
 extern "C"
@@ -728,10 +729,59 @@ std::string WalletLegacy::sign_message(const std::string &message) {
 }
 
 
-std::vector<Payments> WalletLegacy::getTransactionsByPaymentIds(const std::vector<PaymentId>& /*paymentIds*/) const {
-  // PQ owned-output scanning cannot recover payment IDs, so there is no
-  // payment-ID index to query.
-  return {};
+namespace {
+// Map a PQ ledger history row onto the legacy transaction view. Counterparties
+// are not recoverable, so there are no per-transfer rows (transferCount = 0).
+// A payment id captured at scan time is re-encoded as the classic tx_extra
+// nonce so existing consumers (display, RPC) parse it the CryptoNote way.
+void pqRowToLegacyTx(const PqWalletTransaction& h, WalletLegacyTransaction& transaction) {
+  transaction.firstTransferId = WALLET_LEGACY_INVALID_TRANSFER_ID;
+  transaction.transferCount = 0;
+  transaction.totalAmount = h.netAmount;
+  transaction.fee = h.fee;
+  transaction.sentTime = h.timestamp;
+  transaction.unlockHeight = 0;
+  transaction.hash = h.txid;
+  transaction.secretKey = NULL_SECRET_KEY;
+  transaction.isCoinbase = false;
+  transaction.blockHeight = h.height;  // UNCONFIRMED_HEIGHT maps through (both uint32 max)
+  transaction.timestamp = h.timestamp;
+  transaction.extra.clear();
+  if (h.paymentId != Crypto::Hash{}) {
+    BinaryArray extraNonce;
+    setPaymentIdToTransactionExtraNonce(extraNonce, h.paymentId);
+    std::vector<uint8_t> extraVec;
+    addExtraNonceToTransactionExtra(extraVec, extraNonce);
+    transaction.extra.assign(extraVec.begin(), extraVec.end());
+  }
+  transaction.state = WalletLegacyTransactionState::Active;
+}
+}  // anonymous namespace
+
+std::vector<Payments> WalletLegacy::getTransactionsByPaymentIds(const std::vector<PaymentId>& paymentIds) const {
+  std::unique_lock<std::mutex> lock(m_cacheMutex);
+  std::vector<Payments> payments(paymentIds.size());
+  for (std::size_t i = 0; i < paymentIds.size(); ++i) {
+    payments[i].paymentId = paymentIds[i];
+  }
+  if (!m_pqConsumer) {
+    return payments;
+  }
+  // The ledger captures each tx's payment id at scan time; history is small
+  // enough that a linear scan beats maintaining a separate index.
+  for (const PqWalletTransaction& h : m_pqConsumer->state().history()) {
+    if (h.paymentId == Crypto::Hash{}) {
+      continue;
+    }
+    for (std::size_t i = 0; i < paymentIds.size(); ++i) {
+      if (paymentIds[i] == h.paymentId) {
+        WalletLegacyTransaction tx;
+        pqRowToLegacyTx(h, tx);
+        payments[i].transactions.push_back(std::move(tx));
+      }
+    }
+  }
+  return payments;
 }
 
 uint64_t WalletLegacy::actualBalance() {
@@ -878,23 +928,7 @@ bool WalletLegacy::getTransaction(TransactionId transactionId, WalletLegacyTrans
   if (transactionId >= hist.size()) {
     return false;
   }
-  const PqWalletTransaction& h = hist[transactionId];
-
-  // Map a PQ ledger history row onto the legacy transaction view. Counterparties
-  // are not recoverable, so there are no per-transfer rows (transferCount = 0).
-  transaction.firstTransferId = WALLET_LEGACY_INVALID_TRANSFER_ID;
-  transaction.transferCount = 0;
-  transaction.totalAmount = h.netAmount;
-  transaction.fee = h.fee;
-  transaction.sentTime = h.timestamp;
-  transaction.unlockHeight = 0;
-  transaction.hash = h.txid;
-  transaction.secretKey = NULL_SECRET_KEY;
-  transaction.isCoinbase = false;
-  transaction.blockHeight = h.height;  // UNCONFIRMED_HEIGHT maps through (both uint32 max)
-  transaction.timestamp = h.timestamp;
-  transaction.extra.clear();
-  transaction.state = WalletLegacyTransactionState::Active;
+  pqRowToLegacyTx(hist[transactionId], transaction);
   return true;
 }
 

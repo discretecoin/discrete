@@ -474,7 +474,7 @@ simple_wallet::simple_wallet(System::Dispatcher& dispatcher, const CryptoNote::C
   m_consoleHandler.setHandler("outputs", std::bind(&simple_wallet::show_unlocked_outputs_count, this, std::placeholders::_1), "Show the number of unlocked outputs available for a transaction");
   m_consoleHandler.setHandler("bc_height", std::bind(&simple_wallet::show_blockchain_height, this, std::placeholders::_1), "Show blockchain height");
   m_consoleHandler.setHandler("transfer", std::bind(&simple_wallet::pq_transfer, this, std::placeholders::_1),
-    "transfer <address> <amount> - Send funds to an address (or account number)");
+    "transfer <address> <amount> [-p <payment_id>] - Send funds to an address (or account number)");
   m_consoleHandler.setHandler("set_log", std::bind(&simple_wallet::set_log, this, std::placeholders::_1), "set_log <level> - Change current log level, <level> is a number 0-4");
   m_consoleHandler.setHandler("address", std::bind(&simple_wallet::pq_address, this, std::placeholders::_1), "Show this wallet's address, derived from the seed.");
   m_consoleHandler.setHandler("save_address", std::bind(&simple_wallet::save_address_to_file, this, std::placeholders::_1), "Save current wallet public address to file");
@@ -1999,8 +1999,8 @@ bool simple_wallet::pq_balance(const std::vector<std::string> &args) {
 }
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::pq_transfer(const std::vector<std::string> &args) {
-  if (args.size() != 2) {
-    fail_msg_writer() << "usage: transfer <address> <amount>";
+  if (args.size() != 2 && args.size() != 4) {
+    fail_msg_writer() << "usage: transfer <address> <amount> [-p <payment_id>]";
     return true;
   }
   if (m_trackingWallet) {
@@ -2027,11 +2027,26 @@ bool simple_wallet::pq_transfer(const std::vector<std::string> &args) {
     return true;
   }
 
+  // Optional classic CryptoNote payment id (-p), carried in tx_extra — for
+  // exchanges and other integrations that attribute deposits the CryptoNote way.
+  std::vector<uint8_t> extra;
+  if (args.size() == 4) {
+    if (args[2] != "-p") {
+      fail_msg_writer() << "usage: transfer <address> <amount> [-p <payment_id>]";
+      return true;
+    }
+    if (!CryptoNote::createTxExtraWithPaymentId(args[3], extra)) {
+      fail_msg_writer() << "payment ID has invalid format: \"" << args[3]
+                        << "\", expected 64-character hex string";
+      return true;
+    }
+  }
+
   // The deterministic build (input selection, denomination, two-pass fee, signing)
   // and relay live in the common sender, shared with greenwallet and walletd.
   try {
     CryptoNote::PqSendOutput out{destView, destSpend, amount, destSubaddrT};
-    CryptoNote::PqSendResult r = wl->sendPqTransfer({out});
+    CryptoNote::PqSendResult r = wl->sendPqTransfer({out}, 0, 0, extra);
     success_msg_writer() << "Sent " << m_currency.formatAmount(r.sent) << " (fee "
                          << m_currency.formatAmount(r.fee) << ", " << r.selected.size()
                          << " input(s)).";
