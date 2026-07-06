@@ -1508,9 +1508,9 @@ std::string WalletGreen::signMessage(const std::string &message, const std::stri
   throwIfTrackingMode();
   throwIfStopped();
 
-  // Discrete signs with the wallet's post-quantum (ML-DSA) spend key, derived from the
-  // raw master seed exactly as the address publishes it (the SeedMaster overload — NOT
-  // the legacy HKDF SecretKey overload), so the signature verifies against that address.
+  // Discrete signs with the wallet's post-quantum (ML-DSA) spend key, derived
+  // from the raw master seed exactly as the address publishes it, so the
+  // signature verifies against that address.
   CryptoPQ::SeedMaster seed = primarySeedMaster();
   if (seed == CryptoPQ::SeedMaster{}) {
     throw std::system_error(make_error_code(CryptoNote::error::BAD_ADDRESS),

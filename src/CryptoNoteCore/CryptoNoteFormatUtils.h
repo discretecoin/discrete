@@ -45,10 +45,10 @@ std::string signMessagePq(const std::string &data, const CryptoPQ::DsaSecretKey 
 bool verifyMessagePq(const std::string &data, const CryptoPQ::DsaPublicKey &spendPub, const std::string &signature);
 
 // Derive the Discrete PQ mining identity (ML-KEM view + ML-DSA spend keypair)
-// from a classical 32-byte spend secret. Mirrors Wallet/PqWallet
-// derivePqWalletKeys (CEMENTED domain "karbo-pq-wallet-seed-v1"), so the daemon
-// mines+signs with the SAME identity the wallet holds — the reward recipient is
-// the block signer. Used by start_mining (console + RPC).
+// from the wallet's 32-byte PQ-native seed. Mirrors Wallet/PqWallet
+// derivePqWalletKeys, so the daemon mines+signs with the SAME identity the
+// wallet holds — the reward recipient is the block signer. Used by start_mining
+// (console + RPC).
 void deriveMinerPqKeys(const Crypto::SecretKey& spendSecretKey,
                        CryptoPQ::KemPublicKey& viewPub,
                        CryptoPQ::DsaPublicKey& spendPub,

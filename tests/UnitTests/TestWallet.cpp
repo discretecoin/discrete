@@ -191,8 +191,7 @@ void pumpUntil(System::Dispatcher& dispatcher, CryptoNote::WalletGreen& wallet,
 
 // getAddressSpendKey(0).secretKey returns the wallet's 32-byte PQ master seed. The
 // wallet derives its identity from the seed directly (no HKDF), so a test that mines
-// to the wallet must derive the same way (the SeedMaster overload, not the SecretKey
-// overload which applies the legacy HKDF step).
+// to the wallet must derive the same way.
 static CryptoNote::PqWalletKeys pqKeysFromWalletSeed(const Crypto::SecretKey& seed) {
   CryptoPQ::SeedMaster sm{};
   std::memcpy(sm.data(), seed.data, sm.size());

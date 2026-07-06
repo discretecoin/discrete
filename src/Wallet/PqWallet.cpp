@@ -21,7 +21,6 @@
 
 #include "Common/StringTools.h"
 #include "crypto/crypto-util.h"
-#include "crypto_pq/PqHash.h"
 
 namespace CryptoNote {
 
@@ -54,14 +53,8 @@ bool readHexField(const std::string& hex, std::size_t& offset, ArrayT& bytes) {
 }  // namespace
 
 CryptoPQ::SeedMaster pqSeedMasterFromSpendSecret(const Crypto::SecretKey& spendSecretKey) noexcept {
-  // HKDF default instantiation (salt = 0x00*32, L = 32). The classical 32-byte
-  // spend scalar is the IKM; the domain string isolates the PQ master seed from
-  // any other use of the spend key.
-  CryptoPQ::Hash256 okm = CryptoPQ::hkdf_sha3_256(
-      spendSecretKey.data, sizeof(spendSecretKey.data),
-      kPqWalletSeedDomain, sizeof(kPqWalletSeedDomain) - 1);
   CryptoPQ::SeedMaster seed{};
-  std::copy(okm.begin(), okm.end(), seed.begin());
+  std::copy(spendSecretKey.data, spendSecretKey.data + sizeof(spendSecretKey.data), seed.begin());
   return seed;
 }
 
