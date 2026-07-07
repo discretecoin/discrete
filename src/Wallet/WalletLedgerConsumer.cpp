@@ -36,6 +36,10 @@ SynchronizationStart WalletLedgerConsumer::getSyncStart() {
   return m_syncStart;
 }
 
+void WalletLedgerConsumer::scanGenesisBlock(const Transaction& genesisTx, uint64_t genesisTimestamp) {
+  m_state.processTransaction(genesisTx, getObjectHash(genesisTx), 0, genesisTimestamp);
+}
+
 bool WalletLedgerConsumer::scanReader(const ITransactionReader& reader, uint32_t height, uint64_t timestamp) {
   // The synchronizer hands us prefix-only readers; getTransactionData() returns
   // the serialized TransactionPrefix. That carries everything PQ scanning needs

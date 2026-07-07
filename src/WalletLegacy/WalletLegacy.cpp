@@ -467,9 +467,13 @@ void WalletLegacy::initSync() {
   if (keys.spendSecretKey != NULL_SECRET_KEY) {
     PqWalletKeys pqKeys = derivePqWalletKeys(keys.spendSecretKey);
     m_pqConsumer.reset(new WalletLedgerConsumer(pqKeys, syncStart, m_logger.getLogger()));
+    m_pqConsumer->scanGenesisBlock(m_currency.genesisBlock().baseTransaction,
+                                   m_currency.genesisBlock().timestamp);
     m_blockchainSync.addConsumer(m_pqConsumer.get());
   } else if (m_pqTrackingKeys) {
     m_pqConsumer.reset(new WalletLedgerConsumer(*m_pqTrackingKeys, syncStart, m_logger.getLogger()));
+    m_pqConsumer->scanGenesisBlock(m_currency.genesisBlock().baseTransaction,
+                                   m_currency.genesisBlock().timestamp);
     m_blockchainSync.addConsumer(m_pqConsumer.get());
   }
 

@@ -1714,6 +1714,8 @@ void WalletGreen::initPqConsumer(const CryptoPQ::SeedMaster& seedMaster,
   }
   PqWalletKeys pqKeys = derivePqWalletKeys(seedMaster);
   m_pqConsumer.reset(new WalletLedgerConsumer(pqKeys, syncStart, m_logger.getLogger()));
+  m_pqConsumer->scanGenesisBlock(m_currency.genesisBlock().baseTransaction,
+                                 m_currency.genesisBlock().timestamp);
   m_blockchainSynchronizer.addConsumer(m_pqConsumer.get());
   m_pqConsumer->addObserver(this);  // m_blockchain (block list) is fed from here
   syncPqDepositConfigToState();
@@ -1725,6 +1727,8 @@ void WalletGreen::initPqConsumer(const PqTrackingKeys& pqTrackingKeys,
     return;
   }
   m_pqConsumer.reset(new WalletLedgerConsumer(pqTrackingKeys, syncStart, m_logger.getLogger()));
+  m_pqConsumer->scanGenesisBlock(m_currency.genesisBlock().baseTransaction,
+                                 m_currency.genesisBlock().timestamp);
   m_blockchainSynchronizer.addConsumer(m_pqConsumer.get());
   m_pqConsumer->addObserver(this);  // m_blockchain (block list) is fed from here
   syncPqDepositConfigToState();

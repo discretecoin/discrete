@@ -19,6 +19,8 @@
 #include "crypto_pq/PqDerive.h"
 #include "Logging/ConsoleLogger.h"
 #include "CryptoNote.h"
+#include "CryptoNoteConfig.h"
+#include "PqTxType.h"
 
 #include <cstring>
 #include <memory>
@@ -169,6 +171,68 @@ TEST(WalletLedgerConsumer, ReorgReturnsReceiveToPoolAsPendingNotSpendable) {
     EXPECT_EQ(consumer.state().balance(), 0u);
     EXPECT_EQ(consumer.state().pendingBalance(), 0u);
     EXPECT_EQ(consumer.state().historyByTxid(txid), nullptr);
+}
+
+// Regression for the invisible genesis treasury (found live, testnet 2026-07-06):
+// the BlockchainSynchronizer never delivers block 0 — every consumer cursor
+// (SynchronizationState) is pre-seeded with the genesis hash as already-known —
+// so wallets must scan the frozen genesis coinbase locally via scanGenesisBlock().
+// Models the real genesis shape exactly: TX_COINBASE with a BaseInput at height 0,
+// zero inputsHash, derand encapsulation, per-output unlockHeights. Owned batches
+// must be credited at height 0, the far-future batch must stay locked, and the
+// repeat call (every wallet open re-scans genesis) must not double-credit.
+TEST(WalletLedgerConsumer, ScanGenesisBlockCreditsTreasuryBatch) {
+    Logging::ConsoleLogger logger(Logging::ERROR);
+    PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
+    PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
+
+    Transaction tx;
+    tx.version = TRANSACTION_VERSION_1;
+    tx.txType = TX_COINBASE;
+    tx.unlockHeight = 0;
+    BaseInput coinbaseIn;
+    coinbaseIn.blockIndex = 0;
+    tx.inputs.push_back(coinbaseIn);
+
+    const CryptoPQ::Hash256 ih{};  // coinbase inputsHash is zeros
+    struct Batch { const PqWalletKeys* to; uint64_t unlock; };
+    const Batch batches[] = {
+        { &me,   0 },      // ours, spendable from genesis
+        { &me,   87600 },  // ours, locked ~one quarter out
+        { &them, 0 },      // someone else's
+    };
+    for (uint32_t i = 0; i < 3; ++i) {
+        CryptoPQ::Hash256 kemSeed{}; kemSeed[0] = static_cast<uint8_t>(i + 1);
+        CryptoPQ::Rho rho{};          rho[0]    = static_cast<uint8_t>(i + 0x41);
+        auto enc = CryptoPQ::kem_encaps_derand(batches[i].to->viewPub, kemSeed);
+        CryptoPQ::PqBuiltOutput built = CryptoPQ::buildPqOutput(
+            enc.first, enc.second, batches[i].to->spendPub, ih, i, 5000000, rho, 0);
+        PqOutput po;
+        po.kemCt.assign(built.kemCt.begin(), built.kemCt.end());
+        po.encPayload = built.encPayload;
+        std::memcpy(po.spendCommit.data, built.spendCommit.data(), 32);
+        TransactionOutput out;
+        out.amount = 5000000;
+        out.unlockHeight = batches[i].unlock;
+        out.target = std::move(po);
+        tx.outputs.push_back(std::move(out));
+    }
+
+    WalletLedgerConsumer consumer(me, SynchronizationStart{0, 0}, logger);
+    consumer.scanGenesisBlock(tx, 1782144000);
+
+    // Both owned batches credited (balance includes locked funds); theirs ignored.
+    EXPECT_EQ(consumer.state().balance(), 10000000u);
+    EXPECT_EQ(consumer.state().unspentCount(), 2u);
+
+    // Past coinbase maturity only the unlockHeight-0 batch is spendable.
+    consumer.state().setLastScannedHeight(20);
+    EXPECT_EQ(consumer.state().spendableBalance(), 5000000u);
+
+    // Every wallet open re-scans genesis: must be idempotent.
+    consumer.scanGenesisBlock(tx, 1782144000);
+    EXPECT_EQ(consumer.state().balance(), 10000000u);
+    EXPECT_EQ(consumer.state().unspentCount(), 2u);
 }
 
 TEST(WalletLedgerConsumer, EmptyBlocksCountButCreditNothing) {

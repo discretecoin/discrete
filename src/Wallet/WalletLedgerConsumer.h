@@ -48,6 +48,15 @@ public:
   WalletLedger& state() { return m_state; }
   const WalletLedger& state() const { return m_state; }
 
+  // Deliver the genesis coinbase to the scanner. Block 0 never arrives through
+  // the synchronizer: every consumer cursor (SynchronizationState) is pre-seeded
+  // with the genesis hash as already-known, so queryBlocks starts after it. A
+  // classical chain could ignore that (its genesis coinbase pays no one), but the
+  // Discrete genesis carries the Treasury Reserve, so the wallet scans the frozen
+  // genesis transaction locally when the consumer is created. Idempotent — the
+  // WalletLedger dedupes by outpoint nullifier — so every open/reset may call it.
+  void scanGenesisBlock(const Transaction& genesisTx, uint64_t genesisTimestamp);
+
   // IBlockchainConsumer
   SynchronizationStart getSyncStart() override;
   void onBlockchainDetach(uint32_t height) override;
