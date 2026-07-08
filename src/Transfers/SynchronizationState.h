@@ -37,8 +37,13 @@ public:
 
   typedef std::vector<Crypto::Hash> ShortHistory;
 
-  explicit SynchronizationState(const Crypto::Hash& genesisBlockHash) {
-    m_blockchain.push_back(genesisBlockHash);
+  explicit SynchronizationState(const Crypto::Hash& genesisBlockHash)
+      : m_genesisBlockHash(genesisBlockHash) {
+    // m_blockchain starts empty. The genesis hash is kept separately so
+    // getShortHistory can anchor queryBlocks to genesis without marking
+    // block 0 as already-processed. On first sync, checkInterval sees an
+    // empty m_blockchain and sets newBlockHeight=0, delivering block 0
+    // through the normal onNewBlocks path.
   }
 
   ShortHistory getShortHistory(uint32_t localHeight) const;
@@ -58,6 +63,7 @@ public:
 
 private:
 
+  Crypto::Hash m_genesisBlockHash;
   std::vector<Crypto::Hash> m_blockchain;
 };
 

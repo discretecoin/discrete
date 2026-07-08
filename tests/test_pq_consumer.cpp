@@ -13,6 +13,7 @@
 #include "Wallet/PqTransactionBuilder.h"
 #include "Wallet/PqWallet.h"
 #include "Transfers/CommonTypes.h"
+#include "Transfers/SynchronizationState.h"
 #include "CryptoNoteCore/TransactionApi.h"
 #include "CryptoNoteCore/CryptoNoteTools.h"
 #include "crypto_pq/PqOutputBuilder.h"
@@ -173,15 +174,54 @@ TEST(WalletLedgerConsumer, ReorgReturnsReceiveToPoolAsPendingNotSpendable) {
     EXPECT_EQ(consumer.state().historyByTxid(txid), nullptr);
 }
 
-// Regression for the invisible genesis treasury (found live, testnet 2026-07-06):
-// the BlockchainSynchronizer never delivers block 0 — every consumer cursor
-// (SynchronizationState) is pre-seeded with the genesis hash as already-known —
-// so wallets must scan the frozen genesis coinbase locally via scanGenesisBlock().
-// Models the real genesis shape exactly: TX_COINBASE with a BaseInput at height 0,
-// zero inputsHash, derand encapsulation, per-output unlockHeights. Owned batches
-// must be credited at height 0, the far-future batch must stay locked, and the
-// repeat call (every wallet open re-scans genesis) must not double-credit.
-TEST(WalletLedgerConsumer, ScanGenesisBlockCreditsTreasuryBatch) {
+// SynchronizationState::checkInterval with empty m_blockchain sets newBlockHeight=0
+// so the synchronizer delivers block 0. This pins the core mechanism of the fix:
+// a fresh consumer (never synced, m_blockchain empty) sees genesis as the first
+// new block, not as already-processed.
+TEST(SynchronizationState, FreshConsumerDeliversGenesisAtHeightZero) {
+    Crypto::Hash genesisHash{};
+    genesisHash.data[0] = 0x11;
+    Crypto::Hash block1Hash{};
+    block1Hash.data[0] = 0x22;
+
+    SynchronizationState state(genesisHash);
+
+    // m_blockchain is empty → getHeight() == 0, getShortHistory returns genesis anchor.
+    EXPECT_EQ(state.getHeight(), 0u);
+    auto history = state.getShortHistory(1000);
+    ASSERT_EQ(history.size(), 1u);
+    EXPECT_EQ(history[0], genesisHash);
+
+    // checkInterval starting at height 0 with [genesis, block1] → deliver from 0.
+    BlockchainInterval interval;
+    interval.startHeight = 0;
+    interval.blocks = {genesisHash, block1Hash};
+    auto result = state.checkInterval(interval);
+    EXPECT_FALSE(result.detachRequired);
+    EXPECT_TRUE(result.hasNewBlocks);
+    EXPECT_EQ(result.newBlockHeight, 0u);  // block 0 is new
+
+    // After addBlocks at height 0, genesis is now recorded.
+    Crypto::Hash hashes[] = {genesisHash, block1Hash};
+    state.addBlocks(hashes, 0, 2);
+    EXPECT_EQ(state.getHeight(), 2u);
+
+    // Second sync: nothing new.
+    auto result2 = state.checkInterval(interval);
+    EXPECT_FALSE(result2.hasNewBlocks);
+}
+
+// Genesis treasury flows through the normal onNewBlocks path (block 0 delivered
+// by the synchronizer). Previously required a scanGenesisBlock crutch because
+// SynchronizationState pre-seeded genesis as already-known; the fix starts
+// m_blockchain empty so checkInterval sets newBlockHeight=0 and block 0 arrives.
+//
+// Models the real genesis shape: TX_COINBASE, BaseInput at height 0, zero
+// inputsHash, derand encapsulation, per-output unlockHeights. Tests that:
+// - owned batches credit at height 0, non-owned are ignored
+// - far-future batch stays locked until setLastScannedHeight clears it
+// - re-delivering block 0 (nullifier already known) is idempotent (no double-credit)
+TEST(WalletLedgerConsumer, GenesisBlockCreditsTreasuryViaOnNewBlocks) {
     Logging::ConsoleLogger logger(Logging::ERROR);
     PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
     PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
@@ -194,7 +234,7 @@ TEST(WalletLedgerConsumer, ScanGenesisBlockCreditsTreasuryBatch) {
     coinbaseIn.blockIndex = 0;
     tx.inputs.push_back(coinbaseIn);
 
-    const CryptoPQ::Hash256 ih{};  // coinbase inputsHash is zeros
+    const CryptoPQ::Hash256 ih{};
     struct Batch { const PqWalletKeys* to; uint64_t unlock; };
     const Batch batches[] = {
         { &me,   0 },      // ours, spendable from genesis
@@ -218,8 +258,19 @@ TEST(WalletLedgerConsumer, ScanGenesisBlockCreditsTreasuryBatch) {
         tx.outputs.push_back(std::move(out));
     }
 
+    // Wrap in a CompleteBlock at height 0, the way BlockchainSynchronizer does.
+    constexpr uint64_t kGenesisTimestamp = 1782144000;
+    Block genesisBlock;
+    genesisBlock.timestamp = kGenesisTimestamp;
+    genesisBlock.baseTransaction = tx;
+
+    CompleteBlock cb;
+    cb.blockHash = Crypto::Hash{};  // sentinel; WalletLedger doesn't use it
+    cb.block = boost::make_optional(genesisBlock);
+    cb.transactions.push_back(createTransactionPrefix(tx));
+
     WalletLedgerConsumer consumer(me, SynchronizationStart{0, 0}, logger);
-    consumer.scanGenesisBlock(tx, 1782144000);
+    EXPECT_EQ(consumer.onNewBlocks(&cb, 0, 1), 1u);
 
     // Both owned batches credited (balance includes locked funds); theirs ignored.
     EXPECT_EQ(consumer.state().balance(), 10000000u);
@@ -229,8 +280,8 @@ TEST(WalletLedgerConsumer, ScanGenesisBlockCreditsTreasuryBatch) {
     consumer.state().setLastScannedHeight(20);
     EXPECT_EQ(consumer.state().spendableBalance(), 5000000u);
 
-    // Every wallet open re-scans genesis: must be idempotent.
-    consumer.scanGenesisBlock(tx, 1782144000);
+    // Re-delivering block 0 must be idempotent: nullifiers already known.
+    EXPECT_EQ(consumer.onNewBlocks(&cb, 0, 1), 1u);
     EXPECT_EQ(consumer.state().balance(), 10000000u);
     EXPECT_EQ(consumer.state().unspentCount(), 2u);
 }

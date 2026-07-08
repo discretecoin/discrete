@@ -29,6 +29,15 @@ namespace CryptoNote {
 
 SynchronizationState::ShortHistory SynchronizationState::getShortHistory(uint32_t localHeight) const {
   ShortHistory history;
+
+  // Fresh consumer: m_blockchain is empty (genesis not yet processed).
+  // Return just the genesis hash so queryBlocks has the required anchor and
+  // the node serves blocks from startHeight=0.
+  if (m_blockchain.empty()) {
+    history.push_back(m_genesisBlockHash);
+    return history;
+  }
+
   uint32_t i = 0;
   uint32_t current_multiplier = 1;
   uint32_t sz = std::min(static_cast<uint32_t>(m_blockchain.size()), localHeight + 1);
