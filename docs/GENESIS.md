@@ -17,7 +17,7 @@ The genesis coinbase `extra` also carries a headline, embedded as a
 `TX_EXTRA_NONCE` — Discrete's analogue of Bitcoin's *"The Times 03/Jan/2009
 Chancellor on brink of second bailout for banks"*:
 
-> The White House 22/Jun/2026 — EO 14412: Securing the Nation Against Advanced Cryptographic Attacks
+> Reuters 08/Jul/2026 — Crypto firms prepare defenses as quantum threat to encryption draws nearer
 
 ### Monetary policy
 
@@ -69,12 +69,13 @@ Each batch's full bech32m PQ address (~2.6 KB — too long to table here) is
 recorded in the offline secrets file below, and is recomputable by anyone from
 the committed `.inc` public keys (`makePqAddress(viewPub, spendPub)`).
 
-**Genesis block timestamp:** 2026-06-22 16:00:00 UTC — the day Executive Order
-14412 (the embedded headline) was signed at the White House
+**Genesis block timestamp:** 2026-06-22 16:00:00 UTC (kept from original genesis generation).
+The embedded headline (Reuters 08/Jul/2026) post-dates the timestamp — the timestamp reflects
+when the genesis keys and structure were frozen; the headline is the canonical news anchor
 (`m_genesisBlock.timestamp` in `Currency::generateGenesisBlock`).
 
 **Genesis block hash (mainnet):**
-`ffeb0c033173217949eb3dc358bb8346d85a18f0b9ddace9c2e19a718581bf19`
+`b1df0152bb41d12bef471f322ac8fef52889cdb4128759a41877d26d08edace8`
 (pinned by `tests/test_pq_genesis.cpp`).
 
 ## Recipient secrets

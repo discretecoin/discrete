@@ -47,7 +47,7 @@ constexpr char kRhoSeedDomain[] = "discrete-genesis-rho-v1";
 // never change after launch. The em dash is UTF-8 (0xE2 0x80 0x94), matching the
 // rest of this UTF-8 source file; the byte length is well under TX_EXTRA_NONCE_MAX_COUNT.
 constexpr char kGenesisMessage[] =
-    "The White House 22/Jun/2026 \xE2\x80\x94 EO 14412: Securing the Nation Against Advanced Cryptographic Attacks";
+    "Reuters 08/Jul/2026 \xE2\x80\x94 Crypto firms prepare defenses as quantum threat to encryption draws nearer";
 
 CryptoPQ::Hash256 batchSeed(const char* domain, std::size_t domainLen, uint32_t i) {
   uint8_t ikm[4];

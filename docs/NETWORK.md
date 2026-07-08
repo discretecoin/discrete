@@ -78,4 +78,4 @@ seed2.discrete.cash:9330
 
 The genesis coinbase (`GENESIS_COINBASE_TX_HEX`) and the network id are
 independent constants now. See [GENESIS.md](GENESIS.md). Mainnet genesis block
-hash: `a77e3f242f03f8ebe1d6bc4b50873fe157f4c2c95d9ff4207107991439c399ee`.
+hash: `b1df0152bb41d12bef471f322ac8fef52889cdb4128759a41877d26d08edace8`.
