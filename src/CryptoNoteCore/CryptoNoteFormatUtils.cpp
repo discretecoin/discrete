@@ -245,11 +245,22 @@ bool get_block_longhash(const Block& b, Crypto::Hash& res) {
   if (!get_signed_block_hashing_blob(b, pot)) {
     return false;
   }
-  Crypto::Hash hash_1, hash_2;
-  if (!Crypto::y_slow_hash(pot.data(), pot.size(), hash_1, hash_2)) {
+  // yespower personalization ("pers"): a FIXED domain-separation tag binding this
+  // PoW to Discrete. It is not a per-block value on purpose — the blob is already
+  // hashed as yespower's primary input, and the work factor is fixed by N/r, so a
+  // content-derived seed would add neither entropy nor hardness. What a constant
+  // pers *does* buy is domain separation: a yespower(N=2048,r=32) hash produced by
+  // any other chain can never be reused, precompute-table-shared, or merge-mine
+  // confused with Discrete's PoW. Computed once (thread-safe magic static).
+  static const char POW_DOMAIN_TAG[] = "Discrete/yespower/v1";
+  static const Crypto::Hash powSeed =
+      Crypto::cn_fast_hash(POW_DOMAIN_TAG, sizeof(POW_DOMAIN_TAG) - 1);
+
+  Crypto::Hash longHash;
+  if (!Crypto::y_slow_hash(pot.data(), pot.size(), powSeed, longHash)) {
     return false;
   }
-  res = hash_2;
+  res = longHash;
   return true;
 }
 

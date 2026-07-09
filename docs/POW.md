@@ -15,12 +15,20 @@ flag were removed) — only the pure `get_block_hashing_blob` /
 ```
 pot = signedHashingBlob(B)        // block header (nonce, previousBlockHash, …)
                                   //   + miner ML-DSA signature over it
-PoW = yespower(pot)               // y_slow_hash, N=2048 r=32 → 8 MiB
+pers = cn_fast_hash("Discrete/yespower/v1")   // fixed domain-separation tag
+PoW = yespower(pot, pers)         // y_slow_hash, N=2048 r=32 → 8 MiB
 ```
 
 The miner signs the block's hashing blob with the ML-DSA spend key that controls
 the coinbase reward, then hashes the signed blob with yespower. Because the
 signature covers the nonce, the block must be re-signed on every attempt.
+
+`pers` is yespower's personalization (salt) input, set to a fixed tag derived from
+`"Discrete/yespower/v1"`. It is deliberately constant, not per-block: `pot` is
+already yespower's primary input and the work factor is fixed by N/r, so a
+content-derived seed would add no entropy or hardness. The constant tag provides
+domain separation — a yespower(N=2048,r=32) hash produced for any other chain
+cannot be reused, precompute-shared, or merge-mine confused with Discrete's PoW.
 
 ## What this buys, and why it is enough
 
