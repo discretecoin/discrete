@@ -32,7 +32,6 @@
 #include "Wallet/PqTransactionBuilder.h"
 #include "Wallet/WalletLedger.h"
 #include "crypto_pq/PqOutputBuilder.h"
-#include "crypto_pq/PqScan.h"
 #include "crypto_pq/PqSeed.h"
 #include "crypto_pq/PqDerive.h"
 #include "crypto_pq/PqDsa.h"
@@ -287,8 +286,8 @@ CryptoNote::PqWalletKeys pqKeysFromPattern(uint8_t a, uint8_t b) {
 // Funded happy-path lifecycle through the LIVE Core:
 //   mine PQ coinbase -> mature -> scan with miner PQ keys -> spend via TX_PQ
 //   (accepted by consensus); a second spend of the same output (same nullifier)
-//   is rejected. Discrete has no legacy chain, so the coinbase PqOutput is the
-//   sole funds source (spendable once matured).
+//   is rejected. Discrete has no legacy chain, so the coinbase CoinbaseOutput is
+//   the sole funds source (spendable once matured).
 bool runFunded() {
   using namespace CryptoNote;
   Logging::ConsoleLogger logger(Logging::ERROR);
@@ -335,39 +334,35 @@ bool runFunded() {
 
   bool ok = true;
 
-  // Pull block-1's coinbase: a single PqOutput addressed to the miner's PQ keys.
+  // Pull block-1's coinbase: a single CoinbaseOutput addressed to the miner's PQ keys.
   Block blk1;
   ok &= expect(core.getBlockByHash(core.getBlockIdByHeight(1), blk1), "funded: load block 1");
   const Transaction& cb = blk1.baseTransaction;
   Crypto::Hash cbHash = getObjectHash(cb);
-  ok &= expect(cb.outputs.size() == 1, "funded: coinbase has one PQ output");
-  ok &= expect(cb.outputs[0].target.type() == typeid(PqOutput), "funded: coinbase output is PqOutput");
+  ok &= expect(cb.outputs.size() == 1, "funded: coinbase has one CoinbaseOutput");
+  ok &= expect(cb.outputs[0].target.type() == typeid(CoinbaseOutput),
+               "funded: coinbase output is CoinbaseOutput");
   if (!ok) { core.deinit(); std::filesystem::remove_all(dataDir, ec); return false; }
 
   uint64_t inAmount = cb.outputs[0].amount;
-  const PqOutput& cbOut = boost::get<PqOutput>(cb.outputs[0].target);
+  const CoinbaseOutput& cbOut = boost::get<CoinbaseOutput>(cb.outputs[0].target);
 
-  // Scan the coinbase with the miner's PQ scan keys (viewSk decapsulates, spendPub
-  // recomputes the ownership commitment). inputsHash is zeros for a coinbase.
-  CryptoPQ::PqScanKeys scan{miner.pqViewSk(), miner.pqSpendPk()};
-  CryptoPQ::Hash256 cbIh = pqTransactionInputsHash(cb);
-  CryptoPQ::PqScanOutput so;
-  so.outputIndex = 0;
-  so.amount = inAmount;
-  std::memcpy(so.kemCt.data(), cbOut.kemCt.data(), so.kemCt.size());
-  so.encPayload = cbOut.encPayload;
-  std::memcpy(so.spendCommit.data(), cbOut.spendCommit.data, 32);
-  auto owned = CryptoPQ::scanPqOutput(scan, cbIh, so);
-  ok &= expect(static_cast<bool>(owned), "funded: miner scans its own coinbase PQ output");
-  ok &= expect(owned && owned->amount == inAmount, "funded: scanned amount matches coinbase reward");
+  // Scan the CoinbaseOutput via coinbaseRho (no KEM): recompute the commitment
+  // and compare. The miner's spendPub + the block height determine ownership.
+  CryptoPQ::DsaPublicKey minerSpendPub1 = miner.pqSpendPk();
+  CryptoPQ::Rho cbRho = CryptoPQ::coinbaseRho(minerSpendPub1, /*height=*/1, /*outputIndex=*/0);
+  CryptoPQ::Hash256 expectedSc = CryptoPQ::spendCommit(minerSpendPub1, cbRho);
+  bool coinbaseOwned = (std::memcmp(expectedSc.data(), cbOut.spendCommit.data, 32) == 0);
+  ok &= expect(coinbaseOwned, "funded: miner scans its own coinbase CoinbaseOutput");
+  ok &= expect(inAmount > 0, "funded: coinbase reward non-zero");
   if (!ok) { core.deinit(); std::filesystem::remove_all(dataDir, ec); return false; }
 
-  // Build the spendable input descriptor from the scanned record.
+  // Build the spendable input descriptor.
   std::vector<PqSpendInput> spendIns(1);
   spendIns[0].prevTxid = cbHash;
   spendIns[0].prevOutIndex = 0;
   spendIns[0].amount = inAmount;
-  spendIns[0].rho = owned->rho;
+  spendIns[0].rho = cbRho;
 
   // Spend the matured coinbase PQ output via TX_PQ through the live consensus
   // dispatch. The spender is the miner (its long-term ML-DSA spend keypair).
@@ -425,7 +420,7 @@ bool runFunded() {
     tamperIns[0].prevTxid = cb2Hash;     // wrong outpoint (different real output)
     tamperIns[0].prevOutIndex = 0;
     tamperIns[0].amount = inAmount;
-    tamperIns[0].rho = owned->rho;       // but reveal block-1's rho
+    tamperIns[0].rho = cbRho;             // but reveal block-1's rho
     PqWalletKeys recip4 = pqKeysFromPattern(6, 6);
     Transaction tamper = buildPqTransaction(
         tamperIns, {PqSendOutput{recip4.viewPub, recip4.spendPub, inAmount - pqFee}},
@@ -446,7 +441,7 @@ bool runFunded() {
     tamperIns[0].prevTxid = cbHash;      // real coinbase tx
     tamperIns[0].prevOutIndex = 1;       // but it has only output 0
     tamperIns[0].amount = inAmount;
-    tamperIns[0].rho = owned->rho;
+    tamperIns[0].rho = cbRho;
     PqWalletKeys recip5 = pqKeysFromPattern(7, 7);
     Transaction tamper = buildPqTransaction(
         tamperIns, {PqSendOutput{recip5.viewPub, recip5.spendPub, inAmount - pqFee}},
@@ -693,29 +688,25 @@ bool runEmission() {
   ok &= expect(core.getBlockByHash(core.getBlockIdByHeight(6), blk6), "emission: load block 6");
   const Transaction& cb6 = blk6.baseTransaction;
   Crypto::Hash cb6Hash = getObjectHash(cb6);
-  ok &= expect(!cb6.outputs.empty() && cb6.outputs[0].target.type() == typeid(PqOutput),
-               "emission: block-6 coinbase has PqOutput");
+  ok &= expect(!cb6.outputs.empty() && cb6.outputs[0].target.type() == typeid(CoinbaseOutput),
+               "emission: block-6 coinbase has CoinbaseOutput");
   if (!ok) { core.deinit(); std::filesystem::remove_all(dataDir, ec); return false; }
 
   uint64_t inAmount = cb6.outputs[0].amount;
-  const PqOutput& cbOut = boost::get<PqOutput>(cb6.outputs[0].target);
+  const CoinbaseOutput& cbOut6 = boost::get<CoinbaseOutput>(cb6.outputs[0].target);
 
-  CryptoPQ::PqScanKeys scan{miner.pqViewSk(), miner.pqSpendPk()};
-  CryptoPQ::Hash256 cbIh = pqTransactionInputsHash(cb6);
-  CryptoPQ::PqScanOutput so;
-  so.outputIndex = 0; so.amount = inAmount;
-  std::memcpy(so.kemCt.data(), cbOut.kemCt.data(), so.kemCt.size());
-  so.encPayload = cbOut.encPayload;
-  std::memcpy(so.spendCommit.data(), cbOut.spendCommit.data, 32);
-  auto owned = CryptoPQ::scanPqOutput(scan, cbIh, so);
-  ok &= expect(static_cast<bool>(owned), "emission: miner scans block-6 coinbase");
+  CryptoPQ::DsaPublicKey minerSpendPub6 = miner.pqSpendPk();
+  CryptoPQ::Rho cbRho6 = CryptoPQ::coinbaseRho(minerSpendPub6, /*height=*/6, /*outputIndex=*/0);
+  CryptoPQ::Hash256 expectedSc6 = CryptoPQ::spendCommit(minerSpendPub6, cbRho6);
+  bool coinbaseOwned6 = (std::memcmp(expectedSc6.data(), cbOut6.spendCommit.data, 32) == 0);
+  ok &= expect(coinbaseOwned6, "emission: miner scans block-6 coinbase");
   if (!ok) { core.deinit(); std::filesystem::remove_all(dataDir, ec); return false; }
 
   std::vector<PqSpendInput> spendIns(1);
   spendIns[0].prevTxid = cb6Hash;
   spendIns[0].prevOutIndex = 0;
   spendIns[0].amount = inAmount;
-  spendIns[0].rho = owned->rho;
+  spendIns[0].rho = cbRho6;
 
   PqWalletKeys recip = pqKeysFromPattern(7, 3);
   const uint64_t pqFee = 50;  // well above the per-4000-bytes floor

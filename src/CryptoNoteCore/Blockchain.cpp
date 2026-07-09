@@ -1056,9 +1056,9 @@ bool Blockchain::prevalidate_miner_transaction(const Block& b, uint32_t height) 
     logger(ERROR, BRIGHT_RED) << "Coinbase transaction in the block has no inputs";
     return false;
   }
-  // Discrete: coinbase is a PQ transaction. Normal blocks carry exactly one
-  // PqOutput; the genesis block (height 0) carries the Treasury Reserve allocation
-  // as multiple staggered per-output-unlock PqOutputs in the coinbase.
+  // Discrete: coinbase outputs are CoinbaseOutput (stripped — spendCommit only).
+  // Normal blocks carry exactly one; genesis carries the Treasury Reserve allocation
+  // as multiple staggered per-output-unlock CoinbaseOutputs.
   if (height == 0) {
     if (b.baseTransaction.outputs.empty()) {
       logger(ERROR, BRIGHT_RED) << "Genesis coinbase transaction must have at least one output";
@@ -1069,8 +1069,8 @@ bool Blockchain::prevalidate_miner_transaction(const Block& b, uint32_t height) 
     return false;
   }
   for (const auto& o : b.baseTransaction.outputs) {
-    if (!(o.target.type() == typeid(PqOutput))) {
-      logger(ERROR, BRIGHT_RED) << "Coinbase transaction must have PqOutputs only";
+    if (!(o.target.type() == typeid(CoinbaseOutput))) {
+      logger(ERROR, BRIGHT_RED) << "Coinbase transaction must have CoinbaseOutputs only";
       return false;
     }
   }
@@ -1202,18 +1202,18 @@ bool Blockchain::validate_block_signature(const Block& b, const Crypto::Hash& id
 
   // Identity-bound mining: the coinbase reward recipient MUST be the block
   // signer. The single coinbase output's spendCommit must equal
-  // spendCommit(signerSpendPub, coinbaseRho(signerSpendPub, height)) — so the
+  // spendCommit(signerSpendPub, coinbaseRho(signerSpendPub, height, 0)) — so the
   // reward can only ever be spent by the same ML-DSA key that signed the block.
   // This makes pools/botnets require sharing the spend secret (no separation of
   // "who mines" from "who is paid"). The coinbase has a single, undivided output
   // (one signature, minimal size) — enforced by prevalidate_miner_transaction.
   if (b.baseTransaction.outputs.size() != 1 ||
-      b.baseTransaction.outputs[0].target.type() != typeid(PqOutput)) {
-    logger(ERROR, BRIGHT_RED) << "Block " << id << " coinbase must be a single PqOutput";
+      b.baseTransaction.outputs[0].target.type() != typeid(CoinbaseOutput)) {
+    logger(ERROR, BRIGHT_RED) << "Block " << id << " coinbase must be a single CoinbaseOutput";
     return false;
   }
-  const PqOutput& cbOut = boost::get<PqOutput>(b.baseTransaction.outputs[0].target);
-  CryptoPQ::Rho cbRho = CryptoPQ::coinbaseRho(spendPub, height);
+  const CoinbaseOutput& cbOut = boost::get<CoinbaseOutput>(b.baseTransaction.outputs[0].target);
+  CryptoPQ::Rho cbRho = CryptoPQ::coinbaseRho(spendPub, height, 0);
   CryptoPQ::Hash256 expectedCommit = CryptoPQ::spendCommit(spendPub, cbRho);
   if (std::memcmp(cbOut.spendCommit.data, expectedCommit.data(), 32) != 0) {
     logger(ERROR, BRIGHT_RED) << "Block " << id << " at height " << height
@@ -1904,20 +1904,21 @@ bool Blockchain::checkPqInputs(const Transaction& tx, uint32_t* pmax_used_block_
         TransactionEntry te = transactionByIndex(TransactionIndex{block, slot});
         if (in.prevOutIndex < te.tx.outputs.size()) {
           const TransactionOutput& o = te.tx.outputs[in.prevOutIndex];
-          if (o.target.type() == typeid(PqOutput)) {
-            // Maturity: a PqOutput (coinbase reward, a genesis Treasury Reserve batch,
-            // or any output with a non-zero unlockHeight) can only be spent once
-            // its PER-OUTPUT lock has elapsed. Gating is on the referenced
-            // output's unlockHeight, not the producing tx's, so one tx can lock
-            // some outputs while leaving others (e.g. change) spendable.
-            // Unmatured → treat as unresolved so checkPqTransactionInputs rejects
-            // with "referenced output does not exist".
+          // Accept both PqOutput (regular TX) and CoinbaseOutput (coinbase TX).
+          const bool isPq = (o.target.type() == typeid(PqOutput));
+          const bool isCb = (o.target.type() == typeid(CoinbaseOutput));
+          if (isPq || isCb) {
+            // Maturity: outputs with a non-zero unlockHeight (coinbase reward,
+            // genesis Treasury Reserve batch, or any timelock) can only be spent
+            // once their PER-OUTPUT lock has elapsed. Unmatured → treat as
+            // unresolved so checkPqTransactionInputs rejects.
             if (is_tx_spendheight_unlocked(o.unlockHeight)) {
               r.exists = true;
-              r.isPqOutput = true;
+              r.isPqOutput = true;  // "spendable by a PQ input" — true for both types
               r.isCoinbase = (slot == 0);  // coinbase is always tx slot 0
               r.amount = o.amount;
-              r.spendCommit = boost::get<PqOutput>(o.target).spendCommit;
+              r.spendCommit = isPq ? boost::get<PqOutput>(o.target).spendCommit
+                                   : boost::get<CoinbaseOutput>(o.target).spendCommit;
               if (block > maxRefHeight) maxRefHeight = block;
             }
           }
@@ -1961,9 +1962,11 @@ uint64_t Blockchain::pqReferencedInputAmount(const Transaction& tx) {
     if (!m_db.getTxIndex(in.prevTxid, block, slot)) continue;
     try {
       TransactionEntry te = transactionByIndex(TransactionIndex{block, slot});
-      if (in.prevOutIndex < te.tx.outputs.size() &&
-          te.tx.outputs[in.prevOutIndex].target.type() == typeid(PqOutput)) {
-        sum += te.tx.outputs[in.prevOutIndex].amount;
+      if (in.prevOutIndex < te.tx.outputs.size()) {
+        const auto& tgt = te.tx.outputs[in.prevOutIndex].target;
+        if (tgt.type() == typeid(PqOutput) || tgt.type() == typeid(CoinbaseOutput)) {
+          sum += te.tx.outputs[in.prevOutIndex].amount;
+        }
       }
     } catch (const std::exception&) {
       // unresolved (checkPqInputs already rejected such a tx); contributes 0

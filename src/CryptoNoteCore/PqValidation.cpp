@@ -271,7 +271,7 @@ bool checkPqTransactionInputs(const Transaction& tx,
       return fail(error, "referenced output does not exist");
     }
     if (!r.isPqOutput) {
-      return fail(error, "referenced output is not a PqOutput");
+      return fail(error, "referenced output is not spendable by a PQ input");
     }
     // NOTE: coinbase PqOutputs ARE spendable in Discrete (they are the sole
     // funds source — there is no legacy chain). Coinbase maturity

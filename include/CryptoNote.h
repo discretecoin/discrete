@@ -66,12 +66,15 @@ struct PqOutput {
 };
 
 // ---------------------------------------------------------------------------
-// Coinbase output (miner reward to a PQ address).
-// For v6+ coinbase: BaseInput + one or more CoinbaseOutput (= PqOutput with
-// the miner's kemCt/encPayload/spendCommit constructed from their PQ address).
-// We alias PqOutput here for clarity; the serializer treats them identically.
+// Coinbase output (miner reward / genesis Treasury Reserve batch).
+// Stripped form: only the spend commitment, no KEM ciphertext or AEAD payload.
+// The rho is publicly derivable as coinbaseRho(spendPub, height, outputIndex),
+// so the recipient doesn't need an encrypted delivery — they recompute it.
+// Wire tag: 0x11 (distinct from PqOutput 0x10).
 // ---------------------------------------------------------------------------
-using CoinbaseOutput = PqOutput;
+struct CoinbaseOutput {
+  Crypto::Hash spendCommit;  // SHA3-256(kDomainSpendCommit || spendPub || rho)
+};
 
 // ---------------------------------------------------------------------------
 // Transaction input/output variant types.
@@ -81,7 +84,7 @@ using CoinbaseOutput = PqOutput;
 // Blockchain::checkTransactionInputs rejects any tx whose outputs aren't PqOutput.
 // ---------------------------------------------------------------------------
 typedef boost::variant<BaseInput, PqInput> TransactionInput;
-typedef boost::variant<KeyOutput, PqOutput> TransactionOutputTarget;
+typedef boost::variant<KeyOutput, PqOutput, CoinbaseOutput> TransactionOutputTarget;
 
 struct TransactionOutput {
   uint64_t amount;

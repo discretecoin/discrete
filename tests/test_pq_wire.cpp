@@ -166,7 +166,7 @@ TEST(PqWire, TamperedByteChangesContent) {
 TEST(PqWire, SingleVersionAlwaysCarriesTxTypeByte) {
     // Discrete has no legacy dual-version wire format: version 1 IS the PQ
     // version, so every transaction carries a txType byte on the wire and it
-    // round-trips. (Coinbase shape: BaseInput + a single PqOutput.)
+    // round-trips.
     Transaction tx;
     tx.version = TRANSACTION_VERSION_1;  // == 1
     tx.txType = TX_PQ;
@@ -184,6 +184,33 @@ TEST(PqWire, SingleVersionAlwaysCarriesTxTypeByte) {
     ASSERT_TRUE(fromBinaryArray(tx2, ba));
     EXPECT_EQ(tx2.version, TRANSACTION_VERSION_1);
     EXPECT_EQ(tx2.txType, TX_PQ);  // read back from wire, not defaulted
+}
+
+TEST(PqWire, CoinbaseOutputRoundTrips) {
+    // CoinbaseOutput (tag 0x11): only carries spendCommit (32 B), no kemCt/encPayload.
+    // Verify serialization round-trips the correct type and data.
+    CoinbaseOutput co;
+    for (size_t i = 0; i < sizeof(co.spendCommit.data); ++i)
+        co.spendCommit.data[i] = static_cast<uint8_t>(i * 3 + 7);
+
+    Transaction tx;
+    tx.version = TRANSACTION_VERSION_1;
+    tx.txType = TX_COINBASE;
+    tx.unlockHeight = 0;
+    BaseInput bi; bi.blockIndex = 100;
+    tx.inputs.push_back(bi);
+    TransactionOutput out; out.amount = 1000000; out.target = co;
+    tx.outputs.push_back(out);
+
+    BinaryArray ba = toBinaryArray(tx);
+    Transaction tx2;
+    ASSERT_TRUE(fromBinaryArray(tx2, ba));
+    ASSERT_EQ(tx2.outputs.size(), 1u);
+    ASSERT_EQ(tx2.outputs[0].target.type(), typeid(CoinbaseOutput));
+    const CoinbaseOutput& co2 = boost::get<CoinbaseOutput>(tx2.outputs[0].target);
+    EXPECT_EQ(std::memcmp(co2.spendCommit.data, co.spendCommit.data, 32), 0);
+    EXPECT_EQ(tx2.outputs[0].amount, 1000000u);
+    EXPECT_EQ(tx2.txType, TX_COINBASE);
 }
 
 TEST(PqWire, BlockIdExcludesSignatureButPowBlobIncludesSignatureHash) {

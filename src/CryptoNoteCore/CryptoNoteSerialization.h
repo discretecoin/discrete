@@ -55,6 +55,7 @@ void serialize(TransactionOutput& output, ISerializer& serializer);
 void serialize(TransactionOutputTarget& output, ISerializer& serializer);
 void serialize(KeyOutput& key, ISerializer& serializer);
 void serialize(PqOutput& output, ISerializer& serializer);
+void serialize(CoinbaseOutput& output, ISerializer& serializer);
 
 void serialize(BlockHeader& header, ISerializer& serializer);
 void serialize(Block& block, ISerializer& serializer);

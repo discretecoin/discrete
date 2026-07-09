@@ -53,6 +53,8 @@ struct BinaryVariantTagGetter: boost::static_visitor<uint8_t> {
   // KeyOutput stub — should never be serialised on Discrete.
   uint8_t operator()(const CryptoNote::KeyOutput&) { throw std::runtime_error("KeyOutput not allowed in Discrete"); }
   uint8_t operator()(const CryptoNote::PqOutput&) { return  0x10; }
+  // CoinbaseOutput: stripped form (spendCommit only), tag 0x11.
+  uint8_t operator()(const CryptoNote::CoinbaseOutput&) { return  0x11; }
   uint8_t operator()(const CryptoNote::Transaction&) { return  0xcc; }
   uint8_t operator()(const CryptoNote::Block&) { return  0xbb; }
 };
@@ -96,6 +98,13 @@ void getVariantValue(CryptoNote::ISerializer& serializer, uint8_t tag, CryptoNot
     throw std::runtime_error("KeyOutput (ECC stealth) not allowed in Discrete transactions");
   case 0x10: {
     CryptoNote::PqOutput v;
+    serializer(v, "data");
+    out = v;
+    break;
+  }
+  case 0x11: {
+    // Stripped coinbase output — spendCommit only, no kemCt/encPayload.
+    CryptoNote::CoinbaseOutput v;
     serializer(v, "data");
     out = v;
     break;
@@ -258,20 +267,15 @@ void serialize(TransactionOutput& output, ISerializer& serializer) {
 
 void serialize(TransactionOutputTarget& output, ISerializer& serializer) {
   if (serializer.type() == ISerializer::OUTPUT) {
-    // Always write tag 0x10 (PqOutput). KeyOutput (0x2) is never written.
-    uint8_t tag = 0x10;
+    BinaryVariantTagGetter tagGetter;
+    uint8_t tag = boost::apply_visitor(tagGetter, output);
     serializer.binary(&tag, sizeof(tag), "type");
-    CryptoNote::PqOutput& pqOut = boost::get<CryptoNote::PqOutput>(output);
-    serializer(pqOut, "data");
+    VariantSerializer visitor(serializer, "data");
+    boost::apply_visitor(visitor, output);
   } else {
     uint8_t tag;
     serializer.binary(&tag, sizeof(tag), "type");
-    if (tag != 0x10) {
-      throw std::runtime_error("KeyOutput (ECC) not allowed in Discrete — only PQ outputs (tag 0x10) accepted");
-    }
-    CryptoNote::PqOutput v;
-    serializer(v, "data");
-    output = v;
+    getVariantValue(serializer, tag, output);
   }
 }
 
@@ -282,6 +286,12 @@ void serialize(KeyOutput& /*key*/, ISerializer& /*serializer*/) {
 void serialize(PqOutput& output, ISerializer& serializer) {
   serializePqBlob(output.kemCt,      PQ_KEM_CIPHERTEXT_SIZE, "kem_ct",      serializer);
   serializePqBlob(output.encPayload, PQ_ENC_PAYLOAD_SIZE,    "enc_payload", serializer);
+  serializer(output.spendCommit, "spend_commit");
+}
+
+void serialize(CoinbaseOutput& output, ISerializer& serializer) {
+  // Stripped coinbase output: only the spend commitment.
+  // rho is coinbaseRho(spendPub, height, outputIndex) — publicly recomputable.
   serializer(output.spendCommit, "spend_commit");
 }
 

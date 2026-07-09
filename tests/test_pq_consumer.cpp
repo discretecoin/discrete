@@ -216,8 +216,9 @@ TEST(SynchronizationState, FreshConsumerDeliversGenesisAtHeightZero) {
 // SynchronizationState pre-seeded genesis as already-known; the fix starts
 // m_blockchain empty so checkInterval sets newBlockHeight=0 and block 0 arrives.
 //
-// Models the real genesis shape: TX_COINBASE, BaseInput at height 0, zero
-// inputsHash, derand encapsulation, per-output unlockHeights. Tests that:
+// Models the real genesis shape: TX_COINBASE, BaseInput at height 0,
+// CoinbaseOutput per batch (stripped: only spendCommit, no kemCt/encPayload).
+// Tests that:
 // - owned batches credit at height 0, non-owned are ignored
 // - far-future batch stays locked until setLastScannedHeight clears it
 // - re-delivering block 0 (nullifier already known) is idempotent (no double-credit)
@@ -234,7 +235,6 @@ TEST(WalletLedgerConsumer, GenesisBlockCreditsTreasuryViaOnNewBlocks) {
     coinbaseIn.blockIndex = 0;
     tx.inputs.push_back(coinbaseIn);
 
-    const CryptoPQ::Hash256 ih{};
     struct Batch { const PqWalletKeys* to; uint64_t unlock; };
     const Batch batches[] = {
         { &me,   0 },      // ours, spendable from genesis
@@ -242,19 +242,14 @@ TEST(WalletLedgerConsumer, GenesisBlockCreditsTreasuryViaOnNewBlocks) {
         { &them, 0 },      // someone else's
     };
     for (uint32_t i = 0; i < 3; ++i) {
-        CryptoPQ::Hash256 kemSeed{}; kemSeed[0] = static_cast<uint8_t>(i + 1);
-        CryptoPQ::Rho rho{};          rho[0]    = static_cast<uint8_t>(i + 0x41);
-        auto enc = CryptoPQ::kem_encaps_derand(batches[i].to->viewPub, kemSeed);
-        CryptoPQ::PqBuiltOutput built = CryptoPQ::buildPqOutput(
-            enc.first, enc.second, batches[i].to->spendPub, ih, i, 5000000, rho, 0);
-        PqOutput po;
-        po.kemCt.assign(built.kemCt.begin(), built.kemCt.end());
-        po.encPayload = built.encPayload;
-        std::memcpy(po.spendCommit.data, built.spendCommit.data(), 32);
+        CryptoPQ::Rho cbRho = CryptoPQ::coinbaseRho(batches[i].to->spendPub, 0, i);
+        CryptoPQ::Hash256 sc = CryptoPQ::spendCommit(batches[i].to->spendPub, cbRho);
+        CoinbaseOutput co;
+        std::memcpy(co.spendCommit.data, sc.data(), 32);
         TransactionOutput out;
         out.amount = 5000000;
         out.unlockHeight = batches[i].unlock;
-        out.target = std::move(po);
+        out.target = std::move(co);
         tx.outputs.push_back(std::move(out));
     }
 

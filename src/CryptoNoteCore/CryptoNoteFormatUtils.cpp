@@ -125,16 +125,29 @@ bool check_inputs_types_supported(const TransactionPrefix& tx) {
 
 bool check_outs_valid(const TransactionPrefix& tx, std::string* error) {
   for (const TransactionOutput& out : tx.outputs) {
-    if (tx.version >= TRANSACTION_VERSION_1 && out.target.type() == typeid(PqOutput)) {
-      if (tx.txType != TX_PQ) {
-        if (error) *error = "PQ output is not allowed for this tx type";
-        return false;
+    if (tx.version >= TRANSACTION_VERSION_1) {
+      if (out.target.type() == typeid(PqOutput)) {
+        if (tx.txType != TX_PQ) {
+          if (error) *error = "PqOutput is not allowed for this tx type";
+          return false;
+        }
+        if (out.amount == 0) {
+          if (error) *error = "Zero amount output";
+          return false;
+        }
+        continue;
       }
-      if (out.amount == 0) {
-        if (error) *error = "Zero amount output";
-        return false;
+      if (out.target.type() == typeid(CoinbaseOutput)) {
+        if (tx.txType != TX_COINBASE) {
+          if (error) *error = "CoinbaseOutput is not allowed outside coinbase transactions";
+          return false;
+        }
+        if (out.amount == 0) {
+          if (error) *error = "Zero amount coinbase output";
+          return false;
+        }
+        continue;
       }
-      continue;
     }
 
     if (out.target.type() == typeid(KeyOutput)) {

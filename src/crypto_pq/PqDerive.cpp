@@ -104,12 +104,14 @@ Hash256 nullifier(const DsaPublicKey& spendPub, const Rho& rho,
   return sha3_256(buf.data(), buf.size());
 }
 
-Rho coinbaseRho(const DsaPublicKey& spendPub, uint32_t height) noexcept {
+Rho coinbaseRho(const DsaPublicKey& spendPub, uint32_t height,
+                uint32_t outputIndex) noexcept {
   std::vector<uint8_t> buf;
-  buf.reserve(sizeof(kDomainCoinbaseRho) + spendPub.size() + 4);
+  buf.reserve(sizeof(kDomainCoinbaseRho) + spendPub.size() + 4 + 4);
   appendDomain(buf, kDomainCoinbaseRho);
   appendBytes(buf, spendPub.data(), spendPub.size());
   appendLe32(buf, height);
+  appendLe32(buf, outputIndex);
   return sha3_256(buf.data(), buf.size());
 }
 

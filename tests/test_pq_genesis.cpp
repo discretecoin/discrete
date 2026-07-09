@@ -48,7 +48,7 @@ TEST(PqGenesis, TreasuryReserveStructure) {
     EXPECT_EQ(cb.outputs[i].amount, GENESIS_TREASURY_RESERVE_BATCH_ATOMS) << "batch " << i;
     EXPECT_EQ(cb.outputs[i].unlockHeight,
               static_cast<uint64_t>(i) * GENESIS_TREASURY_RESERVE_UNLOCK_STEP) << "batch " << i;
-    EXPECT_EQ(cb.outputs[i].target.type(), typeid(PqOutput)) << "batch " << i;
+    EXPECT_EQ(cb.outputs[i].target.type(), typeid(CoinbaseOutput)) << "batch " << i;
     total += cb.outputs[i].amount;
   }
   EXPECT_EQ(total, GENESIS_TREASURY_RESERVE_TOTAL_ATOMS);
@@ -80,7 +80,7 @@ TEST(PqGenesis, GenesisBlockHashPinned) {
   Logging::ConsoleLogger logger;
   Currency currency = makeCurrency(logger);
   EXPECT_EQ(Common::podToHex(currency.genesisBlockHash()),
-            "b1df0152bb41d12bef471f322ac8fef52889cdb4128759a41877d26d08edace8");
+            "f81c086362900be0257b44f6635ab832bc83eb7d911fa283f300ea43c7c43e91");
 }
 
 int main(int argc, char** argv) {

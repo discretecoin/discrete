@@ -41,7 +41,7 @@ struct PqResolvedInput {
   Crypto::Hash spendCommit;       // referenced PqOutput.spendCommit
   uint64_t     amount = 0;        // referenced output amount (plain)
   bool         exists = false;    // referenced output was found
-  bool         isPqOutput = false;// referenced output target is a PqOutput
+  bool         isPqOutput = false;// output is spendable by a PQ input (PqOutput or CoinbaseOutput)
   bool         isCoinbase = false;// referenced output is from a coinbase tx
 };
 

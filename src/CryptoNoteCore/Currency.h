@@ -131,7 +131,6 @@ public:
   // PQ coinbase construction (Discrete native path).
   bool constructMinerTxPq(uint8_t blockMajorVersion, uint32_t height, size_t medianSize,
     uint64_t alreadyGeneratedCoins, size_t currentBlockSize, uint64_t fee,
-    const CryptoPQ::KemPublicKey& minerViewPub,
     const CryptoPQ::DsaPublicKey& minerSpendPub,
     Transaction& tx,
     const BinaryArray& extraNonce = BinaryArray()) const;

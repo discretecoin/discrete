@@ -162,7 +162,7 @@ bool test_generator::constructBlock(CryptoNote::Block& blk, uint32_t height, con
   size_t targetBlockSize = txsSize + getObjectBinarySize(blk.baseTransaction);
   while (true) {
     if (!m_currency.constructMinerTxPq(blk.majorVersion, height, Common::medianValue(blockSizes), alreadyGeneratedCoins, targetBlockSize,
-      totalFee, minerAcc.pqViewPk(), minerAcc.pqSpendPk(), blk.baseTransaction)) {
+      totalFee, minerAcc.pqSpendPk(), blk.baseTransaction)) {
       return false;
     }
 
@@ -279,7 +279,7 @@ bool test_generator::constructBlockManually(Block& blk, const Block& prevBlock, 
     blk.baseTransaction.version = TRANSACTION_VERSION_1;
     size_t currentBlockSize = txsSizes + getObjectBinarySize(blk.baseTransaction);
     if (!m_currency.constructMinerTxPq(blk.majorVersion, height, Common::medianValue(blockSizes), alreadyGeneratedCoins, currentBlockSize, 0,
-        minerAcc.pqViewPk(), minerAcc.pqSpendPk(), blk.baseTransaction)) {
+        minerAcc.pqSpendPk(), blk.baseTransaction)) {
       return false;
     }
   }

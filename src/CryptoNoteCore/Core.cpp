@@ -475,7 +475,7 @@ bool Core::add_new_tx(const Transaction& tx, const Crypto::Hash& tx_hash, size_t
   return m_mempool.add_tx(tx, tx_hash, blob_size, tvc, keeped_by_block);
 }
 
-bool Core::get_block_template_pq(Block& b, const CryptoPQ::KemPublicKey& viewPub,
+bool Core::get_block_template_pq(Block& b, const CryptoPQ::KemPublicKey& /*viewPub*/,
                                   const CryptoPQ::DsaPublicKey& spendPub,
                                   Difficulty& diffic, uint32_t& height,
                                   const BinaryArray& ex_nonce) {
@@ -519,7 +519,7 @@ bool Core::get_block_template_pq(Block& b, const CryptoPQ::KemPublicKey& viewPub
   }
 
   // PQ coinbase construction.
-  bool r = m_currency.constructMinerTxPq(b.majorVersion, height, median_size, already_generated_coins, txs_size, fee, viewPub, spendPub, b.baseTransaction, ex_nonce);
+  bool r = m_currency.constructMinerTxPq(b.majorVersion, height, median_size, already_generated_coins, txs_size, fee, spendPub, b.baseTransaction, ex_nonce);
   if (!r) {
     logger(ERROR, BRIGHT_RED) << "Failed to construct PQ miner tx (first chance)";
     return false;
@@ -527,7 +527,7 @@ bool Core::get_block_template_pq(Block& b, const CryptoPQ::KemPublicKey& viewPub
 
   size_t cumulative_size = txs_size + getObjectBinarySize(b.baseTransaction);
   for (size_t try_count = 0; try_count != 10; ++try_count) {
-    r = m_currency.constructMinerTxPq(b.majorVersion, height, median_size, already_generated_coins, cumulative_size, fee, viewPub, spendPub, b.baseTransaction, ex_nonce);
+    r = m_currency.constructMinerTxPq(b.majorVersion, height, median_size, already_generated_coins, cumulative_size, fee, spendPub, b.baseTransaction, ex_nonce);
     if (!r) { logger(ERROR, BRIGHT_RED) << "Failed to construct PQ miner tx (retry)"; return false; }
     size_t coinbase_blob_size = getObjectBinarySize(b.baseTransaction);
     if (coinbase_blob_size <= cumulative_size - txs_size) {

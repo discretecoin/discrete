@@ -21,8 +21,6 @@
 #include "crypto_pq/PqDerive.h"
 #include "crypto_pq/PqDsa.h"
 #include "crypto_pq/PqHash.h"
-#include "crypto_pq/PqKem.h"
-#include "crypto_pq/PqOutputBuilder.h"
 
 namespace CryptoNote {
 
@@ -34,13 +32,6 @@ namespace CryptoNote {
 
 namespace {
 
-// Domain-separated, deterministic per-batch seeds. The ML-KEM encapsulation
-// message and the output blinding value rho are both derived from the batch
-// index so the whole coinbase reproduces byte-for-byte on any host. These
-// domain strings are part of the frozen genesis artifact — do not change.
-constexpr char kKemSeedDomain[] = "discrete-genesis-kem-v1";
-constexpr char kRhoSeedDomain[] = "discrete-genesis-rho-v1";
-
 // Genesis coinbase headline, embedded in the coinbase `extra` as a TX_EXTRA_NONCE
 // — Discrete's analogue of Bitcoin's "The Times 03/Jan/2009 Chancellor on brink of
 // second bailout for banks". It is part of the frozen genesis artifact, so it must
@@ -48,12 +39,6 @@ constexpr char kRhoSeedDomain[] = "discrete-genesis-rho-v1";
 // rest of this UTF-8 source file; the byte length is well under TX_EXTRA_NONCE_MAX_COUNT.
 constexpr char kGenesisMessage[] =
     "Reuters 08/Jul/2026 \xE2\x80\x94 Crypto firms prepare defenses as quantum threat to encryption draws nearer";
-
-CryptoPQ::Hash256 batchSeed(const char* domain, std::size_t domainLen, uint32_t i) {
-  uint8_t ikm[4];
-  for (int b = 0; b < 4; ++b) ikm[b] = static_cast<uint8_t>((i >> (8 * b)) & 0xFF);
-  return CryptoPQ::hkdf_sha3_256(ikm, sizeof(ikm), domain, domainLen);
-}
 
 template <std::size_t N>
 std::array<uint8_t, N> decodeFixedHex(const std::string& hex, const char* what) {
@@ -86,37 +71,23 @@ Transaction buildGenesisTreasuryReserveCoinbase() {
   in.blockIndex = 0;
   tx.inputs.push_back(in);
 
-  // Coinbase inputsHash is zeros (no prior outpoints) — same convention the
-  // miner coinbase and the scanner use.
-  const CryptoPQ::Hash256 inputsHash{};
-
   for (uint32_t i = 0; i < GENESIS_TREASURY_RESERVE_BATCHES; ++i) {
-    auto viewPub = decodeFixedHex<CryptoPQ::kKemPublicKeyBytes>(
-        kGenesisTreasuryReserveViewPubHex[i], "viewPub");
+    // viewPub is no longer needed; only spendPub determines the ownership commitment.
     auto spendPub = decodeFixedHex<CryptoPQ::kDsaPublicKeyBytes>(
         kGenesisTreasuryReserveSpendPubHex[i], "spendPub");
 
-    CryptoPQ::Hash256 kemSeed = batchSeed(kKemSeedDomain, sizeof(kKemSeedDomain) - 1, i);
-    CryptoPQ::Rho      rho     = batchSeed(kRhoSeedDomain, sizeof(kRhoSeedDomain) - 1, i);
+    // Stripped CoinbaseOutput: rho = coinbaseRho(spendPub, height=0, outputIndex=i).
+    // Publicly recomputable by the recipient; no KEM ciphertext or encrypted payload.
+    CryptoPQ::Rho cbRho = CryptoPQ::coinbaseRho(spendPub, /*height=*/0, /*outputIndex=*/i);
+    CryptoPQ::Hash256 sc = CryptoPQ::spendCommit(spendPub, cbRho);
 
-    // Deterministic encapsulation against this recipient's view key. The result
-    // is a real ciphertext the recipient decapsulates normally; it is just
-    // reproducible because the encaps randomness comes from kemSeed.
-    auto enc = CryptoPQ::kem_encaps_derand(viewPub, kemSeed);
-
-    CryptoPQ::PqBuiltOutput built = CryptoPQ::buildPqOutput(
-        enc.first, enc.second, spendPub, inputsHash, /*outputIndex=*/i,
-        GENESIS_TREASURY_RESERVE_BATCH_ATOMS, rho, /*T=*/0);
-
-    PqOutput po;
-    po.kemCt.assign(built.kemCt.begin(), built.kemCt.end());
-    po.encPayload = built.encPayload;
-    std::memcpy(po.spendCommit.data, built.spendCommit.data(), 32);
+    CoinbaseOutput co;
+    std::memcpy(co.spendCommit.data, sc.data(), 32);
 
     TransactionOutput out;
     out.amount = GENESIS_TREASURY_RESERVE_BATCH_ATOMS;
     out.unlockHeight = static_cast<uint64_t>(i) * GENESIS_TREASURY_RESERVE_UNLOCK_STEP;
-    out.target = std::move(po);
+    out.target = std::move(co);
     tx.outputs.push_back(std::move(out));
   }
 

@@ -147,14 +147,17 @@ Hash256 spendCommit(const DsaPublicKey& spendPub, const Rho& rho) noexcept;
 Hash256 nullifier(const DsaPublicKey& spendPub, const Rho& rho,
                   const Hash256& prevTxid, uint32_t prevOutIndex) noexcept;
 
-// 5b. coinbaseRho = SHA3-256(domain || spendPub || LE32(height)). The CANONICAL,
-//     publicly-recomputable rho for a coinbase output. Consensus uses it to bind
-//     the coinbase reward recipient to the block signer: the single coinbase
+// 5b. coinbaseRho = SHA3-256(domain || spendPub || LE32(height) || LE32(outputIndex)).
+//     The CANONICAL, publicly-recomputable rho for a coinbase output. Consensus uses
+//     it to bind the coinbase reward recipient to the block signer: each coinbase
 //     output's spendCommit MUST equal spendCommit(signerSpendPub, coinbaseRho),
 //     so the reward can only be spent by the key that signed the block (identity
 //     -bound mining — no pools/botnets without sharing the spend secret). Unique
-//     per (signer, height), so a miner's coinbases get distinct nullifiers.
-Rho coinbaseRho(const DsaPublicKey& spendPub, uint32_t height) noexcept;
+//     per (signer, height, outputIndex), so each coinbase output gets a distinct
+//     nullifier even when the genesis block delivers multiple batches to the same key.
+//     outputIndex is 0 for all normal mined blocks (which have a single output).
+Rho coinbaseRho(const DsaPublicKey& spendPub, uint32_t height,
+                uint32_t outputIndex = 0) noexcept;
 
 // 6. txSigningDigest — amended §8.1 (see UnsignedTx). Binds the whole prefix
 //    minus per-input signatures: version || txType || LE64(unlockHeight) ||

@@ -249,6 +249,72 @@ bool WalletLedger::processTransaction(const TransactionPrefix& tx, const Crypto:
     affected = true;
   }
 
+  // 2b. CoinbaseOutput recognition: no KEM, no decapsulation. For each output at
+  //     index i, check if coinbaseRho(spendPub, height, i) yields a matching
+  //     spendCommit. Works for both normal mined blocks (one output, outputIndex=0)
+  //     and the multi-batch genesis (21 outputs, outputIndex=0..20).
+  if (tx.txType == TX_COINBASE) {
+    for (uint32_t i = 0; i < static_cast<uint32_t>(tx.outputs.size()); ++i) {
+      const TransactionOutput& out = tx.outputs[i];
+      if (out.target.type() != typeid(CoinbaseOutput)) {
+        continue;
+      }
+      const CoinbaseOutput& co = boost::get<CoinbaseOutput>(out.target);
+
+      bool ours = false;
+      CryptoPQ::DsaPublicKey ownerSpendPub = m_spendPub;
+      CryptoPQ::Rho cbRho = CryptoPQ::coinbaseRho(m_spendPub, height, i);
+      CryptoPQ::Hash256 expectedSc = CryptoPQ::spendCommit(m_spendPub, cbRho);
+      if (std::memcmp(expectedSc.data(), co.spendCommit.data, 32) == 0) {
+        ours = true;
+      }
+      if (!ours && m_depositScheme == PqDepositScheme::AggregatedMultikey) {
+        ensureDepositKeys(m_depositCount);
+        for (size_t d = 0; d < m_depositSpendPubs.size(); ++d) {
+          CryptoPQ::Rho dr = CryptoPQ::coinbaseRho(m_depositSpendPubs[d], height, i);
+          CryptoPQ::Hash256 dsc = CryptoPQ::spendCommit(m_depositSpendPubs[d], dr);
+          if (std::memcmp(dsc.data(), co.spendCommit.data, 32) == 0) {
+            ours = true;
+            ownerSpendPub = m_depositSpendPubs[d];
+            cbRho = dr;
+            break;
+          }
+        }
+      }
+      if (!ours) continue;
+
+      CryptoPQ::Hash256 ownTxid;
+      std::memcpy(ownTxid.data(), txid.data, 32);
+      Crypto::Hash nf = toHash(CryptoPQ::nullifier(ownerSpendPub, cbRho, ownTxid, i));
+
+      auto existing = m_byNullifier.find(nf);
+      if (existing != m_byNullifier.end()) {
+        PqWalletOutput& o = m_outputs[existing->second];
+        if (o.height == UNCONFIRMED_HEIGHT && height != UNCONFIRMED_HEIGHT) {
+          o.height = height;
+          o.unlockHeight = out.unlockHeight;
+          affected = true;
+        }
+        continue;
+      }
+
+      PqWalletOutput rec;
+      rec.txid = txid;
+      rec.outputIndex = i;
+      rec.amount = out.amount;
+      rec.rho = cbRho;
+      rec.nullifier = nf;
+      rec.height = height;
+      rec.unlockHeight = out.unlockHeight;
+      rec.spent = false;
+      rec.depositIndex = PQ_PRIMARY_DEPOSIT;
+      m_byNullifier.emplace(nf, m_outputs.size());
+      m_outputs.push_back(rec);
+      credited += rec.amount;
+      affected = true;
+    }
+  }
+
   // 3. Transaction-history row. Upsert by txid so a pool sighting that later
   //    confirms updates in place rather than double-counting.
   auto hit = m_historyByTxid.find(txid);

@@ -140,10 +140,19 @@ Each `TransactionOutput` (`vout` entry) serializes as:
 
 ```
 LE64(amount)                  ||
-LE64(unlockHeight)            ||   // added per-output spend lock
-type (1 byte = 0x10)          ||   // PqOutput variant tag
-kemCt (1088) || encPayload (56) || spendCommit (32)
+LE64(unlockHeight)            ||   // per-output spend lock (0 = none)
+type (1 byte)                 ||   // variant tag — see below
+<variant-specific payload>
 ```
+
+Two output variants exist:
+
+| Tag | Type | Payload |
+|---|---|---|
+| `0x10` | `PqOutput` (regular TX_PQ) | `kemCt (1088)` \|\| `encPayload (56)` \|\| `spendCommit (32)` = **1176 B** |
+| `0x11` | `CoinbaseOutput` (TX_COINBASE) | `spendCommit (32)` = **32 B** |
+
+`CoinbaseOutput` is used for all coinbase transactions (mined blocks and the genesis Treasury Reserve). It carries only the 32-byte spend commitment; there is no KEM ciphertext or encrypted payload because the recipient recovers ownership deterministically via `coinbaseRho` (§8). Savings per mined block: **1,144 B** (1,088 + 56).
 
 `unlockHeight` is a consensus field: the output is unspendable until the chain
 reaches that block height (`0` = no lock). It is per-output — distinct from the
@@ -164,19 +173,26 @@ block hash — Keccak with 0x01 padding — i.e. the block's own identity hash, 
 NIST SHA3-256. The SHA3-256 family is used only for the PQ *derivations* in §§3–6;
 the block signature reuses the existing block-hash function. Enforced in
 `Blockchain::validate_block_signature`.) Additionally, the **single** coinbase
-`PqOutput` must pay that same identity:
+`CoinbaseOutput` must pay that same identity:
 
 ```
-rho_C        = SHA3-256(kDomainCoinbaseRho || signerSpendPub || LE32(height))
+rho_C        = SHA3-256(kDomainCoinbaseRho || signerSpendPub || LE32(height) || LE32(outputIndex))
 require: coinbaseOutput.spendCommit == SHA3-256(kDomainSpendCommit || signerSpendPub || rho_C)
 ```
 
-`rho_C` is canonical (publicly recomputable from the signer pubkey + height), so
-consensus enforces that the miner who *signs* the block is the miner who gets
-*paid* — you cannot mine to a key you do not hold. This is the anti-pool/botnet
-property: aggregating hashpower requires sharing the spend secret. The coinbase is
-a single undivided output (one signature, minimal size). Genesis (height 0) is
-exempt (it is trusted and carries the Treasury Reserve to many recipients). Enforced in
+For normal mined blocks `outputIndex = 0` (single output). For the genesis
+Treasury Reserve (height 0, 21 outputs to independent keys), `outputIndex = i`
+for the `i`-th batch, ensuring each batch gets a unique `rho_C` even at the same
+height. Wallets scan by trying `coinbaseRho(ownSpendPub, height, i)` for each
+output index `i` — no KEM decapsulation, constant time per candidate.
+
+`rho_C` is canonical (publicly recomputable from the signer pubkey + height +
+outputIndex), so consensus enforces that the miner who *signs* the block is the
+miner who gets *paid* — you cannot mine to a key you do not hold. This is the
+anti-pool/botnet property: aggregating hashpower requires sharing the spend
+secret. The coinbase is a single undivided output (one signature, minimal size).
+Genesis (height 0) is exempt from signature validation (trusted) and carries the
+Treasury Reserve to 21 independent recipients. Enforced in
 `Blockchain::validate_block_signature`; built in `Currency::constructMinerTxPq`.
 
 Because `rho_C` is **public** (unlike a normal output's secret random `rho`), the

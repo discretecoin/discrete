@@ -33,11 +33,9 @@
 #include "GenesisTreasuryReserve.h"
 #include "TransactionExtra.h"
 #include "UpgradeDetector.h"
-#include "crypto_pq/PqOutputBuilder.h"
 #include "crypto_pq/PqHash.h"
 #include "crypto_pq/PqDsa.h"
 #include "crypto_pq/PqDerive.h"
-#include "crypto_pq/PqKem.h"
 #include "PqTxType.h"
 
 #undef ERROR
@@ -226,7 +224,6 @@ namespace CryptoNote {
 
     bool Currency::constructMinerTxPq(uint8_t blockMajorVersion, uint32_t height, size_t medianSize,
     uint64_t alreadyGeneratedCoins, size_t currentBlockSize, uint64_t fee,
-    const CryptoPQ::KemPublicKey& minerViewPub,
     const CryptoPQ::DsaPublicKey& minerSpendPub,
     Transaction& tx,
     const BinaryArray& extraNonce) const {
@@ -253,30 +250,22 @@ namespace CryptoNote {
       return false;
     }
 
-    // Single PQ output to the miner's address. inputsHash = zeros (coinbase has
-    // no PQ inputs). The reward recipient MUST be the block signer, so the output
-    // uses the CANONICAL coinbase rho (deterministic from the miner's spend pub +
-    // height): consensus recomputes it and checks the spendCommit, binding the
-    // reward to whoever signs the block (validate_block_signature). kemCt is still
-    // a fresh encapsulation so the miner's wallet recovers the rho normally.
-    CryptoPQ::Hash256 inputsHash{};
-    auto cbEnc = CryptoPQ::kem_encaps(minerViewPub);
-    CryptoPQ::Rho cbRho = CryptoPQ::coinbaseRho(minerSpendPub, height);
-    CryptoPQ::PqBuiltOutput built = CryptoPQ::buildPqOutput(
-        cbEnc.first, cbEnc.second, minerSpendPub, inputsHash, /*outputIndex=*/0,
-        blockReward, cbRho, /*subaddrIndexT=*/0);
+    // Stripped CoinbaseOutput: only spendCommit, no kemCt/encPayload.
+    // rho = coinbaseRho(spendPub, height, 0) is publicly recomputable; the
+    // miner (and any wallet knowing their spendPub) can derive it without
+    // an encrypted delivery. validate_block_signature re-derives and checks it.
+    CryptoPQ::Rho cbRho = CryptoPQ::coinbaseRho(minerSpendPub, height, 0);
+    CryptoPQ::Hash256 sc = CryptoPQ::spendCommit(minerSpendPub, cbRho);
 
-    PqOutput po;
-    po.kemCt.assign(built.kemCt.begin(), built.kemCt.end());
-    po.encPayload = built.encPayload;
-    std::memcpy(po.spendCommit.data, built.spendCommit.data(), 32);
+    CoinbaseOutput co;
+    std::memcpy(co.spendCommit.data, sc.data(), 32);
 
     TransactionOutput out;
     out.amount = blockReward;
     // Per-output coinbase maturity lock (mirrors the per-tx unlockHeight set
     // above). Spend gating in checkPqInputs reads the output's unlockHeight.
     out.unlockHeight = tx.unlockHeight;
-    out.target = std::move(po);
+    out.target = std::move(co);
     tx.outputs.push_back(std::move(out));
 
     // Extra: miner ML-DSA spend pub key (used by validate_block_signature).
