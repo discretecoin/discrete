@@ -954,155 +954,37 @@ bool Blockchain::getBlockLongHash(Crypto::cn_context& context, const Block& b, C
   return getBlockLongHash(context, b, res, dummy_alt_chain, m_no_blobs);
 }
 
-// Big-endian load — interprets byte at offset as most significant.
-// Used for extracting indices from hash output (v5 convention).
-static inline uint32_t load_u32_be(const uint8_t* data, size_t offset) {
-  return (uint32_t(data[offset])     << 24) |
-         (uint32_t(data[offset + 1]) << 16) |
-         (uint32_t(data[offset + 2]) << 8)  |
-         (uint32_t(data[offset + 3]));
-}
-
-// Little-endian load — matches memcpy on LE platforms (x86, ARM),
-// but produces a well-defined result on any architecture.
-static inline uint32_t load_u32_le(const uint8_t* data, size_t offset) {
-  return (uint32_t(data[offset + 3]) << 24) |
-         (uint32_t(data[offset + 2]) << 16) |
-         (uint32_t(data[offset + 1]) << 8)  |
-         (uint32_t(data[offset]));
-}
-
 /*
- * Computes the "long hash" of a block for Proof-of-Work.
+ * Computes the block's Proof-of-Work "long hash": yespower (y_slow_hash) over
+ * the block's SIGNED hashing blob.
  *
- * For blocks prior to version 5, falls back to the legacy PoW function.
+ * The signed blob covers the full block header — including the nonce and
+ * previousBlockHash — and the miner's ML-DSA signature over it. Two properties
+ * follow, and they are the whole point of the scheme:
+ *   - Non-outsourceable: every nonce attempt must be re-signed with the key that
+ *     controls the coinbase reward, so hashpower cannot be rented or pooled
+ *     custodially without surrendering the reward.
+ *   - Tip-bound: previousBlockHash is inside the hashed blob, so a valid PoW can
+ *     only be produced for the current chain head; stale/fabricated tips fail.
  *
- * For version 5 blocks:
- *   - Starts with the block's signed hashing blob.
- *   - Iteratively mixes the blob 128 times; in each iteration, accesses
- *     8 pseudo-random previous blocks' hashing blobs (from the main chain
- *     or alternative chains) to expand and "stir" the data.
- *   - Uses cached main-chain blobs when allowed to reduce reconstruction cost.
- *
- * For version 6 and later:
- *   - Introduces a deterministic sequence value derived from the intermediate
- *     hash to create a strict dependency between iterations.
- *   - Each memory access depends on the result of the previous step,
- *     enforcing sequential memory access reducing multi-core scaling,
- *     making the algorithm latency-bound rather than throughput-bound,
- *     thus more egalitarian.
- *
- * The final mixed data is processed with yespower (y_slow_hash) to produce
- * the Proof-of-Work hash.
+ * No blockchain access is required (alt_chain / no_blobs are unused). An earlier
+ * design mixed pseudo-random previous-block bytes into the hash to force
+ * possession of recent history; it was dropped because that possession excludes
+ * no adversary who matters (any dataset small enough for a casual CPU miner is
+ * trivially held by a farm or botnet) while adding substantial consensus-critical
+ * reconstruction surface. See docs/POW.md.
  */
 bool Blockchain::getBlockLongHash(Crypto::cn_context& context, const Block& b, Crypto::Hash& res,
                                    const std::list<Crypto::Hash>& alt_chain, bool no_blobs) {
-  // All Discrete blocks (v1+) use yespower PoW.
   (void)context;
+  (void)alt_chain;
+  (void)no_blobs;
 
   BinaryArray pot;
-  // reserve space to reduce reallocations
-  pot.reserve(80 * 1024); // ~80 KB estimated from average blob size
-
   if (!get_signed_block_hashing_blob(b, pot))
     return false;
 
   Crypto::Hash hash_1, hash_2;
-  const uint32_t currentHeight = boost::get<BaseInput>(b.baseTransaction.inputs[0]).blockIndex;
-  const uint32_t unlockWindow = static_cast<uint32_t>(m_currency.minedMoneyUnlockWindow());
-
-  // Early blocks (< unlockWindow + 2) don't have enough prior chain for sampling.
-  // Skip the 128-round sampling and hash the signed blob directly with yespower.
-  if (currentHeight <= unlockWindow + 1) {
-    return Crypto::y_slow_hash(pot.data(), pot.size(), hash_1, hash_2)
-             ? (res = hash_2, true) : false;
-  }
-
-  const uint32_t maxHeight = currentHeight - 1 - unlockWindow;
-
-#define ITER 128
-
-  // v6 sequential state
-  uint32_t seq = 0;
-
-  for (uint32_t i = 0; i < ITER; i++) {
-    cn_fast_hash(pot.data(), pot.size(), hash_1);
-
-    if (i == 0) {
-      const uint8_t* d = hash_1.data;
-      seq = load_u32_be(d, 0) ^ load_u32_be(d, 4) ^ load_u32_be(d, 8) ^ load_u32_be(d, 12);
-    }
-
-    for (uint8_t j = 1; j <= 8; j++) {
-
-      const uint8_t* d = hash_1.data;
-      uint32_t n = load_u32_be(d, (j - 1) * 4);
-
-      // sequential dependency
-      seq ^= n;
-      seq ^= seq >> 16;
-      seq *= 0x7feb352d;
-      seq ^= seq >> 15;
-      seq *= 0x846ca68b;
-      seq ^= seq >> 16;
-
-      // bias-free mapping
-      uint32_t height_j = (uint64_t(seq) * maxHeight) >> 32;
-
-      bool found_alt = false; // reset for each j
-
-      // Alt-chain lookup first. Use find() rather than at(): a missing entry
-      // must fail the PoW computation, not throw std::out_of_range out of the
-      // hashing path (which the alt-block verifier does not catch).
-      for (const auto& ch_ent : alt_chain) {
-        auto altIt = m_alternative_chains.find(ch_ent);
-        if (altIt == m_alternative_chains.end()) return false;
-        const Block& ab = altIt->second.bl;
-        uint32_t ah = boost::get<BaseInput>(ab.baseTransaction.inputs[0]).blockIndex;
-        if (ah == height_j) {
-          BinaryArray ba;
-          if (!get_block_hashing_blob(ab, ba)) return false;
-          pot.insert(pot.end(), ba.begin(), ba.end());
-          found_alt = true;
-          if (ba.size() >= 4) seq ^= load_u32_le(ba.data(), 0);
-          break;
-        }
-      }
-
-      if (!found_alt) {
-        if (no_blobs) {
-          std::vector<uint8_t> blockData;
-          if (!m_db.getBlockData(height_j, blockData)) return false;
-          Block bj;
-          if (!fromBinaryArray(bj, blockData)) return false;
-          BinaryArray ba;
-          if (!get_block_hashing_blob(bj, ba)) return false;
-          pot.insert(pot.end(), ba.begin(), ba.end());
-          if (ba.size() >= 4) seq ^= load_u32_le(ba.data(), 0);
-        } else {
-          BinaryArray ba;
-          {
-            std::lock_guard<decltype(m_blockchain_lock)> lk(m_blockchain_lock);
-            if (height_j < m_blobs.size()) {
-              ba = m_blobs[height_j];
-            }
-          }
-
-          if (!ba.empty()) {
-            pot.insert(pot.end(), ba.begin(), ba.end());
-            if (ba.size() >= 4) seq ^= load_u32_le(ba.data(), 0);
-          } else {
-            std::vector<uint8_t> blobData;
-            if (!m_db.getHashingBlob(height_j, blobData)) return false;
-            pot.insert(pot.end(), blobData.begin(), blobData.end());
-            if (blobData.size() >= 4) seq ^= load_u32_le(blobData.data(), 0);
-          }
-        }
-      }
-    }
-  }
-#undef ITER
-
   if (!Crypto::y_slow_hash(pot.data(), pot.size(), hash_1, hash_2))
     return false;
 
