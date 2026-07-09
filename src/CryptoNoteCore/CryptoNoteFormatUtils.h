@@ -60,6 +60,9 @@ std::string short_hash_str(const Crypto::Hash& h);
 
 bool get_block_hashing_blob(const Block& b, BinaryArray& blob);
 bool get_signed_block_hashing_blob(const Block& b, BinaryArray& blob);
+// Proof-of-Work "long hash": yespower over the signed hashing blob. Pure
+// function of the block (no chain access) — see docs/POW.md.
+bool get_block_longhash(const Block& b, Crypto::Hash& res);
 bool get_parent_block_hashing_blob(const Block& b, BinaryArray& blob);
 bool get_aux_block_header_hash(const Block& b, Crypto::Hash& res);
 bool get_block_hash(const Block& b, Crypto::Hash& res);

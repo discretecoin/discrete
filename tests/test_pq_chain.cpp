@@ -228,7 +228,7 @@ bool run() {
   std::filesystem::create_directories(dataDir, ec);
 
   System::Dispatcher dispatcher;
-  CryptoNote::Core core(currency, nullptr, logger, dispatcher, 0, false);
+  CryptoNote::Core core(currency, nullptr, logger, dispatcher, 0);
   CryptoNote::CoreConfig coreConfig;
   coreConfig.configFolder = dataDir.string();
   CryptoNote::MinerConfig minerConfig;
@@ -307,7 +307,7 @@ bool runFunded() {
   std::filesystem::create_directories(dataDir, ec);
 
   System::Dispatcher dispatcher;
-  Core core(currency, nullptr, logger, dispatcher, 0, false);
+  Core core(currency, nullptr, logger, dispatcher, 0);
   CoreConfig coreConfig; coreConfig.configFolder = dataDir.string();
   MinerConfig minerConfig;
   if (!expect(core.init(coreConfig, minerConfig, false), "funded: core.init")) return false;
@@ -544,7 +544,7 @@ bool runFreeRegCap() {
   std::filesystem::create_directories(dataDir, ec);
 
   System::Dispatcher dispatcher;
-  Core core(currency, nullptr, logger, dispatcher, 0, false);
+  Core core(currency, nullptr, logger, dispatcher, 0);
   CoreConfig coreConfig; coreConfig.configFolder = dataDir.string();
   MinerConfig minerConfig;
   if (!expect(core.init(coreConfig, minerConfig, false), "cap: core.init")) return false;
@@ -644,7 +644,7 @@ bool runEmission() {
   std::filesystem::create_directories(dataDir, ec);
 
   System::Dispatcher dispatcher;
-  Core core(currency, nullptr, logger, dispatcher, 0, false);
+  Core core(currency, nullptr, logger, dispatcher, 0);
   CoreConfig coreConfig; coreConfig.configFolder = dataDir.string();
   MinerConfig minerConfig;
   if (!expect(core.init(coreConfig, minerConfig, false), "emission: core.init")) return false;
@@ -785,7 +785,7 @@ bool runMinerBinding() {
   std::filesystem::create_directories(dataDir, ec);
 
   System::Dispatcher dispatcher;
-  Core core(currency, nullptr, logger, dispatcher, 0, false);
+  Core core(currency, nullptr, logger, dispatcher, 0);
   CoreConfig coreConfig; coreConfig.configFolder = dataDir.string();
   MinerConfig minerConfig;
   if (!expect(core.init(coreConfig, minerConfig, false), "binding: core.init")) return false;

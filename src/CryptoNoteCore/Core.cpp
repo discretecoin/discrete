@@ -72,12 +72,12 @@ private:
   friend class Core;
 };
 
-Core::Core(const Currency& currency, i_cryptonote_protocol* pprotocol, Logging::ILogger& logger, System::Dispatcher& dispatcher, uint32_t rejectDeepReorgDepth, bool noBlobs) :
+Core::Core(const Currency& currency, i_cryptonote_protocol* pprotocol, Logging::ILogger& logger, System::Dispatcher& dispatcher, uint32_t rejectDeepReorgDepth) :
   m_dispatcher(dispatcher),
   m_currency(currency),
   logger(logger, "Core"),
   m_mempool(currency, m_blockchain, *this, m_timeProvider, logger),
-  m_blockchain(currency, m_mempool, logger, rejectDeepReorgDepth, noBlobs),
+  m_blockchain(currency, m_mempool, logger, rejectDeepReorgDepth),
   m_miner(new miner(currency, *this, logger)),
   m_checkpoints(logger, rejectDeepReorgDepth) {
     set_cryptonote_protocol(pprotocol);
@@ -782,7 +782,8 @@ bool Core::getBlockHeight(const Crypto::Hash& blockId, uint32_t& blockHeight) {
 }
 
 bool Core::getBlockLongHash(Crypto::cn_context &context, const Block& b, Crypto::Hash& res) {
-  return m_blockchain.getBlockLongHash(context, b, res);
+  (void)context;
+  return get_block_longhash(b, res);
 }
 
 //void Core::get_all_known_block_ids(std::list<Crypto::Hash> &main, std::list<Crypto::Hash> &alt, std::list<Crypto::Hash> &invalid) {

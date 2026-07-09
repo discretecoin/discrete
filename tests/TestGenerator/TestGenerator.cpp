@@ -46,19 +46,18 @@ static void signTestBlock(CryptoNote::Block& blk, const CryptoNote::AccountBase&
   blk.signature.assign(sig.begin(), sig.end());
 }
 
-// All Discrete blocks use yespower PoW via Blockchain::getBlockLongHash.
-// `blockchain` must be non-null — if absent, warn once and return false.
+// Discrete PoW is signed yespower (CryptoNote::get_block_longhash), a pure
+// function of the block. The `blockchain` pointer is now only a mode selector:
+// non-null → compute the real yespower PoW; null → the in-memory generator
+// (TestBlockchainGenerator) that feeds a WalletGreen through the node stub,
+// where PoW is NEVER validated (the wallet trusts its node) and difficulty is 1,
+// so a fast deterministic block-blob hash suffices.
 bool computeBlockLongHashForTest(Crypto::cn_context& context,
                                  const CryptoNote::Block& blk,
                                  Crypto::Hash& res,
                                  CryptoNote::Blockchain* blockchain) {
   (void)context;
   if (blockchain == nullptr) {
-    // No chain sink. This is the in-memory generator (TestBlockchainGenerator) that
-    // feeds blocks to a WalletGreen through the node stub, where PoW is NEVER
-    // validated (the wallet trusts its node) and difficulty is 1. A fast,
-    // deterministic block-blob hash is sufficient here; tests that actually need
-    // real yespower PoW wire setBlockchain().
     CryptoNote::BinaryArray bd;
     if (!CryptoNote::get_block_hashing_blob(blk, bd)) {
       return false;
@@ -66,7 +65,7 @@ bool computeBlockLongHashForTest(Crypto::cn_context& context,
     res = Crypto::cn_fast_hash(bd.data(), bd.size());
     return true;
   }
-  return blockchain->getBlockLongHash(context, blk, res);
+  return CryptoNote::get_block_longhash(blk, res);
 }
 
 }  // namespace

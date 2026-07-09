@@ -1,9 +1,14 @@
 # Discrete Proof-of-Work: signed yespower
 
 Discrete's Proof-of-Work is **yespower over the block's signed hashing blob**.
-It applies to every block (v1+); there is no version gating. Authoritative code:
-`Blockchain::getBlockLongHash` / `checkProofOfWork` in
-`src/CryptoNoteCore/Blockchain.cpp`.
+It applies to every block (v1+); there is no version gating. Because it is a pure
+function of the block (no blockchain access), it lives as the free function
+`CryptoNote::get_block_longhash(const Block&, Crypto::Hash&)` in
+`src/CryptoNoteCore/CryptoNoteFormatUtils.cpp`; `Blockchain::checkProofOfWork`
+and `Core::getBlockLongHash` call it. There is no hashing-blob cache (the
+`m_blobs` RAM cache, the `hashing_blobs` LMDB table, and the `--without-blobs`
+flag were removed) — only the pure `get_block_hashing_blob` /
+`get_signed_block_hashing_blob` helpers remain, used for signing.
 
 ## The scheme
 

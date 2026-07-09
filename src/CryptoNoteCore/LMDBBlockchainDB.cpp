@@ -151,7 +151,6 @@ bool LMDBBlockchainDB::open(const std::string& path) {
     openDb(setupTxn, "block_data",        0,                         m_dbiBlockData);
     openDb(setupTxn, "tx_entries",        0,                         m_dbiTxEntries);
     openDb(setupTxn, "hash_to_height",    0,                         m_dbiHashToHeight);
-    openDb(setupTxn, "hashing_blobs",     0,                         m_dbiHashingBlobs);
     openDb(setupTxn, "spent_keys",        0,                         m_dbiSpentKeys);
     openDb(setupTxn, "pq_acct_reg",       0,                         m_dbiPqAcctReg);
     openDb(setupTxn, "tx_indices",        0,                         m_dbiTxIndices);
@@ -215,7 +214,6 @@ void LMDBBlockchainDB::clear() {
   dropDb(m_dbiBlockData);
   dropDb(m_dbiTxEntries);
   dropDb(m_dbiHashToHeight);
-  dropDb(m_dbiHashingBlobs);
   dropDb(m_dbiSpentKeys);
   dropDb(m_dbiPqAcctReg);
   dropDb(m_dbiTxIndices);
@@ -592,39 +590,6 @@ bool LMDBBlockchainDB::removeHashHeight(const Crypto::Hash& hash) {
   return true;
 }
 
-// ─── hashing_blobs ────────────────────────────────────────────────────────
-
-bool LMDBBlockchainDB::putHashingBlob(uint32_t height, const uint8_t* data, size_t size) {
-  assert(m_writeTxn);
-  uint8_t keyBuf[4]; encBE32(keyBuf, height);
-  MDB_val k = {4, keyBuf};
-  MDB_val v = {size, const_cast<uint8_t*>(data)};
-  int rc = mdb_put(m_writeTxn, m_dbiHashingBlobs, &k, &v, 0);
-  checkRc(rc, "putHashingBlob");
-  return true;
-}
-
-bool LMDBBlockchainDB::getHashingBlob(uint32_t height, std::vector<uint8_t>& out) const {
-  auto guard = readTxn();
-  uint8_t keyBuf[4]; encBE32(keyBuf, height);
-  MDB_val k = {4, keyBuf}, v{};
-  int rc = mdb_get(guard.txn, m_dbiHashingBlobs, &k, &v);
-  if (rc == MDB_NOTFOUND) return false;
-  checkRc(rc, "getHashingBlob");
-  out.assign(static_cast<const uint8_t*>(v.mv_data),
-             static_cast<const uint8_t*>(v.mv_data) + v.mv_size);
-  return true;
-}
-
-bool LMDBBlockchainDB::removeHashingBlob(uint32_t height) {
-  assert(m_writeTxn);
-  uint8_t keyBuf[4]; encBE32(keyBuf, height);
-  MDB_val k = {4, keyBuf};
-  int rc = mdb_del(m_writeTxn, m_dbiHashingBlobs, &k, nullptr);
-  if (rc == MDB_NOTFOUND) return false;
-  checkRc(rc, "removeHashingBlob");
-  return true;
-}
 
 // ─── spent_keys ───────────────────────────────────────────────────────────
 

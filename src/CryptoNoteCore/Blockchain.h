@@ -57,7 +57,7 @@ namespace CryptoNote {
   class Blockchain : public CryptoNote::ITransactionValidator {
   public:
     Blockchain(const Currency& currency, tx_memory_pool& tx_pool, Logging::ILogger& logger,
-               uint32_t rejectDeepReorgDepth, bool noBlobs);
+               uint32_t rejectDeepReorgDepth);
 
     bool addObserver(IBlockchainStorageObserver* observer);
     bool removeObserver(IBlockchainStorageObserver* observer);
@@ -143,8 +143,6 @@ namespace CryptoNote {
                                        std::vector<Crypto::Hash>& transactionHashes);
     bool isBlockInMainChain(const Crypto::Hash& blockId);
     bool isInCheckpointZone(const uint32_t height);
-
-    bool getHashingBlob(const uint32_t height, BinaryArray& blob);
 
     bool getCanonicalAccountRegistrationsCount(uint64_t& count);
 
@@ -244,7 +242,6 @@ namespace CryptoNote {
 
     bool checkProofOfWork(Crypto::cn_context& context, const Block& block,
                            Difficulty currentDiffic, Crypto::Hash& proofOfWork);
-    bool getBlockLongHash(Crypto::cn_context& context, const Block& b, Crypto::Hash& res);
 
   private:
     void invalidateAccountRegistrationsCountCache();
@@ -279,15 +276,12 @@ namespace CryptoNote {
     };
 
     typedef parallel_flat_hash_map<Crypto::Hash, BlockEntry> blocks_ext_by_hash;
-    typedef std::vector<BinaryArray>                         hashing_blobs_container;
 
     // ── LMDB-backed storage ───────────────────────────────────────────────
     LMDBBlockchainDB m_db;
     LMDBBlockView    m_blockView;
 
     // ── In-RAM caches ──────────────────────────────────────────────────────
-    // Mining blob cache (loaded from hashing_blobs table on startup unless --no-blobs)
-    hashing_blobs_container m_blobs;
     // Ephemeral alternative chains (never persisted, rebuilt from P2P each run)
     blocks_ext_by_hash      m_alternative_chains;
     // Orphan blocks index (never persisted, populated during session)
@@ -314,8 +308,6 @@ namespace CryptoNote {
     UpgradeDetector m_upgradeDetectorV7;
     UpgradeDetector m_upgradeDetectorV8;
 
-    bool m_no_blobs;
-
     uint64_t m_cachedCanonicalAccountRegistrationsCount = 0;
     std::chrono::steady_clock::time_point m_accountRegistrationsCountCacheTime;
     static constexpr uint64_t ACCOUNT_REGISTRATIONS_COUNT_CACHE_SECONDS = 60 * 60;
@@ -338,11 +330,6 @@ namespace CryptoNote {
     bool handle_alternative_block(const Block& b, const Crypto::Hash& id,
                                    block_verification_context& bvc,
                                    bool sendNewAlternativeBlockMessage = true);
-    bool checkProofOfWork(Crypto::cn_context& context, const Block& block,
-                           Difficulty currentDiffic, Crypto::Hash& proofOfWork,
-                           const std::list<Crypto::Hash>& alt_chain, bool no_blobs = false);
-    bool getBlockLongHash(Crypto::cn_context& context, const Block& b, Crypto::Hash& res,
-                           const std::list<Crypto::Hash>& alt_chain, bool no_blobs = false);
     bool prevalidate_miner_transaction(const Block& b, uint32_t height);
     bool validate_miner_transaction(const Block& b, uint32_t height,
                                      size_t cumulativeBlockSize,

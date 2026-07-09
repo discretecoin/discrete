@@ -76,7 +76,6 @@ namespace
     "network id is changed. Use it with --data-dir flag. The wallet must be launched with --testnet flag.", false };
   const command_line::arg_descriptor<std::string> arg_load_checkpoints          = { "load-checkpoints", "<filename> Load checkpoints from csv file", "" };
   const command_line::arg_descriptor<bool>        arg_disable_checkpoints       = { "without-checkpoints", "Synchronize without checkpoints" };
-  const command_line::arg_descriptor<bool>        arg_no_blobs                  = { "without-blobs", "Don't use hashing blobs cache in PoW validation", false, false };
   const command_line::arg_descriptor<uint32_t>    arg_reject_deep_reorg         = { "reject-deep-reorg", "Reject reorganization deeper than given number of blocks (default: 10 if used without value, 0 = allow all reorgs)", 0 };
   const command_line::arg_descriptor<std::string> arg_rollback                  = { "rollback", "Rollback blockchain to <height>", "", true };
 
@@ -157,7 +156,6 @@ int main(int argc, char* argv[])
     command_line::add_arg(desc_cmd_sett, arg_print_genesis_tx);
     command_line::add_arg(desc_cmd_sett, arg_load_checkpoints);
     command_line::add_arg(desc_cmd_sett, arg_disable_checkpoints);
-    command_line::add_arg(desc_cmd_sett, arg_no_blobs);
     desc_cmd_sett.add_options()(arg_reject_deep_reorg.name,
       boost::program_options::value<uint32_t>()->default_value(0)->implicit_value(CryptoNote::parameters::CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW),
       arg_reject_deep_reorg.description);
@@ -280,12 +278,7 @@ int main(int argc, char* argv[])
       logger(WARNING) << "Reorganization deeper than " << reject_deep_reorg << " blocks will be rejected";
     }
 
-    bool no_blobs = command_line::get_arg(vm, arg_no_blobs);
-    if (no_blobs) {
-      logger(INFO) << "Enabled full Proof of Work validation without hashing blobs cache";
-    }
-
-    CryptoNote::Core m_core(currency, nullptr, logManager, dispatcher, reject_deep_reorg, no_blobs);
+    CryptoNote::Core m_core(currency, nullptr, logManager, dispatcher, reject_deep_reorg);
 
     bool disable_checkpoints = command_line::get_arg(vm, arg_disable_checkpoints);
     if (!disable_checkpoints) {

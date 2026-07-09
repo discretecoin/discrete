@@ -99,7 +99,7 @@ BlockStatsEntry makeBlockStatsEntry(uint32_t height, const DbBlockMeta& meta, co
 // ─── Constructor ─────────────────────────────────────────────────────────────
 
 Blockchain::Blockchain(const Currency& currency, tx_memory_pool& tx_pool,
-                       ILogger& logger, uint32_t rejectDeepReorgDepth, bool noBlobs)
+                       ILogger& logger, uint32_t rejectDeepReorgDepth)
   : logger(logger, "Blockchain"),
     m_currency(currency),
     m_tx_pool(tx_pool),
@@ -111,8 +111,7 @@ Blockchain::Blockchain(const Currency& currency, tx_memory_pool& tx_pool,
     m_upgradeDetectorV6(currency, m_blockView, BLOCK_MAJOR_VERSION_6, logger),
     m_upgradeDetectorV7(currency, m_blockView, BLOCK_MAJOR_VERSION_7, logger),
     m_upgradeDetectorV8(currency, m_blockView, BLOCK_MAJOR_VERSION_8, logger),
-    m_checkpoints(logger, rejectDeepReorgDepth),
-    m_no_blobs(noBlobs)
+    m_checkpoints(logger, rejectDeepReorgDepth)
 {
 }
 
@@ -433,27 +432,6 @@ bool Blockchain::init(const std::string& config_folder, bool load_existing) {
     }
 
     logger(INFO, BRIGHT_WHITE) << "Loading blockchain...";
-
-    // Always clear first: if migration just ran it will have already populated
-    // m_blobs as a side effect of calling the inner pushBlock(), and we must
-    // not double-load them - duplicate entries corrupt the index used by
-    // getBlockLongHash() for v5+ PoW, causing validation failures on new blocks
-    // after ~minedMoneyUnlockWindow live blocks are received post-migration.
-    if (!m_no_blobs) {
-      m_blobs.clear();
-      m_blobs.reserve(chainHeight);
-      for (uint32_t h = 0; h < chainHeight; ++h) {
-        if (h % 50000 == 0 && h > 0) {
-          logger(DEBUGGING, BRIGHT_WHITE) << "Loading blobs: height " << h << " of " << chainHeight;
-        }
-        std::vector<uint8_t> blobData;
-        if (!m_db.getHashingBlob(h, blobData)) {
-          logger(ERROR, BRIGHT_RED) << "Cannot read hashing blob at height " << h;
-          return false;
-        }
-        m_blobs.push_back(BinaryArray(blobData.begin(), blobData.end()));
-      }
-    }
   }
 
   chainHeight = m_db.getChainHeight();
@@ -690,7 +668,6 @@ bool Blockchain::resetAndSetGenesisBlock(const Block& b) {
   m_db.clear();
   m_alternative_chains.clear();
   m_orphanBlocksIndex.clear();
-  m_blobs.clear();
 
   block_verification_context bvc = boost::value_initialized<block_verification_context>();
   addNewBlock(b, bvc);
@@ -906,89 +883,17 @@ uint64_t Blockchain::getCurrentCumulativeBlocksizeLimit() {
   return m_current_block_cumul_sz_limit;
 }
 
-// ─── Hashing blobs ───────────────────────────────────────────────────────────
-
-bool Blockchain::getHashingBlob(const uint32_t height, BinaryArray& blob) {
-  if (!m_no_blobs) {
-    std::lock_guard<decltype(m_blockchain_lock)> lk(m_blockchain_lock);
-    if (height < m_blobs.size()) {
-      blob = m_blobs[height];
-      return true;
-    }
-  }
-
-  std::vector<uint8_t> blobData;
-  if (m_db.getHashingBlob(height, blobData)) {
-    blob = BinaryArray(blobData.begin(), blobData.end());
-    return true;
-  }
-  // Fallback: compute from stored block data
-  std::vector<uint8_t> blockData;
-  if (!m_db.getBlockData(height, blockData)) return false;
-  Block blk;
-  if (!fromBinaryArray(blk, blockData)) return false;
-  return get_block_hashing_blob(blk, blob);
-}
-
 // ─── Proof of Work ───────────────────────────────────────────────────────────
 
 bool Blockchain::checkProofOfWork(Crypto::cn_context& context, const Block& block,
                                    Difficulty currentDiffic, Crypto::Hash& proofOfWork) {
-  std::list<Crypto::Hash> dummy_alt_chain;
-  return checkProofOfWork(context, block, currentDiffic, proofOfWork, dummy_alt_chain, m_no_blobs);
-}
-
-bool Blockchain::checkProofOfWork(Crypto::cn_context& context, const Block& block,
-                                   Difficulty currentDiffic, Crypto::Hash& proofOfWork,
-                                   const std::list<Crypto::Hash>& alt_chain, bool no_blobs) {
-  // All Discrete blocks use yespower PoW via getBlockLongHash.
-  if (!getBlockLongHash(context, block, proofOfWork, alt_chain, no_blobs))
+  (void)context;
+  // Discrete PoW is a pure function of the block (signed yespower, no chain
+  // access): CryptoNote::get_block_longhash. See docs/POW.md.
+  if (!get_block_longhash(block, proofOfWork))
     return false;
   if (!check_hash(proofOfWork, currentDiffic))
     return false;
-  return true;
-}
-
-bool Blockchain::getBlockLongHash(Crypto::cn_context& context, const Block& b, Crypto::Hash& res) {
-  std::list<Crypto::Hash> dummy_alt_chain;
-  return getBlockLongHash(context, b, res, dummy_alt_chain, m_no_blobs);
-}
-
-/*
- * Computes the block's Proof-of-Work "long hash": yespower (y_slow_hash) over
- * the block's SIGNED hashing blob.
- *
- * The signed blob covers the full block header — including the nonce and
- * previousBlockHash — and the miner's ML-DSA signature over it. Two properties
- * follow, and they are the whole point of the scheme:
- *   - Non-outsourceable: every nonce attempt must be re-signed with the key that
- *     controls the coinbase reward, so hashpower cannot be rented or pooled
- *     custodially without surrendering the reward.
- *   - Tip-bound: previousBlockHash is inside the hashed blob, so a valid PoW can
- *     only be produced for the current chain head; stale/fabricated tips fail.
- *
- * No blockchain access is required (alt_chain / no_blobs are unused). An earlier
- * design mixed pseudo-random previous-block bytes into the hash to force
- * possession of recent history; it was dropped because that possession excludes
- * no adversary who matters (any dataset small enough for a casual CPU miner is
- * trivially held by a farm or botnet) while adding substantial consensus-critical
- * reconstruction surface. See docs/POW.md.
- */
-bool Blockchain::getBlockLongHash(Crypto::cn_context& context, const Block& b, Crypto::Hash& res,
-                                   const std::list<Crypto::Hash>& alt_chain, bool no_blobs) {
-  (void)context;
-  (void)alt_chain;
-  (void)no_blobs;
-
-  BinaryArray pot;
-  if (!get_signed_block_hashing_blob(b, pot))
-    return false;
-
-  Crypto::Hash hash_1, hash_2;
-  if (!Crypto::y_slow_hash(pot.data(), pot.size(), hash_1, hash_2))
-    return false;
-
-  res = hash_2;
   return true;
 }
 
@@ -1575,7 +1480,7 @@ bool Blockchain::handle_alternative_block(const Block& b, const Crypto::Hash& id
     }
 
     Crypto::Hash proof_of_work = NULL_HASH;
-    if (!checkProofOfWork(m_cn_context, bei.bl, current_diff, proof_of_work, alt_chain, true)) {
+    if (!checkProofOfWork(m_cn_context, bei.bl, current_diff, proof_of_work)) {
       logger(INFO, BRIGHT_RED) << "Block with id: " << Common::podToHex(id)
         << "\n for alternative chain, has not enough proof of work: " << proof_of_work
         << "\n expected difficulty: " << current_diff;
@@ -2350,15 +2255,6 @@ bool Blockchain::pushBlock(const Block& blockData, const std::vector<Transaction
   TransactionIndex transactionIndex = {newHeight, 0};
   bool blockTxnActive = false;
 
-  auto trimBlobsToActiveChain = [&]() {
-    if (!m_no_blobs) {
-      const uint32_t chainHeight = m_db.getChainHeight();
-      if (m_blobs.size() > chainHeight) {
-        m_blobs.resize(chainHeight);
-      }
-    }
-  };
-
   auto abortCurrentBlockTxn = [&]() {
     if (blockTxnActive && m_db.hasNestedTxn()) {
       m_db.abortNestedWriteTxn();
@@ -2366,7 +2262,6 @@ bool Blockchain::pushBlock(const Block& blockData, const std::vector<Transaction
     } else if (m_db.hasActiveTxn() && m_batchCount == 0) {
       m_db.abortTxn();
     }
-    trimBlobsToActiveChain();
   };
 
   auto abortEntireBatchTxn = [&]() {
@@ -2376,7 +2271,6 @@ bool Blockchain::pushBlock(const Block& blockData, const std::vector<Transaction
     }
     m_db.abortTxn();
     m_batchCount = 0;
-    trimBlobsToActiveChain();
   };
 
   try {
@@ -2575,15 +2469,6 @@ bool Blockchain::pushBlock(BlockEntry& block, const Crypto::Hash& blockHash) {
   m_db.putBlockData(height, blockBlob.data(), blockBlob.size());
 
   m_db.putHashHeight(blockHash, height);
-
-  BinaryArray hashBlob;
-  if (!get_block_hashing_blob(block.bl, hashBlob)) {
-    logger(ERROR, BRIGHT_RED) << "Failed to get_block_hashing_blob of block " << blockHash;
-  }
-  m_db.putHashingBlob(height, hashBlob.data(), hashBlob.size());
-  if (!m_no_blobs) {
-    m_blobs.push_back(hashBlob);
-  }
 
   m_db.putTimestamp(block.bl.timestamp, blockHash);
 
@@ -2882,7 +2767,6 @@ void Blockchain::removeLastBlock() {
   m_db.removeTxEntriesForBlock(height, txCount);
   m_db.removeBlockData(height);
   m_db.removeHashHeight(blockHash);
-  m_db.removeHashingBlob(height);
   m_db.removeGeneratedTxCount(height);
 
   m_db.removeTimestamp(meta.timestamp, blockHash);
@@ -2891,10 +2775,6 @@ void Blockchain::removeLastBlock() {
 
   if (ownTxn) {
     m_db.commitTxn();
-  }
-
-  if (!m_no_blobs && !m_blobs.empty()) {
-    m_blobs.pop_back();
   }
 }
 

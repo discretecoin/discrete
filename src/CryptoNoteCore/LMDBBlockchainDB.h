@@ -115,11 +115,6 @@ public:
   bool getHashHeight(const Crypto::Hash& hash, uint32_t& height) const;
   bool removeHashHeight(const Crypto::Hash& hash);
 
-  // ── hashing_blobs ─────────────────────────────────────────────────────────
-  bool putHashingBlob(uint32_t height, const uint8_t* data, size_t size);
-  bool getHashingBlob(uint32_t height, std::vector<uint8_t>& out) const;
-  bool removeHashingBlob(uint32_t height);
-
   // ── spent_keys ────────────────────────────────────────────────────────────
   bool putSpentKey(const Crypto::KeyImage& ki, uint32_t blockHeight);
   bool hasSpentKey(const Crypto::KeyImage& ki) const;
@@ -237,7 +232,6 @@ private:
   MDB_dbi m_dbiBlockData;
   MDB_dbi m_dbiTxEntries;
   MDB_dbi m_dbiHashToHeight;
-  MDB_dbi m_dbiHashingBlobs;
   MDB_dbi m_dbiSpentKeys;
   MDB_dbi m_dbiPqAcctReg;
   MDB_dbi m_dbiTxIndices;

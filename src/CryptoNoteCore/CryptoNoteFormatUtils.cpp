@@ -223,6 +223,23 @@ bool get_parent_block_hashing_blob(const Block& b, BinaryArray& blob) {
   return toBinaryArray(serializer, blob);
 }
 
+// Proof-of-Work "long hash": yespower over the block's signed hashing blob.
+// The signed blob covers the header (nonce, previousBlockHash) and SHA3 of the
+// miner's ML-DSA signature, giving non-outsourceability and tip-binding with no
+// blockchain access. See docs/POW.md.
+bool get_block_longhash(const Block& b, Crypto::Hash& res) {
+  BinaryArray pot;
+  if (!get_signed_block_hashing_blob(b, pot)) {
+    return false;
+  }
+  Crypto::Hash hash_1, hash_2;
+  if (!Crypto::y_slow_hash(pot.data(), pot.size(), hash_1, hash_2)) {
+    return false;
+  }
+  res = hash_2;
+  return true;
+}
+
 bool get_block_hash(const Block& b, Hash& res) {
   BinaryArray ba;
   if (!get_block_hashing_blob(b, ba)) {
