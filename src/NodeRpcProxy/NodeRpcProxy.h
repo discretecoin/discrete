@@ -80,6 +80,10 @@ public:
   virtual uint64_t getWhitePeerlistSize() const override;
   virtual uint64_t getGreyPeerlistSize() const override;
   virtual std::string getNodeVersion() const override;
+  // First-seen finality: true while the connected daemon reports a finality-fork
+  // warning in getinfo (it ignored a deeper competing chain). Not part of INode —
+  // surfaced only for status/UI. See discrete-finality-recovery.md.
+  bool getFinalityForkActive() const;
 
   virtual void relayTransaction(const CryptoNote::Transaction& transaction, const Callback& callback) override;
   virtual void getNewBlocks(std::vector<Crypto::Hash>&& knownBlockIds, std::vector<CryptoNote::block_complete_entry>& newBlocks, uint32_t& startHeight, const Callback& callback) override;
@@ -194,6 +198,7 @@ private:
   std::atomic<uint64_t> m_rpcConnectionsCount;
   std::atomic<uint64_t> m_whitePeerlistSize;
   std::atomic<uint64_t> m_greyPeerlistSize;
+  std::atomic<bool> m_finalityForkWarning;
   std::string m_nodeVersion = "";
 
   BlockHeaderInfo lastLocalBlockHeaderInfo;

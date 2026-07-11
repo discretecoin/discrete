@@ -91,6 +91,7 @@ NodeRpcProxy::NodeRpcProxy(const std::string& nodeHost, unsigned short nodePort,
     m_rpcConnectionsCount(0),
     m_whitePeerlistSize(0),
     m_greyPeerlistSize(0),
+    m_finalityForkWarning(false),
     m_node_url((m_daemon_ssl ? "https://" : "http://") + m_nodeHost + ":" + std::to_string(m_nodePort))
 {
   resetInternalState();
@@ -335,6 +336,7 @@ void NodeRpcProxy::updateBlockchainStatus() {
     m_rpcConnectionsCount.store(getInfoResp.rpc_connections_count, std::memory_order_relaxed);
     m_whitePeerlistSize.store(getInfoResp.white_peerlist_size, std::memory_order_relaxed);
     m_greyPeerlistSize.store(getInfoResp.grey_peerlist_size, std::memory_order_relaxed);
+    m_finalityForkWarning.store(getInfoResp.finality_fork_warning, std::memory_order_relaxed);
     m_nodeVersion = getInfoResp.version;
     uint64_t alreadyGenCoins;
     if (Common::Format::parseAmount(boost::lexical_cast<std::string>(getInfoResp.already_generated_coins), alreadyGenCoins)) {
@@ -454,6 +456,10 @@ uint64_t NodeRpcProxy::getTransactionsPoolSize() const {
 
 uint64_t NodeRpcProxy::getAltBlocksCount() const {
   return m_altBlocksCount.load(std::memory_order_relaxed);
+}
+
+bool NodeRpcProxy::getFinalityForkActive() const {
+  return m_finalityForkWarning.load(std::memory_order_relaxed);
 }
 
 uint64_t NodeRpcProxy::getOutConnectionsCount() const {
