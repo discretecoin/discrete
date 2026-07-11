@@ -673,6 +673,7 @@ TEST(WalletLedger, HistorySurvivesSaveLoad) {
     const auto& h = restored.history()[0];
     EXPECT_EQ(h.txid, f.txid);
     EXPECT_FALSE(h.outgoing);
+    EXPECT_FALSE(h.coinbase);  // a received transfer is not a mined output
     EXPECT_EQ(h.netAmount, 700000);
     EXPECT_EQ(h.height, 100u);
     EXPECT_EQ(h.timestamp, 444u);

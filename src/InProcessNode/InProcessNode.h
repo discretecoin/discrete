@@ -104,6 +104,7 @@ private:
   virtual void blockchainSynchronized(uint32_t topHeight) override;
   virtual void blockchainUpdated() override;
   virtual void poolUpdated() override;
+  virtual void blockFoundByMiner(uint64_t reward) override;
 
   void updateLastLocalBlockHeaderInfo();
   void resetLastLocalBlockHeaderInfo();

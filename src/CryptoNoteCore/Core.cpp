@@ -594,6 +594,16 @@ bool Core::handle_block_found(Block& b) {
     logger(ERROR) << "mined block failed verification";
   }
 
+  if (bvc.m_added_to_main_chain) {
+    // Notify observers that OUR miner found this block (per-rig attribution the
+    // wallet's coinbase view cannot give). Reward = sum of the coinbase outputs.
+    uint64_t reward = 0;
+    for (const auto& out : b.baseTransaction.outputs) {
+      reward += out.amount;
+    }
+    m_observerManager.notify(&ICoreObserver::blockFoundByMiner, reward);
+  }
+
   return bvc.m_added_to_main_chain;
 }
 

@@ -24,6 +24,11 @@ public:
   virtual ~ICoreObserver() {};
   virtual void blockchainUpdated() {};
   virtual void poolUpdated() {};
+  // This node's own built-in miner just found a block and it was accepted onto the
+  // main chain. Unlike a coinbase landing in a wallet (which cannot tell which rig
+  // mined it when several share an address), this is the authoritative per-rig
+  // found-block event. `reward` is the total of the block's coinbase outputs.
+  virtual void blockFoundByMiner(uint64_t reward) {};
 };
 
 }

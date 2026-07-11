@@ -503,6 +503,10 @@ void InProcessNode::poolUpdated() {
   observerManager.notify(&INodeObserver::poolChanged);
 }
 
+void InProcessNode::blockFoundByMiner(uint64_t reward) {
+  observerManager.notify(&INodeObserver::blockFoundByMiner, reward);
+}
+
 void InProcessNode::updateLastLocalBlockHeaderInfo() {
   uint32_t height;
   Crypto::Hash hash;

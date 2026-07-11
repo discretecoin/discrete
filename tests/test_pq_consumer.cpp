@@ -271,6 +271,12 @@ TEST(WalletLedgerConsumer, GenesisBlockCreditsTreasuryViaOnNewBlocks) {
     EXPECT_EQ(consumer.state().balance(), 10000000u);
     EXPECT_EQ(consumer.state().unspentCount(), 2u);
 
+    // The credited row is flagged as a mined (coinbase) transaction: both owned
+    // batches share the one base tx, so there is a single history row and the GUI
+    // (History "MINED" label, Mining tab found-block stats) reads coinbase off it.
+    ASSERT_EQ(consumer.state().history().size(), 1u);
+    EXPECT_TRUE(consumer.state().history()[0].coinbase);
+
     // Past coinbase maturity only the unlockHeight-0 batch is spendable.
     consumer.state().setLastScannedHeight(20);
     EXPECT_EQ(consumer.state().spendableBalance(), 5000000u);

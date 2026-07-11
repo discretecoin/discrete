@@ -78,6 +78,7 @@ struct PqWalletTransaction {
   int64_t      netAmount = 0;    // + for net incoming; -(amount+fee) for our sends
   uint64_t     fee = 0;          // our outgoing txs only (0 for incoming)
   bool         outgoing = false; // true if this tx spends any owned output
+  bool         coinbase = false; // true if this row credits a mined (TX_COINBASE) output
   Crypto::Hash paymentId{};      // classic CryptoNote payment id from tx_extra (zero = none)
 };
 

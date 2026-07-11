@@ -43,6 +43,8 @@ public:
   virtual void lastKnownBlockHeightUpdated(uint32_t height) {}
   virtual void poolChanged() {}
   virtual void blockchainSynchronized(uint32_t topHeight) {}
+  // This node's built-in miner found and accepted a block (in-process node only).
+  virtual void blockFoundByMiner(uint64_t reward) {}
 };
 
 struct OutEntry {

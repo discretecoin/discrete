@@ -743,7 +743,9 @@ void pqRowToLegacyTx(const PqWalletTransaction& h, WalletLegacyTransaction& tran
   transaction.unlockHeight = 0;
   transaction.hash = h.txid;
   transaction.secretKey = NULL_SECRET_KEY;
-  transaction.isCoinbase = false;
+  // Surface the ledger's coinbase flag: the History view labels these MINED and the
+  // Mining tab counts them as blocks this wallet found (see MiningFrame).
+  transaction.isCoinbase = h.coinbase;
   transaction.blockHeight = h.height;  // UNCONFIRMED_HEIGHT maps through (both uint32 max)
   transaction.timestamp = h.timestamp;
   transaction.extra.clear();
