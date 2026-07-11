@@ -1393,13 +1393,11 @@ bool RpcServer::on_get_info(const COMMAND_RPC_GET_INFO::request& req, COMMAND_RP
       }
     }
     res.peer_split = std::to_string(peersOnCompeting) + "/" + std::to_string(peersTotal);
-    // Only a "may be" hint: if the clear majority of peers are on the competing
-    // chain, the operator should suspect a minority-fork wedge and recover.
-    if (peersTotal > 0 && peersOnCompeting * 2 > peersTotal) {
-      res.finality_hint = "likely on minority fork — see recovery";
-    } else {
-      res.finality_hint = std::string();
-    }
+    // Calm, actionable guidance — never an alarming assertion. The out-of-band
+    // explorer check is the safeguard: it stops a node that is correctly refusing
+    // an attacker's chain from being rolled back onto it.
+    res.finality_hint = "confirm the current tip on the official block explorer; "
+                        "if this node is behind, run resync_to_majority --confirm to return to the main chain";
   } else {
     res.local_tip = std::string();
     res.competing_tip = std::string();

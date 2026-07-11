@@ -1267,14 +1267,14 @@ void CryptoNoteProtocolHandler::logFinalityFork(const CryptoNoteConnectionContex
   });
 
   logger(Logging::WARNING, Logging::BRIGHT_YELLOW)
-    << "FINALITY FORK: refusing reorg of depth " << fork.refusedDepth
+    << "FINALITY: refused a deep chain reorganization of depth " << fork.refusedDepth
     << " (local tip " << fork.localTipHeight << ":" << fork.localTipHash
-    << " -> offered tip " << fork.competingTipHeight << ":" << fork.competingTipHash << "). "
-    << "Offered by " << peersOnCompeting << "/" << peersTotal << " peers. "
-    << "If most of the network is on the offered chain, THIS NODE MAY BE ON A MINORITY FORK. "
-    << "Expected during an attack (no action needed); requires recovery if you were "
-    << "partitioned or mining while disconnected. "
-    << "See: docs/discrete-finality-recovery.md (resync_to_majority).";
+    << ", offered tip " << fork.competingTipHeight << ":" << fork.competingTipHash
+    << ", offered by " << peersOnCompeting << "/" << peersTotal << " peers). "
+    << "No action is needed if this node is in sync. If it was disconnected or mining "
+    << "offline, confirm the current chain tip on the official block explorer; if this "
+    << "node is behind, run 'resync_to_majority --confirm' to return to the main chain. "
+    << "See: docs/discrete-finality-recovery.md";
 }
 
 bool CryptoNoteProtocolHandler::addObserver(ICryptoNoteProtocolObserver* observer) {

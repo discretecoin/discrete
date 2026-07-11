@@ -61,12 +61,20 @@ minority fork.
 On refusing a finality-depth-exceeding reorg, emit at `WARNING`:
 
 ```
-FINALITY FORK: refusing reorg of depth <D> (local tip <hHi>:<hashLocal>
-→ offered tip <hHo>:<hashOther>). Offered by <Npeers>/<Ntotal> peers.
-If most of the network is on the offered chain, THIS NODE MAY BE ON A MINORITY
-FORK. This is expected during an attack (no action needed) but requires recovery
-if you were partitioned or mining while disconnected. See: <recovery-docs-url>
+FINALITY: refused a deep chain reorganization of depth <D> (local tip
+<hHi>:<hashLocal>, offered tip <hHo>:<hashOther>, offered by <Npeers>/<Ntotal>
+peers). No action is needed if this node is in sync. If it was disconnected or
+mining offline, confirm the current chain tip on the official block explorer; if
+this node is behind, run 'resync_to_majority --confirm' to return to the main
+chain. See: <recovery-docs-url>
 ```
+
+The message deliberately avoids alarming language and never asserts the node *is*
+on a minority fork — it states the fact (a deep reorg was refused) and points the
+operator at the out-of-band check (the official explorer) and the one command that
+returns a genuinely-behind node to the main chain. That explorer check is the
+safeguard: a node that is correctly refusing an attacker's chain must not be rolled
+back onto it.
 
 ### Required status flag
 
@@ -81,8 +89,10 @@ finality_fork_warning : TRUE
   divergence_height    : <height>          (last common ancestor)
 ```
 
-When `peer_split` shows the competing chain holding the clear majority of peers, the
-status line should add a plain-language hint: `likely on minority fork — see recovery`.
+The status line adds a calm, actionable hint whenever the flag is set: `confirm the
+current tip on the official block explorer; if this node is behind, run
+resync_to_majority --confirm to return to the main chain`. It is guidance, not an
+assertion that the node is on a minority fork.
 
 ### Wallet-facing message
 
@@ -90,11 +100,16 @@ Wallets connected to a wedged node, and wallets recovering after a node rollback
 show a non-technical banner:
 
 ```
-Some recent transactions may have been confirmed only on a minority fork and are
-no longer part of the main Discrete chain. Your node is resyncing to the majority
-chain; balances will be rechecked. No funds are lost, but a transaction you
-believed confirmed may return to pending.
+Your node refused a deep chain reorganization and may be slightly behind the
+network. Confirm the current chain tip on the official block explorer. If your
+node is behind, return it to the main chain with the recovery command below —
+your funds are safe.
 ```
+
+Keep it non-alarming and actionable: point the user at the official explorer to
+check, and at the one command that fixes a genuinely-behind node. Do not tell users
+their transactions were reversed or that they are "on a minority fork" — most nodes
+that see this are simply refusing an attacker's chain and need to do nothing.
 
 ---
 

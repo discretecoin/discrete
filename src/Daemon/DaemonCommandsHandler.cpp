@@ -181,16 +181,16 @@ bool DaemonCommandsHandler::status(const std::vector<std::string>& args) {
       }
     }
     std::cout
-      << ColouredMsg("finality_fork_warning : TRUE", Common::Console::Color::BrightYellow) << "\n"
-      << "  local_tip            : " << fork.localTipHeight << ":" << Common::podToHex(fork.localTipHash) << "\n"
-      << "  competing_tip        : " << fork.competingTipHeight << ":" << Common::podToHex(fork.competingTipHash) << "   (higher cumulative work, refused)\n"
-      << "  peer_split           : " << peersOnCompeting << "/" << peersTotal << " peers on competing chain\n"
-      << "  divergence_height    : " << fork.divergenceHeight << "          (last common ancestor)\n";
-    if (peersTotal > 0 && peersOnCompeting * 2 > peersTotal) {
-      std::cout << ColouredMsg("  likely on minority fork — see recovery (run: resync_to_majority --confirm)",
-                               Common::Console::Color::BrightYellow) << "\n";
-    }
-    std::cout << std::endl;
+      << ColouredMsg("finality : refused a deep chain reorganization", Common::Console::Color::BrightYellow) << "\n"
+      << "  local_tip         : " << fork.localTipHeight << ":" << Common::podToHex(fork.localTipHash) << "\n"
+      << "  competing_tip     : " << fork.competingTipHeight << ":" << Common::podToHex(fork.competingTipHash) << "\n"
+      << "  peer_split        : " << peersOnCompeting << "/" << peersTotal << " peers\n"
+      << "  divergence_height : " << fork.divergenceHeight << "\n"
+      << ColouredMsg(
+           "  No action is needed if this node is in sync. To return to the main chain, confirm the\n"
+           "  current tip on the official block explorer, then run: resync_to_majority --confirm",
+           Common::Console::Color::BrightYellow)
+      << "\n" << std::endl;
   }
 
   return true;
