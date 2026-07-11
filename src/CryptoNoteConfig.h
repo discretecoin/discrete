@@ -178,7 +178,7 @@ const size_t   DIFFICULTY_LAG                                = 0;
 // comfortably below the honest network hashrate (a floor above it stalls the chain with
 // no recovery, since difficulty can't drop past it): ~MINIMUM_DIFFICULTY / DIFFICULTY_TARGET
 // hashes/sec are required. 0 disables the floor (the absolute minimum is then 1).
-const uint64_t MINIMUM_DIFFICULTY                            = 100000;
+const uint64_t MINIMUM_DIFFICULTY                            = 0;
 
 const size_t   MAX_BLOCK_SIZE_INITIAL                        = 1000000;
 const uint64_t MAX_BLOCK_SIZE_GROWTH_SPEED_NUMERATOR         = 100 * 1024;
