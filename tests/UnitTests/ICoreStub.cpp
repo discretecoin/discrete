@@ -624,3 +624,14 @@ bool ICoreStub::getCanonicalAccountRegistrationsCount(uint64_t& count) {
   count = 0;
   return true;
 }
+
+bool ICoreStub::resolvePqAccountNumber(uint32_t /*blockHeight*/, uint32_t /*txIndex*/,
+                                       std::array<uint8_t, TX_EXTRA_PQ_VIEW_PUBKEY_SIZE>& /*viewPub*/,
+                                       std::array<uint8_t, TX_EXTRA_PQ_SPEND_PUBKEY_SIZE>& /*spendPub*/) {
+  return false;
+}
+
+bool ICoreStub::getPqAccountNumber(const Crypto::Hash& /*accountId*/,
+                                   uint32_t& /*blockHeight*/, uint32_t& /*txIndex*/) {
+  return false;
+}

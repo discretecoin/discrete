@@ -94,6 +94,13 @@ public:
   virtual void isSynchronized(bool& syncStatus, const Callback& callback) override;
   virtual void getConnections(std::vector<p2pConnection>& connections, const Callback& callback) override;
 
+  // PQ account registry — routed straight to the wrapped Core (via ICore), so a
+  // wallet built on an embedded node can look up and resolve account numbers.
+  // Mirrors NodeRpcProxy's RPC path and the daemon's on_(get|resolve)_pq_account.
+  virtual void getPqAccount(const std::string& viewPubHex, const std::string& spendPubHex, bool& registered,
+                            uint32_t& blockHeight, uint32_t& txIndex, const Callback& callback) override;
+  virtual void resolvePqAccount(uint32_t blockHeight, uint32_t txIndex, bool& found,
+                                std::string& viewPubHex, std::string& spendPubHex, const Callback& callback) override;
 
   virtual void setRootCert(const std::string &path) override;
   virtual void disableVerify() override;

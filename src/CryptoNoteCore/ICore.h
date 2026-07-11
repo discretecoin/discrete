@@ -29,6 +29,7 @@
 #include "CryptoNoteCore/BlockStats.h"
 #include "CryptoNoteCore/Difficulty.h"
 #include "CryptoNoteCore/FinalityForkState.h"
+#include "CryptoNoteCore/TransactionExtra.h"  // TX_EXTRA_PQ_*_SIZE for the PQ registry
 
 #include "CryptoNoteCore/MessageQueue.h"
 #include "CryptoNoteCore/BlockchainMessages.h"
@@ -153,6 +154,17 @@ public:
   virtual bool resyncToMajority(std::string& message) = 0;
 
   virtual bool getCanonicalAccountRegistrationsCount(uint64_t& count) = 0;
+
+  // PQ account registry. Concrete on Core (backed by the blockchain), but surfaced
+  // on the interface so an in-process node — which holds only an ICore& — can
+  // resolve account numbers for the wallet's send path, exactly as NodeRpcProxy
+  // does over RPC. Without this an embedded-node wallet cannot send to an H-I-C /
+  // H-I-T-C account number (the INode base stub reports not_supported).
+  virtual bool resolvePqAccountNumber(uint32_t blockHeight, uint32_t txIndex,
+                                      std::array<uint8_t, TX_EXTRA_PQ_VIEW_PUBKEY_SIZE>& viewPub,
+                                      std::array<uint8_t, TX_EXTRA_PQ_SPEND_PUBKEY_SIZE>& spendPub) = 0;
+  virtual bool getPqAccountNumber(const Crypto::Hash& accountId,
+                                  uint32_t& blockHeight, uint32_t& txIndex) = 0;
 };
 
 } //namespace CryptoNote

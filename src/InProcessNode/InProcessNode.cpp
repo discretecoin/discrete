@@ -1238,4 +1238,58 @@ std::error_code InProcessNode::doGetConnections(std::vector<p2pConnection>& conn
   return std::error_code();
 }
 
+// PQ account registry. Resolved synchronously against the wrapped Core (its own
+// blockchain lock makes this safe from any thread); the callback is invoked
+// inline, exactly like the RPC path once its request completes. This mirrors
+// RpcServer::on_(get|resolve)_pq_account and lets an embedded-node wallet send
+// to an account number — without it the INode base stub reports not_supported.
+void InProcessNode::getPqAccount(const std::string& viewPubHex, const std::string& spendPubHex, bool& registered,
+                                 uint32_t& blockHeight, uint32_t& txIndex, const Callback& callback) {
+  {
+    std::unique_lock<std::mutex> lock(mutex);
+    if (state != INITIALIZED) {
+      lock.unlock();
+      callback(make_error_code(CryptoNote::error::NOT_INITIALIZED));
+      return;
+    }
+  }
+
+  std::array<uint8_t, TX_EXTRA_PQ_VIEW_PUBKEY_SIZE> viewPub;
+  std::array<uint8_t, TX_EXTRA_PQ_SPEND_PUBKEY_SIZE> spendPub;
+  size_t sz = 0;
+  if (!Common::fromHex(viewPubHex, viewPub.data(), viewPub.size(), sz) || sz != viewPub.size() ||
+      !Common::fromHex(spendPubHex, spendPub.data(), spendPub.size(), sz) || sz != spendPub.size()) {
+    callback(make_error_code(std::errc::invalid_argument));
+    return;
+  }
+
+  registered = core.getPqAccountNumber(getPqAccountIdentityHash(viewPub, spendPub), blockHeight, txIndex);
+  if (!registered) {
+    blockHeight = 0;
+    txIndex = 0;
+  }
+  callback(std::error_code());
+}
+
+void InProcessNode::resolvePqAccount(uint32_t blockHeight, uint32_t txIndex, bool& found,
+                                     std::string& viewPubHex, std::string& spendPubHex, const Callback& callback) {
+  {
+    std::unique_lock<std::mutex> lock(mutex);
+    if (state != INITIALIZED) {
+      lock.unlock();
+      callback(make_error_code(CryptoNote::error::NOT_INITIALIZED));
+      return;
+    }
+  }
+
+  std::array<uint8_t, TX_EXTRA_PQ_VIEW_PUBKEY_SIZE> viewPub;
+  std::array<uint8_t, TX_EXTRA_PQ_SPEND_PUBKEY_SIZE> spendPub;
+  found = core.resolvePqAccountNumber(blockHeight, txIndex, viewPub, spendPub);
+  if (found) {
+    viewPubHex = Common::toHex(viewPub.data(), viewPub.size());
+    spendPubHex = Common::toHex(spendPub.data(), spendPub.size());
+  }
+  callback(std::error_code());
+}
+
 } //namespace CryptoNote

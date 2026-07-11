@@ -123,6 +123,11 @@ public:
   virtual CryptoNote::FinalityForkState getFinalityForkState() override { return CryptoNote::FinalityForkState{}; }
   virtual bool resyncToMajority(std::string& message) override { message = "not supported in stub"; return false; }
   virtual bool getCanonicalAccountRegistrationsCount(uint64_t& count) override;
+  virtual bool resolvePqAccountNumber(uint32_t blockHeight, uint32_t txIndex,
+                                      std::array<uint8_t, TX_EXTRA_PQ_VIEW_PUBKEY_SIZE>& viewPub,
+                                      std::array<uint8_t, TX_EXTRA_PQ_SPEND_PUBKEY_SIZE>& spendPub) override;
+  virtual bool getPqAccountNumber(const Crypto::Hash& accountId,
+                                  uint32_t& blockHeight, uint32_t& txIndex) override;
 
   void set_blockchain_top(uint32_t height, const Crypto::Hash& top_id);
   void set_outputs_gindexs(const std::vector<uint32_t>& indexs, bool result);

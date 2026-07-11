@@ -993,6 +993,9 @@ TransactionId WalletLegacy::sendTransaction(const std::vector<WalletLegacyTransf
   // sign and relay through the common sender. `extra` carries any tx-level tag (e.g.
   // a PQ account registration). Synchronous failures (bad address, insufficient
   // funds, relay error) propagate as exceptions, matching the legacy contract.
+  m_logger(INFO) << "sendTransaction: building PQ transfer to " << transfers.size()
+                 << " recipient(s), fee " << (fee ? std::to_string(fee) : std::string("auto"));
+
   std::vector<PqSendOutput> recipients;
   recipients.reserve(transfers.size());
   for (const auto& t : transfers) {
@@ -1003,6 +1006,11 @@ TransactionId WalletLegacy::sendTransaction(const std::vector<WalletLegacyTransf
     CryptoPQ::DsaPublicKey spendPub;
     uint64_t subaddrT = 0;
     if (!resolvePqRecipient(m_node, m_currency.isTestnet(), t.address, viewPub, spendPub, subaddrT)) {
+      // Most often an account number that this node cannot resolve: it is
+      // unregistered on chain, or the node has no PQ registry (e.g. a bare
+      // remote daemon). Log the destination so the failure is diagnosable
+      // instead of silently surfacing as a generic bad-address error.
+      m_logger(ERROR) << "sendTransaction: failed to resolve recipient '" << t.address << "'";
       throw std::system_error(make_error_code(CryptoNote::error::BAD_ADDRESS));
     }
     recipients.push_back(PqSendOutput{viewPub, spendPub, static_cast<uint64_t>(t.amount), subaddrT});
@@ -1010,6 +1018,7 @@ TransactionId WalletLegacy::sendTransaction(const std::vector<WalletLegacyTransf
 
   std::vector<uint8_t> extraBytes(extra.begin(), extra.end());
   PqSendResult result = sendPqTransfer(recipients, fee, unlockHeightstamp, extraBytes);  // builds + relays
+  m_logger(INFO) << "sendTransaction: relayed transaction " << Common::podToHex(getObjectHash(result.tx));
 
   // Register the sent tx in the ledger so it has a native id/history row at once.
   TransactionId txId = WALLET_LEGACY_INVALID_TRANSACTION_ID;

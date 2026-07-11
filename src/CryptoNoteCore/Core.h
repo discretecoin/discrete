@@ -189,12 +189,13 @@ namespace CryptoNote {
 
      virtual bool getCanonicalAccountRegistrationsCount(uint64_t& count) override;
 
-     // PQ account registry (concrete; not on ICore).
+     // PQ account registry (backed by the blockchain; declared on ICore so an
+     // in-process node can reach it through the ICore& it holds).
      bool resolvePqAccountNumber(uint32_t blockHeight, uint32_t txIndex,
                                  std::array<uint8_t, TX_EXTRA_PQ_VIEW_PUBKEY_SIZE>& viewPub,
-                                 std::array<uint8_t, TX_EXTRA_PQ_SPEND_PUBKEY_SIZE>& spendPub);
+                                 std::array<uint8_t, TX_EXTRA_PQ_SPEND_PUBKEY_SIZE>& spendPub) override;
      bool getPqAccountNumber(const Crypto::Hash& accountId,
-                             uint32_t& blockHeight, uint32_t& txIndex);
+                             uint32_t& blockHeight, uint32_t& txIndex) override;
 
      bool is_key_image_spent(const Crypto::KeyImage& key_im);
      bool is_key_image_spent(const Crypto::KeyImage& key_im, uint32_t height);
