@@ -27,6 +27,7 @@
 #include "Common/Util.h"
 #include "Checkpoints/Checkpoints.h"
 #include "CryptoNoteCore/BlockStats.h"
+#include "CryptoNoteCore/FinalityForkState.h"
 #include "CryptoNoteCore/LMDBBlockchainDB.h"
 #include "CryptoNoteCore/Currency.h"
 #include "CryptoNoteCore/IBlockchainStorageObserver.h"
@@ -56,8 +57,7 @@ namespace CryptoNote {
   using CryptoNote::BlockInfo;
   class Blockchain : public CryptoNote::ITransactionValidator {
   public:
-    Blockchain(const Currency& currency, tx_memory_pool& tx_pool, Logging::ILogger& logger,
-               uint32_t rejectDeepReorgDepth);
+    Blockchain(const Currency& currency, tx_memory_pool& tx_pool, Logging::ILogger& logger);
 
     bool addObserver(IBlockchainStorageObserver* observer);
     bool removeObserver(IBlockchainStorageObserver* observer);
@@ -143,6 +143,15 @@ namespace CryptoNote {
                                        std::vector<Crypto::Hash>& transactionHashes);
     bool isBlockInMainChain(const Crypto::Hash& blockId);
     bool isInCheckpointZone(const uint32_t height);
+
+    // First-seen finality (see CRYPTONOTE_FINALITY_DEPTH). Snapshot of the last
+    // refused deep reorg, for operator messaging/recovery only — never consulted
+    // by the accept/reject decision.
+    FinalityForkState getFinalityForkState();
+    // Operator-confirmed recovery: pop to just below the detected divergence
+    // height so normal sync can re-adopt the majority chain. Refuses unless a
+    // finality fork is currently flagged. Returns false with a reason otherwise.
+    bool resyncToMajority(std::string& message);
 
     bool getCanonicalAccountRegistrationsCount(uint64_t& count);
 
@@ -300,6 +309,11 @@ namespace CryptoNote {
     std::string m_config_folder;
     Checkpoints m_checkpoints;
 
+    // First-seen-finality fork snapshot (operator messaging only, guarded by
+    // m_blockchain_lock). Set when a deep reorg is refused, cleared on a
+    // successful chain switch or operator-confirmed recovery.
+    FinalityForkState m_finalityForkState;
+
     UpgradeDetector m_upgradeDetectorV2;
     UpgradeDetector m_upgradeDetectorV3;
     UpgradeDetector m_upgradeDetectorV4;
@@ -394,6 +408,10 @@ namespace CryptoNote {
     bool checkCheckpoints(uint32_t& lastValidCheckpointHeight);
     void removeLastBlock();
     bool checkUpgradeHeight(const UpgradeDetector& upgradeDetector);
+    // Snapshot a refused deep reorg into m_finalityForkState (call under
+    // m_blockchain_lock). chainLen is the current chain length (tip height + 1).
+    void recordFinalityFork(uint32_t chainLen, uint32_t altBlockHeight,
+                            const Crypto::Hash& altBlockId);
 
     bool loadTransactions(const Block& block, std::vector<Transaction>& transactions);
     void saveTransactions(const std::vector<Transaction>& transactions);

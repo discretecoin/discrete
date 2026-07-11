@@ -37,5 +37,6 @@ namespace CryptoNote
     bool m_marked_as_orphaned;
     bool m_already_exists;
     bool m_switched_to_alt_chain;
+    bool m_finality_fork; //refused: alt chain forks deeper than CRYPTONOTE_FINALITY_DEPTH
   };
 }

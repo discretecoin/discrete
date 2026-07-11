@@ -78,6 +78,7 @@ DaemonCommandsHandler::DaemonCommandsHandler(CryptoNote::Core& core, CryptoNote:
   m_consoleHandler.setHandler("ban", std::bind(&DaemonCommandsHandler::ban, this, std::placeholders::_1), "Ban a given <IP> for [<seconds>] or permanently if no duration provided, ban <IP> [<seconds>]");
   m_consoleHandler.setHandler("unban", std::bind(&DaemonCommandsHandler::unban, this, std::placeholders::_1), "Unban a given <IP>, unban <IP>");
   m_consoleHandler.setHandler("status", std::bind(&DaemonCommandsHandler::status, this, std::placeholders::_1), "Show daemon status");
+  m_consoleHandler.setHandler("resync_to_majority", std::bind(&DaemonCommandsHandler::resync_to_majority, this, std::placeholders::_1), "First-seen-finality recovery: pop to just below the detected divergence height and re-sync the majority chain. Only runs while finality_fork_warning is set; requires 'resync_to_majority --confirm'");
 }
 
 //--------------------------------------------------------------------------------
@@ -163,7 +164,67 @@ bool DaemonCommandsHandler::status(const std::vector<std::string>& args) {
     << "alt. blocks: " << ColouredMsg(std::to_string(alt_blocks_count), Common::Console::Color::BrightWhite) << ", "
     << "uptime: " << ColouredMsg(Common::timeIntervalToString(uptime), Common::Console::Color::BrightWhite) << "\n"
     << std::endl << std::endl;
-  
+
+  // First-seen-finality fork warning. Chain fields come from the consensus layer;
+  // peer_split and the minority-fork hint are HUMAN heuristics ("may be"), never
+  // assertions of validity and never inputs to the accept/reject decision.
+  CryptoNote::FinalityForkState fork = m_core.getFinalityForkState();
+  if (fork.active) {
+    size_t peersOnCompeting = 0, peersTotal = 0;
+    std::vector<CryptoNote::CryptoNoteConnectionContext> conns;
+    if (protocolQuery.getConnections(conns)) {
+      for (const auto& c : conns) {
+        ++peersTotal;
+        if (c.m_remote_blockchain_height >= fork.competingTipHeight) {
+          ++peersOnCompeting;
+        }
+      }
+    }
+    std::cout
+      << ColouredMsg("finality_fork_warning : TRUE", Common::Console::Color::BrightYellow) << "\n"
+      << "  local_tip            : " << fork.localTipHeight << ":" << Common::podToHex(fork.localTipHash) << "\n"
+      << "  competing_tip        : " << fork.competingTipHeight << ":" << Common::podToHex(fork.competingTipHash) << "   (higher cumulative work, refused)\n"
+      << "  peer_split           : " << peersOnCompeting << "/" << peersTotal << " peers on competing chain\n"
+      << "  divergence_height    : " << fork.divergenceHeight << "          (last common ancestor)\n";
+    if (peersTotal > 0 && peersOnCompeting * 2 > peersTotal) {
+      std::cout << ColouredMsg("  likely on minority fork — see recovery (run: resync_to_majority --confirm)",
+                               Common::Console::Color::BrightYellow) << "\n";
+    }
+    std::cout << std::endl;
+  }
+
+  return true;
+}
+
+//--------------------------------------------------------------------------------
+bool DaemonCommandsHandler::resync_to_majority(const std::vector<std::string>& args) {
+  // Operator-confirmed, forward-only recovery from a first-seen-finality wedge.
+  // Guarded in the core: refuses unless finality_fork_warning is currently set, so
+  // it can never be repurposed to force an ordinary deep reorg by hand.
+  CryptoNote::FinalityForkState fork = m_core.getFinalityForkState();
+  if (!fork.active) {
+    std::cout << "No finality fork is currently flagged (finality_fork_warning is not set). "
+                 "Nothing to recover." << std::endl;
+    return true;
+  }
+
+  bool confirmed = false;
+  for (const auto& a : args) {
+    if (a == "--confirm" || a == "yes") confirmed = true;
+  }
+  if (!confirmed) {
+    const uint32_t tip = m_core.getCurrentBlockchainHeight() - 1;
+    std::cout << "This will pop the local chain from height " << tip << " down to "
+              << fork.divergenceHeight << " (" << (tip - fork.divergenceHeight)
+              << " blocks) and re-sync from your peers.\n"
+              << "Confirm the majority chain out-of-band FIRST (block explorer / independent nodes).\n"
+              << "Re-run as 'resync_to_majority --confirm' to proceed." << std::endl;
+    return true;
+  }
+
+  std::string message;
+  bool ok = m_core.resyncToMajority(message);
+  std::cout << (ok ? "resync_to_majority: " : "resync_to_majority refused: ") << message << std::endl;
   return true;
 }
 

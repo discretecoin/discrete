@@ -48,7 +48,7 @@ namespace CryptoNote {
 
   class Core : public ICore, public IMinerHandler, public IBlockchainStorageObserver, public ITxPoolObserver {
    public:
-     Core(const Currency& currency, i_cryptonote_protocol* pprotocol, Logging::ILogger& logger, System::Dispatcher& dispatcher, uint32_t rejectDeepReorgDepth = 0);
+     Core(const Currency& currency, i_cryptonote_protocol* pprotocol, Logging::ILogger& logger, System::Dispatcher& dispatcher);
      ~Core();
 
      bool on_idle() override;
@@ -142,7 +142,9 @@ namespace CryptoNote {
      void set_cryptonote_protocol(i_cryptonote_protocol* pprotocol);
      void set_checkpoints(Checkpoints&& chk_pts);
      virtual bool isInCheckpointZone(uint32_t height) const override;
-     virtual uint32_t getRejectDeepReorgDepth() const override { return m_checkpoints.getRejectDeepReorgDepth(); }
+     virtual uint32_t getFinalityDepth() const override { return CryptoNote::parameters::CRYPTONOTE_FINALITY_DEPTH; }
+     virtual FinalityForkState getFinalityForkState() override { return m_blockchain.getFinalityForkState(); }
+     virtual bool resyncToMajority(std::string& message) override { return m_blockchain.resyncToMajority(message); }
 
      // Flush any pending batch write txn (e.g. at shutdown).
      bool flushBatch() { return m_blockchain.flushBatch(); }

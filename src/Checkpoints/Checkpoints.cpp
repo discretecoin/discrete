@@ -45,8 +45,8 @@ using namespace Logging;
 
 namespace CryptoNote {
 //---------------------------------------------------------------------------
-Checkpoints::Checkpoints(Logging::ILogger &log, uint32_t reject_deep_reorg_depth) : logger(log, "checkpoints"), m_reject_deep_reorg_depth(reject_deep_reorg_depth) {
-  
+Checkpoints::Checkpoints(Logging::ILogger &log) : logger(log, "checkpoints") {
+
 }
 //---------------------------------------------------------------------------
 bool Checkpoints::add_checkpoint(uint32_t height, const std::string &hash_str) {
@@ -119,13 +119,25 @@ bool Checkpoints::check_block(uint32_t  height, const Crypto::Hash &h) const {
   return check_block(height, h, ignored);
 }
 //---------------------------------------------------------------------------
+// Network-wide first-seen finality rule. blockchain_height is the current chain
+// length (tip height + 1); block_height is the height of the alternative block.
+// The additive comparison (block_height + depth < blockchain_height) is the
+// underflow-safe form of "the fork is more than CRYPTONOTE_FINALITY_DEPTH blocks
+// below the tip" — the subtractive form would wrap on a chain younger than the
+// finality depth (the first ~10 blocks) and wrongly reject normal shallow reorgs.
+// Enforced from genesis on every node; the checkpoint zone stays exempt.
+bool Checkpoints::is_finality_violation(uint32_t blockchain_height,
+                                        uint32_t block_height) const {
+  return static_cast<uint64_t>(block_height) + CryptoNote::parameters::CRYPTONOTE_FINALITY_DEPTH < blockchain_height
+    && !is_in_checkpoint_zone(block_height);
+}
+//---------------------------------------------------------------------------
 bool Checkpoints::is_alternative_block_allowed(uint32_t  blockchain_height,
                                                uint32_t  block_height) const {
   if (0 == block_height)
     return false;
 
-  if (m_reject_deep_reorg_depth > 0 && block_height < blockchain_height - m_reject_deep_reorg_depth
-    && !is_in_checkpoint_zone(block_height)) {
+  if (is_finality_violation(blockchain_height, block_height)) {
     logger(Logging::WARNING, Logging::WHITE) << "An attempt of too deep reorganization: "
       << blockchain_height - block_height << ", BLOCK REJECTED";
 

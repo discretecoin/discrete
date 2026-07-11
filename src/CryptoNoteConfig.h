@@ -34,6 +34,16 @@ const uint64_t CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX       = 0x3445db; // disc
 const uint64_t CRYPTONOTE_KEYS_SIGNATURE_BASE58_PREFIX       = 176103705;
 const size_t   CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW          = 10;
 const size_t   CRYPTONOTE_TX_SPENDABLE_AGE                   = 3;
+
+// First-seen finality: reject an alternative chain that forks deeper than this
+// many blocks below the current tip (see the is_in_checkpoint_zone exemption).
+// This is a CONSENSUS parameter enforced by EVERY node from genesis — it is NOT a
+// runtime-configurable option. Changing it is a hard fork.
+//
+// At DIFFICULTY_TARGET = 90s, 10 blocks ≈ 15 minutes of finality window. This is
+// the trade the chain makes deliberately: a refused deep reorg is a recoverable
+// liveness event, an accepted one is an irreversible safety event.
+const uint32_t CRYPTONOTE_FINALITY_DEPTH                     = 10;
 const uint64_t CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT            = DIFFICULTY_TARGET * 7;
 const uint64_t CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT_V1         = DIFFICULTY_TARGET * 3;
 const size_t   BLOCKCHAIN_TIMESTAMP_CHECK_WINDOW             = 60;

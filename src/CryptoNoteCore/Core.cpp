@@ -72,14 +72,14 @@ private:
   friend class Core;
 };
 
-Core::Core(const Currency& currency, i_cryptonote_protocol* pprotocol, Logging::ILogger& logger, System::Dispatcher& dispatcher, uint32_t rejectDeepReorgDepth) :
+Core::Core(const Currency& currency, i_cryptonote_protocol* pprotocol, Logging::ILogger& logger, System::Dispatcher& dispatcher) :
   m_dispatcher(dispatcher),
   m_currency(currency),
   logger(logger, "Core"),
   m_mempool(currency, m_blockchain, *this, m_timeProvider, logger),
-  m_blockchain(currency, m_mempool, logger, rejectDeepReorgDepth),
+  m_blockchain(currency, m_mempool, logger),
   m_miner(new miner(currency, *this, logger)),
-  m_checkpoints(logger, rejectDeepReorgDepth) {
+  m_checkpoints(logger) {
     set_cryptonote_protocol(pprotocol);
     m_blockchain.addObserver(this);
     m_mempool.addObserver(this);

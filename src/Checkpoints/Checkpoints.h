@@ -30,7 +30,7 @@ namespace CryptoNote
   class Checkpoints
   {
   public:
-    Checkpoints(Logging::ILogger& log, uint32_t reject_deep_reorg_depth = 0);
+    Checkpoints(Logging::ILogger& log);
 
     Checkpoints& operator=(Checkpoints const& other)
     {
@@ -54,14 +54,16 @@ namespace CryptoNote
     bool check_block(uint32_t height, const Crypto::Hash& h) const;
     bool check_block(uint32_t height, const Crypto::Hash& h, bool& is_a_checkpoint) const;
     bool is_alternative_block_allowed(uint32_t blockchain_height, uint32_t block_height) const;
+    // Pure predicate: would an alt block at block_height be refused by the
+    // network-wide first-seen finality rule (forks deeper than
+    // CRYPTONOTE_FINALITY_DEPTH below the tip, outside a hardcoded checkpoint
+    // zone)? Deterministic function of heights + checkpoints only.
+    bool is_finality_violation(uint32_t blockchain_height, uint32_t block_height) const;
     std::vector<uint32_t> getCheckpointHeights() const;
-    uint32_t getRejectDeepReorgDepth() const { return m_reject_deep_reorg_depth; }
 
   private:
     std::map<uint32_t, Crypto::Hash> m_points;
     Logging::LoggerRef logger;
     mutable std::mutex m_mutex;
-
-    uint32_t m_reject_deep_reorg_depth;
   };
 }

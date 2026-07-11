@@ -344,6 +344,14 @@ struct COMMAND_RPC_GET_INFO {
     uint32_t max_reorg_depth;
     uint32_t finalized_height;
     std::string finalized_hash;
+    // First-seen-finality fork warning (operator messaging; peer_split and the
+    // minority-fork hint are human heuristics, never assertions of validity).
+    bool finality_fork_warning;
+    std::string local_tip;
+    std::string competing_tip;
+    std::string peer_split;
+    uint32_t divergence_height;
+    std::string finality_hint;
 
     void serialize(ISerializer &s) {
       KV_MEMBER(status)
@@ -373,6 +381,36 @@ struct COMMAND_RPC_GET_INFO {
       KV_MEMBER(max_reorg_depth)
       KV_MEMBER(finalized_height)
       KV_MEMBER(finalized_hash)
+      KV_MEMBER(finality_fork_warning)
+      KV_MEMBER(local_tip)
+      KV_MEMBER(competing_tip)
+      KV_MEMBER(peer_split)
+      KV_MEMBER(divergence_height)
+      KV_MEMBER(finality_hint)
+    }
+  };
+};
+
+//-----------------------------------------------
+// Operator-confirmed recovery from a first-seen-finality wedge. Refuses unless a
+// finality fork is currently flagged, and requires confirm=true — it can never be
+// used to force an ordinary deep reorg by hand, and never runs automatically.
+struct COMMAND_RPC_RESYNC_TO_MAJORITY {
+  struct request {
+    bool confirm = false;
+
+    void serialize(ISerializer& s) {
+      KV_MEMBER(confirm)
+    }
+  };
+
+  struct response {
+    std::string status;
+    uint32_t rolled_back_to;
+
+    void serialize(ISerializer& s) {
+      KV_MEMBER(status)
+      KV_MEMBER(rolled_back_to)
     }
   };
 };

@@ -21,6 +21,7 @@
 #include <unordered_map>
 
 #include "Common/ObserverManager.h"
+#include "CryptoNoteConfig.h"
 #include "CryptoNoteCore/CryptoNoteBasic.h"
 #include "CryptoNoteCore/ICore.h"
 #include "CryptoNoteCore/ICoreObserver.h"
@@ -118,7 +119,9 @@ public:
   virtual void rollbackBlockchain(const uint32_t height) override;
   virtual bool getBlockLongHash(Crypto::cn_context &context, const CryptoNote::Block& b, Crypto::Hash& res) override;
   virtual bool isInCheckpointZone(uint32_t height) const override;
-  virtual uint32_t getRejectDeepReorgDepth() const override { return 0; }
+  virtual uint32_t getFinalityDepth() const override { return CryptoNote::parameters::CRYPTONOTE_FINALITY_DEPTH; }
+  virtual CryptoNote::FinalityForkState getFinalityForkState() override { return CryptoNote::FinalityForkState{}; }
+  virtual bool resyncToMajority(std::string& message) override { message = "not supported in stub"; return false; }
   virtual bool getCanonicalAccountRegistrationsCount(uint64_t& count) override;
 
   void set_blockchain_top(uint32_t height, const Crypto::Hash& top_id);

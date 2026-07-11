@@ -76,8 +76,9 @@ namespace
     "network id is changed. Use it with --data-dir flag. The wallet must be launched with --testnet flag.", false };
   const command_line::arg_descriptor<std::string> arg_load_checkpoints          = { "load-checkpoints", "<filename> Load checkpoints from csv file", "" };
   const command_line::arg_descriptor<bool>        arg_disable_checkpoints       = { "without-checkpoints", "Synchronize without checkpoints" };
-  const command_line::arg_descriptor<uint32_t>    arg_reject_deep_reorg         = { "reject-deep-reorg", "Reject reorganization deeper than given number of blocks (default: 10 if used without value, 0 = allow all reorgs)", 0 };
-  const command_line::arg_descriptor<std::string> arg_rollback                  = { "rollback", "Rollback blockchain to <height>", "", true };
+  const command_line::arg_descriptor<std::string> arg_rollback                  = { "rollback", "Rollback blockchain to <height> (raw, unguarded — dev use)", "", true };
+  const command_line::arg_descriptor<std::string> arg_rollback_to_height        = { "rollback-to-height", "First-seen-finality recovery: pop all blocks above <height>, then sync from the majority. Refuses to roll back into the checkpoint zone. Requires --confirm.", "", true };
+  const command_line::arg_descriptor<bool>        arg_confirm                   = { "confirm", "Confirm a --rollback-to-height recovery without the interactive prompt", false };
 
   bool command_line_preprocessor(const boost::program_options::variables_map &vm, LoggerRef &logger) {
     bool exit = false;
@@ -156,10 +157,9 @@ int main(int argc, char* argv[])
     command_line::add_arg(desc_cmd_sett, arg_print_genesis_tx);
     command_line::add_arg(desc_cmd_sett, arg_load_checkpoints);
     command_line::add_arg(desc_cmd_sett, arg_disable_checkpoints);
-    desc_cmd_sett.add_options()(arg_reject_deep_reorg.name,
-      boost::program_options::value<uint32_t>()->default_value(0)->implicit_value(CryptoNote::parameters::CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW),
-      arg_reject_deep_reorg.description);
     command_line::add_arg(desc_cmd_sett, arg_rollback);
+    command_line::add_arg(desc_cmd_sett, arg_rollback_to_height);
+    command_line::add_arg(desc_cmd_sett, arg_confirm);
 
     RpcServerConfig::initOptions(desc_cmd_sett);
     CoreConfig::initOptions(desc_cmd_sett);
@@ -273,16 +273,17 @@ int main(int argc, char* argv[])
     CryptoNote::Currency currency = currencyBuilder.currency();
     System::Dispatcher dispatcher;
 
-    uint32_t reject_deep_reorg = command_line::get_arg(vm, arg_reject_deep_reorg);
-    if (reject_deep_reorg > 0) {
-      logger(WARNING) << "Reorganization deeper than " << reject_deep_reorg << " blocks will be rejected";
-    }
+    // First-seen finality is a network-wide consensus rule enforced from genesis
+    // by CRYPTONOTE_FINALITY_DEPTH — not a runtime option. See CryptoNoteConfig.h.
+    logger(INFO) << "First-seen finality: reorganizations deeper than "
+                 << CryptoNote::parameters::CRYPTONOTE_FINALITY_DEPTH
+                 << " blocks are rejected by every node (outside checkpoint zones).";
 
-    CryptoNote::Core m_core(currency, nullptr, logManager, dispatcher, reject_deep_reorg);
+    CryptoNote::Core m_core(currency, nullptr, logManager, dispatcher);
 
     bool disable_checkpoints = command_line::get_arg(vm, arg_disable_checkpoints);
     if (!disable_checkpoints) {
-      CryptoNote::Checkpoints checkpoints(logManager, reject_deep_reorg);
+      CryptoNote::Checkpoints checkpoints(logManager);
       for (const auto& cp : CryptoNote::CHECKPOINTS) {
         checkpoints.add_checkpoint(cp.height, cp.blockId);
       }
@@ -351,6 +352,53 @@ int main(int argc, char* argv[])
           return 1;
         }
         m_core.rollbackBlockchain(_index);
+      }
+    }
+
+    // First-seen-finality recovery (offline, operator-confirmed, forward-only).
+    // Pops all blocks above <height> so the node can re-sync the majority chain.
+    // Guarded: refuses to roll back into the checkpoint zone (would nuke the
+    // chain) and requires explicit confirmation. It is a well-messaged wrapper
+    // over the storage-layer block-pop — never automatic.
+    if (command_line::has_arg(vm, arg_rollback_to_height)) {
+      std::string rb_str = command_line::get_arg(vm, arg_rollback_to_height);
+      if (!rb_str.empty()) {
+        uint32_t target = 0;
+        if (!Common::fromString(rb_str, target)) {
+          std::cout << "Wrong height parameter for --rollback-to-height" << ENDL;
+          return 1;
+        }
+        uint32_t tip = m_core.getCurrentBlockchainHeight() - 1;
+        if (!(target < tip)) {
+          std::cout << "--rollback-to-height " << target
+                    << " is not below the current tip " << tip << "; nothing to do." << ENDL;
+          return 1;
+        }
+        if (m_core.isInCheckpointZone(target)) {
+          std::cout << "Refusing to roll back to height " << target
+                    << ": it is within the hardcoded checkpoint zone." << ENDL;
+          return 1;
+        }
+        bool confirmed = command_line::get_arg(vm, arg_confirm);
+        if (!confirmed) {
+          std::cout << "About to roll back from height " << tip << " to " << target
+                    << " (" << (tip - target) << " blocks popped). This is irreversible for the\n"
+                    << "blocks above " << target << ". Type 'yes' to confirm: ";
+          std::string answer;
+          std::getline(std::cin, answer);
+          confirmed = (answer == "yes");
+        }
+        if (!confirmed) {
+          std::cout << "Rollback aborted." << ENDL;
+          return 1;
+        }
+        logger(WARNING, BRIGHT_YELLOW) << "FINALITY RECOVERY (offline): rolling back from height "
+                                       << tip << " to " << target << ", " << (tip - target)
+                                       << " blocks popped.";
+        m_core.rollbackBlockchain(target);
+        logger(WARNING, BRIGHT_YELLOW) << "FINALITY RECOVERY (offline): new tip height "
+                                       << (m_core.getCurrentBlockchainHeight() - 1)
+                                       << ". Node will now sync the majority chain.";
       }
     }
 

@@ -28,6 +28,7 @@
 #include <CryptoNote.h>
 #include "CryptoNoteCore/BlockStats.h"
 #include "CryptoNoteCore/Difficulty.h"
+#include "CryptoNoteCore/FinalityForkState.h"
 
 #include "CryptoNoteCore/MessageQueue.h"
 #include "CryptoNoteCore/BlockchainMessages.h"
@@ -144,7 +145,12 @@ public:
   virtual bool getBlockLongHash(Crypto::cn_context &context, const Block& b, Crypto::Hash& res) = 0;
 
   virtual bool isInCheckpointZone(uint32_t height) const = 0;
-  virtual uint32_t getRejectDeepReorgDepth() const = 0;
+  virtual uint32_t getFinalityDepth() const = 0;
+  virtual FinalityForkState getFinalityForkState() = 0;
+  // Operator-confirmed recovery: pop to just below the detected divergence height
+  // and re-sync from the majority. Refuses unless a finality fork is currently
+  // flagged, so it cannot be repurposed to force an ordinary deep reorg by hand.
+  virtual bool resyncToMajority(std::string& message) = 0;
 
   virtual bool getCanonicalAccountRegistrationsCount(uint64_t& count) = 0;
 };

@@ -345,6 +345,9 @@ int CryptoNoteProtocolHandler::handle_notify_new_block(int command, NOTIFY_NEW_B
 
   block_verification_context bvc = boost::value_initialized<block_verification_context>();
   m_core.handle_incoming_block_blob(asBinaryArray(arg.b.block), bvc, true, false);
+  if (bvc.m_finality_fork) {
+    logFinalityFork(context);
+  }
   if (bvc.m_verification_failed) {
     logger(Logging::DEBUGGING) << context << "Block verification failed, dropping connection";
     m_p2p->drop_connection(context, true);
@@ -661,6 +664,9 @@ int CryptoNoteProtocolHandler::processObjects(CryptoNoteConnectionContext& conte
     block_verification_context bvc = boost::value_initialized<block_verification_context>();
     m_core.handle_incoming_block(block_entry.block, bvc, false, false);
 
+    if (bvc.m_finality_fork) {
+      logFinalityFork(context);
+    }
     if (bvc.m_verification_failed) {
       logger(Logging::DEBUGGING) << context << "Block verification failed, dropping connection";
       m_p2p->drop_connection(context, true);
@@ -839,6 +845,9 @@ int CryptoNoteProtocolHandler::doPushLiteBlock(NOTIFY_NEW_LITE_BLOCK::request ar
 
     block_verification_context bvc = boost::value_initialized<block_verification_context>();
     m_core.handle_incoming_block_blob(asBinaryArray(arg.block), bvc, true, false);
+    if (bvc.m_finality_fork) {
+      logFinalityFork(context);
+    }
     if (bvc.m_verification_failed) {
       logger(Logging::DEBUGGING) << context << "Lite block verification failed, dropping connection";
       m_p2p->drop_connection(context, true);
@@ -1236,6 +1245,37 @@ uint32_t CryptoNoteProtocolHandler::getObservedHeight() const {
   std::lock_guard<std::mutex> lock(m_observedHeightMutex);
   return m_observedHeight;
 };
+
+void CryptoNoteProtocolHandler::logFinalityFork(const CryptoNoteConnectionContext& context) {
+  const FinalityForkState fork = m_core.getFinalityForkState();
+  if (!fork.active) {
+    return;
+  }
+
+  // peer_split is a HUMAN heuristic, never an input to validity: how many of our
+  // peers advertise a chain at least as high as the competing tip we refused.
+  size_t peersOnCompeting = 0;
+  size_t peersTotal = 0;
+  m_p2p->for_each_connection([&](CryptoNoteConnectionContext& ctx, PeerIdType) {
+    if (ctx.m_state == CryptoNoteConnectionContext::state_normal ||
+        ctx.m_state == CryptoNoteConnectionContext::state_synchronizing) {
+      ++peersTotal;
+      if (ctx.m_remote_blockchain_height >= fork.competingTipHeight) {
+        ++peersOnCompeting;
+      }
+    }
+  });
+
+  logger(Logging::WARNING, Logging::BRIGHT_YELLOW)
+    << "FINALITY FORK: refusing reorg of depth " << fork.refusedDepth
+    << " (local tip " << fork.localTipHeight << ":" << fork.localTipHash
+    << " -> offered tip " << fork.competingTipHeight << ":" << fork.competingTipHash << "). "
+    << "Offered by " << peersOnCompeting << "/" << peersTotal << " peers. "
+    << "If most of the network is on the offered chain, THIS NODE MAY BE ON A MINORITY FORK. "
+    << "Expected during an attack (no action needed); requires recovery if you were "
+    << "partitioned or mining while disconnected. "
+    << "See: docs/discrete-finality-recovery.md (resync_to_majority).";
+}
 
 bool CryptoNoteProtocolHandler::addObserver(ICryptoNoteProtocolObserver* observer) {
   return m_observerManager.add(observer);

@@ -99,7 +99,7 @@ BlockStatsEntry makeBlockStatsEntry(uint32_t height, const DbBlockMeta& meta, co
 // ─── Constructor ─────────────────────────────────────────────────────────────
 
 Blockchain::Blockchain(const Currency& currency, tx_memory_pool& tx_pool,
-                       ILogger& logger, uint32_t rejectDeepReorgDepth)
+                       ILogger& logger)
   : logger(logger, "Blockchain"),
     m_currency(currency),
     m_tx_pool(tx_pool),
@@ -111,7 +111,7 @@ Blockchain::Blockchain(const Currency& currency, tx_memory_pool& tx_pool,
     m_upgradeDetectorV6(currency, m_blockView, BLOCK_MAJOR_VERSION_6, logger),
     m_upgradeDetectorV7(currency, m_blockView, BLOCK_MAJOR_VERSION_7, logger),
     m_upgradeDetectorV8(currency, m_blockView, BLOCK_MAJOR_VERSION_8, logger),
-    m_checkpoints(logger, rejectDeepReorgDepth)
+    m_checkpoints(logger)
 {
 }
 
@@ -1358,6 +1358,10 @@ bool Blockchain::switch_to_alternative_blockchain(const std::list<Crypto::Hash>&
 
   sendMessage(BlockchainMessage(ChainSwitchMessage(std::move(blocksFromCommonRoot))));
 
+  // A successful reorg means we adopted a competing chain — any prior
+  // finality-fork wedge is resolved. Clear the operator warning.
+  m_finalityForkState = FinalityForkState{};
+
   logger(INFO, BRIGHT_GREEN) << "REORGANIZE SUCCESS! on height: " << split_height
     << ", new blockchain size: " << m_db.getChainHeight();
   return true;
@@ -1378,9 +1382,19 @@ bool Blockchain::handle_alternative_block(const Block& b, const Crypto::Hash& id
     return false;
   }
 
-  if (!m_checkpoints.is_alternative_block_allowed(getCurrentBlockchainHeight(), block_height)) {
+  const uint32_t chainLen = getCurrentBlockchainHeight();
+  if (!m_checkpoints.is_alternative_block_allowed(chainLen, block_height)) {
     logger(TRACE) << "Block with id: " << id << "\n can't be accepted for alternative chain, "
-      << "block height: " << block_height << "\n blockchain height: " << getCurrentBlockchainHeight();
+      << "block height: " << block_height << "\n blockchain height: " << chainLen;
+    // If the refusal was the network-wide finality rule (not the below-last-
+    // checkpoint rule), snapshot the fork for operator messaging/recovery. The
+    // block is still refused — this only records why, it does not change the
+    // decision. The peer-split hint and the WARNING with peer counts are added
+    // by the protocol layer via bvc.m_finality_fork.
+    if (m_checkpoints.is_finality_violation(chainLen, block_height)) {
+      recordFinalityFork(chainLen, block_height, id);
+      bvc.m_finality_fork = true;
+    }
     bvc.m_verification_failed = true;
     return false;
   }
@@ -2815,6 +2829,77 @@ void Blockchain::rollbackBlockchainTo(uint32_t height) {
       removeLastBlock();
     }
   }
+}
+
+// ─── first-seen finality: fork detection state + operator recovery ───────────
+
+void Blockchain::recordFinalityFork(uint32_t chainLen, uint32_t altBlockHeight,
+                                    const Crypto::Hash& altBlockId) {
+  // Caller holds m_blockchain_lock and has established altBlockHeight >= 1.
+  const uint32_t localTipHeight = chainLen - 1;
+  const uint32_t divergence = altBlockHeight - 1; // last common ancestor
+  if (m_finalityForkState.active) {
+    // Keep the deepest divergence and the highest competing block seen while
+    // the wedge persists (alt blocks arrive one at a time).
+    m_finalityForkState.divergenceHeight = std::min(m_finalityForkState.divergenceHeight, divergence);
+    if (altBlockHeight >= m_finalityForkState.competingTipHeight) {
+      m_finalityForkState.competingTipHeight = altBlockHeight;
+      m_finalityForkState.competingTipHash = altBlockId;
+    }
+  } else {
+    m_finalityForkState.active = true;
+    m_finalityForkState.divergenceHeight = divergence;
+    m_finalityForkState.competingTipHeight = altBlockHeight;
+    m_finalityForkState.competingTipHash = altBlockId;
+  }
+  m_finalityForkState.localTipHeight = localTipHeight;
+  m_finalityForkState.localTipHash = getTailId();
+  m_finalityForkState.refusedDepth = localTipHeight - m_finalityForkState.divergenceHeight;
+}
+
+FinalityForkState Blockchain::getFinalityForkState() {
+  std::lock_guard<decltype(m_blockchain_lock)> lk(m_blockchain_lock);
+  return m_finalityForkState;
+}
+
+bool Blockchain::resyncToMajority(std::string& message) {
+  std::lock_guard<decltype(m_blockchain_lock)> lk(m_blockchain_lock);
+
+  // Refuse unless a finality fork is currently flagged. This is the safety rule
+  // that keeps recovery from being repurposed to force an ordinary deep reorg by
+  // hand — the very hole first-seen finality closes.
+  if (!m_finalityForkState.active) {
+    message = "no finality fork is currently flagged; refusing to roll back";
+    return false;
+  }
+
+  const uint32_t target = m_finalityForkState.divergenceHeight; // last common ancestor
+  const uint32_t tipBefore = m_db.getChainHeight() - 1;
+  if (!(target < tipBefore)) {
+    message = "divergence height is not below the current tip; nothing to roll back";
+    return false;
+  }
+
+  logger(WARNING, BRIGHT_YELLOW)
+    << "FINALITY RECOVERY: operator-confirmed resync_to_majority. Rolling back from tip "
+    << tipBefore << ":" << getTailId() << " to divergence height " << target
+    << " (" << (tipBefore - target) << " blocks popped), then resuming sync.";
+
+  rollbackBlockchainTo(target);
+
+  const uint32_t tipAfter = m_db.getChainHeight() - 1;
+  logger(WARNING, BRIGHT_YELLOW)
+    << "FINALITY RECOVERY: new tip " << tipAfter << ":" << getTailId()
+    << ". Node will now sync the majority chain from its peers.";
+
+  // Clear the warning; if we are still on a minority fork the next refused reorg
+  // re-arms it, but after this rollback the majority chain no longer forks below
+  // the finality depth so normal sync adopts it.
+  m_finalityForkState = FinalityForkState{};
+
+  message = "rolled back to height " + std::to_string(target)
+    + "; resyncing to majority";
+  return true;
 }
 
 bool Blockchain::checkUpgradeHeight(const UpgradeDetector& upgradeDetector) {

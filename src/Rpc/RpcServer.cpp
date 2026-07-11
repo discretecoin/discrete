@@ -678,6 +678,7 @@ bool RpcServer::processJsonRpcRequest(const CryptoNote::HttpRequest& request, Cr
       { "search", { makeMemberMethod(&RpcServer::on_explorer_search), true } },
       { "getpqaccount", { makeMemberMethod(&RpcServer::on_get_pq_account), true } },
       { "resolvepqaccount", { makeMemberMethod(&RpcServer::on_resolve_pq_account), true } },
+      { "resync_to_majority", { makeMemberMethod(&RpcServer::on_resync_to_majority), true } },
 
     };
 
@@ -1359,15 +1360,51 @@ bool RpcServer::on_get_info(const COMMAND_RPC_GET_INFO::request& req, COMMAND_RP
   }
   res.max_cumulative_block_size = (uint64_t)m_core.currency().maxBlockCumulativeSize(res.height);
 
-  uint32_t rejectDeepReorgDepth = m_core.getRejectDeepReorgDepth();
-  res.deep_reorg_protection = rejectDeepReorgDepth > 0;
-  res.max_reorg_depth = rejectDeepReorgDepth;
-  if (res.deep_reorg_protection && res.height > rejectDeepReorgDepth) {
-    res.finalized_height = res.height - 1 - rejectDeepReorgDepth;
+  // First-seen finality is always on (network-wide, from genesis). max_reorg_depth
+  // is now the fixed consensus constant CRYPTONOTE_FINALITY_DEPTH.
+  uint32_t finalityDepth = m_core.getFinalityDepth();
+  res.deep_reorg_protection = true;
+  res.max_reorg_depth = finalityDepth;
+  if (res.height > finalityDepth) {
+    res.finalized_height = res.height - 1 - finalityDepth;
     res.finalized_hash = Common::podToHex(m_core.getBlockIdByHeight(res.finalized_height));
   } else {
     res.finalized_height = 0;
     res.finalized_hash = std::string();
+  }
+
+  // Finality-fork warning (operator messaging). peer_split and the hint are human
+  // heuristics computed live from peer-advertised heights — never validity inputs.
+  CryptoNote::FinalityForkState fork = m_core.getFinalityForkState();
+  res.finality_fork_warning = fork.active;
+  res.divergence_height = fork.active ? fork.divergenceHeight : 0;
+  if (fork.active) {
+    res.local_tip = std::to_string(fork.localTipHeight) + ":" + Common::podToHex(fork.localTipHash);
+    res.competing_tip = std::to_string(fork.competingTipHeight) + ":" + Common::podToHex(fork.competingTipHash);
+
+    size_t peersOnCompeting = 0, peersTotal = 0;
+    std::vector<CryptoNote::CryptoNoteConnectionContext> conns;
+    if (m_protocolQuery.getConnections(conns)) {
+      for (const auto& c : conns) {
+        ++peersTotal;
+        if (c.m_remote_blockchain_height >= fork.competingTipHeight) {
+          ++peersOnCompeting;
+        }
+      }
+    }
+    res.peer_split = std::to_string(peersOnCompeting) + "/" + std::to_string(peersTotal);
+    // Only a "may be" hint: if the clear majority of peers are on the competing
+    // chain, the operator should suspect a minority-fork wedge and recover.
+    if (peersTotal > 0 && peersOnCompeting * 2 > peersTotal) {
+      res.finality_hint = "likely on minority fork — see recovery";
+    } else {
+      res.finality_hint = std::string();
+    }
+  } else {
+    res.local_tip = std::string();
+    res.competing_tip = std::string();
+    res.peer_split = std::string();
+    res.finality_hint = std::string();
   }
 
   res.status = CORE_RPC_STATUS_OK;
@@ -1605,6 +1642,27 @@ bool RpcServer::on_stop_daemon(const COMMAND_RPC_STOP_DAEMON::request& req, COMM
     return false;
   }
   return true;
+}
+
+bool RpcServer::on_resync_to_majority(const COMMAND_RPC_RESYNC_TO_MAJORITY::request& req, COMMAND_RPC_RESYNC_TO_MAJORITY::response& res) {
+  // Mutating admin action — never available on restricted RPC.
+  if (m_restricted_rpc) {
+    res.status = "Method disabled";
+    res.rolled_back_to = 0;
+    return false;
+  }
+  // Explicit operator confirmation is mandatory; recovery is never automatic.
+  if (!req.confirm) {
+    res.status = "refused: set \"confirm\": true to run recovery (this pops local blocks and re-syncs)";
+    res.rolled_back_to = 0;
+    return false;
+  }
+
+  std::string message;
+  bool ok = m_core.resyncToMajority(message); // refuses unless a finality fork is flagged
+  res.status = (ok ? std::string(CORE_RPC_STATUS_OK) + ": " : std::string("refused: ")) + message;
+  res.rolled_back_to = ok ? m_core.getCurrentBlockchainHeight() - 1 : 0;
+  return ok;
 }
 
 bool RpcServer::on_get_peer_list(const COMMAND_RPC_GET_PEER_LIST::request& req, COMMAND_RPC_GET_PEER_LIST::response& res) {

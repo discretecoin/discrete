@@ -178,6 +178,11 @@ namespace CryptoNote
     std::vector<CryptoNoteConnectionContext> get_dandelion_stem_snapshot() const;
     bool get_dandelion_stem_peer(CryptoNoteConnectionContext& peer, const net_connection_id* excludeConnection = nullptr) const;
     int processObjects(CryptoNoteConnectionContext& context, const std::vector<parsed_block_entry>& blocks);
+    // First-seen finality: when the core refuses a reorg deeper than
+    // CRYPTONOTE_FINALITY_DEPTH (bvc.m_finality_fork), emit the operator WARNING
+    // enriched with the peer split. Messaging only — the refusal already happened
+    // in consensus and is independent of any peer count.
+    void logFinalityFork(const CryptoNoteConnectionContext& context);
     Logging::LoggerRef logger;
 
   private:
