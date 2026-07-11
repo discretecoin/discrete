@@ -181,14 +181,14 @@ bool DaemonCommandsHandler::status(const std::vector<std::string>& args) {
       }
     }
     std::cout
-      << ColouredMsg("finality : refused a deep chain reorganization", Common::Console::Color::BrightYellow) << "\n"
+      << ColouredMsg("finality : ignored a deeper competing chain (usually a brief connectivity hiccup)", Common::Console::Color::BrightYellow) << "\n"
       << "  local_tip         : " << fork.localTipHeight << ":" << Common::podToHex(fork.localTipHash) << "\n"
       << "  competing_tip     : " << fork.competingTipHeight << ":" << Common::podToHex(fork.competingTipHash) << "\n"
       << "  peer_split        : " << peersOnCompeting << "/" << peersTotal << " peers\n"
       << "  divergence_height : " << fork.divergenceHeight << "\n"
       << ColouredMsg(
-           "  No action is needed if this node is in sync. To return to the main chain, confirm the\n"
-           "  current tip on the official block explorer, then run: resync_to_majority --confirm",
+           "  Nothing to worry about and funds are unaffected. Nothing to do if this node is in sync.\n"
+           "  If it is behind, check the current tip on the official block explorer, then run: resync_to_majority --confirm",
            Common::Console::Color::BrightYellow)
       << "\n" << std::endl;
   }

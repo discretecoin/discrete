@@ -61,18 +61,19 @@ minority fork.
 On refusing a finality-depth-exceeding reorg, emit at `WARNING`:
 
 ```
-FINALITY: refused a deep chain reorganization of depth <D> (local tip
-<hHi>:<hashLocal>, offered tip <hHo>:<hashOther>, offered by <Npeers>/<Ntotal>
-peers). No action is needed if this node is in sync. If it was disconnected or
-mining offline, confirm the current chain tip on the official block explorer; if
-this node is behind, run 'resync_to_majority --confirm' to return to the main
-chain. See: <recovery-docs-url>
+FINALITY: ignored a deeper competing chain (depth <D>; local tip <hHi>:<hashLocal>,
+offered tip <hHo>:<hashOther>, seen from <Npeers>/<Ntotal> peers). Usually nothing
+to worry about - most likely this node briefly lost connectivity and ended up on a
+side chain, and funds are unaffected. Nothing to do if it is in sync; if it is
+behind, check the current tip on the official block explorer and run
+'resync_to_majority --confirm' to rejoin the main chain. See: <recovery-docs-url>
 ```
 
-The message deliberately avoids alarming language and never asserts the node *is*
-on a minority fork — it states the fact (a deep reorg was refused) and points the
-operator at the out-of-band check (the official explorer) and the one command that
-returns a genuinely-behind node to the main chain. That explorer check is the
+The message is deliberately low-key: it treats the common case (a brief
+connectivity hiccup that left the node on a side chain) as the routine, no-big-deal
+event it usually is, and never asserts the node *is* on a minority fork. It points
+the operator at the out-of-band check (the official explorer) and the one command
+that returns a genuinely-behind node to the main chain. That explorer check is the
 safeguard: a node that is correctly refusing an attacker's chain must not be rolled
 back onto it.
 
@@ -89,10 +90,10 @@ finality_fork_warning : TRUE
   divergence_height    : <height>          (last common ancestor)
 ```
 
-The status line adds a calm, actionable hint whenever the flag is set: `confirm the
-current tip on the official block explorer; if this node is behind, run
-resync_to_majority --confirm to return to the main chain`. It is guidance, not an
-assertion that the node is on a minority fork.
+The status line adds a low-key, actionable hint whenever the flag is set: `usually
+just a brief connectivity hiccup; check the tip on the official block explorer, and
+if this node is behind run resync_to_majority --confirm to rejoin the main chain`.
+It is guidance, not an assertion that the node is on a minority fork.
 
 ### Wallet-facing message
 
@@ -100,16 +101,17 @@ Wallets connected to a wedged node, and wallets recovering after a node rollback
 show a non-technical banner:
 
 ```
-Your node refused a deep chain reorganization and may be slightly behind the
-network. Confirm the current chain tip on the official block explorer. If your
-node is behind, return it to the main chain with the recovery command below —
-your funds are safe.
+Your node briefly ended up on a side chain, most likely a short connectivity
+hiccup. This is nothing to worry about and your funds are safe. If your balance
+looks off, your node may just be a little behind - you can check the official block
+explorer, and it will rejoin the main chain with the recovery command.
 ```
 
-Keep it non-alarming and actionable: point the user at the official explorer to
-check, and at the one command that fixes a genuinely-behind node. Do not tell users
-their transactions were reversed or that they are "on a minority fork" — most nodes
-that see this are simply refusing an attacker's chain and need to do nothing.
+Keep it casual and reassuring: treat it as the routine, no-big-deal event it usually
+is, point the user at the official explorer to check, and at the one command that
+fixes a genuinely-behind node. Do not tell users their transactions were reversed or
+that they are "on a minority fork" - most nodes that see this are simply refusing an
+attacker's chain and need to do nothing.
 
 ---
 

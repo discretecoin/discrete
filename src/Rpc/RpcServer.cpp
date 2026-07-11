@@ -1393,11 +1393,11 @@ bool RpcServer::on_get_info(const COMMAND_RPC_GET_INFO::request& req, COMMAND_RP
       }
     }
     res.peer_split = std::to_string(peersOnCompeting) + "/" + std::to_string(peersTotal);
-    // Calm, actionable guidance — never an alarming assertion. The out-of-band
+    // Casual, reassuring guidance - never an alarming assertion. The out-of-band
     // explorer check is the safeguard: it stops a node that is correctly refusing
     // an attacker's chain from being rolled back onto it.
-    res.finality_hint = "confirm the current tip on the official block explorer; "
-                        "if this node is behind, run resync_to_majority --confirm to return to the main chain";
+    res.finality_hint = "usually just a brief connectivity hiccup; check the tip on the official "
+                        "block explorer, and if this node is behind run resync_to_majority --confirm to rejoin the main chain";
   } else {
     res.local_tip = std::string();
     res.competing_tip = std::string();

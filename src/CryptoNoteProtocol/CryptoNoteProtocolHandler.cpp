@@ -1267,13 +1267,14 @@ void CryptoNoteProtocolHandler::logFinalityFork(const CryptoNoteConnectionContex
   });
 
   logger(Logging::WARNING, Logging::BRIGHT_YELLOW)
-    << "FINALITY: refused a deep chain reorganization of depth " << fork.refusedDepth
-    << " (local tip " << fork.localTipHeight << ":" << fork.localTipHash
+    << "FINALITY: ignored a deeper competing chain (depth " << fork.refusedDepth
+    << "; local tip " << fork.localTipHeight << ":" << fork.localTipHash
     << ", offered tip " << fork.competingTipHeight << ":" << fork.competingTipHash
-    << ", offered by " << peersOnCompeting << "/" << peersTotal << " peers). "
-    << "No action is needed if this node is in sync. If it was disconnected or mining "
-    << "offline, confirm the current chain tip on the official block explorer; if this "
-    << "node is behind, run 'resync_to_majority --confirm' to return to the main chain. "
+    << ", seen from " << peersOnCompeting << "/" << peersTotal << " peers). "
+    << "Usually nothing to worry about - most likely this node briefly lost connectivity "
+    << "and ended up on a side chain, and funds are unaffected. Nothing to do if it is in "
+    << "sync; if it is behind, check the current tip on the official block explorer and run "
+    << "'resync_to_majority --confirm' to rejoin the main chain. "
     << "See: docs/discrete-finality-recovery.md";
 }
 
