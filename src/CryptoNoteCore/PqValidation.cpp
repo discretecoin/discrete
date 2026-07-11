@@ -17,8 +17,11 @@
 
 #include "PqValidation.h"
 
+#include <atomic>
 #include <cstring>
+#include <thread>
 #include <unordered_set>
+#include <vector>
 
 #include "CryptoNoteConfig.h"
 #include "CryptoNoteTools.h"
@@ -192,11 +195,46 @@ bool checkFreeRegPow(const std::array<uint8_t, 1184>& viewPub,
 
 uint64_t grindFreeRegPow(const std::array<uint8_t, 1184>& viewPub,
                          const Crypto::Hash& refBlockHash, uint64_t powTarget) {
-  uint64_t nonce = 0;
-  while (!checkFreeRegPow(viewPub, refBlockHash, nonce, powTarget)) {
-    ++nonce;
+  // The anti-spam PoW is a memory-hard yespower grind with an expected D =
+  // 2^64 / (powTarget + 1) evaluations (~2^17 at the default target). That is
+  // minutes of single-core work, so we fan the nonce search out across all
+  // hardware threads: worker i probes nonces {i, i+T, i+2T, ...} and the first
+  // hit wins. The produced nonce is validated by checkFreeRegPow exactly as
+  // before, so parallelism is purely a client-side speedup and never touches
+  // consensus — any nonce satisfying the target is acceptable, not just the
+  // smallest one.
+  unsigned int threads = std::thread::hardware_concurrency();
+  if (threads == 0) {
+    threads = 1;
   }
-  return nonce;
+
+  std::atomic<bool> found{false};
+  std::atomic<uint64_t> winner{0};
+
+  auto worker = [&](uint64_t start) {
+    for (uint64_t nonce = start; !found.load(std::memory_order_relaxed);
+         nonce += threads) {
+      if (checkFreeRegPow(viewPub, refBlockHash, nonce, powTarget)) {
+        // First worker to flip the flag records its nonce; later hits defer.
+        if (!found.exchange(true, std::memory_order_acq_rel)) {
+          winner.store(nonce, std::memory_order_relaxed);
+        }
+        return;
+      }
+    }
+  };
+
+  std::vector<std::thread> pool;
+  pool.reserve(threads - 1);
+  for (unsigned int i = 1; i < threads; ++i) {
+    pool.emplace_back(worker, i);
+  }
+  worker(0);  // Run one worker on the calling thread.
+  for (auto& t : pool) {
+    t.join();
+  }
+
+  return winner.load(std::memory_order_relaxed);
 }
 
 bool checkFreeRegTransactionSemantic(const Transaction& tx, std::string* error, uint64_t powTarget) {
