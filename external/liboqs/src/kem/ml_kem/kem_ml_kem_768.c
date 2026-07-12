@@ -35,6 +35,7 @@ OQS_KEM *OQS_KEM_ml_kem_768_new(void) {
 extern int PQCP_MLKEM_NATIVE_MLKEM768_C_keypair(uint8_t *pk, uint8_t *sk);
 extern int PQCP_MLKEM_NATIVE_MLKEM768_C_keypair_derand(uint8_t *pk, uint8_t *sk, const uint8_t *seed);
 extern int PQCP_MLKEM_NATIVE_MLKEM768_C_enc(uint8_t *ct, uint8_t *ss, const uint8_t *pk);
+extern int PQCP_MLKEM_NATIVE_MLKEM768_C_enc_derand(uint8_t *ct, uint8_t *ss, const uint8_t *pk, const uint8_t *coins);
 extern int PQCP_MLKEM_NATIVE_MLKEM768_C_dec(uint8_t *ss, const uint8_t *ct, const uint8_t *sk);
 
 #if defined(OQS_ENABLE_KEM_ml_kem_768_x86_64)
@@ -143,6 +144,24 @@ OQS_API OQS_STATUS OQS_KEM_ml_kem_768_encaps(uint8_t *ciphertext, uint8_t *share
 #else
 	return (OQS_STATUS) PQCP_MLKEM_NATIVE_MLKEM768_C_enc(ciphertext, shared_secret, public_key);
 #endif
+}
+
+OQS_API OQS_STATUS OQS_KEM_ml_kem_768_encaps_derand(uint8_t *ciphertext, uint8_t *shared_secret, const uint8_t *public_key, const uint8_t *coins) {
+	/*
+	 * mlkem-native exposes this operation from every backend, but it is not
+	 * part of upstream liboqs's dispatch API. Deliberately use the always-built
+	 * portable backend here: this keeps the application-facing symbol stable
+	 * across x86_64/aarch64 configurations and preserves that backend's FIPS 203
+	 * public-key modulus check. The call is fully reentrant and does not touch
+	 * OQS's process-global randombytes provider.
+	 */
+	OQS_STATUS rc = (OQS_STATUS) PQCP_MLKEM_NATIVE_MLKEM768_C_enc_derand(ciphertext, shared_secret, public_key, coins);
+	if (rc != OQS_SUCCESS) {
+		/* Never expose partial backend output on a non-canonical public key. */
+		OQS_MEM_cleanse(ciphertext, OQS_KEM_ml_kem_768_length_ciphertext);
+		OQS_MEM_cleanse(shared_secret, OQS_KEM_ml_kem_768_length_shared_secret);
+	}
+	return rc;
 }
 
 OQS_API OQS_STATUS OQS_KEM_ml_kem_768_decaps(uint8_t *shared_secret, const uint8_t *ciphertext, const uint8_t *secret_key) {

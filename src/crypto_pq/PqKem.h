@@ -32,6 +32,7 @@ constexpr std::size_t kKemPublicKeyBytes  = 1184;
 constexpr std::size_t kKemSecretKeyBytes  = 2400;
 constexpr std::size_t kKemCiphertextBytes = 1088;
 constexpr std::size_t kKemSharedBytes     = 32;
+constexpr std::size_t kKemEncapsMessageBytes = 32;
 // FIPS 203 ML-KEM.KeyGen takes 64 bytes of randomness (d || z, two 32-byte
 // values). Spec §4 derives view_seed at L=32; session 3 will resolve how that
 // 32-byte HKDF output expands to the 64 bytes required here.
@@ -41,6 +42,7 @@ using KemPublicKey  = std::array<uint8_t, kKemPublicKeyBytes>;
 using KemSecretKey  = std::array<uint8_t, kKemSecretKeyBytes>;
 using KemCiphertext = std::array<uint8_t, kKemCiphertextBytes>;
 using KemShared     = std::array<uint8_t, kKemSharedBytes>;
+using KemEncapsMessage = std::array<uint8_t, kKemEncapsMessageBytes>;
 using KemKeypairSeed = std::array<uint8_t, kKemKeypairSeedBytes>;
 
 // Random keygen — pulls 64 bytes from liboqs's CSPRNG.
@@ -55,6 +57,16 @@ std::pair<KemPublicKey, KemSecretKey> kem_keygen_from_seed(const KemKeypairSeed&
 // shared_secret); the ciphertext goes on chain inside PqOutput.kemCt and
 // the shared_secret is the IKM for per-output HKDFs.
 std::pair<KemCiphertext, KemShared> kem_encaps(const KemPublicKey& pub);
+
+// Reentrant ML-KEM-768 Encaps_Internal application interface. `message` is
+// the 32-byte m input from FIPS 203 Algorithm 17. Callers on production paths
+// MUST supply a fresh uniformly random value from the OS CSPRNG for every
+// output. Supplying fresh random m has the normal Encaps distribution, but
+// exposing m at the application boundary is deliberately outside strict
+// FIPS 203 conformance and requires the specialist review documented in
+// docs/PQ-PAYMENT-PROOF.md. This function never swaps global OQS RNG state.
+std::pair<KemCiphertext, KemShared> kem_encaps_explicit(
+    const KemPublicKey& pub, const KemEncapsMessage& message);
 
 // Deterministic encapsulation — reproducible from `seed`. The ML-KEM message m
 // (the only randomness Encaps consumes) is drawn from a seed-derived stream, so
