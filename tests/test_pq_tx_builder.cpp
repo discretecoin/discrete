@@ -195,7 +195,7 @@ TEST(PqTxBuilder, RecipientCanScanTheOutput) {
     EXPECT_FALSE(CryptoPQ::scanPqOutput(pqScanKeys(sender), ih, so).has_value());
 }
 
-TEST(PqTxBuilder, ProofBuildOwnsOneMatchingWitnessPerOutput) {
+TEST(PqTxBuilder, ProofBuildOwnsOneMatchingRhoPerOutput) {
     PqWalletKeys sender = derivePqWalletKeys(spendSecret(7, 3));
     PqWalletKeys r1 = derivePqWalletKeys(spendSecret(9, 1));
     PqWalletKeys r2 = derivePqWalletKeys(spendSecret(5, 4));
@@ -207,8 +207,8 @@ TEST(PqTxBuilder, ProofBuildOwnsOneMatchingWitnessPerOutput) {
 
     PqTransactionBuildResult built = buildPqTransactionWithProof(
         {in}, outputs, sender.spendPub, sender.spendSk);
-    ASSERT_EQ(built.outputMessages.size(), built.tx.outputs.size());
-    ASSERT_EQ(built.outputMessages.size(), 2u);
+    ASSERT_EQ(built.outputRhos.size(), built.tx.outputs.size());
+    ASSERT_EQ(built.outputRhos.size(), 2u);
     PqPaymentProofTransaction proofTx = makePqPaymentProofTransaction(built.tx);
     CryptoPQ::Hash256 genesis{};
     genesis[0] = 0x99;
@@ -219,7 +219,7 @@ TEST(PqTxBuilder, ProofBuildOwnsOneMatchingWitnessPerOutput) {
             outputs[i].subaddrIndexT};
         PqPaymentProof proof = makePqPaymentProof(
             genesis, proofTx.txid, recipient,
-            {{static_cast<uint32_t>(i), built.outputMessages[i]}});
+            {{static_cast<uint32_t>(i), built.outputRhos[i]}});
         EXPECT_EQ(verifyPqPaymentProof(proof, genesis, proofTx, recipient),
                   outputs[i].amount);
     }

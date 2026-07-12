@@ -344,8 +344,8 @@ TEST(PqSender, MultipleAndDuplicateRecipientRowsStaySeparatedAndExcludeChange) {
     ASSERT_EQ(result.change, 350u);
     expectProofsVerify(req, result);
     ASSERT_EQ(result.proofs.size(), 3u);
-    EXPECT_EQ(result.proofs[0].recipientDescriptorHash,
-              result.proofs[2].recipientDescriptorHash);
+    EXPECT_EQ(result.proofs[0].spendAuthorityHash,
+              result.proofs[2].spendAuthorityHash);
 
     std::set<uint32_t> recipientIndexes;
     for (const auto& proof : result.proofs) {

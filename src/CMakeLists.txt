@@ -135,6 +135,7 @@ endif ()
 
 if (MSVC OR MINGW)
   target_link_libraries(System crypt32 ws2_32)
+  target_link_libraries(Wallet advapi32)
   target_link_libraries(Daemon Rpcrt4 ws2_32 advapi32 crypt32 gdi32 user32)
   target_link_libraries(SimpleWallet Rpcrt4 ws2_32 advapi32 crypt32 gdi32 user32)
   target_link_libraries(PaymentGateService Rpcrt4 ws2_32 advapi32 crypt32 gdi32 user32)

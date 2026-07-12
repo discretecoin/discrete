@@ -162,8 +162,8 @@ FittingBuild buildFitting(const std::vector<PqSpendInput>& selected,
       accepted.recipientIndexes = std::move(recipientIndexes);
       return accepted;
     }
-    // The draft and its witnesses are one owner. Wipe before rebuilding with a
-    // smaller output cap; no stale m_j can survive into the accepted transaction.
+    // The draft and its rho openings are one owner. Wipe before rebuilding with a
+    // smaller output cap; no stale rho can survive into the accepted transaction.
     draft.clearWitnesses();
     if (maxOut <= numDest) {
       throw PqSendError(PqSendErrorCode::TooLarge,
@@ -299,8 +299,8 @@ PqSendResult buildPqSend(const std::vector<PqSpendInput>& available,
       changeTmpl, req.extra);
 
   if (finalBuild.recipientIndexes.size() != finalBuild.transaction.tx.outputs.size() ||
-      finalBuild.transaction.outputMessages.size() != finalBuild.transaction.tx.outputs.size()) {
-    throw std::runtime_error("buildPqSend: output provenance/witness mismatch");
+      finalBuild.transaction.outputRhos.size() != finalBuild.transaction.tx.outputs.size()) {
+    throw std::runtime_error("buildPqSend: output provenance/opening mismatch");
   }
 
   const PqPaymentProofTransaction proofTx =
@@ -316,7 +316,7 @@ PqSendResult buildPqSend(const std::vector<PqSpendInput>& available,
     }
     proofEntries[*recipientIndex].push_back({
         static_cast<uint32_t>(outputIndex),
-        finalBuild.transaction.outputMessages[outputIndex]});
+        finalBuild.transaction.outputRhos[outputIndex]});
     const uint64_t amount = finalBuild.transaction.tx.outputs[outputIndex].amount;
     if (proofAmounts[*recipientIndex] + amount < proofAmounts[*recipientIndex]) {
       throw std::runtime_error("buildPqSend: proof amount overflow");

@@ -477,11 +477,11 @@ simple_wallet::simple_wallet(System::Dispatcher& dispatcher, const CryptoNote::C
   m_consoleHandler.setHandler("transfer", std::bind(&simple_wallet::pq_transfer, this, std::placeholders::_1),
     "transfer <address> <amount> [-p <payment_id>] - Send funds to an address (or account number)");
   m_consoleHandler.setHandler("payment_proof", std::bind(&simple_wallet::payment_proof, this, std::placeholders::_1),
-    "payment_proof <txid> - List the stored recipient rows and payer proofs");
+    "payment_proof <txid> - List stored recipient rows and spend-authority proofs");
   m_consoleHandler.setHandler("export_payment_proof", std::bind(&simple_wallet::export_payment_proof, this, std::placeholders::_1),
     "export_payment_proof <txid> [recipient-index] <path> - Atomically export stored payer proof data");
   m_consoleHandler.setHandler("import_payment_proof", std::bind(&simple_wallet::import_payment_proof, this, std::placeholders::_1),
-    "import_payment_proof <path> - Fetch the transaction, fully verify, and store exported payer proof data");
+    "import_payment_proof <path> - Fetch the transaction, verify spend authority, and store exported proof data");
   m_consoleHandler.setHandler("delete_payment_proof", std::bind(&simple_wallet::delete_payment_proof, this, std::placeholders::_1),
     "delete_payment_proof <txid> [recipient-index] - Irreversibly delete stored payer proofs");
   m_consoleHandler.setHandler("set_log", std::bind(&simple_wallet::set_log, this, std::placeholders::_1), "set_log <level> - Change current log level, <level> is a number 0-4");
@@ -2070,9 +2070,10 @@ bool simple_wallet::pq_transfer(const std::vector<std::string> &args) {
     success_msg_writer() << "  txid: " << txid;
     success_msg_writer() << "  recipient: " << args[0];
     success_msg_writer() << "  paid: " << m_currency.formatAmount(amount);
-    success_msg_writer() << "  payment proof: "
+    success_msg_writer() << "  spend-authority proof: "
                          << CryptoNote::encodePqPaymentProof(r.proofs.at(0), m_currency.isTestnet());
     success_msg_writer() << "IMPORTANT: Store this proof safely. It cannot be recovered from your mnemonic.";
+    success_msg_writer() << "NOTE: It proves the on-chain spend-key commitment, not ML-KEM view-key delivery or deposit index T.";
   } catch (const CryptoNote::PqSendError& e) {
     fail_msg_writer() << "Cannot send: " << e.what();
   } catch (const std::exception& e) {
@@ -2108,14 +2109,14 @@ bool simple_wallet::payment_proof(const std::vector<std::string>& args) {
       break;
     }
   }
-  success_msg_writer() << "Stored payment proofs for " << Common::podToHex(txid)
+  success_msg_writer() << "Stored spend-authority proofs for " << Common::podToHex(txid)
                        << " (transaction observation: " << observedState << "):";
   for (std::size_t i = 0; i < record.recipients.size(); ++i) {
     const auto& entry = record.recipients[i];
     success_msg_writer() << "  recipient index: " << i;
     success_msg_writer() << "  recipient: " << entry.address;
     success_msg_writer() << "  paid: " << m_currency.formatAmount(entry.amount);
-    success_msg_writer() << "  payment proof: " << entry.proof;
+    success_msg_writer() << "  spend-authority proof: " << entry.proof;
   }
   return true;
 }

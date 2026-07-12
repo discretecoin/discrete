@@ -79,13 +79,13 @@ void PaymentServiceJsonRpcServer::processJsonRpcRequest(const Common::JsonValue&
     prepareJsonResponse(req, resp);
 
     if (!req.contains("method")) {
-      logger(Logging::WARNING) << "Field \"method\" is not found in json request: " << req;
+      logger(Logging::WARNING) << "Field \"method\" is not found in JSON-RPC request";
       makeGenericErrorReponse(resp, "Invalid Request", -3600);
       return;
     }
 
     if (!req("method").isString()) {
-      logger(Logging::WARNING) << "Field \"method\" is not a string type: " << req;
+      logger(Logging::WARNING) << "Field \"method\" is not a string in JSON-RPC request";
       makeGenericErrorReponse(resp, "Invalid Request", -3600);
       return;
     }
@@ -94,7 +94,7 @@ void PaymentServiceJsonRpcServer::processJsonRpcRequest(const Common::JsonValue&
 
     auto it = handlers.find(method);
     if (it == handlers.end()) {
-      logger(Logging::WARNING) << "Requested method not found: " << method;
+      logger(Logging::WARNING) << "Requested JSON-RPC method was not found";
       makeMethodNotFoundResponse(resp);
       return;
     }

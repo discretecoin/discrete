@@ -214,30 +214,24 @@ TEST(PqOutputBuilder, AmountTamperBreaksDecrypt) {
     EXPECT_FALSE(rho2.has_value());
 }
 
-TEST(PqOutputBuilder, ProofCapablePathRetainsFreshMessageAndFullScans) {
+TEST(PqOutputBuilder, StandardEncapsulationPathFullScans) {
     auto view = kem_keygen();
     auto spend = dsa_keygen();
     Hash256 ih{};
     ih[0] = 0x31;
 
-    PqBuiltOutputWithProof first = buildPqOutputWithProof(
+    PqBuiltOutput first = buildPqOutput(
         view.first, spend.first, ih, 3, 12345, 9);
-    PqBuiltOutputWithProof second = buildPqOutputWithProof(
-        view.first, spend.first, ih, 3, 12345, 9);
-    EXPECT_NE(first.message, second.message);
-
-    auto encapsulation = kem_encaps_explicit(view.first, first.message);
-    EXPECT_EQ(encapsulation.first, first.output.kemCt);
-    EXPECT_EQ(encapsulation.second, kem_decaps(view.second, first.output.kemCt));
 
     PqScanOutput candidate;
     candidate.outputIndex = 3;
     candidate.amount = 12345;
-    candidate.kemCt = first.output.kemCt;
-    candidate.encPayload = first.output.encPayload;
-    candidate.spendCommit = first.output.spendCommit;
+    candidate.kemCt = first.kemCt;
+    candidate.encPayload = first.encPayload;
+    candidate.spendCommit = first.spendCommit;
+    const auto shared = kem_decaps(view.second, first.kemCt);
     EXPECT_TRUE(scanPqOutputWithSharedSecret(
-        encapsulation.second, spend.first, ih, candidate, 9).has_value());
+        shared, spend.first, ih, candidate, 9).has_value());
 }
 
 int main(int argc, char** argv) {

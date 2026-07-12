@@ -13,6 +13,11 @@
 #include "crypto_pq/PqPaymentProof.h"
 #include "crypto_pq/PqOutputBuilder.h"
 
+#ifdef _WIN32
+#include <windows.h>
+#include <Aclapi.h>
+#endif
+
 namespace {
 
 Crypto::Hash cryptoHash(const char* text) {
@@ -37,10 +42,10 @@ CryptoNote::SentPaymentRecord recordFor(const Crypto::Hash& genesis,
   CryptoNote::ResolvedRecipient recipient{
       CryptoPQ::kem_keygen_from_seed(viewSeed).first,
       CryptoPQ::dsa_keygen_from_seed(spendSeed).first, 3};
-  CryptoPQ::KemEncapsMessage message{};
-  message[0] = 42;
+  CryptoPQ::Rho rho{};
+  rho[0] = 42;
   const auto proof = CryptoNote::makePqPaymentProof(
-      hash256(genesis), hash256(txid), recipient, {{0, message}});
+      hash256(genesis), hash256(txid), recipient, {{0, rho}});
   const std::string encoded = CryptoNote::encodePqPaymentProof(proof, false);
   return {{{"duplicate-label", 11, encoded}, {"duplicate-label", 22, encoded}}};
 }
@@ -146,6 +151,124 @@ TEST_F(ArchiveFixture, ExplicitRowDeletionAtomicallyReplacesTheRecord) {
   ASSERT_EQ(found->recipients.size(), 1u);
   EXPECT_EQ(found->recipients[0].amount, 22u);
 }
+
+TEST_F(ArchiveFixture, AuthoritativeArchiveReplacesStaleCacheConflict) {
+  const auto authoritative = recordFor(genesis, txid);
+  CryptoNote::SentPaymentsStore initial;
+  CryptoNote::PaymentProofArchive archive;
+  archive.configure(wallet, genesis, initial);
+  archive.persist(txid, authoritative);
+
+  auto stale = authoritative;
+  stale.recipients[0].amount++;
+  CryptoNote::SentPaymentsStore cache;
+  cache.record(txid, stale);
+  std::vector<std::string> warnings;
+  CryptoNote::PaymentProofArchive reloaded;
+  reloaded.configure(wallet, genesis, cache, &warnings);
+  ASSERT_FALSE(warnings.empty());
+  const auto* found = cache.find(txid);
+  ASSERT_NE(found, nullptr);
+  EXPECT_EQ(found->recipients[0].amount, authoritative.recipients[0].amount);
+}
+
+TEST_F(ArchiveFixture, AuthoritativeDeletionCannotBeResurrectedByStaleCache) {
+  const auto record = recordFor(genesis, txid);
+  CryptoNote::SentPaymentsStore initial;
+  CryptoNote::PaymentProofArchive archive;
+  archive.configure(wallet, genesis, initial);
+  archive.persist(txid, record);
+  archive.erase(txid);
+
+  CryptoNote::SentPaymentsStore staleCache;
+  staleCache.record(txid, record);
+  std::vector<std::string> warnings;
+  CryptoNote::PaymentProofArchive reloaded;
+  reloaded.configure(wallet, genesis, staleCache, &warnings);
+  EXPECT_EQ(staleCache.find(txid), nullptr);
+  EXPECT_FALSE(warnings.empty());
+}
+
+TEST_F(ArchiveFixture, FirstConfigurationMigratesExistingEncryptedCache) {
+  const auto record = recordFor(genesis, txid);
+  CryptoNote::SentPaymentsStore cache;
+  cache.record(txid, record);
+  CryptoNote::PaymentProofArchive archive;
+  archive.configure(wallet, genesis, cache);
+
+  CryptoNote::SentPaymentsStore reloaded;
+  CryptoNote::PaymentProofArchive second;
+  second.configure(wallet, genesis, reloaded);
+  const auto* found = reloaded.find(txid);
+  ASSERT_NE(found, nullptr);
+  EXPECT_EQ(found->recipients[1].amount, 22u);
+}
+
+TEST_F(ArchiveFixture, ExportCannotAliasAuthoritativeArchive) {
+  const auto record = recordFor(genesis, txid);
+  CryptoNote::SentPaymentsStore store;
+  CryptoNote::PaymentProofArchive archive;
+  archive.configure(wallet, genesis, store);
+  archive.persist(txid, record);
+
+  const auto inside = boost::filesystem::path(archive.directory()) / "export.pproof";
+  EXPECT_THROW(archive.exportRecord(txid, record, inside.string()), std::exception);
+
+  const auto outside = root / "export.pproof";
+  EXPECT_NO_THROW(archive.exportRecord(txid, record, outside.string()));
+  EXPECT_TRUE(boost::filesystem::exists(outside));
+}
+
+#ifdef _WIN32
+TEST_F(ArchiveFixture, WindowsArchiveDaclIsProtectedAndOwnerOnly) {
+  const auto record = recordFor(genesis, txid);
+  CryptoNote::SentPaymentsStore store;
+  CryptoNote::PaymentProofArchive archive;
+  archive.configure(wallet, genesis, store);
+  archive.persist(txid, record);
+
+  HANDLE token = nullptr;
+  ASSERT_TRUE(OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token));
+  DWORD tokenSize = 0;
+  GetTokenInformation(token, TokenUser, nullptr, 0, &tokenSize);
+  std::vector<uint8_t> tokenInfo(tokenSize);
+  ASSERT_TRUE(GetTokenInformation(
+      token, TokenUser, tokenInfo.data(), tokenSize, &tokenSize));
+  CloseHandle(token);
+  const PSID currentUser =
+      reinterpret_cast<TOKEN_USER*>(tokenInfo.data())->User.Sid;
+
+  for (const auto& path : {
+           boost::filesystem::path(archive.directory()),
+           boost::filesystem::path(archive.directory()) /
+               (Common::podToHex(txid) + ".pproof")}) {
+    PACL dacl = nullptr;
+    PSECURITY_DESCRIPTOR descriptor = nullptr;
+    ASSERT_EQ(GetNamedSecurityInfoW(
+                  const_cast<LPWSTR>(path.wstring().c_str()), SE_FILE_OBJECT,
+                  DACL_SECURITY_INFORMATION, nullptr, nullptr, &dacl, nullptr,
+                  &descriptor),
+              ERROR_SUCCESS);
+    ASSERT_NE(descriptor, nullptr);
+    SECURITY_DESCRIPTOR_CONTROL control = 0;
+    DWORD revision = 0;
+    ASSERT_TRUE(GetSecurityDescriptorControl(descriptor, &control, &revision));
+    EXPECT_NE(control & SE_DACL_PROTECTED, 0);
+    ACL_SIZE_INFORMATION info{};
+    ASSERT_TRUE(GetAclInformation(dacl, &info, sizeof(info), AclSizeInformation));
+    ASSERT_GE(info.AceCount, 1u);
+    for (DWORD i = 0; i < info.AceCount; ++i) {
+      void* rawAce = nullptr;
+      ASSERT_TRUE(GetAce(dacl, i, &rawAce));
+      const auto* header = static_cast<ACE_HEADER*>(rawAce);
+      ASSERT_EQ(header->AceType, ACCESS_ALLOWED_ACE_TYPE);
+      const auto* ace = static_cast<ACCESS_ALLOWED_ACE*>(rawAce);
+      EXPECT_TRUE(EqualSid(currentUser, const_cast<DWORD*>(&ace->SidStart)));
+    }
+    LocalFree(descriptor);
+  }
+}
+#endif
 
 }  // namespace
 

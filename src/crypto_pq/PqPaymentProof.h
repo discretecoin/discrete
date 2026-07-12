@@ -15,7 +15,7 @@
 
 namespace CryptoNote {
 
-constexpr uint8_t kPqPaymentProofVersion = 1;
+constexpr uint8_t kPqPaymentProofVersion = 2;
 constexpr char kPqPaymentProofHrpMainnet[] = "disctxp";
 constexpr char kPqPaymentProofHrpTestnet[] = "tdisctxp";
 constexpr std::size_t kMaxPqPaymentProofEntries = 64;
@@ -28,16 +28,14 @@ struct ResolvedRecipient {
 
 struct PqPaymentProofEntry {
   uint32_t outputIndex = 0;
-  CryptoPQ::KemEncapsMessage message{};
-
-  ~PqPaymentProofEntry();
+  CryptoPQ::Rho rho{};
 };
 
 struct PqPaymentProof {
   uint8_t version = kPqPaymentProofVersion;
   CryptoPQ::Hash256 genesisId{};
   CryptoPQ::Hash256 txid{};
-  CryptoPQ::Hash256 recipientDescriptorHash{};
+  CryptoPQ::Hash256 spendAuthorityHash{};
   std::vector<PqPaymentProofEntry> entries;
 };
 
@@ -55,7 +53,7 @@ public:
   explicit PqPaymentProofError(const std::string& message) : std::runtime_error(message) {}
 };
 
-CryptoPQ::Hash256 pqRecipientDescriptorHash(const ResolvedRecipient& recipient);
+CryptoPQ::Hash256 pqSpendAuthorityHash(const CryptoPQ::DsaPublicKey& spendPub);
 
 PqPaymentProof makePqPaymentProof(
     const CryptoPQ::Hash256& genesisId,
@@ -67,9 +65,9 @@ std::string encodePqPaymentProof(const PqPaymentProof& proof, bool testnet);
 bool decodePqPaymentProof(const std::string& encoded, PqPaymentProof& proof);
 bool decodePqPaymentProof(const std::string& encoded, bool testnet, PqPaymentProof& proof);
 
-// Perform the complete receiver scan predicate for every proof entry and return
-// the checked total. Throws PqPaymentProofError on any binding, index, KEM,
-// payload, amount, T, or spend-commit failure.
+// Verify that every listed on-chain output commits to recipient.spendPub under
+// the supplied rho and return their public amount total. This deliberately does
+// not claim ML-KEM/view-key delivery or SingleKeyIndex T attribution.
 uint64_t verifyPqPaymentProof(
     const PqPaymentProof& proof,
     const CryptoPQ::Hash256& expectedGenesisId,

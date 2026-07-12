@@ -302,6 +302,18 @@ void PaymentGateService::runWalletServiceOr(const CryptoNote::Currency& currency
 }
 
 void PaymentGateService::runWalletService(const CryptoNote::Currency& currency, CryptoNote::INode& node) {
+  if (config.gateConfiguration.m_rpcUser.empty() ||
+      config.gateConfiguration.m_rpcPassword.empty()) {
+    Logging::LoggerRef(logger, "PaymentGateService")(Logging::ERROR, Logging::BRIGHT_RED)
+        << "walletd RPC requires both --rpc-user and --rpc-password";
+    return;
+  }
+  const std::string& bind = config.gateConfiguration.m_bind_address;
+  if (bind != "127.0.0.1" && bind != "::1" && bind != "localhost") {
+    Logging::LoggerRef(logger, "PaymentGateService")(Logging::ERROR, Logging::BRIGHT_RED)
+        << "walletd RPC must bind to loopback; use an authenticated TLS tunnel or reverse proxy for remote access";
+    return;
+  }
   PaymentService::WalletConfiguration walletConfiguration{
     config.gateConfiguration.containerFile,
     config.gateConfiguration.containerPassword

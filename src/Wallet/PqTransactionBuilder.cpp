@@ -36,23 +36,23 @@ namespace CryptoNote {
 PqTransactionBuildResult::~PqTransactionBuildResult() { clearWitnesses(); }
 
 PqTransactionBuildResult::PqTransactionBuildResult(PqTransactionBuildResult&& other) noexcept
-    : tx(std::move(other.tx)), outputMessages(std::move(other.outputMessages)) {}
+    : tx(std::move(other.tx)), outputRhos(std::move(other.outputRhos)) {}
 
 PqTransactionBuildResult& PqTransactionBuildResult::operator=(
     PqTransactionBuildResult&& other) noexcept {
   if (this != &other) {
     clearWitnesses();
     tx = std::move(other.tx);
-    outputMessages = std::move(other.outputMessages);
+    outputRhos = std::move(other.outputRhos);
   }
   return *this;
 }
 
 void PqTransactionBuildResult::clearWitnesses() noexcept {
-  if (!outputMessages.empty()) {
-    sodium_memzero(outputMessages.data(),
-                   outputMessages.size() * sizeof(outputMessages.front()));
-    outputMessages.clear();
+  if (!outputRhos.empty()) {
+    sodium_memzero(outputRhos.data(),
+                   outputRhos.size() * sizeof(outputRhos.front()));
+    outputRhos.clear();
   }
 }
 
@@ -137,14 +137,13 @@ PqTransactionBuildResult buildPqTransactionWithProof(
   // Outputs: out_context uses the output's index within tx.outputs (the same
   // index the receiver scans by), so build in order.
   tx.outputs.reserve(outputs.size());
-  result.outputMessages.reserve(outputs.size());
+  result.outputRhos.reserve(outputs.size());
   uint64_t sumOut = 0;
   for (size_t i = 0; i < outputs.size(); ++i) {
     const PqSendOutput& so = outputs[i];
-    CryptoPQ::PqBuiltOutputWithProof proofBuilt = CryptoPQ::buildPqOutputWithProof(
+    CryptoPQ::PqBuiltOutput built = CryptoPQ::buildPqOutput(
         so.recipientViewPub, so.recipientSpendPub, ih,
         static_cast<uint32_t>(i), so.amount, so.subaddrIndexT);
-    CryptoPQ::PqBuiltOutput& built = proofBuilt.output;
 
     PqOutput po;
     po.kemCt.assign(built.kemCt.begin(), built.kemCt.end());
@@ -156,8 +155,7 @@ PqTransactionBuildResult buildPqTransactionWithProof(
     out.unlockHeight = so.unlockHeight;  // per-output spend lock (0 for change)
     out.target = std::move(po);
     tx.outputs.push_back(std::move(out));
-    result.outputMessages.push_back(proofBuilt.message);
-    sodium_memzero(proofBuilt.message.data(), proofBuilt.message.size());
+    result.outputRhos.push_back(built.rho);
 
     if (sumOut + so.amount < sumOut) {
       throw std::runtime_error("buildPqTransaction: output amount overflow");

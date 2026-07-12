@@ -72,12 +72,12 @@ struct PqSendOutput {
   uint64_t               unlockHeight = 0;   // per-output spend lock; 0 = none (e.g. change)
 };
 
-// A signed transaction and the exact per-output ML-KEM witnesses generated
-// while constructing it. Move-only ownership and destructor cleansing ensure a
-// discarded/oversized draft cannot leak witnesses into another transaction.
+// A signed transaction and each output's independently generated rho opening.
+// The openings support a public spend-authority proof without exposing ML-KEM
+// internals or changing the wire transaction.
 struct PqTransactionBuildResult {
   Transaction tx;
-  std::vector<CryptoPQ::KemEncapsMessage> outputMessages;
+  std::vector<CryptoPQ::Rho> outputRhos;
 
   PqTransactionBuildResult() = default;
   ~PqTransactionBuildResult();

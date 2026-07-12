@@ -7,27 +7,20 @@
 #include <cstring>
 #include <limits>
 
-#include "Common/SecureMemory.h"
 #include "PqBech32.h"
+#include "PqDerive.h"
 
 namespace CryptoNote {
 
-PqPaymentProofEntry::~PqPaymentProofEntry() {
-  sodium_memzero(message.data(), message.size());
-}
-
 namespace {
 
-constexpr char kRecipientDomain[] = "discrete-pq-recipient-v1";
+constexpr char kSpendAuthorityDomain[] = "discrete-pq-spend-authority-v1";
 constexpr std::size_t kFixedProofBytes = 1 + 32 + 32 + 32 + 4;
-constexpr std::size_t kEntryBytes = 4 + CryptoPQ::kKemEncapsMessageBytes;
+constexpr std::size_t kEntryBytes = 4 + 32;
+static_assert(sizeof(CryptoPQ::Rho) == 32, "payment proof rho size mismatch");
 
 void appendLe32(std::string& out, uint32_t value) {
   for (int i = 0; i < 4; ++i) out.push_back(static_cast<char>(value >> (8 * i)));
-}
-
-void appendLe64(std::string& out, uint64_t value) {
-  for (int i = 0; i < 8; ++i) out.push_back(static_cast<char>(value >> (8 * i)));
 }
 
 bool takeLe32(const std::string& in, std::size_t& offset, uint32_t& value) {
@@ -56,7 +49,7 @@ bool parsePayload(const std::string& payload, PqPaymentProof& proof) {
   if (proof.version != kPqPaymentProofVersion ||
       !takeArray(payload, offset, proof.genesisId) ||
       !takeArray(payload, offset, proof.txid) ||
-      !takeArray(payload, offset, proof.recipientDescriptorHash)) {
+      !takeArray(payload, offset, proof.spendAuthorityHash)) {
     return false;
   }
   uint32_t count = 0;
@@ -68,7 +61,7 @@ bool parsePayload(const std::string& payload, PqPaymentProof& proof) {
   proof.entries.resize(count);
   for (auto& entry : proof.entries) {
     if (!takeLe32(payload, offset, entry.outputIndex) ||
-        !takeArray(payload, offset, entry.message)) {
+        !takeArray(payload, offset, entry.rho)) {
       proof = {};
       return false;
     }
@@ -86,23 +79,21 @@ std::string proofPayload(const PqPaymentProof& proof) {
   payload.push_back(static_cast<char>(proof.version));
   payload.append(reinterpret_cast<const char*>(proof.genesisId.data()), proof.genesisId.size());
   payload.append(reinterpret_cast<const char*>(proof.txid.data()), proof.txid.size());
-  payload.append(reinterpret_cast<const char*>(proof.recipientDescriptorHash.data()),
-                 proof.recipientDescriptorHash.size());
+  payload.append(reinterpret_cast<const char*>(proof.spendAuthorityHash.data()),
+                 proof.spendAuthorityHash.size());
   appendLe32(payload, static_cast<uint32_t>(proof.entries.size()));
   for (const auto& entry : proof.entries) {
     appendLe32(payload, entry.outputIndex);
-    payload.append(reinterpret_cast<const char*>(entry.message.data()), entry.message.size());
+    payload.append(reinterpret_cast<const char*>(entry.rho.data()), entry.rho.size());
   }
   return payload;
 }
 
 }  // namespace
 
-CryptoPQ::Hash256 pqRecipientDescriptorHash(const ResolvedRecipient& recipient) {
-  std::string preimage(kRecipientDomain, sizeof(kRecipientDomain) - 1);
-  preimage.append(reinterpret_cast<const char*>(recipient.viewPub.data()), recipient.viewPub.size());
-  preimage.append(reinterpret_cast<const char*>(recipient.spendPub.data()), recipient.spendPub.size());
-  appendLe64(preimage, recipient.subaddrIndexT);
+CryptoPQ::Hash256 pqSpendAuthorityHash(const CryptoPQ::DsaPublicKey& spendPub) {
+  std::string preimage(kSpendAuthorityDomain, sizeof(kSpendAuthorityDomain) - 1);
+  preimage.append(reinterpret_cast<const char*>(spendPub.data()), spendPub.size());
   return CryptoPQ::sha3_256(preimage.data(), preimage.size());
 }
 
@@ -125,7 +116,7 @@ PqPaymentProof makePqPaymentProof(
   PqPaymentProof proof;
   proof.genesisId = genesisId;
   proof.txid = txid;
-  proof.recipientDescriptorHash = pqRecipientDescriptorHash(recipient);
+  proof.spendAuthorityHash = pqSpendAuthorityHash(recipient.spendPub);
   proof.entries = std::move(entries);
   return proof;
 }
@@ -168,8 +159,8 @@ uint64_t verifyPqPaymentProof(
   if (proof.txid != tx.txid) {
     throw PqPaymentProofError("payment proof transaction mismatch");
   }
-  if (proof.recipientDescriptorHash != pqRecipientDescriptorHash(recipient)) {
-    throw PqPaymentProofError("payment proof recipient mismatch");
+  if (proof.spendAuthorityHash != pqSpendAuthorityHash(recipient.spendPub)) {
+    throw PqPaymentProofError("payment proof spend authority mismatch");
   }
   if (proof.entries.empty() || proof.entries.size() > kMaxPqPaymentProofEntries) {
     throw PqPaymentProofError("invalid payment proof entry count");
@@ -187,15 +178,8 @@ uint64_t verifyPqPaymentProof(
       throw PqPaymentProofError("non-canonical transaction output index");
     }
 
-    auto encapsulation = CryptoPQ::kem_encaps_explicit(recipient.viewPub, entry.message);
-    Tools::SecretLock sharedSecretLock(encapsulation.second.data(), encapsulation.second.size());
-    if (encapsulation.first != output.kemCt) {
-      throw PqPaymentProofError("payment proof KEM ciphertext mismatch");
-    }
-    if (!CryptoPQ::scanPqOutputWithSharedSecret(
-            encapsulation.second, recipient.spendPub, tx.inputsHash, output,
-            recipient.subaddrIndexT)) {
-      throw PqPaymentProofError("payment proof receiver scan failed");
+    if (CryptoPQ::spendCommit(recipient.spendPub, entry.rho) != output.spendCommit) {
+      throw PqPaymentProofError("payment proof spend commitment mismatch");
     }
     if (total > std::numeric_limits<uint64_t>::max() - output.amount) {
       throw PqPaymentProofError("payment proof amount overflow");

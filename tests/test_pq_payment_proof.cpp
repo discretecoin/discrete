@@ -15,11 +15,10 @@ CryptoPQ::Hash256 hashOf(const char* text) {
 }
 
 struct ProofFixture {
-  CryptoPQ::KemSecretKey viewSk{};
   CryptoNote::ResolvedRecipient recipient;
   CryptoPQ::Hash256 genesisId = hashOf("test genesis");
   CryptoNote::PqPaymentProofTransaction tx;
-  std::vector<CryptoPQ::KemEncapsMessage> messages;
+  std::vector<CryptoPQ::Rho> rhos;
   CryptoNote::PqPaymentProof proof;
 
   ProofFixture() {
@@ -27,23 +26,18 @@ struct ProofFixture {
     CryptoPQ::DsaKeypairSeed spendSeed{};
     viewSeed[0] = 3;
     spendSeed[0] = 5;
-    auto viewKeys = CryptoPQ::kem_keygen_from_seed(viewSeed);
-    auto spendKeys = CryptoPQ::dsa_keygen_from_seed(spendSeed);
-    recipient.viewPub = viewKeys.first;
-    recipient.spendPub = spendKeys.first;
+    recipient.viewPub = CryptoPQ::kem_keygen_from_seed(viewSeed).first;
+    recipient.spendPub = CryptoPQ::dsa_keygen_from_seed(spendSeed).first;
     recipient.subaddrIndexT = 17;
-    viewSk = viewKeys.second;
 
     tx.txid = hashOf("final transaction");
     tx.inputsHash = hashOf("canonical inputs");
     for (uint32_t i = 0; i < 2; ++i) {
-      CryptoPQ::KemEncapsMessage message{};
-      message[0] = static_cast<uint8_t>(11 + i);
-      message[31] = static_cast<uint8_t>(91 + i);
-      messages.push_back(message);
-      const auto encapsulation = CryptoPQ::kem_encaps_explicit(recipient.viewPub, message);
+      auto encapsulation = CryptoPQ::kem_encaps(recipient.viewPub);
       CryptoPQ::Rho rho{};
       rho[0] = static_cast<uint8_t>(21 + i);
+      rho[31] = static_cast<uint8_t>(71 + i);
+      rhos.push_back(rho);
       const uint64_t amount = i == 0 ? 400 : 600;
       const auto built = CryptoPQ::buildPqOutput(
           encapsulation.first, encapsulation.second, recipient.spendPub,
@@ -59,13 +53,13 @@ struct ProofFixture {
 
     // Deliberately supply reverse order: assembly must canonicalize by index.
     proof = CryptoNote::makePqPaymentProof(
-        genesisId, tx.txid, recipient,
-        {{1, messages[1]}, {0, messages[0]}});
+        genesisId, tx.txid, recipient, {{1, rhos[1]}, {0, rhos[0]}});
   }
 };
 
-TEST(PqPaymentProof, RoundTripAndFullScanTotal) {
+TEST(PqPaymentProof, RoundTripAndSpendAuthorityTotal) {
   ProofFixture f;
+  ASSERT_EQ(f.proof.version, 2u);
   ASSERT_EQ(f.proof.entries.size(), 2u);
   EXPECT_EQ(f.proof.entries[0].outputIndex, 0u);
   EXPECT_EQ(f.proof.entries[1].outputIndex, 1u);
@@ -83,60 +77,42 @@ TEST(PqPaymentProof, RoundTripAndFullScanTotal) {
   EXPECT_FALSE(CryptoNote::decodePqPaymentProof(damaged, decoded));
 }
 
-TEST(PqPaymentProof, RejectsWrongMessageAndForeignViewKey) {
+TEST(PqPaymentProof, RejectsWrongRhoAndSpendKey) {
   ProofFixture f;
-  auto wrongMessage = f.proof;
-  wrongMessage.entries[0].message[0] ^= 1;
+  auto wrongRho = f.proof;
+  wrongRho.entries[0].rho[0] ^= 1;
   EXPECT_THROW(CryptoNote::verifyPqPaymentProof(
-                   wrongMessage, f.genesisId, f.tx, f.recipient),
+                   wrongRho, f.genesisId, f.tx, f.recipient),
                CryptoNote::PqPaymentProofError);
 
-  CryptoPQ::KemKeypairSeed seed{};
-  seed[0] = 99;
-  auto foreign = f.recipient;
-  foreign.viewPub = CryptoPQ::kem_keygen_from_seed(seed).first;
-  auto foreignProof = f.proof;
-  foreignProof.recipientDescriptorHash = CryptoNote::pqRecipientDescriptorHash(foreign);
-  EXPECT_THROW(CryptoNote::verifyPqPaymentProof(
-                   foreignProof, f.genesisId, f.tx, foreign),
-               CryptoNote::PqPaymentProofError);
-}
-
-TEST(PqPaymentProof, RejectsWrongSpendKeyAndSubaddressIndex) {
-  ProofFixture f;
   CryptoPQ::DsaKeypairSeed seed{};
   seed[0] = 100;
   auto wrongSpend = f.recipient;
   wrongSpend.spendPub = CryptoPQ::dsa_keygen_from_seed(seed).first;
-  auto wrongSpendProof = f.proof;
-  wrongSpendProof.recipientDescriptorHash = CryptoNote::pqRecipientDescriptorHash(wrongSpend);
+  auto relabeled = f.proof;
+  relabeled.spendAuthorityHash = CryptoNote::pqSpendAuthorityHash(wrongSpend.spendPub);
   EXPECT_THROW(CryptoNote::verifyPqPaymentProof(
-                   wrongSpendProof, f.genesisId, f.tx, wrongSpend),
-               CryptoNote::PqPaymentProofError);
-
-  auto wrongT = f.recipient;
-  ++wrongT.subaddrIndexT;
-  auto wrongTProof = f.proof;
-  wrongTProof.recipientDescriptorHash = CryptoNote::pqRecipientDescriptorHash(wrongT);
-  EXPECT_THROW(CryptoNote::verifyPqPaymentProof(
-                   wrongTProof, f.genesisId, f.tx, wrongT),
+                   relabeled, f.genesisId, f.tx, wrongSpend),
                CryptoNote::PqPaymentProofError);
 }
 
-TEST(PqPaymentProof, RejectsChangedAmountPayloadAndCommitment) {
+TEST(PqPaymentProof, DoesNotClaimViewKeyOrSubaddressDelivery) {
   ProofFixture f;
-  auto changedAmount = f.tx;
-  ++changedAmount.outputs[0].amount;
-  EXPECT_THROW(CryptoNote::verifyPqPaymentProof(
-                   f.proof, f.genesisId, changedAmount, f.recipient),
-               CryptoNote::PqPaymentProofError);
+  CryptoPQ::KemKeypairSeed seed{};
+  seed[0] = 99;
+  auto sameAuthority = f.recipient;
+  sameAuthority.viewPub = CryptoPQ::kem_keygen_from_seed(seed).first;
+  ++sameAuthority.subaddrIndexT;
 
-  auto changedPayload = f.tx;
-  changedPayload.outputs[0].encPayload[0] ^= 1;
-  EXPECT_THROW(CryptoNote::verifyPqPaymentProof(
-                   f.proof, f.genesisId, changedPayload, f.recipient),
-               CryptoNote::PqPaymentProofError);
+  // The verifier intentionally proves only the on-chain spend commitment.
+  // A recipient-signed receipt is required to prove view-key/T delivery.
+  EXPECT_EQ(CryptoNote::verifyPqPaymentProof(
+                f.proof, f.genesisId, f.tx, sameAuthority),
+            1000u);
+}
 
+TEST(PqPaymentProof, RejectsChangedCommitment) {
+  ProofFixture f;
   auto changedCommitment = f.tx;
   changedCommitment.outputs[0].spendCommit[0] ^= 1;
   EXPECT_THROW(CryptoNote::verifyPqPaymentProof(
@@ -144,7 +120,7 @@ TEST(PqPaymentProof, RejectsChangedAmountPayloadAndCommitment) {
                CryptoNote::PqPaymentProofError);
 }
 
-TEST(PqPaymentProof, RejectsNetworkTransactionRecipientAndDuplicateIndex) {
+TEST(PqPaymentProof, RejectsNetworkTransactionAndDuplicateIndex) {
   ProofFixture f;
   EXPECT_THROW(CryptoNote::verifyPqPaymentProof(
                    f.proof, hashOf("other genesis"), f.tx, f.recipient),
@@ -156,12 +132,6 @@ TEST(PqPaymentProof, RejectsNetworkTransactionRecipientAndDuplicateIndex) {
                    f.proof, f.genesisId, otherTx, f.recipient),
                CryptoNote::PqPaymentProofError);
 
-  auto wrongRecipient = f.recipient;
-  wrongRecipient.subaddrIndexT = 1;
-  EXPECT_THROW(CryptoNote::verifyPqPaymentProof(
-                   f.proof, f.genesisId, f.tx, wrongRecipient),
-               CryptoNote::PqPaymentProofError);
-
   auto duplicate = f.proof;
   duplicate.entries.push_back(duplicate.entries.front());
   EXPECT_THROW(CryptoNote::verifyPqPaymentProof(
@@ -169,14 +139,12 @@ TEST(PqPaymentProof, RejectsNetworkTransactionRecipientAndDuplicateIndex) {
                CryptoNote::PqPaymentProofError);
 }
 
-TEST(PqPaymentProof, RejectsOverReportingForeignOutput) {
+TEST(PqPaymentProof, RejectsOverReportingForeignSpendAuthority) {
   ProofFixture f;
   CryptoPQ::DsaKeypairSeed foreignSeed{};
   foreignSeed[0] = 44;
   const auto foreignSpend = CryptoPQ::dsa_keygen_from_seed(foreignSeed).first;
-  CryptoPQ::KemEncapsMessage message{};
-  message[0] = 77;
-  const auto encapsulation = CryptoPQ::kem_encaps_explicit(f.recipient.viewPub, message);
+  auto encapsulation = CryptoPQ::kem_encaps(f.recipient.viewPub);
   CryptoPQ::Rho rho{};
   rho[0] = 88;
   const uint32_t index = static_cast<uint32_t>(f.tx.outputs.size());
@@ -192,7 +160,7 @@ TEST(PqPaymentProof, RejectsOverReportingForeignOutput) {
   f.tx.outputs.push_back(std::move(output));
 
   auto overReported = f.proof;
-  overReported.entries.push_back({index, message});
+  overReported.entries.push_back({index, rho});
   EXPECT_THROW(CryptoNote::verifyPqPaymentProof(
                    overReported, f.genesisId, f.tx, f.recipient),
                CryptoNote::PqPaymentProofError);

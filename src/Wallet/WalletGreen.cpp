@@ -2104,8 +2104,11 @@ PqSendResult WalletGreen::sendPqTransfer(const std::vector<PqSendOutput>& recipi
           encodePqPaymentProof(result.proofs[i], m_currency.isTestnet())});
     }
     m_paymentProofArchive.persist(txid, sent);
-    if (!m_sentPayments.recordChecked(txid, sent))
-      throw std::runtime_error("conflicting in-wallet payment-proof record");
+    {
+      System::EventLock lk(m_readyEvent);
+      if (!m_sentPayments.recordChecked(txid, sent))
+        throw std::runtime_error("conflicting in-wallet payment-proof record");
+    }
   } catch (...) {
     System::EventLock lk(m_readyEvent);
     m_pqConsumer->removeUnconfirmedTransaction(txid);

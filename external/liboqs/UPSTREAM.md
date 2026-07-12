@@ -54,21 +54,3 @@ variant for ML-KEM, not ML-DSA, hence the patch.
 
 Upstream tracking: open-quantum-safe/liboqs#2128 covers a similar request.
 If upstream ships an equivalent API, drop our patch in favour of it.
-
-### 2. ML-KEM-768 explicit-message encapsulation — `_encaps_derand`
-
-Files touched:
-  - src/kem/ml_kem/kem_ml_kem.h
-  - src/kem/ml_kem/kem_ml_kem_768.c
-
-What was added:
-  - `OQS_KEM_ml_kem_768_encaps_derand(ct, ss, pk, coins)`, a narrow public
-    wrapper over mlkem-native's reentrant `Encaps_Internal` entry point.
-  - The wrapper deliberately calls the always-built portable C backend on all
-    architectures. It preserves mlkem-native's public-key modulus check and
-    cleanses ciphertext/shared-secret outputs before returning an error.
-
-Why: payer payment proofs retain the fresh 32-byte ML-KEM message used for each
-output and later re-encapsulate without changing process-global OQS RNG state.
-This application interface is deliberately outside strict FIPS 203 conformance;
-see docs/PQ-PAYMENT-PROOF.md for the specialist-review gate.

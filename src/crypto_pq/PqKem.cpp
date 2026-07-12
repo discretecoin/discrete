@@ -69,7 +69,6 @@ static_assert(kKemSecretKeyBytes  == OQS_KEM_ml_kem_768_length_secret_key,    "M
 static_assert(kKemCiphertextBytes == OQS_KEM_ml_kem_768_length_ciphertext,    "ML-KEM-768 ciphertext size mismatch");
 static_assert(kKemSharedBytes     == OQS_KEM_ml_kem_768_length_shared_secret, "ML-KEM-768 shared secret size mismatch");
 static_assert(kKemKeypairSeedBytes == OQS_KEM_ml_kem_768_length_keypair_seed, "ML-KEM-768 keypair seed size mismatch");
-static_assert(kKemEncapsMessageBytes == OQS_KEM_ml_kem_768_length_encaps_seed, "ML-KEM-768 encaps message size mismatch");
 
 std::pair<KemPublicKey, KemSecretKey> kem_keygen() {
     KemPublicKey pub;
@@ -97,20 +96,6 @@ std::pair<KemCiphertext, KemShared> kem_encaps(const KemPublicKey& pub) {
     OQS_STATUS rc = OQS_KEM_ml_kem_768_encaps(ct.data(), ss.data(), pub.data());
     if (rc != OQS_SUCCESS) {
         throw std::runtime_error("OQS_KEM_ml_kem_768_encaps failed");
-    }
-    return {ct, ss};
-}
-
-std::pair<KemCiphertext, KemShared> kem_encaps_explicit(
-    const KemPublicKey& pub, const KemEncapsMessage& message) {
-    KemCiphertext ct{};
-    KemShared ss{};
-    OQS_STATUS rc = OQS_KEM_ml_kem_768_encaps_derand(
-        ct.data(), ss.data(), pub.data(), message.data());
-    if (rc != OQS_SUCCESS) {
-        // The vendored wrapper has already cleansed both outputs. Keep the
-        // value-initialization above as defense in depth for future backends.
-        throw std::runtime_error("OQS_KEM_ml_kem_768_encaps_derand failed");
     }
     return {ct, ss};
 }

@@ -1,215 +1,190 @@
-# PQ Payer Payment Proof (minimal, off-chain)
+# PQ payer spend-authority proof (minimal, off-chain)
 
-Status: **Phases 1–3 implemented; Phase 4 not implemented. Phase 3 awaits follow-up review.** 2026-07-12.
-Branch `dev/payment_proof`. This is the *minimal* payer proof chosen after three security
-reviews (see [PQ-TX-PROOFS.md](PQ-TX-PROOFS.md) on branch `dev/tx_proof` for the
-heavier seed-recoverable/tx-secret-key design that was **rejected as too invasive** for
-an optional feature). **No wire, consensus, fee, `tx_extra`, or seed-recovery change.**
-Gate before production: specialist review of explicit-coins ML-KEM (§10).
+Status: **Phases 1–3 implemented; Phase 4 not implemented.** 2026-07-12.
+Branch `dev/payment_proof`.
+
+The artifact remains exposed through the existing payment-proof wallet fields and RPC
+names, but version 2 has deliberately narrower cryptographic semantics: it proves that
+listed transaction outputs commit to a recipient spend public key. It does **not** prove
+ML-KEM/view-key delivery or a SingleKeyIndex routing index `T`.
+
+There is no wire, consensus, fee, `tx_extra`, seed-recovery, or vendored-liboqs change.
+Output construction calls the normal public `OQS_KEM_ml_kem_768_encaps` interface.
 
 ---
 
-## 1. Goal
+## 1. Why the original delivery proof was replaced
 
-Let a **payer** prove, off-chain and after the fact, that a specific transaction paid a
-specific recipient a specific amount — verifiable by a party who does **not** hold the
-recipient's view key (an auditor, a counterparty, or an exchange support desk acting on
-a depositor's claim). This is the classic "transaction proof" an exchange asks a
-depositor for when automated attribution fails.
+The original version retained the 32-byte `m` input to ML-KEM's internal deterministic
+encapsulation operation, then re-encapsulated publicly during verification. That is not
+an application interface defined by FIPS 203. FIPS 203 requires application-facing
+encapsulation to generate its randomness inside the cryptographic module and limits the
+internal deterministic operation to testing. liboqs likewise exposes only ordinary
+encapsulation through its public ML-KEM API.
 
-Non-goals (already covered without any change): a recipient who *holds* the view key —
-e.g. the exchange verifying its own deposits — just scans the txid with its own key via
-the existing `scanPqOutput` path. This document is only for the payer-side, no-view-key
-case.
+With the standard public API, the sender receives `(ciphertext, shared_secret)` but not
+the internal randomness. Neither value provides a publicly checkable witness tying the
+ciphertext to a view public key: the shared secret is not publicly derivable and cannot
+be verified without the view secret key. Therefore a unilateral, noninteractive proof
+of view-key delivery is impossible with the current wire format and public ML-KEM API.
 
-## 2. The single change to established code: explicit-coins encapsulation
+Version 2 instead uses an independent value the sender already creates: `rho`.
 
-Today `buildPqOutput` calls `kem_encaps(view_pub)`, which draws the ML-KEM message `m`
-from the RNG internally and **discards it** — so nothing can be proven later. The one
-change:
+## 2. What version 2 proves
 
-- generate a **fresh 32-byte CSPRNG message `m_j`** per output (the same secure RNG the
-  wallet already uses);
-- encapsulate with a **reentrant explicit-coins** call `enc_derand(view_pub, m_j)`
-  (mlkem-native `crypto_kem_enc_derand(ct, ss, pk, coins)`), **not** the existing
-  `kem_encaps_derand` global-RNG-swap helper (§10);
-- keep `rho` independently random, exactly as today;
-- retain `m_j` in memory for the proof.
-
-FIPS 203 `Encaps` *is* "draw random `m`, then `Encaps_internal(pk, m)`", so supplying a
-fresh CSPRNG `m_j` produces an **output identically distributed and byte-identical in
-format** to the current path. `kem_ct`, `enc_payload`, `spend_commit` are unchanged.
-Nothing else in the send path changes — no `tx_extra`, no fee/size accounting, no
-wallet-format schema, no consensus rule, no seed-recovery contract. The genesis coinbase
-keeps its own pinned `kem_encaps_derand` path untouched.
-
-## 3. Proof artifact
-
-A payment decomposes into several canonical-denomination outputs, so one logical payment
-to a recipient is **several outputs**; the proof must cover all of them:
+Every current PQ output contains:
 
 ```
-PaymentProof {
-  version                    // u8
-  genesis_id                 // 32B — network binding (in the signed/verified data, not the HRP)
-  txid                       // 32B
-  recipient_descriptor_hash  // 32B = SHA3-256("discrete-pq-recipient-v1" || canonical(viewPub, spendPub, LE64(T)))
-  entries[] {                // one per output paying THIS recipient; change outputs excluded
-    output_index             // u32 (position in tx.outputs)
-    m_j                      // 32B ML-KEM message for that output
+spend_commit = SHA3-256(spend_pub || rho)
+```
+
+The sender knows the independently random `rho` while constructing the output. A proof
+reveals `rho` for selected output indexes. A verifier recomputes the commitment against
+the claimed spend public key and sums the public on-chain amounts.
+
+This proves:
+
+- the listed, txid-bound outputs commit to the claimed ML-DSA spend authority;
+- the output indexes are unique and in range;
+- the public amounts of those outputs sum to the returned total;
+- an output committed to another spend key cannot be added without a SHA3-256
+  second-preimage.
+
+It does not prove:
+
+- that `kem_ct` was encapsulated to the recipient's ML-KEM view key;
+- that the recipient wallet detected or decrypted the output;
+- the encrypted routing value `T` used by SingleKeyIndex deposits;
+- that a malicious payer did not intentionally construct an undetectable/burned output.
+
+For ordinary addresses and AggregatedMultikey deposits, a distinct spend key generally
+identifies the intended authority. Under SingleKeyIndex, all deposits share the spend
+key, so this proof identifies only the shared wallet, not an individual `T` deposit.
+The saved recipient address remains useful payer-side metadata, not cryptographic
+evidence of view-key or `T` delivery.
+
+## 3. Artifact
+
+```
+SpendAuthorityProof {
+  version               // u8 = 2
+  genesis_id            // 32B network binding
+  txid                  // 32B transaction binding
+  spend_authority_hash  // SHA3-256(domain || spend_pub)
+  entries[] {
+    output_index        // u32
+    rho                 // 32B commitment opening
   }
 }
 ```
 
-- **One proof per logical recipient.** Change outputs (to self) are never included.
-- **Encoding:** versioned bech32m, HRP `disctxp`/`tdisctxp` (`disctxp1…`). bech32m gives
-  typo detection + a human label **only**; it is not authentication and does not bind
-  the network — anyone can re-encode under another HRP (BIP-350). Network/recipient
-  binding comes from `genesis_id` and `recipient_descriptor_hash` inside the artifact and
-  from the verification checks, never from the checksum.
+The existing bech32m HRPs remain `disctxp` and `tdisctxp`. The HRP/checksum is only a
+human label and typo check; `genesis_id` supplies the cryptographic network binding.
+Version 2 prevents old explicit-ML-KEM witnesses from being reinterpreted as rho.
 
-## 4. Verification (full receiver scan)
+One artifact is produced per logical recipient row. Canonical denomination splitting
+may place several output entries in one artifact. Change outputs are excluded.
 
-Inputs: the proof, the on-chain transaction (fetched by `txid`), and a canonical
-**`ResolvedRecipient { KemPublicKey viewPub; DsaPublicKey spendPub; uint64_t
-subaddrIndexT; }`**. Account numbers (H-I-C / H-I-T-C) are resolved to a
-`ResolvedRecipient` by the caller (daemon registry) *before* the pure verifier runs —
-the crypto core takes keys+T, never an address string.
+## 4. Verification
+
+The verifier receives a canonical chain transaction and a resolved recipient:
 
 ```
-require proof.genesis_id == this network's genesis id
-require proof.recipient_descriptor_hash == SHA3(... || canonical(viewPub, spendPub, T))
+require proof.version == 2
+require proof.genesis_id == selected network genesis
+require proof.txid == canonical transaction id
+require proof.spend_authority_hash == H(domain || recipient.spend_pub)
+
 total = 0
-for each entry:
-    j  = entry.output_index;  out = tx.outputs[j] must be a PqOutput
-    (ct', ss') = enc_derand(viewPub, entry.m_j)          # explicit-coins re-encaps
-    require ct' == out.kem_ct                             # delivered to recipient's VIEW key
-    oc  = outContext(inputs_hash(tx), out.kem_ct, j, T)
-    pt  = AEAD_decrypt(deriveAeadKey(ss', oc), nonce=0,
-                       aad = oc || LE64(out.amount), out.enc_payload)
-    require pt == rho || LE64(T)                          # authenticates payload, recovers rho, checks T
-    require out.spend_commit == spendCommit(spendPub, rho)# pays recipient's SPEND key
-    require j not already counted                         # duplicate-index guard
-    total += out.amount
-return total    # amount proven paid to this recipient in this tx
+for entry in proof.entries:
+    require entry.output_index is unique and in range
+    out = transaction.outputs[entry.output_index]
+    require out is the canonical output at that index
+    require spendCommit(recipient.spend_pub, entry.rho) == out.spend_commit
+    total += out.public_amount with overflow checking
+return total
 ```
 
-This is exactly the receiver's own scan predicate, so a valid proof means the recipient's
-wallet genuinely detects and can spend those outputs.
+The caller must construct the proof view from the fetched canonical transaction; the
+txid binds its output contents. Import paths fetch the transaction and verify it before
+persisting the artifact.
 
-## 5. Soundness
+## 5. Strong delivery proof: recipient-signed receipt
 
-- **Delivery** is proven by `ct' == kem_ct` (ML-KEM ciphertexts are public-key-binding;
-  an output encapsulated to a different view key won't match).
-- **Recipient** is proven by `spend_commit == spendCommit(spendPub, rho)` (a SHA3
-  second-preimage would be needed to point it at a different spend key).
-- **Amount/T integrity** is proven by the AEAD tag over `aad = out_context || LE64(amount)`.
-- **No over-reporting:** a non-recipient output fails the `spend_commit` check, so it
-  cannot be added. **No forgery:** without the real `m_j`, `ct'` won't match. A dishonest
-  payer can only *under*-report (omit outputs), which cannot inflate the proven amount —
-  so the result is "these outputs paid the recipient, summing to `total`" (exact when all
-  of the recipient's outputs are included).
-- Spending still requires the recipient's ML-DSA `spend_sk`; the proof never enables a
-  spend.
+A full proof of actual receipt can be added without changing liboqs or transaction wire
+formats, but it is interactive:
 
-## 6. Crash-safety and storage
+1. the recipient scans the canonical transaction using its ML-KEM view secret key;
+2. after confirming output indexes, amounts, spend commitments, and `T`, it signs a
+   domain-separated receipt with the corresponding ML-DSA spend secret key;
+3. the receipt covers `genesis_id`, `txid`, recipient descriptor, output indexes,
+   amounts, and an optional payer nonce;
+4. anyone verifies the receipt using the recipient ML-DSA public key.
 
-The proof is **not recoverable from the mnemonic** (its `m_j` values are fresh randomness
-retained only at send time), so it must be captured atomically, before the tx can exist
-without it:
+This uses only standard public ML-KEM decapsulation and ML-DSA sign/verify operations.
+It is the recommended future Phase 4 surface where proof of view-key delivery or exact
+SingleKeyIndex attribution is required. The unilateral rho artifact can be attached to
+the receipt but is not a substitute for it.
 
-1. build outputs (explicit-coins), **self-verify each** (§7), assemble the proof(s);
-2. **atomically persist** the finished proof(s) in the wallet-specific archive described
-   below — **before** relaying;
-3. relay the transaction;
-4. display / return the proof;
-5. let the user export or delete the saved copy later.
+## 6. Sender construction and self-check
 
-Saving before relay closes the crash window where a tx could broadcast but the proof be
-lost. A record saved before an unsuccessful or ambiguous relay is deliberately retained:
-"not found" does not prove that the transaction was never accepted.
+Output construction remains conventional:
 
-The authoritative archive is `<wallet-file>.payment-proofs/`. Each transaction is stored
-as `<lowercase-txid>.pproof`; no user-controlled path component is used. Archive version
-1 is `DPPR || u8(version) || genesis[32] || txid[32] || LE32(row-count)`, followed by
-ordered rows `LE32(address-size) || address || LE64(amount) || LE32(proof-size) || proof`.
-Lengths and row counts are bounded. Rows are the wallet's existing `SentPaymentEntry`
-records and use its existing opaque `proof` field; there is no parallel payment schema.
+1. call public `ML-KEM.Encaps(view_pub)`;
+2. draw independent random `rho` from the existing OS CSPRNG;
+3. build `enc_payload` and `spend_commit`;
+4. use the returned shared secret to run the complete receiver-side predicate as a
+   sender self-check before the output is accepted;
+5. retain `rho` only long enough to assemble and durably store version-2 artifacts.
 
-Writes use a temporary sibling file, durable file flush, atomic rename, and parent
-directory flush where supported. The completed file is read back and all enclosed proofs
-must decode and match its network and txid before relay is authorized. Identical writes
-are idempotent; a conflicting record for the same txid is never overwritten.
+The self-check catches honest implementation errors. It does not turn the unilateral
+proof into evidence of view-key delivery against a deliberately malicious sender.
 
-At startup, files are validated independently and reconciled into `SentPaymentsStore`.
-A damaged file is reported by filename without logging proof contents and does not hide
-other records or prevent wallet access. The encrypted wallet cache mirrors the store, but
-is not the pre-relay durability barrier. Blockchain reset/rescan rebuilds chain-derived
-state and then reloads this archive; it does not delete payer proofs. Mnemonic-only
-restoration without this directory cannot recreate them.
+## 7. Storage and crash safety
 
-Both wallet engines follow `build/sign -> final proof verification -> durable archive ->
-relay`. WalletGreen rolls back its input reservation on persistence or relay failure;
-both engines retain the already-durable proof record after relay failure.
+The authoritative archive is `<wallet-file>.payment-proofs/`. Transaction records are
+stored as `<lowercase-txid>.pproof` and contain the wallet's existing ordered
+`SentPaymentEntry { address, amount, proof }` rows. There is no parallel recipient
+schema.
 
-Send-result UX:
+Writes use a temporary sibling, durable file flush, atomic replacement, parent-directory
+flush where supported, and exact read-back validation before relay. The archive has an
+authority marker. Before the marker exists, cached records are migrated once. After it
+exists, the directory is a complete snapshot: a missing transaction file is an explicit
+deletion and a stale encrypted cache cannot resurrect it.
 
-```
-Transaction sent:
-  txid: ...
-  paid: 125.00 XDS
-  payment proof: disctxp1...
-IMPORTANT: store this proof — it cannot be recovered from your mnemonic.
-```
+On POSIX the directory/files are restricted to mode 0700/0600. On Windows they receive
+a protected DACL granting access only to the current user. Export paths inside the
+authoritative directory are rejected so a selected-row export cannot overwrite archive
+state.
 
-## 7. Sender self-check (hardening, retained)
+Both wallet engines follow `build/sign -> verify proof -> durable archive -> relay`.
+The encrypted wallet cache mirrors the archive but is not the durability authority.
 
-The builder holds `ss` for every output, so before relay it re-runs §4's scan on each
-output it built and aborts if any does not round-trip to `rho || LE64(T)` and its
-`spend_commit`. This makes an honest wallet structurally unable to emit an undetectable
-output (catches decomposition/`T` bugs); it cannot stop a deliberately malicious build,
-but that only harms the attacker's own payments.
+## 8. RPC and logging security
 
-## 8. Privacy
+`walletd` requires both `--rpc-user` and `--rpc-password` and is restricted to a
+loopback bind. Remote operation must use an authenticated TLS tunnel or reverse proxy;
+the built-in server always exposes a plaintext HTTP listener even when its additional
+HTTPS listener is enabled. Malformed JSON-RPC logs never serialize the request body, so
+proof blobs are not copied into logs.
 
-Publishing a proof reveals, for the covered outputs only, the **recipient relationship**
-and `rho` (via decryption). It does **not** permit spending (needs the recipient's
-ML-DSA secret). This is Phase-1-safe: Phase-1 spends already reveal the outpoint openly,
-so the coin is already traceable and the revealed `rho` adds nothing. **It must not be
-extended to Phase 3 shielded coins**, where `rho`-class material would leak serial
-linkage — a shielded proof needs a NIZK instead.
+## 9. Privacy and future hidden amounts
 
-## 9. What this omits vs. the shelved `dev/tx_proof` design
+Publishing version 2 reveals `rho` for covered outputs and links them to a spend public
+key. That is acceptable only for the current traceable transaction model: current
+spends already reveal `rho` and the authorizing public key. Do not reuse this artifact
+unchanged for an untraceable transaction design.
 
-No transaction secret key `r`; no HKDF proof derivation; no `tx_extra` salt tag; no
-parser/consensus/fee changes; no seed-recovery contract; and therefore **no
-same-input deterministic AEAD reuse risk** (every `m_j` is fresh random, so keys/nonces
-never repeat). The cost is the accepted, documented tradeoff: mnemonic-only restore does
-not recover past outgoing payment proofs (§6 handles this operationally).
+For hidden amounts, the rho opening can continue to prove spend authority, but it cannot
+prove a concealed amount. The hidden-amount design must expose a public amount commitment
+and define a separate proof/opening for the claimed amount (or a zero-knowledge proof).
+Do not reveal ML-KEM internal randomness or the ML-KEM shared secret to open an amount;
+that would couple payment evidence to view-key confidentiality.
 
-## 10. Gate before production
+## 10. Remaining work
 
-- **Explicit-coins ML-KEM specialist review.** FIPS 203 restricts internal derandomised
-  interfaces to testing; using `enc_derand` on a production path (with a wallet-chosen
-  CSPRNG `m_j`) needs sign-off. No strict-FIPS claim until then.
-- **OQS exposure.** `crypto_kem_enc_derand` is namespaced inside mlkem-native and is not
-  in OQS's public API (`OQS_KEM_ml_kem_768_encaps` only). Add a thin, reentrant C wrapper
-  (or export the symbol) — do **not** reuse the global-RNG-swap `kem_encaps_derand`.
-- Freeze `version`, `genesis_id` inclusion, `recipient_descriptor_hash` preimage, and the
-  bech32m HRPs before pinning any proof KAT vectors.
-
-## 11. Implementation phases (each independently testable)
-
-1. **crypto_pq:** reentrant `enc_derand` wrapper; `PqPaymentProof` (assemble / encode /
-   decode / full-scan verify taking `ResolvedRecipient`); KAT + adversarial tests
-   (foreign view key, garbage payload, wrong T, duplicate index, over-report attempt,
-   wrong recipient/network). No wallet dependency.
-2. **Send path:** switch output construction to explicit-coins with retained `m_j`
-   (byte-identical outputs); self-verify (§7); assemble per-recipient proofs; return them.
-3. **Wallet storage/UX (implemented, review pending):** atomic save-before-relay;
-   wallet-specific archive; CLI print/retrieve/export/import/delete; authenticated walletd
-   send/retrieve/export/import/delete RPC. Import fetches the transaction and runs the
-   full verifier before persistence.
-4. **Verify surface:** daemon/library `check_payment_proof(proof, recipient|account)` →
-   amount; explorer "Prove payment" box (separate repo). Recipient resolution
-   (account-number → `ResolvedRecipient`) is upstream of the pure verifier.
+- Phase 4 public verification surface and explorer integration.
+- Optional recipient-signed ML-DSA receipt for strong delivery and exact `T` evidence.
+- Hidden-amount proof composition after the amount-commitment format is finalized.
+- Independent cryptographic and operational review before production release.

@@ -20,7 +20,6 @@
 #include <array>
 #include <cstring>
 #include <stdexcept>
-#include <utility>
 
 #include "PqAead.h"
 #include "PqRandom.h"
@@ -28,26 +27,6 @@
 #include "Common/SecureMemory.h"
 
 namespace CryptoPQ {
-
-PqBuiltOutputWithProof::~PqBuiltOutputWithProof() {
-  sodium_memzero(message.data(), message.size());
-}
-
-PqBuiltOutputWithProof::PqBuiltOutputWithProof(PqBuiltOutputWithProof&& other) noexcept
-    : output(std::move(other.output)), message(other.message) {
-  sodium_memzero(other.message.data(), other.message.size());
-}
-
-PqBuiltOutputWithProof& PqBuiltOutputWithProof::operator=(
-    PqBuiltOutputWithProof&& other) noexcept {
-  if (this != &other) {
-    sodium_memzero(message.data(), message.size());
-    output = std::move(other.output);
-    message = other.message;
-    sodium_memzero(other.message.data(), other.message.size());
-  }
-  return *this;
-}
 
 namespace {
 
@@ -106,29 +85,7 @@ PqBuiltOutput buildPqOutput(const KemPublicKey& recipientViewPub,
                             uint32_t outputIndex,
                             uint64_t amount,
                             uint64_t subaddrIndexT) {
-  PqBuiltOutputWithProof built = buildPqOutputWithProof(
-      recipientViewPub, recipientSpendPub, inputsHash, outputIndex, amount,
-      subaddrIndexT);
-  // Compatibility path: callers that do not retain a proof witness still use
-  // the hardened explicit-message builder, then discard m immediately.
-  sodium_memzero(built.message.data(), built.message.size());
-  return std::move(built.output);
-}
-
-PqBuiltOutputWithProof buildPqOutputWithProof(
-    const KemPublicKey& recipientViewPub,
-    const DsaPublicKey& recipientSpendPub,
-    const Hash256& inputsHash,
-    uint32_t outputIndex,
-    uint64_t amount,
-    uint64_t subaddrIndexT) {
-  // m and rho are independent OS-CSPRNG draws. secure_random_bytes has an
-  // abort-on-failure contract, so construction cannot continue with partial or
-  // zero-filled randomness.
-  KemEncapsMessage message{};
-  Tools::SecretLock messageLock(message.data(), message.size());
-  secure_random_bytes(message.data(), message.size());
-  auto encapsulation = kem_encaps_explicit(recipientViewPub, message);
+  auto encapsulation = kem_encaps(recipientViewPub);
   Tools::SecretLock sharedLock(encapsulation.second.data(), encapsulation.second.size());
 
   Rho rho{};
@@ -136,14 +93,6 @@ PqBuiltOutputWithProof buildPqOutputWithProof(
   PqBuiltOutput output = buildPqOutput(
       encapsulation.first, encapsulation.second, recipientSpendPub,
       inputsHash, outputIndex, amount, rho, subaddrIndexT);
-
-  // Re-encapsulation detects any divergence at the explicit-message boundary.
-  auto confirmation = kem_encaps_explicit(recipientViewPub, message);
-  Tools::SecretLock confirmationLock(confirmation.second.data(), confirmation.second.size());
-  if (confirmation.first != encapsulation.first ||
-      confirmation.second != encapsulation.second) {
-    throw std::runtime_error("buildPqOutputWithProof: ML-KEM re-encapsulation mismatch");
-  }
 
   // Sender self-check is exactly the receiver scan predicate after shared-secret
   // recovery: out_context/T, amount-bound AEAD, rho, and spend commitment.
@@ -156,13 +105,9 @@ PqBuiltOutputWithProof buildPqOutputWithProof(
   if (!scanPqOutputWithSharedSecret(
           encapsulation.second, recipientSpendPub, inputsHash, scan,
           subaddrIndexT)) {
-    throw std::runtime_error("buildPqOutputWithProof: sender self-check failed");
+    throw std::runtime_error("buildPqOutput: sender self-check failed");
   }
-
-  PqBuiltOutputWithProof result;
-  result.output = std::move(output);
-  result.message = message;  // retained witness; messageLock wipes the local copy
-  return result;
+  return output;
 }
 
 }  // namespace CryptoPQ
