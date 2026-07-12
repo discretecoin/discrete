@@ -57,6 +57,7 @@
 #include "Wallet/WalletLedgerConsumer.h"
 #include "Wallet/PqTransactionBuilder.h"
 #include "Wallet/PqSender.h"
+#include "Wallet/SentPaymentsStore.h"
 
 #include <Logging/LoggerRef.h>
 
@@ -208,6 +209,12 @@ private:
   // m_pqTrackingKeys instead of a spend secret.
   std::unique_ptr<WalletLedgerConsumer> m_pqConsumer;
   std::unique_ptr<PqTrackingKeys> m_pqTrackingKeys;
+
+  // Payer-side recipient labels captured at send time (the counterparty address is
+  // not recoverable from PQ output scanning). Keyed by txid, surfaced through the
+  // legacy transfer accessors so the History view can show who a payment went to.
+  // Serialized into the wallet's encrypted cache; dropped on reset, as in Karbo.
+  SentPaymentsStore m_sentPayments;
 
   WalletAsyncContextCounter m_asyncContextCounter;
   Tools::ObserverManager<CryptoNote::IWalletLegacyObserver> m_observerManager;

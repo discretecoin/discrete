@@ -82,6 +82,16 @@ constexpr int  PQ_CACHE_MAGIC_LEN = 8;
 constexpr char PQ_TRACKING_MAGIC[] = {'K', 'P', 'Q', 'T', 'R', 'K', '1'};
 constexpr int  PQ_TRACKING_MAGIC_LEN = 7;
 
+// Legacy TransferId packing for payer-side recipient rows. A transaction's transfers
+// occupy [txIndex << PQ_TRANSFER_RECIPIENT_BITS, + recipientIndex]. Packing (rather
+// than a flat running index) keeps a transfer id stable as new transactions are
+// appended: it depends only on the transaction's own history position and the
+// recipient's position within it. PQ_TRANSFER_RECIPIENT_BITS bounds recipients per
+// transaction (2^24 ≫ any real output count) and leaves 40 bits for the tx index.
+constexpr unsigned PQ_TRANSFER_RECIPIENT_BITS = 24;
+constexpr CryptoNote::TransferId PQ_TRANSFER_RECIPIENT_MASK =
+    (CryptoNote::TransferId(1) << PQ_TRANSFER_RECIPIENT_BITS) - 1;
+
 template <typename ArrayT>
 void appendArray(std::string& out, const ArrayT& bytes) {
   out.append(reinterpret_cast<const char*>(bytes.data()), bytes.size());
@@ -134,6 +144,7 @@ struct PqCacheSections {
   std::string consumerState;
   std::string pqState;
   std::string pqTrackingKeys;
+  std::string sentPayments;  // payer-side recipient labels (optional fifth section)
 };
 
 bool readPqCacheSections(const std::string& cache, PqCacheSections& sections) {
@@ -161,7 +172,8 @@ bool readPqCacheSections(const std::string& cache, PqCacheSections& sections) {
   if (!readSection(sections.transfersCache)) return true;
   if (!readSection(sections.consumerState)) return true;
   if (!readSection(sections.pqState)) return true;
-  readSection(sections.pqTrackingKeys);  // optional fourth section
+  if (!readSection(sections.pqTrackingKeys)) return true;  // optional fourth section
+  readSection(sections.sentPayments);                      // optional fifth section
   return true;
 }
 
@@ -517,6 +529,11 @@ void WalletLegacy::doLoad(std::istream& source) {
 
     initSync();
 
+    // Start from the file's recipient labels: a reset saves without the cache, so on
+    // the subsequent reload this section is absent and the store clears — matching the
+    // classic "labels vanish on reset" behavior.
+    m_sentPayments.clear();
+
     try {
       // Only the PQ sections are loaded now; the legacy transfers-cache section (if
       // present in an older file) is ignored. The classical sync stack is gone.
@@ -528,6 +545,10 @@ void WalletLegacy::doLoad(std::istream& source) {
         if (m_pqConsumer && !pqSections.pqState.empty()) {
           std::stringstream ps(pqSections.pqState);
           m_pqConsumer->state().load(ps);
+        }
+        if (!pqSections.sentPayments.empty()) {
+          std::stringstream sp(pqSections.sentPayments);
+          m_sentPayments.load(sp);
         }
       }
     } catch (const std::exception& e) {
@@ -660,10 +681,12 @@ void WalletLegacy::doSave(std::ostream& destination, bool saveDetailed, bool sav
     std::string cache;
 
     if (saveCache || m_pqTrackingKeys) {
-      // Framed cache: magic || [u64 len || bytes] x4 (transfers, PQ consumer
-      // cursor, PQ wallet state, PQ tracking credential). The classical transfers
-      // section is now always empty (kept for wallet-file byte-compatibility); the
-      // fourth section is optional for full wallets.
+      // Framed cache: magic || [u64 len || bytes] x5 (transfers, PQ consumer
+      // cursor, PQ wallet state, PQ tracking credential, payer-side recipient
+      // labels). The classical transfers section is now always empty (kept for
+      // wallet-file byte-compatibility); the fourth (tracking) and fifth (labels)
+      // sections are optional. Readers stop at the last section they understand, so
+      // appending the fifth is backward- and forward-compatible.
       std::stringstream combined;
       combined.write(PQ_CACHE_MAGIC, PQ_CACHE_MAGIC_LEN);
       auto writeSection = [&combined](const std::string& s) {
@@ -685,6 +708,16 @@ void WalletLegacy::doSave(std::ostream& destination, bool saveDetailed, bool sav
       writeSection(consumerState);
       writeSection(pqState);
       writeSection(m_pqTrackingKeys ? serializePqTrackingKeys(*m_pqTrackingKeys) : std::string());
+
+      // Payer-side recipient labels ride with the cache: excluded from the reset
+      // save (saveCache == false) so a reset drops them, as in Karbo.
+      std::string sentPayments;
+      if (saveCache && !m_sentPayments.empty()) {
+        std::stringstream sp;
+        m_sentPayments.save(sp);
+        sentPayments = sp.str();
+      }
+      writeSection(sentPayments);
       cache = combined.str();
     }
 
@@ -970,16 +1003,41 @@ size_t WalletLegacy::getTransferCount() {
   std::unique_lock<std::mutex> lock(m_cacheMutex);
   throwIfNotInitialised();
 
-  // PQ owned-output scanning cannot recover counterparties, so there is no
-  // per-destination transfer detail (only the wallet's own net effect per tx).
-  return 0;
+  // PQ owned-output scanning cannot recover counterparties, so the only per-recipient
+  // detail is what we captured at send time (m_sentPayments): sum those over the
+  // transactions still present in history.
+  if (!m_pqConsumer) {
+    return 0;
+  }
+  size_t total = 0;
+  for (const auto& h : m_pqConsumer->state().history()) {
+    if (const SentPaymentRecord* r = m_sentPayments.find(h.txid)) {
+      total += r->recipients.size();
+    }
+  }
+  return total;
 }
 
-TransactionId WalletLegacy::findTransactionByTransferId(TransferId /*transferId*/) {
+TransactionId WalletLegacy::findTransactionByTransferId(TransferId transferId) {
   std::unique_lock<std::mutex> lock(m_cacheMutex);
   throwIfNotInitialised();
 
-  return WALLET_LEGACY_INVALID_TRANSACTION_ID;
+  // Transfer ids are packed (txIndex << bits | recipientIndex); recover the tx index
+  // and validate it names a real history row with a recorded recipient at that slot.
+  if (!m_pqConsumer) {
+    return WALLET_LEGACY_INVALID_TRANSACTION_ID;
+  }
+  const TransactionId txIndex = static_cast<TransactionId>(transferId >> PQ_TRANSFER_RECIPIENT_BITS);
+  const size_t recipientIndex = static_cast<size_t>(transferId & PQ_TRANSFER_RECIPIENT_MASK);
+  const auto& hist = m_pqConsumer->state().history();
+  if (txIndex >= hist.size()) {
+    return WALLET_LEGACY_INVALID_TRANSACTION_ID;
+  }
+  const SentPaymentRecord* r = m_sentPayments.find(hist[txIndex].txid);
+  if (!r || recipientIndex >= r->recipients.size()) {
+    return WALLET_LEGACY_INVALID_TRANSACTION_ID;
+  }
+  return txIndex;
 }
 
 bool WalletLegacy::getTransaction(TransactionId transactionId, WalletLegacyTransaction& transaction) {
@@ -994,14 +1052,42 @@ bool WalletLegacy::getTransaction(TransactionId transactionId, WalletLegacyTrans
     return false;
   }
   pqRowToLegacyTx(hist[transactionId], transaction);
+
+  // Attach payer-side recipient rows captured at send time, if any. Their transfer
+  // ids are packed from this transaction's history index, so they stay valid as new
+  // transactions are appended (see PQ_TRANSFER_RECIPIENT_BITS).
+  if (const SentPaymentRecord* r = m_sentPayments.find(hist[transactionId].txid)) {
+    if (!r->recipients.empty()) {
+      transaction.firstTransferId = static_cast<TransferId>(transactionId) << PQ_TRANSFER_RECIPIENT_BITS;
+      transaction.transferCount = r->recipients.size();
+    }
+  }
   return true;
 }
 
-bool WalletLegacy::getTransfer(TransferId /*transferId*/, WalletLegacyTransfer& /*transfer*/) {
+bool WalletLegacy::getTransfer(TransferId transferId, WalletLegacyTransfer& transfer) {
   std::unique_lock<std::mutex> lock(m_cacheMutex);
   throwIfNotInitialised();
 
-  return false;  // no per-destination transfer detail on the PQ ledger
+  // Unpack the transfer id back into (history index, recipient index) and return the
+  // recipient we recorded at send time. See getTransaction for how these are packed.
+  if (!m_pqConsumer) {
+    return false;
+  }
+  const TransactionId txIndex = static_cast<TransactionId>(transferId >> PQ_TRANSFER_RECIPIENT_BITS);
+  const size_t recipientIndex = static_cast<size_t>(transferId & PQ_TRANSFER_RECIPIENT_MASK);
+  const auto& hist = m_pqConsumer->state().history();
+  if (txIndex >= hist.size()) {
+    return false;
+  }
+  const SentPaymentRecord* r = m_sentPayments.find(hist[txIndex].txid);
+  if (!r || recipientIndex >= r->recipients.size()) {
+    return false;
+  }
+  const SentPaymentEntry& e = r->recipients[recipientIndex];
+  transfer.address = e.address;
+  transfer.amount = static_cast<int64_t>(e.amount);
+  return true;
 }
 
 std::map<uint32_t, int64_t> WalletLegacy::getTransactionSubaddressAmounts(TransactionId transactionId) {
@@ -1085,12 +1171,25 @@ TransactionId WalletLegacy::sendTransaction(const std::vector<WalletLegacyTransf
 
   // Register the sent tx in the ledger so it has a native id/history row at once.
   TransactionId txId = WALLET_LEGACY_INVALID_TRANSACTION_ID;
+  const Crypto::Hash txid = getObjectHash(result.tx);
   {
     std::unique_lock<std::mutex> lock(m_cacheMutex);
+
+    // Capture who we paid before anything reads the history row back: the recipient
+    // addresses are known only here (payer side) and cannot be recovered from the
+    // chain or the mnemonic. Recorded against the same txid the ledger keys its
+    // history by, so getTransaction/getTransfer can surface it. The subsequent
+    // save(true, true) (see onWalletSendTransactionCompleted) persists it.
+    SentPaymentRecord sent;
+    sent.recipients.reserve(transfers.size());
+    for (const auto& t : transfers) {
+      sent.recipients.push_back(SentPaymentEntry{t.address, static_cast<uint64_t>(t.amount), {}});
+    }
+    m_sentPayments.record(txid, std::move(sent));
+
     if (m_pqConsumer) {
       auto reader = createTransactionPrefix(result.tx);
       m_pqConsumer->addUnconfirmedTransaction(*reader);
-      Crypto::Hash txid = getObjectHash(result.tx);
       const auto& hist = m_pqConsumer->state().history();
       for (size_t i = 0; i < hist.size(); ++i) {
         if (hist[i].txid == txid) { txId = i; break; }
