@@ -29,7 +29,7 @@ namespace {
 // Recognition steps for one candidate T, given the already-recovered KEM shared
 // secret (kem_decaps is T-independent, so callers trying several T do it once).
 std::optional<PqOwnedOutput> tryOwnedWithT(const KemShared& ss,
-                                           const PqScanKeys& keys,
+                                           const DsaPublicKey& spendPub,
                                            const Hash256& inputsHash,
                                            const PqScanOutput& out,
                                            uint64_t subaddrIndexT) {
@@ -68,7 +68,7 @@ std::optional<PqOwnedOutput> tryOwnedWithT(const KemShared& ss,
   // 3. Final ownership gate: recompute spend_commit with OUR long-term spend
   //    public key. A garbage output that decrypts under our key but binds a
   //    different spend key is discarded here.
-  if (spendCommit(keys.spendPub, rho) != out.spendCommit) {
+  if (spendCommit(spendPub, rho) != out.spendCommit) {
     return std::nullopt;
   }
 
@@ -83,6 +83,15 @@ std::optional<PqOwnedOutput> tryOwnedWithT(const KemShared& ss,
 
 }  // namespace
 
+std::optional<PqOwnedOutput> scanPqOutputWithSharedSecret(
+    const KemShared& sharedSecret,
+    const DsaPublicKey& recipientSpendPub,
+    const Hash256& inputsHash,
+    const PqScanOutput& out,
+    uint64_t subaddrIndexT) {
+  return tryOwnedWithT(sharedSecret, recipientSpendPub, inputsHash, out, subaddrIndexT);
+}
+
 std::optional<PqOwnedOutput> scanPqOutput(const PqScanKeys& keys,
                                           const Hash256& inputsHash,
                                           const PqScanOutput& out,
@@ -91,7 +100,7 @@ std::optional<PqOwnedOutput> scanPqOutput(const PqScanKeys& keys,
   // or malformed ciphertext it returns a pseudorandom secret, so the AEAD
   // tag inside tryOwnedWithT is the real ownership filter.
   KemShared ss = kem_decaps(keys.viewSk, out.kemCt);
-  return tryOwnedWithT(ss, keys, inputsHash, out, subaddrIndexT);
+  return scanPqOutputWithSharedSecret(ss, keys.spendPub, inputsHash, out, subaddrIndexT);
 }
 
 std::optional<PqOwnedOutput> scanPqOutputTWindow(const PqScanKeys& keys,
@@ -100,7 +109,7 @@ std::optional<PqOwnedOutput> scanPqOutputTWindow(const PqScanKeys& keys,
                                                  uint64_t maxT) {
   KemShared ss = kem_decaps(keys.viewSk, out.kemCt);
   for (uint64_t t = 0; t < maxT; ++t) {
-    if (auto owned = tryOwnedWithT(ss, keys, inputsHash, out, t)) {
+    if (auto owned = scanPqOutputWithSharedSecret(ss, keys.spendPub, inputsHash, out, t)) {
       return owned;
     }
   }

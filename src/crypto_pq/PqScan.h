@@ -68,6 +68,18 @@ struct PqScanOutput {
   Hash256              spendCommit{};
 };
 
+// The shared receiver/sender recognition predicate after ML-KEM has recovered
+// the candidate shared secret. Receiver scanning calls this after decapsulation;
+// payment-proof verification and sender self-check call it after re-encapsulation.
+// Keeping one implementation prevents the proof path from drifting from the
+// wallet's actual ownership rules.
+std::optional<PqOwnedOutput> scanPqOutputWithSharedSecret(
+    const KemShared& sharedSecret,
+    const DsaPublicKey& recipientSpendPub,
+    const Hash256& inputsHash,
+    const PqScanOutput& out,
+    uint64_t subaddrIndexT = 0);
+
 // Try to recognize ONE output for the given subaddress index T (default 0 for
 // single-address wallets). Returns the owned record on success, nullopt
 // otherwise (not ours, OR tampered — indistinguishable by design).
