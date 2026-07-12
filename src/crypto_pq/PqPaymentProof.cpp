@@ -11,6 +11,11 @@
 #include "PqBech32.h"
 
 namespace CryptoNote {
+
+PqPaymentProofEntry::~PqPaymentProofEntry() {
+  sodium_memzero(message.data(), message.size());
+}
+
 namespace {
 
 constexpr char kRecipientDomain[] = "discrete-pq-recipient-v1";

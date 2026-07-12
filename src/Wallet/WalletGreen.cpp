@@ -1980,6 +1980,8 @@ PqSendResult WalletGreen::sendPqTransfer(const std::vector<PqSendOutput>& recipi
   req.explicitFee = fee;
   req.unlockHeight = unlockHeight;
   req.extra = extra;
+  std::memcpy(req.genesisId.data(), m_currency.genesisBlockHash().data,
+              req.genesisId.size());
   // The scheme drives per-input key selection inside buildPqSend (the one key vs a
   // per-deposit derived key for AggregatedMultikey deposit inputs).
   req.scheme = m_pqDepositScheme;

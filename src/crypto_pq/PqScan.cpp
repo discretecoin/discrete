@@ -21,6 +21,7 @@
 #include <cstring>
 
 #include "PqAead.h"
+#include "Common/SecureMemory.h"
 
 namespace CryptoPQ {
 
@@ -100,6 +101,7 @@ std::optional<PqOwnedOutput> scanPqOutput(const PqScanKeys& keys,
   // or malformed ciphertext it returns a pseudorandom secret, so the AEAD
   // tag inside tryOwnedWithT is the real ownership filter.
   KemShared ss = kem_decaps(keys.viewSk, out.kemCt);
+  Tools::SecretLock sharedSecretLock(ss.data(), ss.size());
   return scanPqOutputWithSharedSecret(ss, keys.spendPub, inputsHash, out, subaddrIndexT);
 }
 
@@ -108,6 +110,7 @@ std::optional<PqOwnedOutput> scanPqOutputTWindow(const PqScanKeys& keys,
                                                  const PqScanOutput& out,
                                                  uint64_t maxT) {
   KemShared ss = kem_decaps(keys.viewSk, out.kemCt);
+  Tools::SecretLock sharedSecretLock(ss.data(), ss.size());
   for (uint64_t t = 0; t < maxT; ++t) {
     if (auto owned = scanPqOutputWithSharedSecret(ss, keys.spendPub, inputsHash, out, t)) {
       return owned;
@@ -142,6 +145,7 @@ std::optional<PqAggregateOwned> scanPqOutputAggregate(
   // So: decapsulate once, derive the AEAD key at T=0, decrypt once, then test
   // spendCommit against each deposit spend key to find the matching deposit.
   KemShared ss = kem_decaps(viewSk, out.kemCt);
+  Tools::SecretLock sharedSecretLock(ss.data(), ss.size());
 
   const uint64_t T = 0;
   Hash256 oc = outContext(inputsHash, out.kemCt, out.outputIndex, T);

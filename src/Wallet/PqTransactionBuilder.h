@@ -26,6 +26,7 @@
 #include "crypto_pq/PqDsa.h"
 #include "crypto_pq/PqDerive.h"
 #include "crypto_pq/PqHash.h"
+#include "crypto_pq/PqPaymentProof.h"
 
 // High-level builders for the PQ transaction family (spec §6/§8, ownership fix
 // in docs/PQ-OWNERSHIP-FIX.md). These assemble a fully-signed CryptoNote::
@@ -71,6 +72,23 @@ struct PqSendOutput {
   uint64_t               unlockHeight = 0;   // per-output spend lock; 0 = none (e.g. change)
 };
 
+// A signed transaction and the exact per-output ML-KEM witnesses generated
+// while constructing it. Move-only ownership and destructor cleansing ensure a
+// discarded/oversized draft cannot leak witnesses into another transaction.
+struct PqTransactionBuildResult {
+  Transaction tx;
+  std::vector<CryptoPQ::KemEncapsMessage> outputMessages;
+
+  PqTransactionBuildResult() = default;
+  ~PqTransactionBuildResult();
+  PqTransactionBuildResult(const PqTransactionBuildResult&) = delete;
+  PqTransactionBuildResult& operator=(const PqTransactionBuildResult&) = delete;
+  PqTransactionBuildResult(PqTransactionBuildResult&& other) noexcept;
+  PqTransactionBuildResult& operator=(PqTransactionBuildResult&& other) noexcept;
+
+  void clearWitnesses() noexcept;
+};
+
 // The PQ "inputs hash" a wallet binds into every output's out_context. This is a
 // WALLET-SIDE convention (consensus never recomputes out_context); sender and
 // receiver MUST agree on it or outputs become undetectable, so it is part of the
@@ -105,6 +123,14 @@ Transaction buildPqTransaction(const std::vector<PqSpendInput>& inputs,
                                uint64_t unlockHeight = 0,
                                const std::vector<uint8_t>& extra = {});
 
+PqTransactionBuildResult buildPqTransactionWithProof(
+    const std::vector<PqSpendInput>& inputs,
+    const std::vector<PqSendOutput>& outputs,
+    const CryptoPQ::DsaPublicKey& spendPub,
+    const CryptoPQ::DsaSecretKey& spendSk,
+    uint64_t unlockHeight = 0,
+    const std::vector<uint8_t>& extra = {});
+
 // Per-input spend authority: inputAuth[i] authorizes inputs[i]. This is what lets a
 // single TX_PQ spend outputs owned by DIFFERENT spend keys — e.g. AggregatedMultikey
 // deposit outputs, each committing to its own per-deposit key. inputAuth.size() must
@@ -114,6 +140,18 @@ Transaction buildPqTransaction(const std::vector<PqSpendInput>& inputs,
                                const std::vector<PqInputAuth>& inputAuth,
                                uint64_t unlockHeight = 0,
                                const std::vector<uint8_t>& extra = {});
+
+PqTransactionBuildResult buildPqTransactionWithProof(
+    const std::vector<PqSpendInput>& inputs,
+    const std::vector<PqSendOutput>& outputs,
+    const std::vector<PqInputAuth>& inputAuth,
+    uint64_t unlockHeight = 0,
+    const std::vector<uint8_t>& extra = {});
+
+// Translate a final signed wire transaction into the pure payment-proof view,
+// including its canonical txid and inputs hash. Throws if any output is not a
+// well-sized PqOutput.
+PqPaymentProofTransaction makePqPaymentProofTransaction(const Transaction& tx);
 
 // Assemble a TX_FREE_REG (zero-fee account-number registration) given a PoW
 // solution: an empty-input/output v2 tx whose tx_extra is exactly the PQ

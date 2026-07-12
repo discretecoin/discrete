@@ -18,7 +18,9 @@
 #include "PqSender.h"
 
 #include <algorithm>
+#include <limits>
 #include <map>
+#include <optional>
 #include <unordered_set>
 
 #include "Denominations.h"
@@ -37,6 +39,17 @@ namespace P = CryptoNote::parameters;
 struct OutputGroup {
   PqSendOutput          tmpl;    // recipient keys/T/unlockHeight; amount overwritten per slot
   std::vector<uint64_t> denoms;  // canonical pieces, sum == the payee's amount
+  std::optional<std::size_t> recipientIndex;  // absent only for change
+};
+
+struct ProvenancedOutput {
+  PqSendOutput output;
+  std::optional<std::size_t> recipientIndex;
+};
+
+struct FittingBuild {
+  PqTransactionBuildResult transaction;
+  std::vector<std::optional<std::size_t>> recipientIndexes;
 };
 
 // Greedily append inputs (already sorted descending by amount) until the running
@@ -47,6 +60,9 @@ uint64_t growSelection(const std::vector<PqSpendInput>& sortedDesc,
   for (std::size_t i = selected.size();
        sumIn < target && selected.size() < P::MAX_PQ_INPUTS_PER_TX && i < sortedDesc.size();
        ++i) {
+    if (sumIn > std::numeric_limits<uint64_t>::max() - sortedDesc[i].amount) {
+      throw PqSendError(PqSendErrorCode::TooLarge, "input amount overflow");
+    }
     selected.push_back(sortedDesc[i]);
     sumIn += sortedDesc[i].amount;
   }
@@ -57,15 +73,18 @@ uint64_t growSelection(const std::vector<PqSpendInput>& sortedDesc,
 // by merging the two smallest denominations of the largest group until the total
 // output count fits `maxOut`. Throws TooLarge if it cannot (every group already a
 // single output, yet still over the cap). Returns the flattened PqSendOutput list.
-std::vector<PqSendOutput> decomposeOutputs(const std::vector<PqSendOutput>& recipients,
-                                           uint64_t change, const PqSendOutput& changeTmpl,
-                                           std::size_t maxOut) {
+std::vector<ProvenancedOutput> decomposeOutputs(
+    const std::vector<PqSendOutput>& recipients,
+    uint64_t change, const PqSendOutput& changeTmpl,
+    std::size_t maxOut) {
   std::vector<OutputGroup> groups;
   groups.reserve(recipients.size() + 1);
-  for (const auto& r : recipients) {
+  for (std::size_t recipientIndex = 0; recipientIndex < recipients.size(); ++recipientIndex) {
+    const auto& r = recipients[recipientIndex];
     OutputGroup g;
     g.tmpl = r;
     g.denoms = decomposeToDenominations(r.amount);
+    g.recipientIndex = recipientIndex;
     groups.push_back(std::move(g));
   }
   if (change > 0) {
@@ -104,12 +123,12 @@ std::vector<PqSendOutput> decomposeOutputs(const std::vector<PqSendOutput>& reci
     d.push_back(merged);
   }
 
-  std::vector<PqSendOutput> outs;
+  std::vector<ProvenancedOutput> outs;
   for (const auto& g : groups) {
     for (uint64_t v : g.denoms) {
       PqSendOutput o = g.tmpl;
       o.amount = v;
-      outs.push_back(o);
+      outs.push_back({std::move(o), g.recipientIndex});
     }
   }
   return outs;
@@ -117,19 +136,35 @@ std::vector<PqSendOutput> decomposeOutputs(const std::vector<PqSendOutput>& reci
 
 // Build (and sign) a draft for the given change, shrinking the output cap until the
 // serialized size is within MAX_PQ_TX_SIZE. Returns the signed transaction.
-Transaction buildFitting(const std::vector<PqSpendInput>& selected,
-                         const std::vector<PqInputAuth>& inputAuth,
-                         const std::vector<PqSendOutput>& recipients, uint64_t change,
-                         const PqSendOutput& changeTmpl,
-                         const std::vector<uint8_t>& extra) {
+FittingBuild buildFitting(const std::vector<PqSpendInput>& selected,
+                          const std::vector<PqInputAuth>& inputAuth,
+                          const std::vector<PqSendOutput>& recipients, uint64_t change,
+                          const PqSendOutput& changeTmpl,
+                          const std::vector<uint8_t>& extra) {
   std::size_t numDest = recipients.size() + (change > 0 ? 1 : 0);
   std::size_t maxOut = P::MAX_PQ_OUTPUTS_PER_TX;
   for (;;) {
-    std::vector<PqSendOutput> outs = decomposeOutputs(recipients, change, changeTmpl, maxOut);
-    Transaction tx = buildPqTransaction(selected, outs, inputAuth, 0, extra);
-    if (toBinaryArray(tx).size() <= P::MAX_PQ_TX_SIZE) {
-      return tx;
+    std::vector<ProvenancedOutput> provenanced =
+        decomposeOutputs(recipients, change, changeTmpl, maxOut);
+    std::vector<PqSendOutput> outputs;
+    std::vector<std::optional<std::size_t>> recipientIndexes;
+    outputs.reserve(provenanced.size());
+    recipientIndexes.reserve(provenanced.size());
+    for (auto& output : provenanced) {
+      outputs.push_back(std::move(output.output));
+      recipientIndexes.push_back(output.recipientIndex);
     }
+    PqTransactionBuildResult draft =
+        buildPqTransactionWithProof(selected, outputs, inputAuth, 0, extra);
+    if (toBinaryArray(draft.tx).size() <= P::MAX_PQ_TX_SIZE) {
+      FittingBuild accepted;
+      accepted.transaction = std::move(draft);
+      accepted.recipientIndexes = std::move(recipientIndexes);
+      return accepted;
+    }
+    // The draft and its witnesses are one owner. Wipe before rebuilding with a
+    // smaller output cap; no stale m_j can survive into the accepted transaction.
+    draft.clearWitnesses();
     if (maxOut <= numDest) {
       throw PqSendError(PqSendErrorCode::TooLarge,
                         "transaction exceeds the size limit; split into smaller transfers");
@@ -219,6 +254,10 @@ PqSendResult buildPqSend(const std::vector<PqSpendInput>& available,
   // need more inputs than one tx allows" — the latter is not an insufficient balance.
   uint64_t totalAvail = 0;
   for (const auto& si : sorted) {
+    if (totalAvail > std::numeric_limits<uint64_t>::max() - si.amount) {
+      totalAvail = std::numeric_limits<uint64_t>::max();
+      break;
+    }
     totalAvail += si.amount;
   }
   auto shortfall = [&totalAvail](uint64_t need) -> PqSendError {
@@ -244,22 +283,79 @@ PqSendResult buildPqSend(const std::vector<PqSpendInput>& available,
   uint64_t fee = req.explicitFee != 0
                      ? req.explicitFee
                      : P::pqTxFeeFloor(P::MINIMUM_FEE, req.extra.size());
-  if (sumIn < sent + fee) {
-    sumIn = growSelection(sorted, selected, sumIn, sent + fee);
-    if (sumIn < sent + fee) {
-      throw shortfall(sent + fee);
+  if (sent > std::numeric_limits<uint64_t>::max() - fee) {
+    throw PqSendError(PqSendErrorCode::TooLarge, "payment plus fee overflow");
+  }
+  const uint64_t required = sent + fee;
+  if (sumIn < required) {
+    sumIn = growSelection(sorted, selected, sumIn, required);
+    if (sumIn < required) {
+      throw shortfall(required);
     }
   }
   uint64_t change = sumIn - sent - fee;
-  Transaction tx = buildFitting(selected, authForSelection(selected), req.recipients, change,
-                                changeTmpl, req.extra);
+  FittingBuild finalBuild = buildFitting(
+      selected, authForSelection(selected), req.recipients, change,
+      changeTmpl, req.extra);
+
+  if (finalBuild.recipientIndexes.size() != finalBuild.transaction.tx.outputs.size() ||
+      finalBuild.transaction.outputMessages.size() != finalBuild.transaction.tx.outputs.size()) {
+    throw std::runtime_error("buildPqSend: output provenance/witness mismatch");
+  }
+
+  const PqPaymentProofTransaction proofTx =
+      makePqPaymentProofTransaction(finalBuild.transaction.tx);
+  std::vector<std::vector<PqPaymentProofEntry>> proofEntries(req.recipients.size());
+  std::vector<uint64_t> proofAmounts(req.recipients.size(), 0);
+  for (std::size_t outputIndex = 0;
+       outputIndex < finalBuild.transaction.tx.outputs.size(); ++outputIndex) {
+    const auto recipientIndex = finalBuild.recipientIndexes[outputIndex];
+    if (!recipientIndex) continue;  // change is intentionally never proven
+    if (*recipientIndex >= req.recipients.size()) {
+      throw std::runtime_error("buildPqSend: invalid recipient provenance");
+    }
+    proofEntries[*recipientIndex].push_back({
+        static_cast<uint32_t>(outputIndex),
+        finalBuild.transaction.outputMessages[outputIndex]});
+    const uint64_t amount = finalBuild.transaction.tx.outputs[outputIndex].amount;
+    if (proofAmounts[*recipientIndex] + amount < proofAmounts[*recipientIndex]) {
+      throw std::runtime_error("buildPqSend: proof amount overflow");
+    }
+    proofAmounts[*recipientIndex] += amount;
+  }
+
+  std::vector<PqPaymentProof> proofs;
+  proofs.reserve(req.recipients.size());
+  for (std::size_t recipientIndex = 0;
+       recipientIndex < req.recipients.size(); ++recipientIndex) {
+    if (proofEntries[recipientIndex].empty() ||
+        proofAmounts[recipientIndex] != req.recipients[recipientIndex].amount) {
+      throw std::runtime_error("buildPqSend: incomplete recipient proof");
+    }
+    const PqSendOutput& requested = req.recipients[recipientIndex];
+    ResolvedRecipient recipient{
+        requested.recipientViewPub,
+        requested.recipientSpendPub,
+        requested.subaddrIndexT};
+    PqPaymentProof proof = makePqPaymentProof(
+        req.genesisId, proofTx.txid, recipient,
+        std::move(proofEntries[recipientIndex]));
+    const uint64_t verified = verifyPqPaymentProof(
+        proof, req.genesisId, proofTx, recipient);
+    if (verified != requested.amount) {
+      throw std::runtime_error("buildPqSend: final payment proof total mismatch");
+    }
+    proofs.push_back(std::move(proof));
+  }
 
   PqSendResult result;
-  result.tx = std::move(tx);
+  result.tx = std::move(finalBuild.transaction.tx);
   result.fee = fee;
   result.sent = sent;
   result.change = sumIn - sent - fee;
   result.selected = std::move(selected);
+  result.proofs = std::move(proofs);
+  finalBuild.transaction.clearWitnesses();
   return result;
 }
 

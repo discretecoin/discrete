@@ -939,6 +939,8 @@ PqSendResult WalletLegacy::sendPqTransfer(const std::vector<PqSendOutput>& recip
   req.explicitFee = fee;
   req.unlockHeight = unlockHeight;
   req.extra = extra;
+  std::memcpy(req.genesisId.data(), m_currency.genesisBlockHash().data,
+              req.genesisId.size());
   // Single key pair: outputs attributed to a subaddress index T (see initSync)
   // are still authorized by the primary spend key.
   req.scheme = PqDepositScheme::SingleKeyIndex;

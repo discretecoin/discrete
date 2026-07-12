@@ -25,6 +25,7 @@
 #include "CryptoNote.h"
 #include "PqWallet.h"               // PqWalletKeys
 #include "PqTransactionBuilder.h"   // PqSpendInput, PqSendOutput
+#include "crypto_pq/PqPaymentProof.h"
 
 // The single, engine-agnostic PQ spend path shared by BOTH wallet engines
 // (WalletLegacy/simplewallet and WalletGreen/greenwallet/walletd). All deterministic
@@ -41,6 +42,7 @@ struct PqSendRequest {
   uint64_t explicitFee = 0;              // 0 = auto (two-pass measured fee)
   uint64_t unlockHeight = 0;             // legacy API tx-level lock; TX_PQ requires 0
   std::vector<uint8_t> extra;            // tx.extra (e.g. a PQ account registration tag)
+  CryptoPQ::Hash256 genesisId{};         // network binding embedded in every proof
 
   // Deposit scheme: decides each input's signing key. Under SingleKeyIndex the one
   // ML-DSA key authorizes every input; under AggregatedMultikey a deposit input is
@@ -68,6 +70,7 @@ struct PqSendResult {
   uint64_t                  sent = 0;     // sum of recipient amounts (excl. fee/change)
   uint64_t                  change = 0;
   std::vector<PqSpendInput> selected;     // inputs actually spent
+  std::vector<PqPaymentProof> proofs;     // exactly one per request recipient row
 };
 
 enum class PqSendErrorCode {

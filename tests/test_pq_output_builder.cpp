@@ -10,6 +10,7 @@
 #include "gtest/gtest.h"
 
 #include "crypto_pq/PqOutputBuilder.h"
+#include "crypto_pq/PqScan.h"
 #include "crypto_pq/PqAead.h"
 #include "crypto_pq/PqSeed.h"
 #include "crypto_pq/PqDerive.h"
@@ -211,6 +212,32 @@ TEST(PqOutputBuilder, AmountTamperBreaksDecrypt) {
     auto rho2 = aead_decrypt(aeadKey2, nonce, aad.data(), aad.size(),
                              o.encPayload.data(), o.encPayload.size());
     EXPECT_FALSE(rho2.has_value());
+}
+
+TEST(PqOutputBuilder, ProofCapablePathRetainsFreshMessageAndFullScans) {
+    auto view = kem_keygen();
+    auto spend = dsa_keygen();
+    Hash256 ih{};
+    ih[0] = 0x31;
+
+    PqBuiltOutputWithProof first = buildPqOutputWithProof(
+        view.first, spend.first, ih, 3, 12345, 9);
+    PqBuiltOutputWithProof second = buildPqOutputWithProof(
+        view.first, spend.first, ih, 3, 12345, 9);
+    EXPECT_NE(first.message, second.message);
+
+    auto encapsulation = kem_encaps_explicit(view.first, first.message);
+    EXPECT_EQ(encapsulation.first, first.output.kemCt);
+    EXPECT_EQ(encapsulation.second, kem_decaps(view.second, first.output.kemCt));
+
+    PqScanOutput candidate;
+    candidate.outputIndex = 3;
+    candidate.amount = 12345;
+    candidate.kemCt = first.output.kemCt;
+    candidate.encPayload = first.output.encPayload;
+    candidate.spendCommit = first.output.spendCommit;
+    EXPECT_TRUE(scanPqOutputWithSharedSecret(
+        encapsulation.second, spend.first, ih, candidate, 9).has_value());
 }
 
 int main(int argc, char** argv) {

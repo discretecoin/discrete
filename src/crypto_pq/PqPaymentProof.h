@@ -29,6 +29,8 @@ struct ResolvedRecipient {
 struct PqPaymentProofEntry {
   uint32_t outputIndex = 0;
   CryptoPQ::KemEncapsMessage message{};
+
+  ~PqPaymentProofEntry();
 };
 
 struct PqPaymentProof {

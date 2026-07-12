@@ -195,6 +195,36 @@ TEST(PqTxBuilder, RecipientCanScanTheOutput) {
     EXPECT_FALSE(CryptoPQ::scanPqOutput(pqScanKeys(sender), ih, so).has_value());
 }
 
+TEST(PqTxBuilder, ProofBuildOwnsOneMatchingWitnessPerOutput) {
+    PqWalletKeys sender = derivePqWalletKeys(spendSecret(7, 3));
+    PqWalletKeys r1 = derivePqWalletKeys(spendSecret(9, 1));
+    PqWalletKeys r2 = derivePqWalletKeys(spendSecret(5, 4));
+    PqResolvedInput resolved;
+    PqSpendInput in = fund(sender, 1000000, 0x51, 0, resolved);
+    std::vector<PqSendOutput> outputs = {
+        {r1.viewPub, r1.spendPub, 400000},
+        {r2.viewPub, r2.spendPub, 500000}};
+
+    PqTransactionBuildResult built = buildPqTransactionWithProof(
+        {in}, outputs, sender.spendPub, sender.spendSk);
+    ASSERT_EQ(built.outputMessages.size(), built.tx.outputs.size());
+    ASSERT_EQ(built.outputMessages.size(), 2u);
+    PqPaymentProofTransaction proofTx = makePqPaymentProofTransaction(built.tx);
+    CryptoPQ::Hash256 genesis{};
+    genesis[0] = 0x99;
+    for (std::size_t i = 0; i < outputs.size(); ++i) {
+        ResolvedRecipient recipient{
+            outputs[i].recipientViewPub,
+            outputs[i].recipientSpendPub,
+            outputs[i].subaddrIndexT};
+        PqPaymentProof proof = makePqPaymentProof(
+            genesis, proofTx.txid, recipient,
+            {{static_cast<uint32_t>(i), built.outputMessages[i]}});
+        EXPECT_EQ(verifyPqPaymentProof(proof, genesis, proofTx, recipient),
+                  outputs[i].amount);
+    }
+}
+
 TEST(PqTxBuilder, TamperedSignatureRejected) {
     PqWalletKeys sender = derivePqWalletKeys(spendSecret(7, 3));
     PqWalletKeys recip  = derivePqWalletKeys(spendSecret(9, 1));

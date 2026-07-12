@@ -19,6 +19,7 @@
 
 #include <cstring>
 #include <stdexcept>
+#include <utility>
 
 #include "CryptoNoteConfig.h"
 #include "PqTxType.h"
@@ -28,8 +29,32 @@
 #include "CryptoNoteCore/CryptoNoteTools.h"
 #include "CryptoNoteCore/TransactionExtra.h"
 #include "crypto_pq/PqOutputBuilder.h"
+#include "crypto/crypto-util.h"
 
 namespace CryptoNote {
+
+PqTransactionBuildResult::~PqTransactionBuildResult() { clearWitnesses(); }
+
+PqTransactionBuildResult::PqTransactionBuildResult(PqTransactionBuildResult&& other) noexcept
+    : tx(std::move(other.tx)), outputMessages(std::move(other.outputMessages)) {}
+
+PqTransactionBuildResult& PqTransactionBuildResult::operator=(
+    PqTransactionBuildResult&& other) noexcept {
+  if (this != &other) {
+    clearWitnesses();
+    tx = std::move(other.tx);
+    outputMessages = std::move(other.outputMessages);
+  }
+  return *this;
+}
+
+void PqTransactionBuildResult::clearWitnesses() noexcept {
+  if (!outputMessages.empty()) {
+    sodium_memzero(outputMessages.data(),
+                   outputMessages.size() * sizeof(outputMessages.front()));
+    outputMessages.clear();
+  }
+}
 
 CryptoPQ::Hash256 pqTransactionInputsHash(const TransactionPrefix& tx) {
   std::vector<CryptoPQ::InputRef> refs;
@@ -53,11 +78,12 @@ CryptoPQ::Hash256 pqTransactionInputsHash(const TransactionPrefix& tx) {
   return CryptoPQ::inputsHash(refs);
 }
 
-Transaction buildPqTransaction(const std::vector<PqSpendInput>& inputs,
-                               const std::vector<PqSendOutput>& outputs,
-                               const std::vector<PqInputAuth>& inputAuth,
-                               uint64_t unlockHeight,
-                               const std::vector<uint8_t>& extra) {
+PqTransactionBuildResult buildPqTransactionWithProof(
+    const std::vector<PqSpendInput>& inputs,
+    const std::vector<PqSendOutput>& outputs,
+    const std::vector<PqInputAuth>& inputAuth,
+    uint64_t unlockHeight,
+    const std::vector<uint8_t>& extra) {
   if (inputs.empty()) {
     throw std::runtime_error("buildPqTransaction: no inputs");
   }
@@ -77,7 +103,8 @@ Transaction buildPqTransaction(const std::vector<PqSpendInput>& inputs,
     throw std::runtime_error("buildPqTransaction: too many outputs");
   }
 
-  Transaction tx;
+  PqTransactionBuildResult result;
+  Transaction& tx = result.tx;
   tx.version = TRANSACTION_VERSION_1;
   tx.txType = TX_PQ;
   tx.unlockHeight = unlockHeight;
@@ -110,12 +137,14 @@ Transaction buildPqTransaction(const std::vector<PqSpendInput>& inputs,
   // Outputs: out_context uses the output's index within tx.outputs (the same
   // index the receiver scans by), so build in order.
   tx.outputs.reserve(outputs.size());
+  result.outputMessages.reserve(outputs.size());
   uint64_t sumOut = 0;
   for (size_t i = 0; i < outputs.size(); ++i) {
     const PqSendOutput& so = outputs[i];
-    CryptoPQ::PqBuiltOutput built = CryptoPQ::buildPqOutput(
+    CryptoPQ::PqBuiltOutputWithProof proofBuilt = CryptoPQ::buildPqOutputWithProof(
         so.recipientViewPub, so.recipientSpendPub, ih,
         static_cast<uint32_t>(i), so.amount, so.subaddrIndexT);
+    CryptoPQ::PqBuiltOutput& built = proofBuilt.output;
 
     PqOutput po;
     po.kemCt.assign(built.kemCt.begin(), built.kemCt.end());
@@ -127,6 +156,8 @@ Transaction buildPqTransaction(const std::vector<PqSpendInput>& inputs,
     out.unlockHeight = so.unlockHeight;  // per-output spend lock (0 for change)
     out.target = std::move(po);
     tx.outputs.push_back(std::move(out));
+    result.outputMessages.push_back(proofBuilt.message);
+    sodium_memzero(proofBuilt.message.data(), proofBuilt.message.size());
 
     if (sumOut + so.amount < sumOut) {
       throw std::runtime_error("buildPqTransaction: output amount overflow");
@@ -146,6 +177,18 @@ Transaction buildPqTransaction(const std::vector<PqSpendInput>& inputs,
   for (size_t i = 0; i < tx.inputs.size(); ++i)
     tx.pqSignatures[i] = CryptoPQ::dsa_sign(inputAuth[i].spendSk, digest.data(), digest.size());
 
+  return result;
+}
+
+Transaction buildPqTransaction(const std::vector<PqSpendInput>& inputs,
+                               const std::vector<PqSendOutput>& outputs,
+                               const std::vector<PqInputAuth>& inputAuth,
+                               uint64_t unlockHeight,
+                               const std::vector<uint8_t>& extra) {
+  PqTransactionBuildResult result = buildPqTransactionWithProof(
+      inputs, outputs, inputAuth, unlockHeight, extra);
+  Transaction tx = std::move(result.tx);
+  result.clearWitnesses();
   return tx;
 }
 
@@ -164,6 +207,44 @@ Transaction buildPqTransaction(const std::vector<PqSpendInput>& inputs,
     a.spendSk = spendSk;
   }
   return buildPqTransaction(inputs, outputs, auth, unlockHeight, extra);
+}
+
+PqTransactionBuildResult buildPqTransactionWithProof(
+    const std::vector<PqSpendInput>& inputs,
+    const std::vector<PqSendOutput>& outputs,
+    const CryptoPQ::DsaPublicKey& spendPub,
+    const CryptoPQ::DsaSecretKey& spendSk,
+    uint64_t unlockHeight,
+    const std::vector<uint8_t>& extra) {
+  std::vector<PqInputAuth> auth(inputs.size());
+  for (auto& a : auth) {
+    a.spendPub = spendPub;
+    a.spendSk = spendSk;
+  }
+  return buildPqTransactionWithProof(inputs, outputs, auth, unlockHeight, extra);
+}
+
+PqPaymentProofTransaction makePqPaymentProofTransaction(const Transaction& tx) {
+  PqPaymentProofTransaction proofTx;
+  const Crypto::Hash txid = getObjectHash(tx);
+  std::memcpy(proofTx.txid.data(), txid.data, proofTx.txid.size());
+  proofTx.inputsHash = pqTransactionInputsHash(tx);
+  proofTx.outputs.reserve(tx.outputs.size());
+  for (std::size_t i = 0; i < tx.outputs.size(); ++i) {
+    const PqOutput* wire = boost::get<PqOutput>(&tx.outputs[i].target);
+    if (wire == nullptr || wire->kemCt.size() != CryptoPQ::kKemCiphertextBytes ||
+        wire->encPayload.size() != PQ_ENC_PAYLOAD_SIZE) {
+      throw std::runtime_error("makePqPaymentProofTransaction: malformed non-PQ output");
+    }
+    CryptoPQ::PqScanOutput output;
+    output.outputIndex = static_cast<uint32_t>(i);
+    output.amount = tx.outputs[i].amount;
+    std::memcpy(output.kemCt.data(), wire->kemCt.data(), output.kemCt.size());
+    output.encPayload = wire->encPayload;
+    std::memcpy(output.spendCommit.data(), wire->spendCommit.data, output.spendCommit.size());
+    proofTx.outputs.push_back(std::move(output));
+  }
+  return proofTx;
 }
 
 Transaction buildFreeRegTransaction(const CryptoPQ::KemPublicKey& viewPub,

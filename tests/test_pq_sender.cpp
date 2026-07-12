@@ -19,6 +19,7 @@
 #include "crypto_pq/PqScan.h"   // scanPqOutput (verify change routing)
 
 #include <cstring>
+#include <set>
 #include <numeric>
 #include <vector>
 
@@ -58,6 +59,26 @@ bool authPubIs(const Transaction& tx, size_t i, const CryptoPQ::DsaPublicKey& pu
     const PqInput& in = boost::get<PqInput>(tx.inputs[i]);
     return in.authPub.size() == pub.size() &&
            std::memcmp(in.authPub.data(), pub.data(), pub.size()) == 0;
+}
+
+CryptoPQ::Hash256 testGenesis() {
+    CryptoPQ::Hash256 genesis{};
+    for (std::size_t i = 0; i < genesis.size(); ++i)
+        genesis[i] = static_cast<uint8_t>(0x80 + i);
+    return genesis;
+}
+
+void expectProofsVerify(const PqSendRequest& req, const PqSendResult& result) {
+    ASSERT_EQ(result.proofs.size(), req.recipients.size());
+    PqPaymentProofTransaction proofTx = makePqPaymentProofTransaction(result.tx);
+    for (std::size_t i = 0; i < req.recipients.size(); ++i) {
+        const PqSendOutput& output = req.recipients[i];
+        ResolvedRecipient recipient{
+            output.recipientViewPub, output.recipientSpendPub, output.subaddrIndexT};
+        EXPECT_EQ(verifyPqPaymentProof(
+                      result.proofs[i], req.genesisId, proofTx, recipient),
+                  output.amount);
+    }
 }
 
 }  // namespace
@@ -289,6 +310,98 @@ TEST(PqSender, NoRecipientsThrows) {
     } catch (const PqSendError& e) {
         EXPECT_EQ(e.code, PqSendErrorCode::NoRecipients);
     }
+}
+
+TEST(PqSender, DecomposedPaymentProofCoversEveryRecipientOutputAndExactTotal) {
+    PqWalletKeys me = derivePqWalletKeys(spendSecret(9, 1));
+    PqWalletKeys to = derivePqWalletKeys(spendSecret(7, 3));
+    PqSendRequest req;
+    req.genesisId = testGenesis();
+    req.explicitFee = 1;
+    req.recipients.push_back(PqSendOutput{to.viewPub, to.spendPub, 1234567});
+
+    PqSendResult result = buildPqSend({mkInput(1234568, 0x91)}, me, req);
+    expectProofsVerify(req, result);
+    ASSERT_EQ(result.proofs.size(), 1u);
+    EXPECT_EQ(result.proofs[0].entries.size(), result.tx.outputs.size());
+    for (std::size_t i = 0; i < result.proofs[0].entries.size(); ++i)
+        EXPECT_EQ(result.proofs[0].entries[i].outputIndex, i);
+}
+
+TEST(PqSender, MultipleAndDuplicateRecipientRowsStaySeparatedAndExcludeChange) {
+    PqWalletKeys me = derivePqWalletKeys(spendSecret(9, 1));
+    PqWalletKeys a = derivePqWalletKeys(spendSecret(7, 3));
+    PqWalletKeys b = derivePqWalletKeys(spendSecret(5, 4));
+    PqSendRequest req;
+    req.genesisId = testGenesis();
+    req.explicitFee = 50;
+    req.recipients = {
+        PqSendOutput{a.viewPub, a.spendPub, 250},
+        PqSendOutput{b.viewPub, b.spendPub, 100},
+        PqSendOutput{a.viewPub, a.spendPub, 250}};  // duplicate keys, distinct row
+
+    PqSendResult result = buildPqSend({mkInput(1000, 0x92)}, me, req);
+    ASSERT_EQ(result.change, 350u);
+    expectProofsVerify(req, result);
+    ASSERT_EQ(result.proofs.size(), 3u);
+    EXPECT_EQ(result.proofs[0].recipientDescriptorHash,
+              result.proofs[2].recipientDescriptorHash);
+
+    std::set<uint32_t> recipientIndexes;
+    for (const auto& proof : result.proofs) {
+        for (const auto& entry : proof.entries) {
+            EXPECT_TRUE(recipientIndexes.insert(entry.outputIndex).second);
+        }
+    }
+    EXPECT_LT(recipientIndexes.size(), result.tx.outputs.size());  // change excluded
+    uint64_t proven = 0;
+    for (uint32_t index : recipientIndexes) proven += result.tx.outputs[index].amount;
+    EXPECT_EQ(proven, 600u);
+}
+
+TEST(PqSender, CoarseningPreservesRecipientProvenance) {
+    PqWalletKeys me = derivePqWalletKeys(spendSecret(9, 1));
+    PqWalletKeys a = derivePqWalletKeys(spendSecret(7, 3));
+    PqWalletKeys b = derivePqWalletKeys(spendSecret(5, 4));
+    PqSendRequest req;
+    req.genesisId = testGenesis();
+    req.explicitFee = 100;
+    req.recipients = {
+        PqSendOutput{a.viewPub, a.spendPub, 400000000},
+        PqSendOutput{b.viewPub, b.spendPub, 400000000}};
+
+    PqSendResult result = buildPqSend({mkInput(800000100, 0x93)}, me, req);
+    EXPECT_LE(result.tx.outputs.size(), P::MAX_PQ_OUTPUTS_PER_TX);
+    expectProofsVerify(req, result);
+    ASSERT_EQ(result.proofs.size(), 2u);
+    std::set<uint32_t> first;
+    for (const auto& entry : result.proofs[0].entries) first.insert(entry.outputIndex);
+    for (const auto& entry : result.proofs[1].entries)
+        EXPECT_EQ(first.count(entry.outputIndex), 0u);
+}
+
+TEST(PqSender, SizeRetryReturnsOnlyAcceptedTransactionWitnesses) {
+    PqWalletKeys me = derivePqWalletKeys(spendSecret(9, 1));
+    PqWalletKeys to = derivePqWalletKeys(spendSecret(7, 3));
+    std::vector<PqSpendInput> inputs;
+    for (uint8_t i = 0; i < 32; ++i) inputs.push_back(mkInput(20000000, i));
+
+    PqSendRequest req;
+    req.genesisId = testGenesis();
+    req.explicitFee = 100;
+    req.extra.assign(30000, 0x5a);  // force the initial 64-output draft over 256 KiB
+    req.recipients.push_back(
+        PqSendOutput{to.viewPub, to.spendPub, 639999900});
+    PqSendResult result = buildPqSend(inputs, me, req);
+
+    // Thirty-two PQ input signatures plus tx_extra leave too little room for the initial 64-output
+    // draft, so buildFitting must retry with fewer outputs. Verification proves
+    // every returned m_j belongs to the accepted final transaction, not a draft.
+    EXPECT_LT(result.tx.outputs.size(), P::MAX_PQ_OUTPUTS_PER_TX);
+    EXPECT_LE(toBinaryArray(result.tx).size(), P::MAX_PQ_TX_SIZE);
+    expectProofsVerify(req, result);
+    ASSERT_EQ(result.proofs.size(), 1u);
+    EXPECT_EQ(result.proofs[0].entries.size(), result.tx.outputs.size());
 }
 
 int main(int argc, char** argv) {

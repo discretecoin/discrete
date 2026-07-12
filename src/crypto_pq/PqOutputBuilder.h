@@ -51,6 +51,21 @@ struct PqBuiltOutput {
   Rho     rho;
 };
 
+// Proof-capable construction owns the output and the exact ML-KEM message that
+// produced its ciphertext. Keeping them together prevents callers from pairing
+// a witness with a different output after a rebuild.
+struct PqBuiltOutputWithProof {
+  PqBuiltOutput output;
+  KemEncapsMessage message{};
+
+  PqBuiltOutputWithProof() = default;
+  ~PqBuiltOutputWithProof();
+  PqBuiltOutputWithProof(const PqBuiltOutputWithProof&) = delete;
+  PqBuiltOutputWithProof& operator=(const PqBuiltOutputWithProof&) = delete;
+  PqBuiltOutputWithProof(PqBuiltOutputWithProof&& other) noexcept;
+  PqBuiltOutputWithProof& operator=(PqBuiltOutputWithProof&& other) noexcept;
+};
+
 // Deterministic core: caller supplies the KEM result (kemCt, ss) and rho. Used
 // for tests/KAT and for callers that manage their own RNG.
 PqBuiltOutput buildPqOutput(const KemCiphertext& kemCt,
@@ -62,13 +77,24 @@ PqBuiltOutput buildPqOutput(const KemCiphertext& kemCt,
                             const Rho& rho,
                             uint64_t subaddrIndexT = 0);
 
-// Full path: encapsulates to the recipient's view key and draws rho from the
-// secure CSPRNG. This is the normal sender entry point.
+// Compatibility path for callers that do not retain payment proofs. It uses
+// the proof-capable explicit-message builder and securely discards the witness.
 PqBuiltOutput buildPqOutput(const KemPublicKey& recipientViewPub,
                             const DsaPublicKey& recipientSpendPub,
                             const Hash256& inputsHash,
                             uint32_t outputIndex,
                             uint64_t amount,
                             uint64_t subaddrIndexT = 0);
+
+// Normal proof-capable sender entry point. Draws fresh independent m and rho,
+// uses only reentrant explicit-message ML-KEM, re-encapsulates for consistency,
+// and runs the receiver's complete shared-secret scan predicate before return.
+PqBuiltOutputWithProof buildPqOutputWithProof(
+    const KemPublicKey& recipientViewPub,
+    const DsaPublicKey& recipientSpendPub,
+    const Hash256& inputsHash,
+    uint32_t outputIndex,
+    uint64_t amount,
+    uint64_t subaddrIndexT = 0);
 
 }  // namespace CryptoPQ

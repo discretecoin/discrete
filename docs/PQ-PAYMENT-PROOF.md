@@ -1,7 +1,7 @@
 # PQ Payer Payment Proof (minimal, off-chain)
 
-Status: **design — agreed approach, not yet implemented.** 2026-07-12. Branch
-`dev/payment_proof`. This is the *minimal* payer proof chosen after three security
+Status: **Phases 1–2 implemented; Phases 3–4 not implemented.** 2026-07-12.
+Branch `dev/payment_proof`. This is the *minimal* payer proof chosen after three security
 reviews (see [PQ-TX-PROOFS.md](PQ-TX-PROOFS.md) on branch `dev/tx_proof` for the
 heavier seed-recoverable/tx-secret-key design that was **rejected as too invasive** for
 an optional feature). **No wire, consensus, fee, `tx_extra`, or seed-recovery change.**
