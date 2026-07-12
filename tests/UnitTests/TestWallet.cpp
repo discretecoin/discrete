@@ -766,10 +766,13 @@ TEST(PqWalletIntegration, LockedOutputNotSpendableUntilUnlockHeight) {
   generator.setTxFee(CryptoNote::getObjectHash(pqTx), 1000000 - 800000);
   generator.addTxToBlockchain(pqTx);
   node.updateObservers();
-  pumpUntil(dispatcher, wallet, [&wallet]() { return wallet.getActualBalance() == 800000u; });
+  pumpUntil(dispatcher, wallet, [&wallet]() { return wallet.getPendingBalance() == 800000u; });
 
-  // Counted in the balance, but locked: a spend can't draw on it yet.
-  EXPECT_EQ(wallet.getActualBalance(), 800000u);
+  // Counted in total ownership, but locked: the public Available/Locked split must
+  // agree with the send path rather than advertising funds it cannot select.
+  EXPECT_EQ(wallet.pqActualBalance(), 800000u);
+  EXPECT_EQ(wallet.getActualBalance(), 0u);
+  EXPECT_EQ(wallet.getPendingBalance(), 800000u);
   EXPECT_THROW(wallet.sendPqTransfer({ CryptoNote::PqSendOutput{ them.viewPub, them.spendPub, 300000 } }),
                std::exception);
 
@@ -779,7 +782,9 @@ TEST(PqWalletIntegration, LockedOutputNotSpendableUntilUnlockHeight) {
   node.updateObservers();
   pumpUntil(dispatcher, wallet, [&wallet, tip]() { return wallet.pqSyncedHeight() >= tip; });
 
-  // Now spendable.
+  // Now spendable and reported as available rather than locked.
+  EXPECT_EQ(wallet.getActualBalance(), 800000u);
+  EXPECT_EQ(wallet.getPendingBalance(), 0u);
   node.setNextTransactionToPool();
   CryptoNote::PqSendResult r =
       wallet.sendPqTransfer({ CryptoNote::PqSendOutput{ them.viewPub, them.spendPub, 300000 } });

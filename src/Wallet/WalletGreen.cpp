@@ -1271,50 +1271,47 @@ uint64_t WalletGreen::getActualBalance() const {
   throwIfNotInitialized();
   throwIfStopped();
 
-  // PQ is the native ledger. "Actual" = confirmed (total minus still-in-mempool).
-  if (!m_pqConsumer) {
-    return 0;
-  }
-  const auto& st = m_pqConsumer->state();
-  uint64_t total = st.balance();
-  uint64_t pending = st.pendingBalance();
-  return total >= pending ? total - pending : 0;
+  // IWallet's "actual" balance is the amount available to send now. Keep it
+  // identical to the input selector: confirmed and past every output lock.
+  return m_pqConsumer ? m_pqConsumer->state().spendableBalance() : 0;
 }
 
 uint64_t WalletGreen::getActualBalance(const std::string& address) const {
   throwIfNotInitialized();
   throwIfStopped();
 
-  // Map a PQ address to its bucket; "actual" = that bucket's confirmed balance
-  // (total minus its still-in-mempool pending). Unknown address -> 0.
+  // Map a PQ address to its bucket; "actual" means spendable now. Unknown -> 0.
   uint32_t bucket = 0;
   if (!pqResolveAddressBucket(address, bucket)) {
     return 0;
   }
-  const auto& st = m_pqConsumer->state();
-  uint64_t total = st.depositBalance(bucket);
-  uint64_t pending = st.depositPendingBalance(bucket);
-  return total >= pending ? total - pending : 0;
+  return m_pqConsumer->state().depositSpendableBalance(bucket);
 }
 
 uint64_t WalletGreen::getPendingBalance() const {
   throwIfNotInitialized();
   throwIfStopped();
 
-  return m_pqConsumer ? m_pqConsumer->state().pendingBalance() : 0;
+  if (!m_pqConsumer) {
+    return 0;
+  }
+  const uint64_t total = m_pqConsumer->state().balance();
+  const uint64_t available = m_pqConsumer->state().spendableBalance();
+  return total >= available ? total - available : 0;
 }
 
 uint64_t WalletGreen::getPendingBalance(const std::string& address) const {
   throwIfNotInitialized();
   throwIfStopped();
 
-  // Per-bucket pending: the unspent, still-in-mempool balance attributed to this
-  // address (primary or a deposit). Unknown address -> 0.
+  // Per-bucket pending/locked remainder: mempool plus immature/timelocked funds.
   uint32_t bucket = 0;
   if (!pqResolveAddressBucket(address, bucket)) {
     return 0;
   }
-  return m_pqConsumer->state().depositPendingBalance(bucket);
+  const uint64_t total = m_pqConsumer->state().depositBalance(bucket);
+  const uint64_t available = m_pqConsumer->state().depositSpendableBalance(bucket);
+  return total >= available ? total - available : 0;
 }
 
 size_t WalletGreen::getTransactionCount() const {
@@ -1717,6 +1714,11 @@ void WalletGreen::initPqConsumer(const CryptoPQ::SeedMaster& seedMaster,
   m_blockchainSynchronizer.addConsumer(m_pqConsumer.get());
   m_pqConsumer->addObserver(this);  // m_blockchain (block list) is fed from here
   syncPqDepositConfigToState();
+  m_logger(INFO) << "PQ ledger initialized: mode full, sync height " << syncStart.height
+                 << ", sync timestamp " << syncStart.timestamp
+                 << ", deposit scheme "
+                 << (m_pqDepositScheme == PqDepositScheme::SingleKeyIndex ? "single-key-index" : "aggregated-multikey")
+                 << ", deposits " << m_pqDepositCount;
 }
 
 void WalletGreen::initPqConsumer(const PqTrackingKeys& pqTrackingKeys,
@@ -1728,6 +1730,11 @@ void WalletGreen::initPqConsumer(const PqTrackingKeys& pqTrackingKeys,
   m_blockchainSynchronizer.addConsumer(m_pqConsumer.get());
   m_pqConsumer->addObserver(this);  // m_blockchain (block list) is fed from here
   syncPqDepositConfigToState();
+  m_logger(INFO) << "PQ ledger initialized: mode tracking, sync height " << syncStart.height
+                 << ", sync timestamp " << syncStart.timestamp
+                 << ", deposit scheme "
+                 << (m_pqDepositScheme == PqDepositScheme::SingleKeyIndex ? "single-key-index" : "aggregated-multikey")
+                 << ", deposits " << m_pqDepositCount;
 }
 
 void WalletGreen::initPqConsumerForPrimary() {
@@ -1791,6 +1798,12 @@ void WalletGreen::buildPqStateBlob() {
   writeSection(m_pqTrackingKeys ? encodePqTrackingKey(*m_pqTrackingKeys) : std::string());
 
   m_pqState = out.str();
+  if (m_pqConsumer) {
+    m_logger(DEBUGGING) << "PQ ledger state serialized: bytes " << m_pqState.size()
+                        << ", height " << m_pqConsumer->state().lastScannedHeight()
+                        << ", owned outputs " << m_pqConsumer->state().ownedCount()
+                        << ", history rows " << m_pqConsumer->state().historyCount();
+  }
 }
 
 void WalletGreen::restorePqStateBlob() {
@@ -1856,6 +1869,13 @@ void WalletGreen::restorePqStateBlob() {
   // index from them at load); baseline the announce cursor so they are not
   // re-announced. Rows discovered during this session's sync fire TRANSACTION_CREATED.
   m_pqNotifiedTxCount = m_pqConsumer ? m_pqConsumer->state().historyCount() : 0;
+  if (m_pqConsumer) {
+    m_logger(INFO) << "PQ ledger restored: height " << m_pqConsumer->state().lastScannedHeight()
+                   << ", owned outputs " << m_pqConsumer->state().ownedCount()
+                   << ", unspent " << m_pqConsumer->state().unspentCount()
+                   << ", spendable inputs " << m_pqConsumer->state().spendableInputs().size()
+                   << ", history rows " << m_pqConsumer->state().historyCount();
+  }
 }
 
 uint64_t WalletGreen::pqActualBalance() const {
@@ -1992,13 +2012,33 @@ PqSendResult WalletGreen::sendPqTransfer(const std::vector<PqSendOutput>& recipi
   // them, mirroring the classical addUnconfirmedTransaction-before-relay.
   PqSendResult result;
   Crypto::Hash txid;
-  {
+  std::size_t availableInputCount = 0;
+  try {
     System::EventLock lk(m_readyEvent);
-    result = buildPqSend(m_pqConsumer->state().spendableInputs(), keys, req);
+    std::vector<PqSpendInput> spendable = m_pqConsumer->state().spendableInputs();
+    availableInputCount = spendable.size();
+    m_logger(INFO) << "Building PQ transaction: recipients " << recipients.size()
+                   << ", available inputs " << availableInputCount
+                   << ", source buckets " << req.sourceBuckets.size()
+                   << ", requested fee atomic units " << fee
+                   << ", extra bytes " << extra.size();
+    result = buildPqSend(spendable, keys, req);
     txid = getObjectHash(result.tx);
     auto reader = createTransactionPrefix(result.tx);
     m_pqConsumer->addUnconfirmedTransaction(*reader);
+  } catch (const PqSendError& e) {
+    m_logger(WARNING, BRIGHT_YELLOW) << "PQ transaction build rejected: " << e.what()
+                                    << ", available inputs " << availableInputCount;
+    throw;
   }
+
+  m_logger(INFO) << "PQ transaction built and reserved: hash " << Common::podToHex(txid)
+                 << ", inputs " << result.tx.inputs.size()
+                 << ", outputs " << result.tx.outputs.size()
+                 << ", bytes " << toBinaryArray(result.tx).size()
+                 << ", sent atomic units " << result.sent
+                 << ", fee atomic units " << result.fee
+                 << ", change atomic units " << result.change;
 
   // Relay OUTSIDE the lock: the network round-trip must not pin the wallet's event
   // loop / sync. On failure, roll the reservation back (un-spend inputs, drop the
@@ -2008,10 +2048,14 @@ PqSendResult WalletGreen::sendPqTransfer(const std::vector<PqSendOutput>& recipi
   m_node.relayTransaction(result.tx, [&promise](std::error_code ec) { promise.set_value(ec); });
   std::error_code ec = future.get();
   if (ec) {
+    m_logger(ERROR, BRIGHT_RED) << "PQ transaction relay failed: hash " << Common::podToHex(txid)
+                                << ", error " << ec.message() << " (" << ec.value()
+                                << "); rolling back ledger reservation";
     System::EventLock lk(m_readyEvent);
     m_pqConsumer->removeUnconfirmedTransaction(txid);
     throw std::system_error(ec, "failed to relay transaction");
   }
+  m_logger(INFO) << "PQ transaction relay accepted: " << Common::podToHex(txid);
   return result;
 }
 

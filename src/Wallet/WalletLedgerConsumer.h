@@ -62,6 +62,7 @@ private:
   // Scan one transaction (given its reader) at a height + block timestamp; returns
   // true if owned. timestamp is 0 for mempool transactions.
   bool scanReader(const ITransactionReader& reader, uint32_t height, uint64_t timestamp);
+  void removeUnconfirmedFromState(const Crypto::Hash& transactionHash);
 
   WalletLedger        m_state;
   SynchronizationStart m_syncStart;

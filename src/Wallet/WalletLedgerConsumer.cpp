@@ -19,6 +19,7 @@
 
 #include "CryptoNote.h"
 #include "CryptoNoteConfig.h"
+#include "Common/StringTools.h"
 #include "CryptoNoteCore/CryptoNoteTools.h"
 #include "Transfers/CommonTypes.h"
 
@@ -51,7 +52,24 @@ bool WalletLedgerConsumer::scanReader(const ITransactionReader& reader, uint32_t
     return false;
   }
   Crypto::Hash txid = reader.getTransactionHash();
-  return m_state.processTransaction(prefix, txid, height, timestamp);
+  bool affected = m_state.processTransaction(prefix, txid, height, timestamp);
+  if (affected) {
+    const PqWalletTransaction* row = m_state.historyByTxid(txid);
+    m_logger(Logging::INFO) << "Ledger transaction " << Common::podToHex(txid)
+        << ", state " << (height == WalletLedger::UNCONFIRMED_HEIGHT ? "pool" : "confirmed")
+        << (height == WalletLedger::UNCONFIRMED_HEIGHT ? std::string() :
+            std::string(", height ") + std::to_string(height))
+        << (row ? (row->outgoing ? ", direction outgoing" : ", direction incoming") : "")
+        << (row ? std::string(", net atomic units ") + std::to_string(row->netAmount) : "")
+        << (row && row->fee != 0 ? std::string(", fee atomic units ") + std::to_string(row->fee) : "")
+        << ", owned outputs " << m_state.ownedCount()
+        << ", unspent " << m_state.unspentCount()
+        << ", spendable inputs " << m_state.spendableInputs().size()
+        << ", balance atomic units " << m_state.balance()
+        << ", spendable atomic units " << m_state.spendableBalance()
+        << ", history rows " << m_state.historyCount();
+  }
+  return affected;
 }
 
 uint32_t WalletLedgerConsumer::onNewBlocks(const CompleteBlock* blocks, uint32_t startHeight, uint32_t count) {
@@ -60,6 +78,7 @@ uint32_t WalletLedgerConsumer::onNewBlocks(const CompleteBlock* blocks, uint32_t
   }
 
   uint32_t processed = 0;
+  std::size_t affectedTransactions = 0;
   std::vector<Crypto::Hash> blockHashes;
   blockHashes.reserve(count);
   try {
@@ -70,7 +89,9 @@ uint32_t WalletLedgerConsumer::onNewBlocks(const CompleteBlock* blocks, uint32_t
         uint64_t timestamp = cb.block->timestamp;
         for (const auto& tx : cb.transactions) {
           if (tx) {
-            scanReader(*tx, height, timestamp);
+            if (scanReader(*tx, height, timestamp)) {
+              ++affectedTransactions;
+            }
           }
         }
       }
@@ -89,12 +110,28 @@ uint32_t WalletLedgerConsumer::onNewBlocks(const CompleteBlock* blocks, uint32_t
   if (!blockHashes.empty()) {
     m_observerManager.notify(&IBlockchainConsumerObserver::onBlocksAdded, this, blockHashes);
   }
+  if (processed != 0) {
+    m_logger(Logging::DEBUGGING) << "Ledger scan batch: blocks " << startHeight << "-"
+        << (startHeight + processed - 1) << ", processed " << processed
+        << ", affected transactions " << affectedTransactions
+        << ", cursor " << m_state.lastScannedHeight();
+  }
   return processed;
 }
 
 void WalletLedgerConsumer::onBlockchainDetach(uint32_t height) {
+  const std::size_t outputsBefore = m_state.ownedCount();
+  const std::size_t unspentBefore = m_state.unspentCount();
+  const std::size_t historyBefore = m_state.historyCount();
+  const uint64_t balanceBefore = m_state.balance();
   m_observerManager.notify(&IBlockchainConsumerObserver::onBlockchainDetach, this, height);
   m_state.rollbackToHeight(height);
+  m_logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Ledger rollback to height " << height
+      << ": outputs " << outputsBefore << " -> " << m_state.ownedCount()
+      << ", unspent " << unspentBefore << " -> " << m_state.unspentCount()
+      << ", history " << historyBefore << " -> " << m_state.historyCount()
+      << ", balance atomic units " << balanceBefore << " -> " << m_state.balance()
+      << ", cursor " << m_state.lastScannedHeight();
 }
 
 std::error_code WalletLedgerConsumer::onPoolUpdated(
@@ -111,7 +148,12 @@ std::error_code WalletLedgerConsumer::onPoolUpdated(
     m_poolTxs.erase(h);
     // A tx that left the pool without being mined: undo its unconfirmed effects.
     // (If it was mined, its outputs/spends already carry a real height and are kept.)
-    m_state.removeUnconfirmedTransaction(h);
+    removeUnconfirmedFromState(h);
+  }
+  if (!addedTransactions.empty() || !deletedTransactions.empty()) {
+    m_logger(Logging::DEBUGGING) << "Ledger pool update: added " << addedTransactions.size()
+        << ", removed " << deletedTransactions.size()
+        << ", tracked wallet transactions " << m_poolTxs.size();
   }
   return std::error_code();
 }
@@ -129,7 +171,24 @@ std::error_code WalletLedgerConsumer::addUnconfirmedTransaction(const ITransacti
 
 void WalletLedgerConsumer::removeUnconfirmedTransaction(const Crypto::Hash& transactionHash) {
   m_poolTxs.erase(transactionHash);
+  removeUnconfirmedFromState(transactionHash);
+}
+
+void WalletLedgerConsumer::removeUnconfirmedFromState(const Crypto::Hash& transactionHash) {
+  const std::size_t outputsBefore = m_state.ownedCount();
+  const std::size_t unspentBefore = m_state.unspentCount();
+  const std::size_t historyBefore = m_state.historyCount();
+  const uint64_t balanceBefore = m_state.balance();
   m_state.removeUnconfirmedTransaction(transactionHash);
+  if (outputsBefore != m_state.ownedCount() || unspentBefore != m_state.unspentCount() ||
+      historyBefore != m_state.historyCount()) {
+    m_logger(Logging::INFO) << "Removed unconfirmed ledger transaction "
+        << Common::podToHex(transactionHash)
+        << ": outputs " << outputsBefore << " -> " << m_state.ownedCount()
+        << ", unspent " << unspentBefore << " -> " << m_state.unspentCount()
+        << ", history " << historyBefore << " -> " << m_state.historyCount()
+        << ", balance atomic units " << balanceBefore << " -> " << m_state.balance();
+  }
 }
 
 }  // namespace CryptoNote

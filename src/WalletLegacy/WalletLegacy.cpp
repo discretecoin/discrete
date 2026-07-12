@@ -252,6 +252,7 @@ WalletLegacy::WalletLegacy(const CryptoNote::Currency& currency, INode& node, Lo
   m_onInitSyncStarter(new SyncStarter(m_blockchainSync))
 {
   addObserver(m_onInitSyncStarter.get());
+  m_logger(DEBUGGING) << "WalletLegacy instance created";
 }
 
 WalletLegacy::~WalletLegacy() {
@@ -449,6 +450,7 @@ void WalletLegacy::initAndLoad(std::istream& source, const std::string& password
 
   m_password = password;
   m_state = LOADING;
+  m_logger(INFO) << "Loading wallet";
       
   m_asyncContextCounter.addAsyncContext();
   std::thread loader(&WalletLegacy::doLoad, this, std::ref(source));
@@ -484,6 +486,11 @@ void WalletLegacy::initSync() {
     m_pqConsumer->state().setDepositConfig(PqDepositScheme::SingleKeyIndex,
                                            SUBADDRESS_SCAN_WINDOW);
   }
+
+  m_logger(INFO) << "PQ ledger initialized: mode "
+                 << (keys.spendSecretKey != NULL_SECRET_KEY ? "full" : "tracking")
+                 << ", sync timestamp " << syncStart.timestamp
+                 << ", subaddress scan window " << SUBADDRESS_SCAN_WINDOW;
 
   m_state = INITIALIZED;
 
@@ -523,8 +530,11 @@ void WalletLegacy::doLoad(std::istream& source) {
           m_pqConsumer->state().load(ps);
         }
       }
-    } catch (const std::exception&) {
-      // ignore cache loading errors
+    } catch (const std::exception& e) {
+      // A cache failure is recoverable (the synchronizer rescans), but it must be
+      // visible because it explains a slow startup and initially empty balances.
+      m_logger(WARNING) << "Failed to restore PQ wallet cache: " << e.what()
+                        << "; a blockchain rescan will rebuild it";
     }
 
     // History rows already on disk are this wallet's past; baseline the announce
@@ -532,13 +542,20 @@ void WalletLegacy::doLoad(std::istream& source) {
     // rows discovered during this session's sync grow past the baseline and fire.
     if (m_pqConsumer) {
       m_lastNotifiedTransactionCount.store(m_pqConsumer->state().historyCount());
+      m_logger(INFO) << "Wallet loaded: ledger height " << m_pqConsumer->state().lastScannedHeight()
+                     << ", owned outputs " << m_pqConsumer->state().ownedCount()
+                     << ", unspent " << m_pqConsumer->state().unspentCount()
+                     << ", spendable inputs " << m_pqConsumer->state().spendableInputs().size()
+                     << ", history rows " << m_pqConsumer->state().historyCount();
     }
 
   } catch (std::system_error& e) {
+    m_logger(ERROR) << "Wallet load failed: " << e.what();
     runAtomic(m_cacheMutex, [this] () {this->m_state = WalletLegacy::NOT_INITIALIZED;} );
     m_observerManager.notify(&IWalletLegacyObserver::initCompleted, e.code());
     return;
-  } catch (std::exception&) {
+  } catch (std::exception& e) {
+    m_logger(ERROR) << "Wallet load failed: " << e.what();
     runAtomic(m_cacheMutex, [this] () {this->m_state = WalletLegacy::NOT_INITIALIZED;} );
     m_observerManager.notify(&IWalletLegacyObserver::initCompleted, make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR));
     return;
@@ -554,6 +571,7 @@ bool WalletLegacy::tryLoadWallet(std::istream& source, const std::string& passwo
 }
 
 void WalletLegacy::shutdown() {
+  m_logger(INFO) << "Shutting down wallet";
   {
     std::unique_lock<std::mutex> lock(m_cacheMutex);
 
@@ -583,6 +601,7 @@ void WalletLegacy::shutdown() {
     m_lastNotifiedPendingBalance = 0;
     m_lastNotifiedTransactionCount = 0;
   }
+  m_logger(INFO) << "Wallet shut down";
 }
 
 void WalletLegacy::reset() {
@@ -621,6 +640,9 @@ void WalletLegacy::save(std::ostream& destination, bool saveDetailed, bool saveC
 
     m_state = SAVING;
   }
+
+  m_logger(DEBUGGING) << "Saving wallet: details " << (saveDetailed ? "yes" : "no")
+                      << ", cache " << (saveCache ? "yes" : "no");
 
   m_asyncContextCounter.addAsyncContext();
   std::thread saver(&WalletLegacy::doSave, this, std::ref(destination), saveDetailed, saveCache);
@@ -668,21 +690,31 @@ void WalletLegacy::doSave(std::ostream& destination, bool saveDetailed, bool sav
 
     serializer.serialize(destination, m_password, saveDetailed, cache);
 
+    if (m_pqConsumer) {
+      m_logger(DEBUGGING) << "Wallet cache serialized: bytes " << cache.size()
+                          << ", ledger height " << m_pqConsumer->state().lastScannedHeight()
+                          << ", owned outputs " << m_pqConsumer->state().ownedCount()
+                          << ", history rows " << m_pqConsumer->state().historyCount();
+    }
+
     m_state = INITIALIZED;
     m_blockchainSync.start(); //XXX: start can throw. what to do in this case?
   }
   catch (std::system_error& e) {
+    m_logger(ERROR) << "Wallet save failed: " << e.what();
     runAtomic(m_cacheMutex, [this] () {this->m_state = WalletLegacy::INITIALIZED;} );
     m_observerManager.notify(&IWalletLegacyObserver::saveCompleted, e.code());
     return;
   }
-  catch (std::exception&) {
+  catch (std::exception& e) {
+    m_logger(ERROR) << "Wallet save failed: " << e.what();
     runAtomic(m_cacheMutex, [this] () {this->m_state = WalletLegacy::INITIALIZED;} );
     m_observerManager.notify(&IWalletLegacyObserver::saveCompleted, make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR));
     return;
   }
 
   m_observerManager.notify(&IWalletLegacyObserver::saveCompleted, std::error_code());
+  m_logger(INFO) << "Wallet saved";
 }
 
 std::error_code WalletLegacy::changePassword(const std::string& oldPassword, const std::string& newPassword) {
@@ -790,13 +822,13 @@ uint64_t WalletLegacy::actualBalance() {
   std::unique_lock<std::mutex> lock(m_cacheMutex);
   throwIfNotInitialised();
 
-  // PQ is the native ledger. "Actual" = confirmed (total minus still-in-mempool).
+  // IWalletLegacy's "actual" balance is the amount available to send now. Mirror
+  // the sender's exact filter: confirmed, unspent, and past per-output locks such
+  // as the coinbase maturity window.
   if (!m_pqConsumer) {
     return 0;
   }
-  uint64_t total = m_pqConsumer->state().balance();
-  uint64_t pending = m_pqConsumer->state().pendingBalance();
-  return total >= pending ? total - pending : 0;
+  return m_pqConsumer->state().spendableBalance();
 }
 
 uint64_t WalletLegacy::pqActualBalance() const {
@@ -877,15 +909,39 @@ PqSendResult WalletLegacy::sendPqTransfer(const std::vector<PqSendOutput>& recip
   // Single key pair: outputs attributed to a subaddress index T (see initSync)
   // are still authorized by the primary spend key.
   req.scheme = PqDepositScheme::SingleKeyIndex;
-  PqSendResult result = buildPqSend(pqSpendableInputs(), pq, req);
+  std::vector<PqSpendInput> spendable = pqSpendableInputs();
+  m_logger(INFO) << "Building PQ transaction: recipients " << recipients.size()
+                 << ", available inputs " << spendable.size()
+                 << ", requested fee atomic units " << fee
+                 << ", extra bytes " << extra.size();
+
+  PqSendResult result;
+  try {
+    result = buildPqSend(spendable, pq, req);
+  } catch (const PqSendError& e) {
+    m_logger(WARNING) << "PQ transaction build rejected: " << e.what()
+                      << ", available inputs " << spendable.size();
+    throw;
+  }
+  const Crypto::Hash txid = getObjectHash(result.tx);
+  m_logger(INFO) << "PQ transaction built: hash " << Common::podToHex(txid)
+                 << ", inputs " << result.tx.inputs.size()
+                 << ", outputs " << result.tx.outputs.size()
+                 << ", bytes " << toBinaryArray(result.tx).size()
+                 << ", sent atomic units " << result.sent
+                 << ", fee atomic units " << result.fee
+                 << ", change atomic units " << result.change;
 
   std::promise<std::error_code> promise;
   auto future = promise.get_future();
   m_node.relayTransaction(result.tx, [&promise](std::error_code ec) { promise.set_value(ec); });
   std::error_code ec = future.get();
   if (ec) {
+    m_logger(ERROR) << "Failed to relay PQ transaction " << Common::podToHex(txid)
+                    << ": " << ec.message() << " (" << ec.value() << ")";
     throw std::system_error(ec, "failed to relay transaction");
   }
+  m_logger(INFO) << "PQ transaction relay accepted: " << Common::podToHex(txid);
   return result;
 }
 
@@ -893,7 +949,14 @@ uint64_t WalletLegacy::pendingBalance() {
   std::unique_lock<std::mutex> lock(m_cacheMutex);
   throwIfNotInitialised();
 
-  return m_pqConsumer ? m_pqConsumer->state().pendingBalance() : 0;
+  if (!m_pqConsumer) {
+    return 0;
+  }
+  // "Pending" is the locked remainder shown alongside Available. It includes
+  // both mempool outputs and confirmed outputs whose unlockHeight has not passed.
+  const uint64_t total = m_pqConsumer->state().balance();
+  const uint64_t available = m_pqConsumer->state().spendableBalance();
+  return total >= available ? total - available : 0;
 }
 
 size_t WalletLegacy::getTransactionCount() {
@@ -1176,6 +1239,7 @@ void WalletLegacy::notifyIfBalanceChanged() {
   auto prevActual = m_lastNotifiedActualBalance.exchange(actual);
 
   if (prevActual != actual) {
+    m_logger(INFO) << "Available balance changed: atomic units " << prevActual << " -> " << actual;
     m_observerManager.notify(&IWalletLegacyObserver::actualBalanceUpdated, actual);
   }
 
@@ -1183,6 +1247,7 @@ void WalletLegacy::notifyIfBalanceChanged() {
   auto prevPending = m_lastNotifiedPendingBalance.exchange(pending);
 
   if (prevPending != pending) {
+    m_logger(INFO) << "Locked balance changed: atomic units " << prevPending << " -> " << pending;
     m_observerManager.notify(&IWalletLegacyObserver::pendingBalanceUpdated, pending);
   }
 
