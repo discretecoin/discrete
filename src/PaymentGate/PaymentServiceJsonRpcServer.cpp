@@ -51,6 +51,10 @@ PaymentServiceJsonRpcServer::PaymentServiceJsonRpcServer(System::Dispatcher* sys
   handlers.emplace("getUnconfirmedTransactionHashes", jsonHandler<GetUnconfirmedTransactionHashes::Request, GetUnconfirmedTransactionHashes::Response>(std::bind(&PaymentServiceJsonRpcServer::handleGetUnconfirmedTransactionHashes, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("getTransaction", jsonHandler<GetTransaction::Request, GetTransaction::Response>(std::bind(&PaymentServiceJsonRpcServer::handleGetTransaction, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("sendTransaction", jsonHandler<SendTransaction::Request, SendTransaction::Response>(std::bind(&PaymentServiceJsonRpcServer::handleSendTransaction, this, std::placeholders::_1, std::placeholders::_2)));
+  handlers.emplace("getPaymentProofs", jsonHandler<GetPaymentProofs::Request, GetPaymentProofs::Response>(std::bind(&PaymentServiceJsonRpcServer::handleGetPaymentProofs, this, std::placeholders::_1, std::placeholders::_2)));
+  handlers.emplace("deletePaymentProof", jsonHandler<DeletePaymentProof::Request, DeletePaymentProof::Response>(std::bind(&PaymentServiceJsonRpcServer::handleDeletePaymentProof, this, std::placeholders::_1, std::placeholders::_2)));
+  handlers.emplace("exportPaymentProof", jsonHandler<ExportPaymentProof::Request, ExportPaymentProof::Response>(std::bind(&PaymentServiceJsonRpcServer::handleExportPaymentProof, this, std::placeholders::_1, std::placeholders::_2)));
+  handlers.emplace("importPaymentProof", jsonHandler<ImportPaymentProof::Request, ImportPaymentProof::Response>(std::bind(&PaymentServiceJsonRpcServer::handleImportPaymentProof, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("getViewKey", jsonHandler<GetViewKey::Request, GetViewKey::Response>(std::bind(&PaymentServiceJsonRpcServer::handleGetViewKey, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("getMnemonicSeed", jsonHandler<GetMnemonicSeed::Request, GetMnemonicSeed::Response>(std::bind(&PaymentServiceJsonRpcServer::handleGetMnemonicSeed, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("getStatus", jsonHandler<GetStatus::Request, GetStatus::Response>(std::bind(&PaymentServiceJsonRpcServer::handleGetStatus, this, std::placeholders::_1, std::placeholders::_2)));
@@ -215,7 +219,24 @@ std::error_code PaymentServiceJsonRpcServer::handleVerifyMessage(const VerifyMes
 }
 
 std::error_code PaymentServiceJsonRpcServer::handleSendTransaction(const SendTransaction::Request& request, SendTransaction::Response& response) {
-  return service.sendTransaction(request, response.transactionHash);
+  return service.sendTransaction(request, response.transactionHash, response.paymentProofs);
+}
+
+std::error_code PaymentServiceJsonRpcServer::handleGetPaymentProofs(const GetPaymentProofs::Request& request, GetPaymentProofs::Response& response) {
+  return service.getPaymentProofs(request.transactionHash, response.entries);
+}
+
+std::error_code PaymentServiceJsonRpcServer::handleDeletePaymentProof(const DeletePaymentProof::Request& request, DeletePaymentProof::Response& response) {
+  return service.deletePaymentProof(request.transactionHash, request.recipientIndex,
+                                    request.confirm, response.deleted);
+}
+
+std::error_code PaymentServiceJsonRpcServer::handleExportPaymentProof(const ExportPaymentProof::Request& request, ExportPaymentProof::Response& response) {
+  return service.exportPaymentProof(request.transactionHash, request.recipientIndex, response.recordHex);
+}
+
+std::error_code PaymentServiceJsonRpcServer::handleImportPaymentProof(const ImportPaymentProof::Request& request, ImportPaymentProof::Response& response) {
+  return service.importPaymentProof(request.recordHex, response.transactionHash);
 }
 
 

@@ -58,6 +58,7 @@
 #include "Wallet/PqTransactionBuilder.h"
 #include "Wallet/PqSender.h"
 #include "Wallet/SentPaymentsStore.h"
+#include "Wallet/PaymentProofArchive.h"
 
 #include <Logging/LoggerRef.h>
 
@@ -115,7 +116,19 @@ public:
   // Throws on a tracking wallet, insufficient funds, or relay failure.
   PqSendResult sendPqTransfer(const std::vector<PqSendOutput>& recipients,
                               uint64_t fee = 0, uint64_t unlockHeight = 0,
-                              const std::vector<uint8_t>& extra = {});
+                              const std::vector<uint8_t>& extra = {},
+                              const std::vector<std::string>& recipientAddresses = {});
+  void configurePaymentProofArchive(const std::string& walletFile);
+  const SentPaymentRecord* getPaymentProofs(const Crypto::Hash& txid) const;
+  bool copyPaymentProofs(const Crypto::Hash& txid, SentPaymentRecord& record) const;
+  void exportPaymentProofs(const Crypto::Hash& txid, const std::string& path,
+                           std::size_t recipientIndex = static_cast<std::size_t>(-1));
+  Crypto::Hash importPaymentProofs(const std::string& path);
+  bool deletePaymentProofs(const Crypto::Hash& txid,
+                           std::size_t recipientIndex = static_cast<std::size_t>(-1));
+  void setPaymentProofArchiveFaultForTests(PaymentProofArchive::Fault fault) {
+    m_paymentProofArchive.setFaultForTests(fault);
+  }
 
   // Net amount of one transaction split by subaddress index T (SingleKeyIndex
   // attribution; both 0 and PQ_PRIMARY_DEPOSIT mean the primary address). Empty
@@ -215,6 +228,8 @@ private:
   // legacy transfer accessors so the History view can show who a payment went to.
   // Serialized into the wallet's encrypted cache; dropped on reset, as in Karbo.
   SentPaymentsStore m_sentPayments;
+  PaymentProofArchive m_paymentProofArchive;
+  std::string m_walletFile;
 
   WalletAsyncContextCounter m_asyncContextCounter;
   Tools::ObserverManager<CryptoNote::IWalletLegacyObserver> m_observerManager;

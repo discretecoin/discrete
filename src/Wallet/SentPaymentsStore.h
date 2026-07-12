@@ -24,6 +24,7 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
+#include <cstring>
 
 #include "crypto/hash.h"  // Crypto::Hash + its std::hash specialization (CRYPTO_MAKE_HASHABLE)
 
@@ -51,10 +52,9 @@ struct SentPaymentEntry {
   std::string address;    // the account number / address string the user paid
   uint64_t    amount = 0; // atomic units sent to this recipient
 
-  // Reserved for the off-chain payment-proof feature: the per-output ML-KEM messages
-  // (m_j) that let a payer prove this payment without the recipient's view key. Kept
-  // as an opaque, length-prefixed blob so populating it later needs no format change.
-  // Empty until that feature lands.
+  // Canonical encoded off-chain payer proof. Kept as the existing opaque,
+  // length-prefixed blob; the proof archive stores this same field rather than a
+  // parallel witness schema.
   std::string proof;
 };
 
@@ -66,10 +66,36 @@ struct SentPaymentRecord {
 // txid -> the recipients we paid. Serialized into the wallet's encrypted cache.
 class SentPaymentsStore {
 public:
-  // Capture (or overwrite) the recipients for a transaction we just sent.
+  struct HashEqual {
+    bool operator()(const Crypto::Hash& a, const Crypto::Hash& b) const noexcept {
+      return std::memcmp(a.data, b.data, sizeof(a.data)) == 0;
+    }
+  };
+  using Records = std::unordered_map<Crypto::Hash, SentPaymentRecord,
+                                     std::hash<Crypto::Hash>, HashEqual>;
+  // Legacy cache helper. Evidence-bearing paths use recordChecked() below.
   void record(const Crypto::Hash& txid, SentPaymentRecord record) {
     m_records[txid] = std::move(record);
   }
+
+  // Insert without silently replacing evidentiary data. Returns true for a new
+  // or byte-identical record and false for a conflicting existing txid.
+  bool recordChecked(const Crypto::Hash& txid, const SentPaymentRecord& record) {
+    auto it = m_records.find(txid);
+    if (it == m_records.end()) {
+      m_records.emplace(txid, record);
+      return true;
+    }
+    return equal(it->second, record);
+  }
+
+  bool remove(const Crypto::Hash& txid) {
+    auto it = m_records.find(txid);
+    if (it == m_records.end()) return false;
+    m_records.erase(it);
+    return true;
+  }
+  const Records& records() const { return m_records; }
 
   // The recipients we recorded for txid, or nullptr if none (incoming tx, a send made
   // before this feature existed, or a send whose record was dropped by a reset).
@@ -154,7 +180,17 @@ private:
     return static_cast<bool>(is);
   }
 
-  std::unordered_map<Crypto::Hash, SentPaymentRecord> m_records;
+  static bool equal(const SentPaymentRecord& a, const SentPaymentRecord& b) {
+    if (a.recipients.size() != b.recipients.size()) return false;
+    for (std::size_t i = 0; i < a.recipients.size(); ++i) {
+      const auto& x = a.recipients[i];
+      const auto& y = b.recipients[i];
+      if (x.address != y.address || x.amount != y.amount || x.proof != y.proof) return false;
+    }
+    return true;
+  }
+
+  Records m_records;
 };
 
 }  // namespace CryptoNote

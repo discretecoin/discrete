@@ -89,6 +89,10 @@ private:
   std::error_code handleGetUnconfirmedTransactionHashes(const GetUnconfirmedTransactionHashes::Request& request, GetUnconfirmedTransactionHashes::Response& response);
   std::error_code handleGetTransaction(const GetTransaction::Request& request, GetTransaction::Response& response);
   std::error_code handleSendTransaction(const SendTransaction::Request& request, SendTransaction::Response& response);
+  std::error_code handleGetPaymentProofs(const GetPaymentProofs::Request& request, GetPaymentProofs::Response& response);
+  std::error_code handleDeletePaymentProof(const DeletePaymentProof::Request& request, DeletePaymentProof::Response& response);
+  std::error_code handleExportPaymentProof(const ExportPaymentProof::Request& request, ExportPaymentProof::Response& response);
+  std::error_code handleImportPaymentProof(const ImportPaymentProof::Request& request, ImportPaymentProof::Response& response);
   std::error_code handleGetViewKey(const GetViewKey::Request& request, GetViewKey::Response& response);
   std::error_code handleGetMnemonicSeed(const GetMnemonicSeed::Request& request, GetMnemonicSeed::Response& response);
   std::error_code handleGetStatus(const GetStatus::Request& request, GetStatus::Response& response);

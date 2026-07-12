@@ -1,6 +1,6 @@
 # PQ Payer Payment Proof (minimal, off-chain)
 
-Status: **Phases 1–2 implemented; Phases 3–4 not implemented.** 2026-07-12.
+Status: **Phases 1–3 implemented; Phase 4 not implemented. Phase 3 awaits follow-up review.** 2026-07-12.
 Branch `dev/payment_proof`. This is the *minimal* payer proof chosen after three security
 reviews (see [PQ-TX-PROOFS.md](PQ-TX-PROOFS.md) on branch `dev/tx_proof` for the
 heavier seed-recoverable/tx-secret-key design that was **rejected as too invasive** for
@@ -119,17 +119,38 @@ retained only at send time), so it must be captured atomically, before the tx ca
 without it:
 
 1. build outputs (explicit-coins), **self-verify each** (§7), assemble the proof(s);
-2. **atomically persist** the finished proof(s) — CLI: `fsync` a
-   `payment-proofs/<txid>.proof` file; RPC: retain the proof server-side keyed by txid —
-   **before** relaying;
+2. **atomically persist** the finished proof(s) in the wallet-specific archive described
+   below — **before** relaying;
 3. relay the transaction;
 4. display / return the proof;
 5. let the user export or delete the saved copy later.
 
 Saving before relay closes the crash window where a tx could broadcast but the proof be
-lost. An orphaned proof file for a tx that never broadcast is harmless. No new wallet-DB
-schema is required (the proof is a side file / RPC buffer); a wallet-managed proof
-archive is optional.
+lost. A record saved before an unsuccessful or ambiguous relay is deliberately retained:
+"not found" does not prove that the transaction was never accepted.
+
+The authoritative archive is `<wallet-file>.payment-proofs/`. Each transaction is stored
+as `<lowercase-txid>.pproof`; no user-controlled path component is used. Archive version
+1 is `DPPR || u8(version) || genesis[32] || txid[32] || LE32(row-count)`, followed by
+ordered rows `LE32(address-size) || address || LE64(amount) || LE32(proof-size) || proof`.
+Lengths and row counts are bounded. Rows are the wallet's existing `SentPaymentEntry`
+records and use its existing opaque `proof` field; there is no parallel payment schema.
+
+Writes use a temporary sibling file, durable file flush, atomic rename, and parent
+directory flush where supported. The completed file is read back and all enclosed proofs
+must decode and match its network and txid before relay is authorized. Identical writes
+are idempotent; a conflicting record for the same txid is never overwritten.
+
+At startup, files are validated independently and reconciled into `SentPaymentsStore`.
+A damaged file is reported by filename without logging proof contents and does not hide
+other records or prevent wallet access. The encrypted wallet cache mirrors the store, but
+is not the pre-relay durability barrier. Blockchain reset/rescan rebuilds chain-derived
+state and then reloads this archive; it does not delete payer proofs. Mnemonic-only
+restoration without this directory cannot recreate them.
+
+Both wallet engines follow `build/sign -> final proof verification -> durable archive ->
+relay`. WalletGreen rolls back its input reservation on persistence or relay failure;
+both engines retain the already-durable proof record after relay failure.
 
 Send-result UX:
 
@@ -185,8 +206,10 @@ not recover past outgoing payment proofs (§6 handles this operationally).
    wrong recipient/network). No wallet dependency.
 2. **Send path:** switch output construction to explicit-coins with retained `m_j`
    (byte-identical outputs); self-verify (§7); assemble per-recipient proofs; return them.
-3. **Wallet storage/UX:** atomic save-before-relay; CLI print + `payment-proofs/<txid>`;
-   `export`/`import`/`delete`; walletd RPC to retrieve a stored proof.
+3. **Wallet storage/UX (implemented, review pending):** atomic save-before-relay;
+   wallet-specific archive; CLI print/retrieve/export/import/delete; authenticated walletd
+   send/retrieve/export/import/delete RPC. Import fetches the transaction and runs the
+   full verifier before persistence.
 4. **Verify surface:** daemon/library `check_payment_proof(proof, recipient|account)` →
    amount; explorer "Prove payment" box (separate repo). Recipient resolution
    (account-number → `ResolvedRecipient`) is upstream of the pure verifier.

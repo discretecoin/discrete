@@ -96,6 +96,9 @@ wallet_rpc_server::wallet_rpc_server(
   m_walletFilename(walletFilename),
   m_run_ssl(false)
 {
+  if (auto* legacy = dynamic_cast<CryptoNote::WalletLegacy*>(&m_wallet)) {
+    legacy->configurePaymentProofArchive(m_walletFilename);
+  }
 }
 
 //------------------------------------------------------------------------------------------------------------------------------

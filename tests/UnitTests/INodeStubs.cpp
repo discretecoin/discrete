@@ -166,6 +166,7 @@ void INodeTrivialRefreshStub::doGetTransactionOutsGlobalIndices(const Crypto::Ha
 
 void INodeTrivialRefreshStub::relayTransaction(const Transaction& transaction, const Callback& callback)
 {
+  ++m_relayCount;
   m_asyncCounter.addAsyncContext();
   std::thread task(&INodeTrivialRefreshStub::doRelayTransaction, this, transaction, callback);
   task.detach();

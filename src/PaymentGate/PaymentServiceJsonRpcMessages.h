@@ -512,6 +512,43 @@ struct WalletRpcOrder {
   void serialize(CryptoNote::ISerializer& serializer);
 };
 
+struct PaymentProofRpcEntry {
+  std::string address;
+  uint64_t amount = 0;
+  std::string proof;
+  std::string state;
+  void serialize(CryptoNote::ISerializer& serializer);
+};
+
+struct GetPaymentProofs {
+  struct Request { std::string transactionHash; void serialize(CryptoNote::ISerializer& serializer); };
+  struct Response { std::vector<PaymentProofRpcEntry> entries; void serialize(CryptoNote::ISerializer& serializer); };
+};
+
+struct DeletePaymentProof {
+  struct Request {
+    std::string transactionHash;
+    uint32_t recipientIndex = std::numeric_limits<uint32_t>::max();
+    bool confirm = false;
+    void serialize(CryptoNote::ISerializer& serializer);
+  };
+  struct Response { bool deleted = false; void serialize(CryptoNote::ISerializer& serializer); };
+};
+
+struct ExportPaymentProof {
+  struct Request {
+    std::string transactionHash;
+    uint32_t recipientIndex = std::numeric_limits<uint32_t>::max();
+    void serialize(CryptoNote::ISerializer& serializer);
+  };
+  struct Response { std::string recordHex; void serialize(CryptoNote::ISerializer& serializer); };
+};
+
+struct ImportPaymentProof {
+  struct Request { std::string recordHex; void serialize(CryptoNote::ISerializer& serializer); };
+  struct Response { std::string transactionHash; void serialize(CryptoNote::ISerializer& serializer); };
+};
+
 struct SendTransaction {
   struct Request {
     std::vector<std::string> sourceAddresses;
@@ -527,6 +564,7 @@ struct SendTransaction {
 
   struct Response {
     std::string transactionHash;
+    std::vector<std::string> paymentProofs;
 
     void serialize(CryptoNote::ISerializer& serializer);
   };

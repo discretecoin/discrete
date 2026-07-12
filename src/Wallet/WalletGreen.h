@@ -34,6 +34,7 @@
 #include "Wallet/WalletLedgerConsumer.h"
 #include "Wallet/PqTransactionBuilder.h"
 #include "Wallet/PqSender.h"
+#include "Wallet/PaymentProofArchive.h"
 #include "../CryptoNoteConfig.h"
 
 namespace CryptoNote {
@@ -91,7 +92,16 @@ public:
                               uint64_t fee = 0, uint64_t unlockHeight = 0,
                               const std::vector<uint8_t>& extra = {},
                               const std::vector<std::string>& sourceAddresses = {},
-                              const std::string& changeAddress = {});
+                              const std::string& changeAddress = {},
+                              const std::vector<std::string>& recipientAddresses = {});
+  const SentPaymentRecord* getPaymentProofs(const Crypto::Hash& txid) const;
+  bool copyPaymentProofs(const Crypto::Hash& txid, SentPaymentRecord& record) const;
+  Crypto::Hash importPaymentProofs(const std::string& bytes);
+  bool deletePaymentProofs(const Crypto::Hash& txid,
+                           std::size_t recipientIndex = static_cast<std::size_t>(-1));
+  void setPaymentProofArchiveFaultForTests(PaymentProofArchive::Fault fault) {
+    m_paymentProofArchive.setFaultForTests(fault);
+  }
   // Register this wallet's PQ identity with a fee-paying TX_PQ: a self-payment of
   // the smallest denomination whose tx.extra carries the account-registration tag.
   // Returns the built+relayed result. Throws on a tracking wallet / insufficient
@@ -344,6 +354,8 @@ protected:
   // driving the BlockchainSynchronizer.
   std::unique_ptr<WalletLedgerConsumer> m_pqConsumer;
   std::unique_ptr<PqTrackingKeys> m_pqTrackingKeys;
+  SentPaymentsStore m_sentPayments;
+  PaymentProofArchive m_paymentProofArchive;
 
   System::Event m_eventOccurred;
   std::queue<WalletEvent> m_events;

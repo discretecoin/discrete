@@ -20,6 +20,7 @@
 #include <vector>
 #include <unordered_map>
 #include <limits>
+#include <atomic>
 
 #include "INode.h"
 #include "CryptoNoteCore/CryptoNoteBasic.h"
@@ -133,6 +134,7 @@ public:
   virtual void startAlternativeChain(uint32_t height);
   void setNextTransactionError();
   void setNextTransactionToPool();
+  size_t relayCount() const { return m_relayCount.load(); }
   void cleanTransactionPool();
   void includeTransactionsFromPoolToBlock();
 
@@ -169,6 +171,7 @@ protected:
   TestBlockchainGenerator& m_blockchainGenerator;
   bool m_nextTxError;
   bool m_nextTxToPool;
+  std::atomic<size_t> m_relayCount{0};
   std::mutex m_walletLock;
   CryptoNote::WalletAsyncContextCounter m_asyncCounter;
   bool m_synchronized;

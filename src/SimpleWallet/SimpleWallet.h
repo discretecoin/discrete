@@ -131,6 +131,10 @@ namespace CryptoNote
     bool pq_address(const std::vector<std::string> &args = std::vector<std::string>());
     bool pq_balance(const std::vector<std::string> &args = std::vector<std::string>());
     bool pq_transfer(const std::vector<std::string> &args);
+    bool payment_proof(const std::vector<std::string> &args);
+    bool export_payment_proof(const std::vector<std::string> &args);
+    bool import_payment_proof(const std::vector<std::string> &args);
+    bool delete_payment_proof(const std::vector<std::string> &args);
     bool pq_register(const std::vector<std::string> &args = std::vector<std::string>());
     bool pq_register_paid(const std::vector<std::string> &args = std::vector<std::string>());
     bool pq_account(const std::vector<std::string> &args = std::vector<std::string>());

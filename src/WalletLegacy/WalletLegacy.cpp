@@ -558,6 +558,15 @@ void WalletLegacy::doLoad(std::istream& source) {
                         << "; a blockchain rescan will rebuild it";
     }
 
+    // The proof archive is authoritative and independent of blockchain cache.
+    // Reconcile it after every load/reset so reset cannot erase payer evidence.
+    if (m_paymentProofArchive.configured()) {
+      std::vector<std::string> warnings;
+      m_paymentProofArchive.configure(m_walletFile, m_currency.genesisBlockHash(),
+                                      m_sentPayments, &warnings);
+      for (const auto& warning : warnings) m_logger(WARNING) << warning;
+    }
+
     // History rows already on disk are this wallet's past; baseline the announce
     // cursor to them so reloading does not re-announce every old transaction. New
     // rows discovered during this session's sync grow past the baseline and fire.
@@ -923,7 +932,8 @@ std::string WalletLegacy::getPqAddress() const {
 
 PqSendResult WalletLegacy::sendPqTransfer(const std::vector<PqSendOutput>& recipients,
                                           uint64_t fee, uint64_t unlockHeight,
-                                          const std::vector<uint8_t>& extra) {
+                                          const std::vector<uint8_t>& extra,
+                                          const std::vector<std::string>& recipientAddresses) {
   if (!pqEnabled()) {
     throw std::runtime_error("Spending is unavailable for this wallet");
   }
@@ -967,6 +977,46 @@ PqSendResult WalletLegacy::sendPqTransfer(const std::vector<PqSendOutput>& recip
                  << ", fee atomic units " << result.fee
                  << ", change atomic units " << result.change;
 
+  // Re-verify Phase 2 against the exact final transaction, then persist the
+  // ordered SentPaymentEntry records before the first relay attempt.
+  if (!m_paymentProofArchive.configured()) {
+    throw std::runtime_error("payment-proof storage is not configured for this wallet");
+  }
+  if (!recipientAddresses.empty() && recipientAddresses.size() != recipients.size()) {
+    throw std::runtime_error("payment-proof recipient label count mismatch");
+  }
+  PqPaymentProofTransaction proofTx = makePqPaymentProofTransaction(result.tx);
+  SentPaymentRecord sent;
+  sent.recipients.reserve(recipients.size());
+  for (std::size_t i = 0; i < recipients.size(); ++i) {
+    ResolvedRecipient recipient{recipients[i].recipientViewPub,
+                                recipients[i].recipientSpendPub,
+                                recipients[i].subaddrIndexT};
+    if (i >= result.proofs.size() ||
+        verifyPqPaymentProof(result.proofs[i], req.genesisId, proofTx, recipient) != recipients[i].amount) {
+      throw std::runtime_error("payment-proof final verification failed");
+    }
+    std::string address;
+    if (!recipientAddresses.empty()) {
+      address = recipientAddresses[i];
+    } else {
+      address = encodePqAddress(makePqAddress(
+          parameters::CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX,
+          recipients[i].recipientViewPub, recipients[i].recipientSpendPub),
+          pqBech32Hrp(m_currency.isTestnet()));
+    }
+    sent.recipients.push_back(SentPaymentEntry{
+        std::move(address), recipients[i].amount,
+        encodePqPaymentProof(result.proofs[i], m_currency.isTestnet())});
+  }
+  m_paymentProofArchive.persist(txid, sent);
+  {
+    std::unique_lock<std::mutex> lock(m_cacheMutex);
+    if (!m_sentPayments.recordChecked(txid, sent)) {
+      throw std::runtime_error("conflicting in-wallet payment-proof record");
+    }
+  }
+
   std::promise<std::error_code> promise;
   auto future = promise.get_future();
   m_node.relayTransaction(result.tx, [&promise](std::error_code ec) { promise.set_value(ec); });
@@ -978,6 +1028,98 @@ PqSendResult WalletLegacy::sendPqTransfer(const std::vector<PqSendOutput>& recip
   }
   m_logger(INFO) << "PQ transaction relay accepted: " << Common::podToHex(txid);
   return result;
+}
+
+void WalletLegacy::configurePaymentProofArchive(const std::string& walletFile) {
+  std::unique_lock<std::mutex> lock(m_cacheMutex);
+  m_walletFile = walletFile;
+  std::vector<std::string> warnings;
+  m_paymentProofArchive.configure(walletFile, m_currency.genesisBlockHash(), m_sentPayments, &warnings);
+  for (const auto& warning : warnings) m_logger(WARNING) << warning;
+}
+
+const SentPaymentRecord* WalletLegacy::getPaymentProofs(const Crypto::Hash& txid) const {
+  std::unique_lock<std::mutex> lock(m_cacheMutex);
+  return m_sentPayments.find(txid);
+}
+
+bool WalletLegacy::copyPaymentProofs(const Crypto::Hash& txid, SentPaymentRecord& record) const {
+  std::unique_lock<std::mutex> lock(m_cacheMutex);
+  const SentPaymentRecord* found = m_sentPayments.find(txid);
+  if (!found) return false;
+  record = *found;
+  return true;
+}
+
+void WalletLegacy::exportPaymentProofs(const Crypto::Hash& txid, const std::string& path,
+                                       std::size_t recipientIndex) {
+  std::unique_lock<std::mutex> lock(m_cacheMutex);
+  const SentPaymentRecord* found = m_sentPayments.find(txid);
+  if (!found) throw std::runtime_error("no stored payment proofs for transaction");
+  SentPaymentRecord exported = *found;
+  if (recipientIndex != static_cast<std::size_t>(-1)) {
+    if (recipientIndex >= exported.recipients.size())
+      throw std::runtime_error("payment-proof recipient index is out of range");
+    exported.recipients = {exported.recipients[recipientIndex]};
+  }
+  m_paymentProofArchive.exportRecord(txid, exported, path);
+}
+
+Crypto::Hash WalletLegacy::importPaymentProofs(const std::string& path) {
+  Crypto::Hash genesis{}, txid{};
+  SentPaymentRecord record;
+  std::string why;
+  if (!PaymentProofArchive::decodeRecord(PaymentProofArchive::readExternalFile(path),
+                                         genesis, txid, record, &why) ||
+      std::memcmp(genesis.data, m_currency.genesisBlockHash().data, 32) != 0)
+    throw std::runtime_error("invalid payment-proof import record");
+
+  Transaction tx;
+  std::promise<std::error_code> promise;
+  auto future = promise.get_future();
+  m_node.getTransaction(txid, tx, [&promise](std::error_code ec) { promise.set_value(ec); });
+  const std::error_code ec = future.get();
+  if (ec) throw std::system_error(ec, "cannot fetch payment-proof transaction");
+  if (std::memcmp(getObjectHash(tx).data, txid.data, 32) != 0)
+    throw std::runtime_error("fetched transaction does not match payment-proof txid");
+  const PqPaymentProofTransaction proofTx = makePqPaymentProofTransaction(tx);
+  CryptoPQ::Hash256 expectedGenesis{};
+  std::memcpy(expectedGenesis.data(), genesis.data, expectedGenesis.size());
+  for (const auto& entry : record.recipients) {
+    CryptoPQ::KemPublicKey viewPub;
+    CryptoPQ::DsaPublicKey spendPub;
+    uint64_t subaddrT = 0;
+    if (!resolvePqRecipient(m_node, m_currency.isTestnet(), entry.address,
+                            viewPub, spendPub, subaddrT))
+      throw std::runtime_error("payment-proof recipient cannot be resolved");
+    PqPaymentProof proof;
+    if (!decodePqPaymentProof(entry.proof, m_currency.isTestnet(), proof) ||
+        verifyPqPaymentProof(proof, expectedGenesis, proofTx,
+                             ResolvedRecipient{viewPub, spendPub, subaddrT}) != entry.amount)
+      throw std::runtime_error("payment-proof import verification failed");
+  }
+  std::unique_lock<std::mutex> lock(m_cacheMutex);
+  m_paymentProofArchive.persist(txid, record);
+  if (!m_sentPayments.recordChecked(txid, record))
+    throw std::runtime_error("conflicting in-wallet payment-proof record");
+  return txid;
+}
+
+bool WalletLegacy::deletePaymentProofs(const Crypto::Hash& txid, std::size_t recipientIndex) {
+  std::unique_lock<std::mutex> lock(m_cacheMutex);
+  const SentPaymentRecord* found = m_sentPayments.find(txid);
+  if (!found) return false;
+  if (recipientIndex != static_cast<std::size_t>(-1) && recipientIndex >= found->recipients.size())
+    throw std::runtime_error("payment-proof recipient index is out of range");
+  if (recipientIndex == static_cast<std::size_t>(-1) || found->recipients.size() == 1) {
+    m_paymentProofArchive.erase(txid);
+    return m_sentPayments.remove(txid);
+  }
+  SentPaymentRecord remaining = *found;
+  remaining.recipients.erase(remaining.recipients.begin() + recipientIndex);
+  m_paymentProofArchive.replaceAfterExplicitDeletion(txid, remaining);
+  m_sentPayments.record(txid, std::move(remaining));
+  return true;
 }
 
 uint64_t WalletLegacy::pendingBalance() {
@@ -1168,7 +1310,11 @@ TransactionId WalletLegacy::sendTransaction(const std::vector<WalletLegacyTransf
   }
 
   std::vector<uint8_t> extraBytes(extra.begin(), extra.end());
-  PqSendResult result = sendPqTransfer(recipients, fee, unlockHeightstamp, extraBytes);  // builds + relays
+  std::vector<std::string> recipientAddresses;
+  recipientAddresses.reserve(transfers.size());
+  for (const auto& t : transfers) recipientAddresses.push_back(t.address);
+  PqSendResult result = sendPqTransfer(
+      recipients, fee, unlockHeightstamp, extraBytes, recipientAddresses);  // persists, then relays
   m_logger(INFO) << "sendTransaction: relayed transaction " << Common::podToHex(getObjectHash(result.tx));
 
   // Register the sent tx in the ledger so it has a native id/history row at once.
@@ -1176,18 +1322,6 @@ TransactionId WalletLegacy::sendTransaction(const std::vector<WalletLegacyTransf
   const Crypto::Hash txid = getObjectHash(result.tx);
   {
     std::unique_lock<std::mutex> lock(m_cacheMutex);
-
-    // Capture who we paid before anything reads the history row back: the recipient
-    // addresses are known only here (payer side) and cannot be recovered from the
-    // chain or the mnemonic. Recorded against the same txid the ledger keys its
-    // history by, so getTransaction/getTransfer can surface it. The subsequent
-    // save(true, true) (see onWalletSendTransactionCompleted) persists it.
-    SentPaymentRecord sent;
-    sent.recipients.reserve(transfers.size());
-    for (const auto& t : transfers) {
-      sent.recipients.push_back(SentPaymentEntry{t.address, static_cast<uint64_t>(t.amount), {}});
-    }
-    m_sentPayments.record(txid, std::move(sent));
 
     if (m_pqConsumer) {
       auto reader = createTransactionPrefix(result.tx);

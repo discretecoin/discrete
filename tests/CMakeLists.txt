@@ -43,6 +43,7 @@ add_executable(PqWireTests test_pq_wire.cpp)
 add_executable(PqOutputBuilderTests test_pq_output_builder.cpp)
 add_executable(PqScanTests test_pq_scan.cpp)
 add_executable(PqPaymentProofTests test_pq_payment_proof.cpp)
+add_executable(PqPaymentProofArchiveTests test_payment_proof_archive.cpp)
 add_executable(PqNullifierDbTests test_pq_nullifier_db.cpp)
 add_executable(PqValidationTests test_pq_validation.cpp)
 add_executable(PqChainTests test_pq_chain.cpp)
@@ -72,6 +73,7 @@ target_link_libraries(PqWireTests CryptoNoteCore Serialization System Logging Co
 target_link_libraries(PqOutputBuilderTests CryptoPq gtest ${Boost_LIBRARIES})
 target_link_libraries(PqScanTests CryptoPq gtest ${Boost_LIBRARIES})
 target_link_libraries(PqPaymentProofTests CryptoPq gtest ${Boost_LIBRARIES})
+target_link_libraries(PqPaymentProofArchiveTests Wallet CryptoNoteCore Serialization System Logging Common Crypto CryptoPq gtest ${Boost_LIBRARIES})
 target_link_libraries(PqNullifierDbTests CryptoNoteCore Serialization System Logging Common Crypto CryptoPq gtest ${Boost_LIBRARIES})
 target_link_libraries(PqValidationTests CryptoNoteCore Serialization System Logging Common Crypto CryptoPq gtest ${Boost_LIBRARIES})
 target_link_libraries(PqChainTests TestGenerator Wallet CryptoNoteCore Serialization System Logging Common Crypto CryptoPq BlockchainExplorer Checkpoints ${Boost_LIBRARIES})
@@ -93,6 +95,7 @@ if(MSVC)
   target_link_libraries(NodeRpcProxyTests legacy_stdio_definitions.lib ${OPENSSL_LIBRARIES})
   target_link_libraries(IntegrationTests legacy_stdio_definitions.lib ${OPENSSL_LIBRARIES} ws2_32)
   target_link_libraries(PqExtraTests legacy_stdio_definitions.lib ws2_32)
+  target_link_libraries(PqPaymentProofArchiveTests legacy_stdio_definitions.lib ws2_32)
   target_link_libraries(PqWireTests legacy_stdio_definitions.lib ws2_32)
   target_link_libraries(PqDomainsTests legacy_stdio_definitions.lib ws2_32)
   target_link_libraries(PqNullifierDbTests legacy_stdio_definitions.lib ws2_32)
@@ -140,6 +143,7 @@ set_property(TARGET
   PqOutputBuilderTests
   PqScanTests
   PqPaymentProofTests
+  PqPaymentProofArchiveTests
   PqNullifierDbTests
   PqValidationTests
   PqChainTests
@@ -171,6 +175,7 @@ set_property(TARGET PqWireTests PROPERTY OUTPUT_NAME "pq_wire_tests")
 set_property(TARGET PqOutputBuilderTests PROPERTY OUTPUT_NAME "pq_output_builder_tests")
 set_property(TARGET PqScanTests PROPERTY OUTPUT_NAME "pq_scan_tests")
 set_property(TARGET PqPaymentProofTests PROPERTY OUTPUT_NAME "pq_payment_proof_tests")
+set_property(TARGET PqPaymentProofArchiveTests PROPERTY OUTPUT_NAME "pq_payment_proof_archive_tests")
 set_property(TARGET PqNullifierDbTests PROPERTY OUTPUT_NAME "pq_nullifier_db_tests")
 set_property(TARGET PqValidationTests PROPERTY OUTPUT_NAME "pq_validation_tests")
 set_property(TARGET PqChainTests PROPERTY OUTPUT_NAME "pq_chain_tests")
@@ -197,6 +202,7 @@ add_test(PqWireTests pq_wire_tests)
 add_test(PqOutputBuilderTests pq_output_builder_tests)
 add_test(PqScanTests pq_scan_tests)
 add_test(PqPaymentProofTests pq_payment_proof_tests)
+add_test(PqPaymentProofArchiveTests pq_payment_proof_archive_tests)
 add_test(PqNullifierDbTests pq_nullifier_db_tests)
 add_test(PqValidationTests pq_validation_tests)
 add_test(PqChainTests pq_chain_tests)

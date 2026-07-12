@@ -1461,8 +1461,10 @@ std::error_code WalletService::listPqDepositAddresses(std::vector<std::string>& 
   return std::error_code();
 }
 
-std::error_code WalletService::sendTransaction(const SendTransaction::Request& request, std::string& transactionHash) {
+std::error_code WalletService::sendTransaction(const SendTransaction::Request& request, std::string& transactionHash,
+                                               std::vector<std::string>& paymentProofs) {
   try {
+    paymentProofs.clear();
     System::EventLock lk(readyEvent);
 
     // PQ-native path: destinations are PQ addresses / account numbers, and the
@@ -1525,9 +1527,16 @@ std::error_code WalletService::sendTransaction(const SendTransaction::Request& r
         extra.assign(extraString.begin(), extraString.end());
       }
 
+      std::vector<std::string> recipientAddresses;
+      recipientAddresses.reserve(request.transfers.size());
+      for (const auto& transfer : request.transfers) recipientAddresses.push_back(transfer.address);
       CryptoNote::PqSendResult r = gw->sendPqTransfer(recipients, request.fee, request.unlockHeight,
-                                                      extra, sourceAddresses, changeAddress);
+                                                      extra, sourceAddresses, changeAddress,
+                                                      recipientAddresses);
       transactionHash = Common::podToHex(CryptoNote::getObjectHash(r.tx));
+      paymentProofs.reserve(r.proofs.size());
+      for (const auto& proof : r.proofs)
+        paymentProofs.push_back(CryptoNote::encodePqPaymentProof(proof, currency.isTestnet()));
       logger(Logging::DEBUGGING) << "Transaction " << transactionHash << " has been sent";
       return std::error_code();
     }
@@ -1581,6 +1590,102 @@ std::error_code WalletService::sendTransaction(const SendTransaction::Request& r
   }
 
   return std::error_code();
+}
+
+std::error_code WalletService::getPaymentProofs(const std::string& transactionHash,
+                                                std::vector<PaymentProofRpcEntry>& entries) {
+  try {
+    const Crypto::Hash txid = parseHash(transactionHash, logger);
+    auto* gw = dynamic_cast<CryptoNote::WalletGreen*>(&wallet);
+    if (!gw) return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
+    CryptoNote::SentPaymentRecord record;
+    if (!gw->copyPaymentProofs(txid, record)) {
+      entries.clear();
+      return std::error_code();
+    }
+    std::string state = "unknown";
+    try {
+      const auto observed = wallet.getTransaction(txid).transaction;
+      state = observed.blockHeight == CryptoNote::WALLET_UNCONFIRMED_TRANSACTION_HEIGHT ? "pool" : "confirmed";
+    } catch (...) {
+      // Absence is ambiguous: a pre-relay crash or relay error can leave a valid orphan record.
+    }
+    entries.clear();
+    entries.reserve(record.recipients.size());
+    for (const auto& entry : record.recipients)
+      entries.push_back(PaymentProofRpcEntry{entry.address, entry.amount, entry.proof, state});
+    return std::error_code();
+  } catch (const std::system_error& e) {
+    return e.code();
+  } catch (...) {
+    return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
+  }
+}
+
+std::error_code WalletService::deletePaymentProof(const std::string& transactionHash,
+                                                  uint32_t recipientIndex,
+                                                  bool confirm, bool& deleted) {
+  try {
+    if (!confirm) return make_error_code(CryptoNote::error::WRONG_PARAMETERS);
+    const Crypto::Hash txid = parseHash(transactionHash, logger);
+    auto* gw = dynamic_cast<CryptoNote::WalletGreen*>(&wallet);
+    if (!gw) return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
+    const std::size_t index = recipientIndex == (std::numeric_limits<uint32_t>::max)()
+                                  ? static_cast<std::size_t>(-1) : recipientIndex;
+    deleted = gw->deletePaymentProofs(txid, index);
+    return std::error_code();
+  } catch (const std::system_error& e) {
+    return e.code();
+  } catch (...) {
+    return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
+  }
+}
+
+std::error_code WalletService::exportPaymentProof(const std::string& transactionHash,
+                                                  uint32_t recipientIndex,
+                                                  std::string& recordHex) {
+  try {
+    const Crypto::Hash txid = parseHash(transactionHash, logger);
+    auto* gw = dynamic_cast<CryptoNote::WalletGreen*>(&wallet);
+    if (!gw) return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
+    CryptoNote::SentPaymentRecord record;
+    if (!gw->copyPaymentProofs(txid, record)) {
+      recordHex.clear();
+      return std::error_code();
+    }
+    if (recipientIndex != (std::numeric_limits<uint32_t>::max)()) {
+      if (recipientIndex >= record.recipients.size())
+        return make_error_code(CryptoNote::error::WRONG_PARAMETERS);
+      record.recipients = {record.recipients[recipientIndex]};
+    }
+    const std::string bytes = CryptoNote::PaymentProofArchive::encodeRecord(
+        currency.genesisBlockHash(), txid, record);
+    recordHex = Common::toHex(bytes.data(), bytes.size());
+    return std::error_code();
+  } catch (const std::system_error& e) {
+    return e.code();
+  } catch (...) {
+    return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
+  }
+}
+
+std::error_code WalletService::importPaymentProof(const std::string& recordHex,
+                                                  std::string& transactionHash) {
+  try {
+    std::vector<uint8_t> bytes;
+    if (!Common::fromHex(recordHex, bytes))
+      return make_error_code(CryptoNote::error::WRONG_PARAMETERS);
+    auto* gw = dynamic_cast<CryptoNote::WalletGreen*>(&wallet);
+    if (!gw) return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
+    const Crypto::Hash txid = gw->importPaymentProofs(
+        std::string(reinterpret_cast<const char*>(bytes.data()), bytes.size()));
+    transactionHash = Common::podToHex(txid);
+    return std::error_code();
+  } catch (const std::system_error& e) {
+    return e.code();
+  } catch (...) {
+    return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
+  }
 }
 
 std::error_code WalletService::getUnconfirmedTransactionHashes(const std::vector<std::string>& addresses, std::vector<std::string>& transactionHashes) {

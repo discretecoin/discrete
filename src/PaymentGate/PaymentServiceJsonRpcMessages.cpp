@@ -338,6 +338,41 @@ void WalletRpcOrder::serialize(CryptoNote::ISerializer& serializer) {
   }
 }
 
+void PaymentProofRpcEntry::serialize(CryptoNote::ISerializer& serializer) {
+  serializer(address, "address");
+  serializer(amount, "amount");
+  serializer(proof, "proof");
+  serializer(state, "state");
+}
+
+void GetPaymentProofs::Request::serialize(CryptoNote::ISerializer& serializer) {
+  if (!serializer(transactionHash, "transactionHash")) throw RequestSerializationError();
+}
+void GetPaymentProofs::Response::serialize(CryptoNote::ISerializer& serializer) {
+  serializer(entries, "entries");
+}
+void DeletePaymentProof::Request::serialize(CryptoNote::ISerializer& serializer) {
+  if (!serializer(transactionHash, "transactionHash") || !serializer(confirm, "confirm"))
+    throw RequestSerializationError();
+  serializer(recipientIndex, "recipientIndex");
+}
+void DeletePaymentProof::Response::serialize(CryptoNote::ISerializer& serializer) {
+  serializer(deleted, "deleted");
+}
+void ExportPaymentProof::Request::serialize(CryptoNote::ISerializer& serializer) {
+  if (!serializer(transactionHash, "transactionHash")) throw RequestSerializationError();
+  serializer(recipientIndex, "recipientIndex");
+}
+void ExportPaymentProof::Response::serialize(CryptoNote::ISerializer& serializer) {
+  serializer(recordHex, "recordHex");
+}
+void ImportPaymentProof::Request::serialize(CryptoNote::ISerializer& serializer) {
+  if (!serializer(recordHex, "recordHex")) throw RequestSerializationError();
+}
+void ImportPaymentProof::Response::serialize(CryptoNote::ISerializer& serializer) {
+  serializer(transactionHash, "transactionHash");
+}
+
 void SignMessage::Request::serialize(CryptoNote::ISerializer& serializer) {
   serializer(address, "address");
 
@@ -386,6 +421,7 @@ void SendTransaction::Request::serialize(CryptoNote::ISerializer& serializer) {
 
 void SendTransaction::Response::serialize(CryptoNote::ISerializer& serializer) {
   serializer(transactionHash, "transactionHash");
+  serializer(paymentProofs, "paymentProofs");
 }
 
 }

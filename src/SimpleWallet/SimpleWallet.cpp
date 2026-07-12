@@ -41,6 +41,7 @@
 #include <set>
 #include <sstream>
 #include <locale>
+#include <limits>
 
 #include <functional>
 #include <iostream>
@@ -475,6 +476,14 @@ simple_wallet::simple_wallet(System::Dispatcher& dispatcher, const CryptoNote::C
   m_consoleHandler.setHandler("bc_height", std::bind(&simple_wallet::show_blockchain_height, this, std::placeholders::_1), "Show blockchain height");
   m_consoleHandler.setHandler("transfer", std::bind(&simple_wallet::pq_transfer, this, std::placeholders::_1),
     "transfer <address> <amount> [-p <payment_id>] - Send funds to an address (or account number)");
+  m_consoleHandler.setHandler("payment_proof", std::bind(&simple_wallet::payment_proof, this, std::placeholders::_1),
+    "payment_proof <txid> - List the stored recipient rows and payer proofs");
+  m_consoleHandler.setHandler("export_payment_proof", std::bind(&simple_wallet::export_payment_proof, this, std::placeholders::_1),
+    "export_payment_proof <txid> [recipient-index] <path> - Atomically export stored payer proof data");
+  m_consoleHandler.setHandler("import_payment_proof", std::bind(&simple_wallet::import_payment_proof, this, std::placeholders::_1),
+    "import_payment_proof <path> - Fetch the transaction, fully verify, and store exported payer proof data");
+  m_consoleHandler.setHandler("delete_payment_proof", std::bind(&simple_wallet::delete_payment_proof, this, std::placeholders::_1),
+    "delete_payment_proof <txid> [recipient-index] - Irreversibly delete stored payer proofs");
   m_consoleHandler.setHandler("set_log", std::bind(&simple_wallet::set_log, this, std::placeholders::_1), "set_log <level> - Change current log level, <level> is a number 0-4");
   m_consoleHandler.setHandler("address", std::bind(&simple_wallet::pq_address, this, std::placeholders::_1), "Show this wallet's address, derived from the seed.");
   m_consoleHandler.setHandler("save_address", std::bind(&simple_wallet::save_address_to_file, this, std::placeholders::_1), "Save current wallet public address to file");
@@ -1085,6 +1094,10 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
       "**********************************************************************\n" <<
       "Use \"help\" command to see the list of available commands.\n" <<
       "**********************************************************************";
+  }
+
+  if (auto* legacy = dynamic_cast<CryptoNote::WalletLegacy*>(m_wallet.get())) {
+    legacy->configurePaymentProofArchive(m_wallet_file);
   }
 
   if (command_line::has_arg(vm, arg_reset))
@@ -2046,16 +2059,156 @@ bool simple_wallet::pq_transfer(const std::vector<std::string> &args) {
   // and relay live in the common sender, shared with greenwallet and walletd.
   try {
     CryptoNote::PqSendOutput out{destView, destSpend, amount, destSubaddrT};
-    CryptoNote::PqSendResult r = wl->sendPqTransfer({out}, 0, 0, extra);
+    CryptoNote::PqSendResult r = wl->sendPqTransfer({out}, 0, 0, extra, {args[0]});
     success_msg_writer() << "Sent " << m_currency.formatAmount(r.sent) << " (fee "
                          << m_currency.formatAmount(r.fee) << ", " << r.selected.size()
                          << " input(s)).";
     success_msg_writer(true) << "Transaction hash: "
                              << Common::podToHex(CryptoNote::getObjectHash(r.tx));
+    const std::string txid = Common::podToHex(CryptoNote::getObjectHash(r.tx));
+    success_msg_writer() << "Transaction sent:";
+    success_msg_writer() << "  txid: " << txid;
+    success_msg_writer() << "  recipient: " << args[0];
+    success_msg_writer() << "  paid: " << m_currency.formatAmount(amount);
+    success_msg_writer() << "  payment proof: "
+                         << CryptoNote::encodePqPaymentProof(r.proofs.at(0), m_currency.isTestnet());
+    success_msg_writer() << "IMPORTANT: Store this proof safely. It cannot be recovered from your mnemonic.";
   } catch (const CryptoNote::PqSendError& e) {
     fail_msg_writer() << "Cannot send: " << e.what();
   } catch (const std::exception& e) {
     fail_msg_writer() << "Failed to send transaction: " << e.what();
+  }
+  return true;
+}
+//----------------------------------------------------------------------------------------------------
+bool simple_wallet::payment_proof(const std::vector<std::string>& args) {
+  if (args.size() != 1) {
+    fail_msg_writer() << "usage: payment_proof <txid>";
+    return true;
+  }
+  auto* wl = dynamic_cast<CryptoNote::WalletLegacy*>(m_wallet.get());
+  Crypto::Hash txid{};
+  if (!wl || !Common::podFromHex(args[0], txid)) {
+    fail_msg_writer() << "Invalid transaction id.";
+    return true;
+  }
+  CryptoNote::SentPaymentRecord record;
+  if (!wl->copyPaymentProofs(txid, record)) {
+    fail_msg_writer() << "No stored payer proofs for this transaction. A mnemonic-only restore cannot recover them.";
+    return true;
+  }
+  std::string observedState = "unknown";
+  for (CryptoNote::TransactionId i = 0; i < m_wallet->getTransactionCount(); ++i) {
+    CryptoNote::WalletLegacyTransaction transaction;
+    if (m_wallet->getTransaction(i, transaction) &&
+        std::memcmp(transaction.hash.data, txid.data, sizeof(txid.data)) == 0 &&
+        transaction.state == CryptoNote::WalletLegacyTransactionState::Active) {
+      observedState = transaction.blockHeight == CryptoNote::WALLET_LEGACY_UNCONFIRMED_TRANSACTION_HEIGHT
+                          ? "pool" : "confirmed";
+      break;
+    }
+  }
+  success_msg_writer() << "Stored payment proofs for " << Common::podToHex(txid)
+                       << " (transaction observation: " << observedState << "):";
+  for (std::size_t i = 0; i < record.recipients.size(); ++i) {
+    const auto& entry = record.recipients[i];
+    success_msg_writer() << "  recipient index: " << i;
+    success_msg_writer() << "  recipient: " << entry.address;
+    success_msg_writer() << "  paid: " << m_currency.formatAmount(entry.amount);
+    success_msg_writer() << "  payment proof: " << entry.proof;
+  }
+  return true;
+}
+//----------------------------------------------------------------------------------------------------
+bool simple_wallet::export_payment_proof(const std::vector<std::string>& args) {
+  if (args.size() != 2 && args.size() != 3) {
+    fail_msg_writer() << "usage: export_payment_proof <txid> [recipient-index] <path>";
+    return true;
+  }
+  auto* wl = dynamic_cast<CryptoNote::WalletLegacy*>(m_wallet.get());
+  Crypto::Hash txid{};
+  if (!wl || !Common::podFromHex(args[0], txid)) {
+    fail_msg_writer() << "Invalid transaction id.";
+    return true;
+  }
+  std::size_t index = static_cast<std::size_t>(-1);
+  std::string path;
+  if (args.size() == 3) {
+    uint64_t parsed = 0;
+    if (!Common::fromString(args[1], parsed) || parsed > static_cast<uint64_t>((std::numeric_limits<std::size_t>::max)())) {
+      fail_msg_writer() << "Invalid recipient index.";
+      return true;
+    }
+    index = static_cast<std::size_t>(parsed);
+    path = args[2];
+  } else {
+    path = args[1];
+  }
+  try {
+    wl->exportPaymentProofs(txid, path, index);
+    success_msg_writer() << "Payment proof data exported atomically to " << path;
+  } catch (const std::exception& e) {
+    fail_msg_writer() << "Payment proof export failed: " << e.what();
+  }
+  return true;
+}
+//----------------------------------------------------------------------------------------------------
+bool simple_wallet::import_payment_proof(const std::vector<std::string>& args) {
+  if (args.size() != 1) {
+    fail_msg_writer() << "usage: import_payment_proof <path>";
+    return true;
+  }
+  auto* wl = dynamic_cast<CryptoNote::WalletLegacy*>(m_wallet.get());
+  if (!wl) {
+    fail_msg_writer() << "Payment-proof import is unavailable for this wallet.";
+    return true;
+  }
+  try {
+    const Crypto::Hash txid = wl->importPaymentProofs(args[0]);
+    success_msg_writer() << "Verified and imported payment proof record for " << Common::podToHex(txid);
+  } catch (const std::exception& e) {
+    fail_msg_writer() << "Payment proof import failed: " << e.what();
+  }
+  return true;
+}
+//----------------------------------------------------------------------------------------------------
+bool simple_wallet::delete_payment_proof(const std::vector<std::string>& args) {
+  if (args.size() != 1 && args.size() != 2) {
+    fail_msg_writer() << "usage: delete_payment_proof <txid> [recipient-index]";
+    return true;
+  }
+  auto* wl = dynamic_cast<CryptoNote::WalletLegacy*>(m_wallet.get());
+  Crypto::Hash txid{};
+  if (!wl || !Common::podFromHex(args[0], txid)) {
+    fail_msg_writer() << "Invalid transaction id.";
+    return true;
+  }
+  CryptoNote::SentPaymentRecord record;
+  if (!wl->copyPaymentProofs(txid, record)) {
+    fail_msg_writer() << "No stored payer proofs for this transaction.";
+    return true;
+  }
+  std::size_t index = static_cast<std::size_t>(-1);
+  if (args.size() == 2) {
+    uint64_t parsed = 0;
+    if (!Common::fromString(args[1], parsed) || parsed >= record.recipients.size()) {
+      fail_msg_writer() << "Invalid recipient index.";
+      return true;
+    }
+    index = static_cast<std::size_t>(parsed);
+  }
+  std::cout << "Deletion is irreversible; your mnemonic cannot recover these proofs. Type DELETE to continue: ";
+  std::string confirmation;
+  std::getline(std::cin, confirmation);
+  if (confirmation != "DELETE") {
+    logger(INFO) << "Cancelled.";
+    return true;
+  }
+  try {
+    if (!wl->deletePaymentProofs(txid, index)) fail_msg_writer() << "Proof record was already absent.";
+    else success_msg_writer() << "Payment proof record deleted.";
+  } catch (const std::exception& e) {
+    fail_msg_writer() << "Payment proof deletion failed: " << e.what();
   }
   return true;
 }
