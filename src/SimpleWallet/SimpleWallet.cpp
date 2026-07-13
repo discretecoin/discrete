@@ -1878,8 +1878,16 @@ bool simple_wallet::run() {
 
   std::cout << std::endl;
 
-  std::string addr_start = m_wallet->getAddress().substr(0, 6);
-  m_consoleHandler.start(false, "[" + addr_start + "...]: ", Common::Console::Color::BrightYellow);
+  // Identify the open wallet in the prompt by a head+tail slice of its address.
+  // The very first characters are identical for every address (shared "disc" HRP
+  // plus the fixed version byte and network prefix), so the head is made long
+  // enough to reach the per-wallet key bytes, and the tail is included because
+  // the end of the address (spend key + checksum) is always distinguishing.
+  const std::string addr = m_wallet->getAddress();
+  std::string prompt_label = addr.size() > 18
+      ? addr.substr(0, 12) + "..." + addr.substr(addr.size() - 6)
+      : addr;
+  m_consoleHandler.start(false, "[" + prompt_label + "]: ", Common::Console::Color::BrightYellow);
   return true;
 }
 //----------------------------------------------------------------------------------------------------
