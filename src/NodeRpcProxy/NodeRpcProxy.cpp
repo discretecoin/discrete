@@ -1056,11 +1056,17 @@ std::error_code NodeRpcProxy::doGetPqAccount(const std::string& viewPubHex, cons
   req.view_pub = viewPubHex;
   req.spend_pub = spendPubHex;
   std::error_code ec = jsonRpcCommand("getpqaccount", req, rsp);
-  if (!ec) {
-    registered = rsp.registered;
-    blockHeight = rsp.block_height;
-    txIndex = rsp.tx_index;
+  if (ec) {
+    return ec;
   }
+  // Only trust the result on an explicit OK; otherwise "registered = false" would be
+  // a false negative and the user might needlessly re-register (and pay a second fee).
+  if (rsp.status != CORE_RPC_STATUS_OK) {
+    return make_error_code(error::INTERNAL_NODE_ERROR);
+  }
+  registered = rsp.registered;
+  blockHeight = rsp.block_height;
+  txIndex = rsp.tx_index;
   return ec;
 }
 
@@ -1082,11 +1088,16 @@ std::error_code NodeRpcProxy::doResolvePqAccount(uint32_t blockHeight, uint32_t 
   req.block_height = blockHeight;
   req.tx_index = txIndex;
   std::error_code ec = jsonRpcCommand("resolvepqaccount", req, rsp);
-  if (!ec) {
-    found = rsp.found;
-    viewPubHex = rsp.view_pub;
-    spendPubHex = rsp.spend_pub;
+  if (ec) {
+    return ec;
   }
+  // Guard against a non-OK body being read as "not found" (see doGetPqAccount).
+  if (rsp.status != CORE_RPC_STATUS_OK) {
+    return make_error_code(error::INTERNAL_NODE_ERROR);
+  }
+  found = rsp.found;
+  viewPubHex = rsp.view_pub;
+  spendPubHex = rsp.spend_pub;
   return ec;
 }
 
