@@ -1003,19 +1003,31 @@ std::error_code NodeRpcProxy::jsonCommand(const std::string& comm, const Request
 
 template <typename Request, typename Response>
 std::error_code NodeRpcProxy::jsonRpcCommand(const std::string& method, const Request& req, Response& res) {
-  std::error_code ec;
-  try {
-    EventLock eventLock(*m_httpEvent);
-    JsonRpc::invokeJsonRpcCommand(*m_httpClient, method, req, res);
-    ec = std::error_code();  // Success
+  // These are all idempotent read queries. The HttpClient keeps the socket alive
+  // between calls, so if the daemon was restarted the first request on the now-dead
+  // socket throws and the client disconnects; retrying once reconnects and recovers
+  // instead of surfacing a spurious "Network error" (e.g. an unregistered-account
+  // lookup would wrongly look like a failure rather than reporting "not registered").
+  for (int attempt = 0; ; ++attempt) {
+    try {
+      EventLock eventLock(*m_httpEvent);
+      JsonRpc::invokeJsonRpcCommand(*m_httpClient, method, req, res);
+      return std::error_code();  // Success
+    }
+    catch (const JsonRpc::JsonRpcError&) {
+      // The daemon answered with an application-level error; retrying will not help.
+      return make_error_code(error::INTERNAL_NODE_ERROR);
+    }
+    catch (const ConnectException&) {
+      return make_error_code(error::CONNECT_ERROR);
+    }
+    catch (const std::exception&) {
+      if (attempt == 0) {
+        continue;  // stale/dropped connection: reconnect and retry once
+      }
+      return make_error_code(error::NETWORK_ERROR);
+    }
   }
-  catch (const ConnectException&) {
-    ec = make_error_code(error::CONNECT_ERROR);
-  }
-  catch (const std::exception&) {
-    ec = make_error_code(error::NETWORK_ERROR);
-  }
-  return ec;
 }
 
 void NodeRpcProxy::getPqAccount(const std::string& viewPubHex, const std::string& spendPubHex, bool& registered,
