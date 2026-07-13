@@ -1055,7 +1055,7 @@ std::error_code NodeRpcProxy::doGetPqAccount(const std::string& viewPubHex, cons
   COMMAND_RPC_GET_PQ_ACCOUNT::response rsp = AUTO_VAL_INIT(rsp);
   req.view_pub = viewPubHex;
   req.spend_pub = spendPubHex;
-  std::error_code ec = jsonRpcCommand("getpqaccount", req, rsp);
+  std::error_code ec = jsonRpcCommand("getaccountnumber", req, rsp);
   if (ec) {
     return ec;
   }
@@ -1087,7 +1087,7 @@ std::error_code NodeRpcProxy::doResolvePqAccount(uint32_t blockHeight, uint32_t 
   COMMAND_RPC_RESOLVE_PQ_ACCOUNT::response rsp = AUTO_VAL_INIT(rsp);
   req.block_height = blockHeight;
   req.tx_index = txIndex;
-  std::error_code ec = jsonRpcCommand("resolvepqaccount", req, rsp);
+  std::error_code ec = jsonRpcCommand("resolveaccountnumber", req, rsp);
   if (ec) {
     return ec;
   }
