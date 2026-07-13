@@ -273,7 +273,7 @@ int main(int argc, char* argv[])
     CryptoNote::Currency currency = currencyBuilder.currency();
     System::Dispatcher dispatcher;
 
-    // First-seen finality is a network-wide consensus rule enforced from genesis
+    // First-seen finality is a node-local fork-choice rule enforced from genesis
     // by CRYPTONOTE_FINALITY_DEPTH — not a runtime option. See CryptoNoteConfig.h.
     logger(INFO) << "First-seen finality: reorganizations deeper than "
                  << CryptoNote::parameters::CRYPTONOTE_FINALITY_DEPTH

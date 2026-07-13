@@ -1,63 +1,105 @@
-# Discrete Proof-of-Work: signed yespower
+# Discrete Proof-of-Work: identity-bound signed yespower
 
-Discrete's Proof-of-Work is **yespower over the block's signed hashing blob**.
-It applies to every block (v1+); there is no version gating. Because it is a pure
-function of the block (no blockchain access), it lives as the free function
-`CryptoNote::get_block_longhash(const Block&, Crypto::Hash&)` in
-`src/CryptoNoteCore/CryptoNoteFormatUtils.cpp`; `Blockchain::checkProofOfWork`
-and `Core::getBlockLongHash` call it. There is no hashing-blob cache (the
-`m_blobs` RAM cache, the `hashing_blobs` LMDB table, and the `--without-blobs`
-flag were removed) — only the pure `get_block_hashing_blob` /
-`get_signed_block_hashing_blob` helpers remain, used for signing.
+Status: implemented in the pre-launch reference implementation. The exact code is
+`get_block_longhash` in `src/CryptoNoteCore/CryptoNoteFormatUtils.cpp` and block
+signature validation in `src/CryptoNoteCore/Blockchain.cpp`.
 
-## The scheme
+## Exact construction
+
+For each nonce, the miner computes:
 
 ```
-pot = signedHashingBlob(B)        // block header (nonce, previousBlockHash, …)
-                                  //   + miner ML-DSA signature over it
-pers = cn_fast_hash("Discrete/yespower/v1")   // fixed domain-separation tag
-PoW = yespower(pot, pers)         // y_slow_hash, N=2048 r=32 → 8 MiB
+h       = get_block_hashing_blob(B)
+m       = cn_fast_hash(h)
+sig     = ML-DSA-65.Sign(minerSpendSk, m)
+sigHash = cn_fast_hash(sig)
+pot     = h || sigHash
+pers    = cn_fast_hash("Discrete/yespower/v1")
+PoW     = yespower(pot, pers)       // N=2048, r=32, ~8 MiB
 ```
 
-The miner signs the block's hashing blob with the ML-DSA spend key that controls
-the coinbase reward, then hashes the signed blob with yespower. Because the
-signature covers the nonce, the block must be re-signed on every attempt.
+Consensus verifies the full ML-DSA signature against the spend public key in the
+coinbase extra, requires the single coinbase output to commit to the same spend key,
+and checks the yespower target. `cn_fast_hash` is CryptoNote's Keccak-based chain hash;
+it is not NIST SHA3-256. The 3,309-byte signature is committed into the PoW through its
+32-byte `cn_fast_hash`, not appended directly to the yespower input.
 
-`pers` is yespower's personalization (salt) input, set to a fixed tag derived from
-`"Discrete/yespower/v1"`. It is deliberately constant, not per-block: `pot` is
-already yespower's primary input and the work factor is fixed by N/r, so a
-content-derived seed would add no entropy or hardness. The constant tag provides
-domain separation — a yespower(N=2048,r=32) hash produced for any other chain
-cannot be reused, precompute-shared, or merge-mine confused with Discrete's PoW.
+Because the nonce is in `h`, every nonce attempt requires a fresh signature. The fixed
+personalization prevents cross-chain reuse for another yespower(N=2048,r=32) system.
 
-## What this buys, and why it is enough
+## What the construction guarantees
 
-- **Non-outsourceable / anti-pool-rental.** A nonce is only valid alongside a
-  signature from the reward-controlling key, so you cannot hand work to a rented
-  or custodial miner without handing them the reward. This kills NiceHash-style
-  rental and trustless custodial pools. It needs no blockchain access.
-- **ASIC-resistant / CPU-egalitarian.** yespower is memory-hard (8 MiB
-  scratchpad), which is the actual ASIC-resistance mechanism.
-- **Tip-bound for free.** `previousBlockHash` is part of the hashed header, so a
-  valid PoW can only be produced for the current chain head — mining already
-  requires knowing the tip, without any extra machinery.
+- **Reward-identity binding.** A valid block pays the ML-DSA identity that signed it.
+  A worker cannot change the coinbase recipient under an existing signed job.
+- **Per-attempt signer involvement.** A conventional pool cannot send one unsigned
+  template and let workers vary an unrestricted nonce range; every candidate needs a
+  signature from the reward identity.
+- **Tip binding.** The previous block hash is in the signed and hashed header.
+- **Memory-hard core.** yespower uses an ~8 MiB scratchpad per active attempt.
 
-## Why not mix in blockchain data
+## What it does not prove
 
-An earlier iteration sampled pseudo-random bytes from recent blocks into the
-hash, to force miners to possess (and stay synced to) recent chain history. It
-was removed:
+This is not a formally strong non-outsourceable scratch-off puzzle. A custodial pool can
+retain the reward key, sign batches of candidate nonces, distribute `(h, sigHash)` jobs,
+accept lower-difficulty shares, and pay workers off-chain. The signing service must scale
+with aggregate attempt rate, which is friction, not impossibility. The scheme therefore
+raises the cost of conventional delegation and blocks unsigned reward redirection, but it
+does not justify claims that pools, hosted mining, or rental are closed by construction.
 
-- **It protects against no adversary who matters.** Any dataset small enough for
-  a casual CPU miner (~100–200 MiB) is trivially held by a farm or a botnet, so
-  it neither raises the botnet floor nor excludes farms nor helps against 51%.
-  Its only real effect is a decentralization *nicety* ("miners should run a
-  synced node"), and even that is largely subsumed by the tip-binding above.
-- **The cost is consensus risk.** Chain-mixing makes the PoW depend on
-  reconstructing byte-identical records across the live cache, the DB, and
-  alt-chain entries, plus a cache lifecycle, alt-tx resolution, and difficulty
-  edge cases — a large fork-risk surface for a weak benefit.
+Strong non-outsourceability has a stricter goal: effective outsourcing should let a worker
+steal a winning reward without leaving evidence, making the pool unable to enforce honest
+participation. Miller, Kosba, Katz, and Shi formalize that property in
+[Nonoutsourceable Scratch-Off Puzzles](https://www.cs.umd.edu/~jkatz/papers/nonoutsourceable_full.pdf).
+Adapting such a construction to a post-quantum chain would require a new, reviewed
+protocol (and likely post-quantum encryption plus zero-knowledge machinery); it is not a
+safe last-minute modification to the current yespower loop.
 
-Botnet/farm exclusion is a hardware-scarcity (GPU-bound PoW) or capital/stake
-question, layered separately if ever desired — not something a CPU PoW can
-provide, and not attempted here.
+## Reevaluation of blockchain-dependent scratchpads
+
+### Karbo whole-history sampling
+
+Karbo's signed-PoW branch derives eight heights from the candidate hash, fetches the small
+hashing blob at each height across prior history, concatenates them, and runs yespower.
+The sampled bytes are public and compact enough to cache by height. This makes the PoW
+chain-aware and inconveniences generic stateless rental software, but a custom pool or
+farm can keep the table and distribute complete jobs. Its working set grows with chain
+length and its DB/alternative-chain lookup paths add consensus complexity without strong
+possession or non-outsourceability guarantees.
+
+### Discrete's dropped trailing-window sampler
+
+The experimental `dev/pow-window` design is stronger as a *working-set* construction:
+
+- 10,800 trailing blocks (~11 days);
+- a deterministic 16 KiB record expanded from each block's full bytes;
+- ~170 MiB bounded resident set;
+- 4,096 sequential 64-byte fetches whose next address depends on the prior slice;
+- main-chain, DB-rebuild, and alternative-chain record paths covered by reorg/replay tests.
+
+Compared with Karbo, the bounded window avoids unbounded growth, full-block-derived records
+defeat the tiny hashing-blob cache shortcut, and the sequential walk better establishes
+recent-chain possession. It can discourage SPV/stateless mining and commodity rental APIs.
+It still does **not** stop a purpose-built pool: all records are public, workers can hold
+the same 170 MiB set, and the pool can continue to sign candidate jobs.
+
+The engineering costs are significant: consensus now depends on byte-identical full-block
+and transaction reconstruction across live cache, database rebuilds, reorgs, and
+alternative branches; validation becomes stateful; cache-miss/DoS behavior expands; and
+light validation becomes harder. A dataset small enough for ordinary CPUs is also small
+enough for farms and botnets.
+
+## Recommendation
+
+Keep identity-bound signed yespower for the current candidate protocol, with the limited
+claims above. Do not merge either blockchain sampler as a non-outsourceability fix.
+
+If recent-chain possession is independently desired, continue `dev/pow-window` as a
+testnet research track with cross-platform deterministic vectors, cache/DB/alt-chain
+differential tests, adversarial cache-miss benchmarks, IBD measurements, and a written
+threat model. Prefer it over Karbo's unbounded eight-blob sampler, but adopt it only for
+measured full-node-mining benefits.
+
+For actual pool resistance, research a post-quantum **strong non-outsourceable puzzle**
+whose worker gains an undetectable reward-stealing capability when given enough work.
+Until that exists and is independently reviewed, describe the deployed mechanism as
+identity-bound or delegation-resistant—not pool-proof.

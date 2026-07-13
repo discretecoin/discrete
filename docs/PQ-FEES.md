@@ -18,37 +18,37 @@ surcharge = extra_bytes <= 3200 ? 0
 floor     = MINIMUM_FEE + surcharge
 ```
 
-Consensus enforces `fee >= floor` (`pqTxFeeFloor` in CryptoNoteConfig.h, applied by
-`checkPqTransactionInputs`). The wallet sends `fee = floor` exactly — the fee does not
-depend on the serialized size, so no measurement margin is needed.
+Consensus enforces `fee >= floor` through `pqTxFeeFloor` and
+`checkPqTransactionInputs`. The wallet uses this floor exactly unless the caller supplies
+a larger explicit fee.
 
 ## What this means in practice
 
-| Transaction | tx_extra | Fee |
-|---|---|---|
-| Any normal transfer (any input/output count) | empty or payment id (~35 B) | **0.01 XDS** |
+| Transaction | tx_extra | Fee floor |
+|---|---|---:|
+| Normal transfer at any allowed input/output count | empty or payment id (~35 B) | **0.01 XDS** |
 | Paid account-number registration | registration tag (3137 B) | **0.01 XDS** |
-| Transfer with maximal extra | 4096 B | 0.10 XDS |
+| Transfer with maximal extra | 4096 B | **0.10 XDS** |
 | Free account registration (`TX_FREE_REG`) | reg + PoW tags | 0 (anti-spam PoW instead) |
 
-`tx_extra` is consensus-capped at `MAX_EXTRA_SIZE_PQ` = 4096 bytes
-(`checkPqTransactionSemantic`), so the largest possible fee floor is 0.10 XDS.
+## Rationale and explicit trade-off
 
-## Rationale
+PQ transactions have a high protocol-imposed baseline: an ML-DSA-65 signature is 3,309
+bytes per input and an ML-KEM-768 ciphertext is 1,088 bytes per output. Discrete currently
+chooses a predictable flat base fee and uses consensus input/output/transaction-size caps,
+miner transaction selection, and the dynamic block-size penalty as the primary size
+controls. The free-form `tx_extra` field receives a separate surcharge because it can be
+expanded without performing a payment function.
 
-PQ transactions are intrinsically large (an ML-DSA-65 signature is 3 309 B per input, an
-ML-KEM-768 ciphertext 1 088 B per output), and none of that size is the user's choice. A
-size-proportional fee therefore punished normal usage and made the quoted fee vary
-unpredictably with input count — bad UX for no deterrent value. The flat fee makes every
-ordinary transfer cost exactly `MINIMUM_FEE` = **0.01 XDS**.
+Output count is also partly protocol-driven rather than arbitrary: canonical denomination
+decomposition turns 1,234 atoms into outputs of 1,000, 200, 30, and 4 atoms. A naïve
+per-output fee would charge users according to an amount's decimal decomposition.
 
-The one thing a user *can* bloat is the free-form `tx_extra` field, so bytes beyond the
-free allowance carry a surcharge of one `MINIMUM_FEE` per started 100-byte chunk. The
-free allowance (3 200 B) is sized so every protocol-required extra fits without
-surcharge — in particular a paid account-number registration, whose tag is
-1 + 1184 (ML-KEM view pub) + 1952 (ML-DSA spend pub) = 3 137 bytes.
+Input and output counts are still user-controlled. Consequently, a maximal 256 KiB
+transaction can pay the same 0.01 XDS base fee as a small transfer. That is a deliberate
+policy trade-off, not a claim that all transaction size is unavoidable. A future change to
+weight-based or per-input/output pricing would be a consensus policy decision requiring
+economic analysis, wallet changes, tests, and a fork; it is not assumed here.
 
-Trade-off to be aware of: with the flat floor, a maximal 256 KB consolidation
-transaction also pays 0.01 XDS, so chain-bloat cost is bounded by the block-size
-penalty (miner reward shrinks for blocks above the median size) rather than by fees.
-`MAXIMUM_FEE` = 100 (1.00 XDS) remains a wallet-side sanity cap.
+The free allowance (3,200 B) fits every required extra, including a 3,137-byte paid
+account registration tag. `MAXIMUM_FEE` = 100 (1.00 XDS) remains a wallet-side sanity cap.

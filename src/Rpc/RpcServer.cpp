@@ -1360,7 +1360,7 @@ bool RpcServer::on_get_info(const COMMAND_RPC_GET_INFO::request& req, COMMAND_RP
   }
   res.max_cumulative_block_size = (uint64_t)m_core.currency().maxBlockCumulativeSize(res.height);
 
-  // First-seen finality is always on (network-wide, from genesis). max_reorg_depth
+  // First-seen finality is always on locally (from genesis). max_reorg_depth
   // is now the fixed consensus constant CRYPTONOTE_FINALITY_DEPTH.
   uint32_t finalityDepth = m_core.getFinalityDepth();
   res.deep_reorg_protection = true;

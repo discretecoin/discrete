@@ -61,6 +61,16 @@ NUL terminator.
 | `kDomainViewRoot` | `discrete-pq-view-root-v1` | 24 |
 | `kDomainSpendRoot` | `discrete-pq-spend-root-v1` | 25 |
 
+### Free-registration proof of work (PqValidation.h)
+
+| Constant | String (ASCII) | Len |
+|---|---|---|
+| `FREE_REG_POW_DOMAIN` | `discrete-pq-free-reg-pow-v1` | 27 |
+
+The proof preimage is `domain || viewPub || spendPub || refBlockHash || LE64(nonce)`.
+Both public keys are consensus-bound so a proof for one identity cannot be replayed
+with different spend keys.
+
 ### Reserved (Phase 2, must not be used by Phase 1 code)
 
 | Constant | String (ASCII) | Len |
@@ -188,9 +198,10 @@ output index `i` — no KEM decapsulation, constant time per candidate.
 
 `rho_C` is canonical (publicly recomputable from the signer pubkey + height +
 outputIndex), so consensus enforces that the miner who *signs* the block is the
-miner who gets *paid* — you cannot mine to a key you do not hold. This is the
-anti-pool/botnet property: aggregating hashpower requires sharing the spend
-secret. The coinbase is a single undivided output (one signature, minimal size).
+miner who gets *paid*. This blocks an unsigned worker from redirecting the reward,
+but it does not by itself prove strong non-outsourceability: a custodial operator
+can sign candidate nonces and distribute signed jobs. The coinbase is a single
+undivided output (one signature, minimal size).
 Genesis (height 0) is exempt from signature validation (trusted) and carries the
 Treasury Reserve to 21 independent recipients. Enforced in
 `Blockchain::validate_block_signature`; built in `Currency::constructMinerTxPq`.

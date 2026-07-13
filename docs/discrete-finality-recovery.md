@@ -2,7 +2,7 @@
 
 ## Operator guide and tooling specification
 
-Discrete enforces **network-wide first-seen finality**: every node refuses a
+Discrete enforces **node-local first-seen finality**: each node refuses a
 reorganisation deeper than `CRYPTONOTE_FINALITY_DEPTH` blocks. This protects the network
 from deep-reorg and selfish-mining attacks, at a known cost — a node that stayed isolated
 while producing blocks past the finality depth can end up on a divergent minority fork
@@ -115,7 +115,7 @@ attacker's chain and need to do nothing.
 
 ---
 
-## 3. Recovery tooling (the daemon interface to build)
+## 3. Recovery tooling (implemented daemon interface)
 
 Two operator-facing entry points, both of which pop the local chain back below the
 divergence height and re-sync forward from the majority:
@@ -187,19 +187,12 @@ its node serves. If a user's own node was wedged:
 
 ## 5. Prevention
 
-The most common wedge source — a lone stray miner extending its own fork while
-disconnected — is removed structurally by the **built-in miner**, which stops producing
-blocks when it loses connectivity rather than mining on in isolation. A miner that pauses
-when partitioned never wedges; it only waits, and resyncs cleanly on reconnect. This turns
-the common case from an operator-discipline recommendation into a code-enforced guarantee
-for the miner Discrete ships.
-
-To make that guarantee catch partitions and not only total isolation, the miner pauses on
-**loss of majority connectivity**, not merely on zero peers: a node with a single stale
-peer during a network split still has "a peer" but is effectively isolated from the
-majority. The trigger is therefore a minimum distinct-peer threshold combined with a
-liveness check (no new block accepted for `K` block intervals despite having peers), so a
-partitioned-but-not-alone miner also stops.
+The built-in miner stops when its peer count falls to zero. This prevents the simplest
+case: a lone miner continuing to extend a private tip after total disconnection. It does
+not reliably detect a partition in which the node retains one or more peers, because a
+permissionless node cannot infer global majority connectivity from local peer count alone.
+Operators must therefore monitor tip freshness and independent peers; a stronger
+partition detector would be an operational heuristic, never a consensus input.
 
 Residual guidance for operators and for any non-built-in miner:
 
@@ -210,10 +203,9 @@ Residual guidance for operators and for any non-built-in miner:
 - **Watch `finality_fork_warning`** in monitoring; the earlier a partition is caught, the
   shallower the divergence and the cheaper the recovery.
 
-With the built-in miner handling the lone-miner case in code, the residual wedge surface
-is essentially just a **sustained multi-node partition** — a connected segment of the
-network mining among itself across a split for longer than the finality depth — which is
-what the recovery path in §§2–4 exists to handle.
+With the built-in miner handling total disconnection in code, the residual wedge surface
+includes a **sustained multi-node partition** or an eclipsed miner that retains stale
+peers. The recovery path in §§2–4 exists to handle those cases.
 
 ---
 

@@ -219,7 +219,8 @@ bool get_signed_block_hashing_blob(const Block& b, BinaryArray& ba) {
   if (!get_block_hashing_blob(b, ba)) {
     return false;
   }
-  // Append SHA3-256(ML-DSA-65 block signature) — binds the PoW to the miner's
+  // Append cn_fast_hash(ML-DSA-65 block signature) — a 32-byte commitment that
+  // binds the PoW to the miner's
   // signed commitment without including 3309 B in every PoW input blob.
   if (!b.signature.empty()) {
     Hash sigHash = cn_fast_hash(b.signature.data(), b.signature.size());
@@ -238,7 +239,7 @@ bool get_parent_block_hashing_blob(const Block& b, BinaryArray& blob) {
 
 // Proof-of-Work "long hash": yespower over the block's signed hashing blob.
 // The signed blob covers the header (nonce, previousBlockHash) and SHA3 of the
-// miner's ML-DSA signature, giving non-outsourceability and tip-binding with no
+// miner's ML-DSA signature, giving identity binding and tip-binding with no
 // blockchain access. See docs/POW.md.
 bool get_block_longhash(const Block& b, Crypto::Hash& res) {
   BinaryArray pot;

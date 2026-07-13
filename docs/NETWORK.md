@@ -16,11 +16,14 @@ the P2P network id lives in `src/P2p/P2pNetworks.h`.
 
 | Item | Value |
 |------|-------|
-| Bech32m HRP — mainnet | **`disc`** (`kPqBech32HrpMainnet` in `include/PqAddress.h`) |
-| Bech32m HRP — testnet | **`tdisc`** (`kPqBech32HrpTestnet`) |
+| Extended-Bech32m HRP — mainnet | **`disc`** (`kPqBech32HrpMainnet` in `include/PqAddress.h`) |
+| Extended-Bech32m HRP — testnet | **`tdisc`** (`kPqBech32HrpTestnet`) |
 | Network-prefix field (in payload) | `0x3445db` (`CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX`) |
 
-Bech32m (BIP-350) is the sole PQ-address encoding. Addresses are self-identifying
+The sole PQ-address encoding uses the Bech32m alphabet and checksum constant, but its
+~5,043-character length exceeds BIP-173/BIP-350's 90-character profile. It is therefore
+an extended Bech32m-derived transport, not a standard Bitcoin Bech32m address and not a
+single-frame QR payload. Addresses are self-identifying
 by network: mainnet renders as `disc1…`, testnet as `tdisc1…`, so a testnet
 address can't be mistaken for mainnet. The HRP is chosen at encode time from the
 wallet's network (`pqBech32Hrp(currency.isTestnet())`); decode accepts either

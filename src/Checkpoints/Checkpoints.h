@@ -55,7 +55,7 @@ namespace CryptoNote
     bool check_block(uint32_t height, const Crypto::Hash& h, bool& is_a_checkpoint) const;
     bool is_alternative_block_allowed(uint32_t blockchain_height, uint32_t block_height) const;
     // Pure predicate: would an alt block at block_height be refused by the
-    // network-wide first-seen finality rule (forks deeper than
+    // node-local first-seen finality rule (forks deeper than
     // CRYPTONOTE_FINALITY_DEPTH below the tip, outside a hardcoded checkpoint
     // zone)? Deterministic function of heights + checkpoints only.
     bool is_finality_violation(uint32_t blockchain_height, uint32_t block_height) const;

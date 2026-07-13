@@ -62,8 +62,8 @@ bool checkPqTransactionSemantic(const Transaction& tx, std::string* error);
 //  - tx_extra carries EXACTLY one PQ account-registration tag (0x05) and EXACTLY
 //    one PoW tag (0x06), and nothing else
 //  - the PoW tag is the last field (so the nonce is the final 8 bytes)
-//  - anti-spam PoW: cn_slow_hash(viewPub || refBlockHash || LE64(nonce)) meets
-//    FREE_REG_POW_TARGET
+//  - anti-spam PoW: yespower(domain || viewPub || spendPub || refBlockHash ||
+//    LE64(nonce)) meets FREE_REG_POW_TARGET
 // Chain-context rules (refBlockHash recency + main-chain, first-reg-wins,
 // per-block count) are enforced by the Blockchain layer.
 // powTarget defaults to parameters::FREE_REG_POW_TARGET; pass a custom value
@@ -71,18 +71,25 @@ bool checkPqTransactionSemantic(const Transaction& tx, std::string* error);
 bool checkFreeRegTransactionSemantic(const Transaction& tx, std::string* error,
                                      uint64_t powTarget = parameters::FREE_REG_POW_TARGET);
 
+// Consensus domain for the free-registration PoW preimage. Binding both public
+// keys prevents one proof for a view key from being replayed with arbitrarily
+// many spend keys. Keep byte-for-byte stable after launch.
+constexpr char FREE_REG_POW_DOMAIN[] = "discrete-pq-free-reg-pow-v1";
+
 // The free-reg anti-spam PoW predicate. Reused by wallet nonce grinding.
 // target defaults to parameters::FREE_REG_POW_TARGET.
 bool checkFreeRegPow(const std::array<uint8_t, 1184>& viewPub,
+                     const std::array<uint8_t, 1952>& spendPub,
                      const Crypto::Hash& refBlockHash, uint64_t nonce,
                      uint64_t target = parameters::FREE_REG_POW_TARGET);
 
-// Grind the free-reg anti-spam PoW: return the smallest nonce such that
-// checkFreeRegPow(viewPub, refBlockHash, nonce, powTarget) holds. Shared by every
+// Grind the free-reg anti-spam PoW: return a nonce such that
+// checkFreeRegPow(viewPub, spendPub, refBlockHash, nonce, powTarget) holds. Shared by every
 // wallet front-end (simplewallet, walletd) so they all grind to the same
 // consensus target. Always terminates (the predicate is satisfiable for some
 // nonce), but the work scales with 1/powTarget.
 uint64_t grindFreeRegPow(const std::array<uint8_t, 1184>& viewPub,
+                         const std::array<uint8_t, 1952>& spendPub,
                          const Crypto::Hash& refBlockHash,
                          uint64_t powTarget = parameters::FREE_REG_POW_TARGET);
 

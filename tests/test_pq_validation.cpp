@@ -348,7 +348,8 @@ Transaction makeFreeRegTx() {
     addPqAccountRegistrationToExtra(tx.extra, freeRegViewPub(), freeRegSpendPub());
     TransactionExtraPow pow{};
     pow.refBlockHash = hashPat(1, 1);
-    while (!checkFreeRegPow(freeRegViewPub(), pow.refBlockHash, pow.nonce, kTestFreeRegPowTarget)) {
+    while (!checkFreeRegPow(freeRegViewPub(), freeRegSpendPub(), pow.refBlockHash,
+                            pow.nonce, kTestFreeRegPowTarget)) {
         ++pow.nonce;
     }
     appendPowTagToExtra(tx.extra, pow);  // PoW must be the last field
@@ -361,6 +362,38 @@ TEST(PqValidation, FreeRegAcceptsValid) {
     Transaction tx = makeFreeRegTx();
     std::string err;
     EXPECT_TRUE(checkFreeRegTransactionSemantic(tx, &err, kTestFreeRegPowTarget)) << err;
+}
+
+TEST(PqValidation, FreeRegPowBindsCompleteIdentity) {
+    const auto view = freeRegViewPub();
+    const auto spendA = freeRegSpendPub();
+    auto spendB = spendA;
+    spendB[0] ^= 0x01;
+    const Crypto::Hash ref = hashPat(1, 1);
+
+    // Reproduce the old attack shape: keep one view key, reference block, and
+    // nonce while changing only the spend key. Find a proof that passes for A
+    // and fails for B so the assertion is deterministic even with a lenient
+    // test target.
+    uint64_t nonce = 0;
+    while (!checkFreeRegPow(view, spendA, ref, nonce, kTestFreeRegPowTarget) ||
+           checkFreeRegPow(view, spendB, ref, nonce, kTestFreeRegPowTarget)) {
+        ++nonce;
+    }
+
+    EXPECT_TRUE(checkFreeRegPow(view, spendA, ref, nonce, kTestFreeRegPowTarget));
+    EXPECT_FALSE(checkFreeRegPow(view, spendB, ref, nonce, kTestFreeRegPowTarget));
+
+    Transaction replay = makeFreeRegTx();
+    replay.extra.clear();
+    addPqAccountRegistrationToExtra(replay.extra, view, spendB);
+    TransactionExtraPow pow{};
+    pow.refBlockHash = ref;
+    pow.nonce = nonce;
+    appendPowTagToExtra(replay.extra, pow);
+    std::string err;
+    EXPECT_FALSE(checkFreeRegTransactionSemantic(replay, &err, kTestFreeRegPowTarget));
+    EXPECT_EQ(err, "TX_FREE_REG: anti-spam PoW not satisfied");
 }
 
 TEST(PqValidation, FreeRegRejectsWrongSubtype) {
@@ -423,12 +456,13 @@ TEST(PqValidation, FreeRegRejectsBadPow) {
     std::array<uint8_t, TX_EXTRA_PQ_VIEW_PUBKEY_SIZE> vp = freeRegViewPub();
     Crypto::Hash ref = hashPat(1, 1);
     uint64_t badNonce = 0;
-    while (checkFreeRegPow(vp, ref, badNonce, parameters::FREE_REG_POW_TARGET)) {
+    const auto sp = freeRegSpendPub();
+    while (checkFreeRegPow(vp, sp, ref, badNonce, parameters::FREE_REG_POW_TARGET)) {
         ++badNonce;
     }
-    EXPECT_FALSE(checkFreeRegPow(vp, ref, badNonce, parameters::FREE_REG_POW_TARGET));
+    EXPECT_FALSE(checkFreeRegPow(vp, sp, ref, badNonce, parameters::FREE_REG_POW_TARGET));
     // Same nonce trivially passes with UINT64_MAX target (any hash qualifies).
-    EXPECT_TRUE(checkFreeRegPow(vp, ref, badNonce, UINT64_MAX));
+    EXPECT_TRUE(checkFreeRegPow(vp, sp, ref, badNonce, UINT64_MAX));
 }
 
 int main(int argc, char** argv) {

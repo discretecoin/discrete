@@ -278,8 +278,8 @@ PqSendResult buildPqSend(const std::vector<PqSpendInput>& available,
     throw shortfall(sent);
   }
 
-  // Flat fee: MINIMUM_FEE plus the tx_extra surcharge. It does not depend on the
-  // serialized size, so it is exact up front — no size-measurement fixed point.
+  // Flat fee: MINIMUM_FEE plus the tx_extra surcharge. It is exact up front,
+  // so coin selection needs no size-measurement fixed point.
   uint64_t fee = req.explicitFee != 0
                      ? req.explicitFee
                      : P::pqTxFeeFloor(P::MINIMUM_FEE, req.extra.size());

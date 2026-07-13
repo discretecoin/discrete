@@ -17,6 +17,7 @@
 
 #include "crypto_pq/PqDerive.h"   // kDomain*, kReservedCtMask
 #include "crypto_pq/PqSeed.h"     // kDomainViewRoot, kDomainSpendRoot
+#include "CryptoNoteCore/PqValidation.h" // FREE_REG_POW_DOMAIN
 #include "CryptoNote.h"           // PQ_*_SIZE
 #include "CryptoNoteConfig.h"     // TRANSACTION_VERSION_1
 #include "PqTxType.h"             // TX_COINBASE, TX_PQ, TX_FREE_REG
@@ -102,6 +103,13 @@ TEST(PqDomains, SeedDomainStrings) {
     EXPECT_EQ(std::strlen(kDomainDepositSpendRoot), 28u);
 }
 
+TEST(PqDomains, FreeRegistrationPowDomain) {
+    // Consensus-critical anti-spam preimage prefix. The remaining preimage is
+    // viewPub || spendPub || refBlockHash || LE64(nonce).
+    EXPECT_STREQ(FREE_REG_POW_DOMAIN, "discrete-pq-free-reg-pow-v1");
+    EXPECT_EQ(std::strlen(FREE_REG_POW_DOMAIN), 27u);
+}
+
 TEST(PqDomains, ReservedCtMaskNotReused) {
     // kReservedCtMask is reserved for Phase 2 and must never collide with any
     // Phase 1 tag.  This test is belt-and-braces over the existing check in
@@ -113,6 +121,7 @@ TEST(PqDomains, ReservedCtMaskNotReused) {
         kDomainInputsHash, kDomainOutContext, kDomainAeadKey,
         kDomainSpendCommit, kDomainNullifier, kDomainTxSign,
         kDomainCoinbaseRho, kDomainViewRoot, kDomainSpendRoot,
+        FREE_REG_POW_DOMAIN,
     };
     for (const char* tag : phase1) {
         EXPECT_STRNE(tag, kReservedCtMask) << "collision with reserved tag: " << tag;
@@ -133,7 +142,7 @@ TEST(PqDomains, ReservedShieldedSerialNotReused) {
         kDomainInputsHash, kDomainOutContext, kDomainAeadKey,
         kDomainSpendCommit, kDomainNullifier, kDomainTxSign,
         kDomainCoinbaseRho, kDomainViewRoot, kDomainSpendRoot,
-        kDomainDepositSpendRoot, kReservedCtMask,
+        kDomainDepositSpendRoot, FREE_REG_POW_DOMAIN, kReservedCtMask,
     };
     for (const char* tag : phase12) {
         EXPECT_STRNE(tag, kReservedShieldedSerial)

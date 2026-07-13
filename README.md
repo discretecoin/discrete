@@ -6,9 +6,11 @@ no legacy elliptic-curve (ECC) chain, no ring signatures, and no migration
 "bridge": the quantum-resistant scheme is the only scheme the network has ever
 spoken.
 
-> Status: pre-launch. Consensus parameters, genesis, and network identity are
-> being finalized (see `docs/DISCRETE-COMPLETION-PLAN.md`). The PQ crypto core and
-> wallet stack are implemented and test-covered.
+> Status: pre-launch reference implementation. Candidate consensus parameters,
+> genesis, and network identity are implemented and test-covered, but public
+> launch readiness, independent protocol review, seed-node deployment, and final
+> parameter benchmarking remain outstanding. The archived completion plan is not
+> a current release checklist.
 
 ## What "post-quantum" means here
 

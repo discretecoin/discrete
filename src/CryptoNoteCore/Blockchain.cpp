@@ -1386,7 +1386,7 @@ bool Blockchain::handle_alternative_block(const Block& b, const Crypto::Hash& id
   if (!m_checkpoints.is_alternative_block_allowed(chainLen, block_height)) {
     logger(TRACE) << "Block with id: " << id << "\n can't be accepted for alternative chain, "
       << "block height: " << block_height << "\n blockchain height: " << chainLen;
-    // If the refusal was the network-wide finality rule (not the below-last-
+    // If the refusal was the node-local finality rule (not the below-last-
     // checkpoint rule), snapshot the fork for operator messaging/recovery. The
     // block is still refused — this only records why, it does not change the
     // decision. The peer-split hint and the WARNING with peer counts are added

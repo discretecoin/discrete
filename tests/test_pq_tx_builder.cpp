@@ -292,9 +292,11 @@ TEST(PqFreeReg, BuildsValidRegistration) {
     // and walletd call). Use a lenient test target so grinding stays instant —
     // the production parameters::FREE_REG_POW_TARGET is deliberately strong.
     constexpr uint64_t kTestFreeRegPowTarget = UINT64_C(0x0FFFFFFFFFFFFFFF);
-    uint64_t nonce = CryptoNote::grindFreeRegPow(me.viewPub, ref, kTestFreeRegPowTarget);
+    uint64_t nonce = CryptoNote::grindFreeRegPow(me.viewPub, me.spendPub, ref,
+                                                 kTestFreeRegPowTarget);
     // The helper must return a nonce that actually satisfies the predicate.
-    EXPECT_TRUE(CryptoNote::checkFreeRegPow(me.viewPub, ref, nonce, kTestFreeRegPowTarget));
+    EXPECT_TRUE(CryptoNote::checkFreeRegPow(me.viewPub, me.spendPub, ref, nonce,
+                                            kTestFreeRegPowTarget));
 
     Transaction tx = buildFreeRegTransaction(me.viewPub, me.spendPub, ref, nonce);
     EXPECT_EQ(tx.version, TRANSACTION_VERSION_1);

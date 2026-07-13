@@ -1,13 +1,14 @@
 # Discrete genesis
 
-The genesis block is frozen. Every node must agree on it byte-for-byte. This
+The pre-launch candidate genesis block is byte-for-byte consensus data. Every
+node must agree on it. This
 document records what it contains, how to regenerate/verify it, and where the
 recipient secrets live.
 
 ## What genesis contains
 
 The genesis coinbase carries the entire **Discrete Treasury Reserve** as
-per-output-unlocked `PqOutput`s — one batch per recipient — in a single
+per-output-unlocked `CoinbaseOutput`s — one batch per recipient — in a single
 transaction. This is possible because Discrete added a per-output `unlockHeight`
 to the wire (see [PQ-WIRE-FROZEN.md](PQ-WIRE-FROZEN.md)), so staggered unlock
 times fit in one coinbase tx and `GENESIS_COINBASE_TX_HEX` remains the single
@@ -18,6 +19,12 @@ The genesis coinbase `extra` also carries a headline, embedded as a
 Chancellor on brink of second bailout for banks"*:
 
 > Reuters 08/Jul/2026 — Crypto firms prepare defenses as quantum threat to encryption draws nearer
+
+The fixed block timestamp is 2026-06-22, earlier than the headline. It is therefore
+historical protocol metadata, not a publication-time or no-premine proof. The headline
+only establishes that this candidate artifact was assembled no earlier than the cited
+article; it does not prove when the network was publicly announced or exclude private
+mining after that date.
 
 ### Monetary policy
 
@@ -95,18 +102,16 @@ accounts.
 (`src/CryptoNoteCore/GenesisTreasuryReserve.cpp`) builds the coinbase
 deterministically so two runs on any host produce identical bytes:
 
-- For batch *i*: `kemSeed = HKDF(LE32(i), "discrete-genesis-kem-v1")`,
-  `rho = HKDF(LE32(i), "discrete-genesis-rho-v1")`.
-- `(kemCt, ss) = kem_encaps_derand(viewPub_i, kemSeed)` — a real encapsulation the
-  recipient can still decapsulate, made reproducible via a seed-driven RNG.
-- `buildPqOutput(kemCt, ss, spendPub_i, inputsHash=0, outputIndex=i, 5,000,000,
-  rho, T=0)`, then `unlockHeight = i × 87,600`.
+- For batch *i*: `rho_C = coinbaseRho(spendPub_i, height=0, outputIndex=i)`.
+- The stripped `CoinbaseOutput` stores only
+  `spendCommit(spendPub_i, rho_C)`; it has no KEM ciphertext or encrypted payload.
+- The output amount is 5,000,000 atoms and `unlockHeight = i × 87,600`.
 - Input is a `BaseInput` at height 0; `extra` carries the headline
   (`TX_EXTRA_NONCE`) followed by an all-zero ML-DSA miner spend pub (genesis is
   trusted — its block signature is skipped at height 0).
 
-These domain strings, amounts, and the headline are part of the frozen artifact —
-do not change.
+These domain strings, amounts, and the headline are part of the candidate genesis
+artifact. Freeze them only after the pre-launch review is complete.
 
 ## Regenerate / verify the frozen hex
 

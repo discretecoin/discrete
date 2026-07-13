@@ -81,7 +81,11 @@ bool parsePayload(const std::string& p, PqAddress& out) {
   return pqAddressChecksum(out) == out.checksum;
 }
 
-// --- bech32m (BIP-350) ---------------------------------------------------
+// --- extended Bech32m-derived encoding ----------------------------------
+// Uses the BIP-350 alphabet/polymod constant, but not BIP-173's 90-character
+// profile: a Discrete base address is ~5,043 characters. The inner SHA3
+// checksum supplies full-payload integrity; callers must not advertise this as
+// a standard Bitcoin Bech32m address or a single-frame QR payload.
 const char* kCharset = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
 
 uint32_t bech32Polymod(const std::vector<uint8_t>& values) {
@@ -132,7 +136,7 @@ bool convertBits(std::vector<uint8_t>& out, const uint8_t* in, std::size_t inLen
   return true;
 }
 
-std::string bech32mEncode(const std::string& hrp, const std::string& payload) {
+std::string extendedBech32mEncode(const std::string& hrp, const std::string& payload) {
   std::vector<uint8_t> data;
   if (!convertBits(data, reinterpret_cast<const uint8_t*>(payload.data()),
                    payload.size(), 8, 5, true)) {
@@ -152,7 +156,7 @@ std::string bech32mEncode(const std::string& hrp, const std::string& payload) {
   return out;
 }
 
-bool bech32mDecode(const std::string& str, const std::string& expectedHrp,
+bool extendedBech32mDecode(const std::string& str, const std::string& expectedHrp,
                    std::string& payload) {
   std::size_t sep = str.rfind('1');
   if (sep == std::string::npos || sep == 0 || sep + 7 > str.size()) return false;
@@ -204,15 +208,15 @@ PqAddress makePqAddress(uint64_t networkPrefix,
 std::string encodePqAddress(const PqAddress& addr, const std::string& hrp) {
   std::array<uint8_t, 4> chk = pqAddressChecksum(addr);
   std::string payload = addressPayload(addr, chk);
-  return bech32mEncode(hrp, payload);
+  return extendedBech32mEncode(hrp, payload);
 }
 
 bool decodePqAddress(const std::string& str, PqAddress& out) {
   // Accept either known Discrete HRP; the bech32m checksum is computed over the
   // HRP, so any other prefix (a typo, or another coin's address) is rejected.
   std::string payload;
-  if (!bech32mDecode(str, kPqBech32HrpMainnet, payload) &&
-      !bech32mDecode(str, kPqBech32HrpTestnet, payload)) {
+  if (!extendedBech32mDecode(str, kPqBech32HrpMainnet, payload) &&
+      !extendedBech32mDecode(str, kPqBech32HrpTestnet, payload)) {
     return false;
   }
   return parsePayload(payload, out);
@@ -222,7 +226,7 @@ bool decodePqAddress(const std::string& str, bool testnet, PqAddress& out) {
   // Accept ONLY this network's HRP. The numeric networkPrefix embedded in the
   // payload is the same on both networks, so the HRP is the sole discriminator.
   std::string payload;
-  if (!bech32mDecode(str, pqBech32Hrp(testnet), payload)) {
+  if (!extendedBech32mDecode(str, pqBech32Hrp(testnet), payload)) {
     return false;
   }
   return parsePayload(payload, out);

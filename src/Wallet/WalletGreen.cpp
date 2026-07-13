@@ -2334,7 +2334,7 @@ Transaction WalletGreen::buildPqFreeRegTransaction(const Crypto::Hash& refBlockH
   }
   PqWalletKeys keys = derivePqWalletKeys(seed);
   // Shared anti-spam PoW grind (same helper simplewallet uses → same target).
-  uint64_t nonce = grindFreeRegPow(keys.viewPub, refBlockHash);
+  uint64_t nonce = grindFreeRegPow(keys.viewPub, keys.spendPub, refBlockHash);
   return buildFreeRegTransaction(keys.viewPub, keys.spendPub, refBlockHash, nonce);
 }
 

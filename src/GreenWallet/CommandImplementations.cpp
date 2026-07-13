@@ -925,7 +925,7 @@ void pqRegister(std::shared_ptr<WalletInfo> walletInfo, CryptoNote::INode &node)
     std::cout << InformationMsg("Assigning your account number (solving anti-spam PoW)...")
               << std::endl;
     uint64_t nonce = 0;
-    while (!CryptoNote::checkFreeRegPow(pq.viewPub, refBlockHash, nonce))
+    while (!CryptoNote::checkFreeRegPow(pq.viewPub, pq.spendPub, refBlockHash, nonce))
     {
         ++nonce;
     }

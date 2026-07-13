@@ -2,7 +2,7 @@
 //
 // This file is part of Karbo.
 //
-// Functional test for the network-wide first-seen finality rule
+// Functional test for the node-local first-seen finality rule
 // (CRYPTONOTE_FINALITY_DEPTH). The accept/reject decision lives in
 // Checkpoints::is_alternative_block_allowed / is_finality_violation and is a pure
 // function of heights + hardcoded checkpoints — no peer counts, no timers, no

@@ -168,12 +168,19 @@ bool checkPqTransactionSemantic(const Transaction& tx, std::string* error) {
 }
 
 bool checkFreeRegPow(const std::array<uint8_t, 1184>& viewPub,
+                     const std::array<uint8_t, 1952>& spendPub,
                      const Crypto::Hash& refBlockHash, uint64_t nonce,
                      uint64_t target) {
-  // PoW preimage: viewPub(1184) || refBlockHash(32) || LE64(nonce).
+  // Consensus preimage:
+  //   domain || viewPub(1184) || spendPub(1952) || refBlockHash(32) || LE64(nonce)
+  // Binding the complete identity closes the replay where one proof for a view
+  // key could register arbitrarily many different spend keys.
   std::vector<uint8_t> buf;
-  buf.reserve(1184 + 32 + 8);
+  buf.reserve(sizeof(FREE_REG_POW_DOMAIN) - 1 + 1184 + 1952 + 32 + 8);
+  buf.insert(buf.end(), FREE_REG_POW_DOMAIN,
+             FREE_REG_POW_DOMAIN + sizeof(FREE_REG_POW_DOMAIN) - 1);
   buf.insert(buf.end(), viewPub.begin(), viewPub.end());
+  buf.insert(buf.end(), spendPub.begin(), spendPub.end());
   buf.insert(buf.end(), refBlockHash.data, refBlockHash.data + 32);
   for (int i = 0; i < 8; ++i) buf.push_back(static_cast<uint8_t>((nonce >> (8 * i)) & 0xFF));
 
@@ -194,6 +201,7 @@ bool checkFreeRegPow(const std::array<uint8_t, 1184>& viewPub,
 }
 
 uint64_t grindFreeRegPow(const std::array<uint8_t, 1184>& viewPub,
+                         const std::array<uint8_t, 1952>& spendPub,
                          const Crypto::Hash& refBlockHash, uint64_t powTarget) {
   // The anti-spam PoW is a memory-hard yespower grind with an expected D =
   // 2^64 / (powTarget + 1) evaluations (~2^17 at the default target). That is
@@ -214,7 +222,7 @@ uint64_t grindFreeRegPow(const std::array<uint8_t, 1184>& viewPub,
   auto worker = [&](uint64_t start) {
     for (uint64_t nonce = start; !found.load(std::memory_order_relaxed);
          nonce += threads) {
-      if (checkFreeRegPow(viewPub, refBlockHash, nonce, powTarget)) {
+      if (checkFreeRegPow(viewPub, spendPub, refBlockHash, nonce, powTarget)) {
         // First worker to flip the flag records its nonce; later hits defer.
         if (!found.exchange(true, std::memory_order_acq_rel)) {
           winner.store(nonce, std::memory_order_relaxed);
@@ -275,7 +283,7 @@ bool checkFreeRegTransactionSemantic(const Transaction& tx, std::string* error, 
   getPqAccountRegistrationFromExtra(tx.extra, reg);
   getPowTagFromExtra(tx.extra, pow);
 
-  if (!checkFreeRegPow(reg.viewPub, pow.refBlockHash, pow.nonce, powTarget)) {
+  if (!checkFreeRegPow(reg.viewPub, reg.spendPub, pow.refBlockHash, pow.nonce, powTarget)) {
     return fail(error, "TX_FREE_REG: anti-spam PoW not satisfied");
   }
   return true;
@@ -350,10 +358,9 @@ bool checkPqTransactionInputs(const Transaction& tx,
   }
   uint64_t fee = sumIn - sumOut;
 
-  // Fee floor: flat minFee plus the tx_extra surcharge. The serialized size of a
-  // PQ tx is dominated by signatures/ciphertexts the user cannot shrink, so it is
-  // not charged; the user-controllable bloat (tx_extra) is. extra.size() is capped
-  // by checkPqTransactionSemantic at MAX_EXTRA_SIZE_PQ, so no overflow is possible.
+  // Fee floor: flat minFee plus the tx_extra surcharge. Input/output counts and
+  // total size are independently consensus-capped; the free-form tx_extra field
+  // is the only component with a separate surcharge.
   if (minFee != 0) {
     uint64_t floor = parameters::pqTxFeeFloor(minFee, tx.extra.size());
     if (fee < floor) {

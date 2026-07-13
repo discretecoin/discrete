@@ -95,15 +95,12 @@ const uint64_t MAX_EXTRA_SIZE                                = 4096;
 const uint64_t MAX_EXTRA_SIZE_PQ                             = 4096;
 
 // Flat-fee model. A transaction pays MINIMUM_FEE (0.01 XDS) regardless of its
-// serialized size: PQ signatures make every tx intrinsically large, so size is
-// not a user choice and charging for it is bad UX. The only user-controllable
-// bloat is tx_extra, so bytes beyond TX_EXTRA_FEE_FREE_BYTES are surcharged at
-// MINIMUM_FEE per TX_EXTRA_FEE_CHUNK_BYTES started (ceiling division). The free
-// allowance is sized so every protocol-required extra fits without surcharge —
-// in particular a paid account-number registration, whose tag is
-// 1 + 1184 (ML-KEM view pub) + 1952 (ML-DSA spend pub) = 3137 bytes, plus a
-// payment-id nonce (~35 bytes) of headroom. The max 4096-byte extra costs
-// MINIMUM_FEE + 9 atoms = 0.10 XDS.
+// serialized size. Input/output counts are consensus-capped, while tx_extra is
+// free-form within its cap; bytes beyond TX_EXTRA_FEE_FREE_BYTES are therefore
+// surcharged at MINIMUM_FEE per TX_EXTRA_FEE_CHUNK_BYTES started. The free
+// allowance fits a paid account registration (3,137 bytes) plus a payment-id
+// nonce. This is an explicit policy choice; block-size penalties and miner
+// selection provide the remaining bloat controls.
 const uint64_t TX_EXTRA_FEE_FREE_BYTES                       = 3200;
 const uint64_t TX_EXTRA_FEE_CHUNK_BYTES                      = 100;
 

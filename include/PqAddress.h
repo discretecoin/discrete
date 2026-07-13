@@ -25,8 +25,10 @@
 #include "crypto_pq/PqDsa.h"
 
 // PQ address (spec §3, amended). CEMENTED v2 surface — the layout and checksum
-// never change. The string encoding is bech32m (BIP-350): it is the sole,
-// canonical encoding. Its human-readable part also identifies the network
+// never change. The string encoding uses the Bech32m checksum and alphabet but
+// deliberately exceeds BIP-173's 90-character profile because PQ public keys
+// make the payload ~3.1 KiB. It is therefore an extended Bech32m-derived
+// transport, not a BIP-350 Bitcoin address. Its human-readable part identifies the network
 // (mainnet "disc", testnet "tdisc"), so addresses are self-describing.
 //
 // The address carries TWO public keys:
@@ -68,7 +70,7 @@ inline const char* pqBech32Hrp(bool testnet) {
   return testnet ? kPqBech32HrpTestnet : kPqBech32HrpMainnet;
 }
 
-// Encode to a bech32m string under the given HRP. The stored checksum is ignored
+// Encode to an extended Bech32m-derived string under the given HRP. The stored checksum is ignored
 // and recomputed so callers can't accidentally emit a stale checksum.
 std::string encodePqAddress(const PqAddress& addr,
                             const std::string& hrp = kPqBech32HrpMainnet);
