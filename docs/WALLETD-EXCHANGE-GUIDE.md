@@ -737,9 +737,20 @@ delivery and `T` for those same outputs by scanning.
 - `exportPaymentProof` / `importPaymentProof` move a single proof between wallets;
   `deletePaymentProof` removes one from the local archive.
 
-A standalone *verification* RPC (checking a proof handed to you, without the view key)
-is not yet exposed — today a payee confirms a claimed payment by scanning the
-transaction with its own view key.
+**Verifying a proof handed to you.** `importPaymentProof` fetches the referenced
+transaction and checks spend authority before storing, so it doubles as a verifier of a
+proof someone gives you — no view key required. Two caveats: it also *adopts* the proof
+into your archive (delete it afterward if unwanted), and it only confirms the proof is
+internally valid, not that the account it names is yours — check the named recipient
+against your own account separately. A dedicated verify-only call (validate and return
+the amount without storing) is not yet exposed; you can also confirm a claimed deposit
+directly by scanning the transaction with your own view key.
+
+**Which wallets can produce one.** A depositor needs a wallet that supports proofs:
+`simplewallet` (`payment_proof` / `export_payment_proof` / `import_payment_proof` /
+`delete_payment_proof`), `walletd` (the RPC above), or the desktop GUI wallet
+(transaction details → *Copy Payment Proof*). `greenwallet` does **not** support payment
+proofs — a customer using it cannot produce one.
 
 **Storage.** Proofs are captured at send time and are **not recoverable from the
 mnemonic**. They live in the wallet's crash-safe proof archive; if you need them
