@@ -39,6 +39,7 @@
 #include <CryptoNoteCore/CryptoNoteFormatUtils.h>
 #include <CryptoNoteCore/CryptoNoteTools.h>
 #include <Rpc/CoreRpcServerCommandsDefinitions.h>
+#include <Rpc/CoreRpcServerErrorCodes.h>
 #include <Rpc/JsonRpc.h>
 #include <Serialization/SerializationTools.h>
 
@@ -1014,9 +1015,16 @@ std::error_code NodeRpcProxy::jsonRpcCommand(const std::string& method, const Re
       JsonRpc::invokeJsonRpcCommand(*m_httpClient, method, req, res);
       return std::error_code();  // Success
     }
-    catch (const JsonRpc::JsonRpcError&) {
+    catch (const JsonRpc::JsonRpcError& e) {
       // The daemon answered with an application-level error; retrying will not help.
-      return make_error_code(error::INTERNAL_NODE_ERROR);
+      // Map its code to a specific condition so the user gets an actionable message
+      // (e.g. an old daemon that lacks this method) instead of a generic error.
+      switch (e.code) {
+      case JsonRpc::errMethodNotFound:      return make_error_code(error::METHOD_NOT_FOUND);
+      case CORE_RPC_ERROR_CODE_CORE_BUSY:   return make_error_code(error::NODE_BUSY);
+      case CORE_RPC_ERROR_CODE_WRONG_PARAM: return make_error_code(error::REQUEST_ERROR);
+      default:                              return make_error_code(error::INTERNAL_NODE_ERROR);
+      }
     }
     catch (const ConnectException&) {
       return make_error_code(error::CONNECT_ERROR);

@@ -32,7 +32,8 @@ enum NodeErrorCodes {
   INTERNAL_NODE_ERROR,
   REQUEST_ERROR,
   CONNECT_ERROR,
-  TIMEOUT
+  TIMEOUT,
+  METHOD_NOT_FOUND
 };
 
 // custom category:
@@ -57,6 +58,7 @@ public:
     case INTERNAL_NODE_ERROR: return "Internal node error";
     case REQUEST_ERROR:       return "Error in request parameters";
     case CONNECT_ERROR:       return "Can't connect to daemon";
+    case METHOD_NOT_FOUND:    return "Daemon does not support this request (update the daemon)";
     default:                  return "Unknown error";
     }
   }
