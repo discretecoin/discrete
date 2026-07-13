@@ -902,7 +902,10 @@ bool Core::findStartAndFullOffsets(const std::vector<Crypto::Hash>& knownBlockId
   }
 
   if (knownBlockIds.back() != m_blockchain.getBlockIdByHeight(0)) {
-    logger(ERROR, BRIGHT_RED) << "knownBlockIds doesn't end with genesis block hash: " << knownBlockIds.back();
+    // Client-side condition (e.g. a wallet holding a stale/foreign chain): the sparse
+    // history it sent ends in a genesis we don't recognize. Not a daemon error, and it
+    // repeats on every sync attempt, so keep it at debug level to avoid log spam.
+    logger(DEBUGGING) << "knownBlockIds doesn't end with genesis block hash: " << knownBlockIds.back();
     return false;
   }
 

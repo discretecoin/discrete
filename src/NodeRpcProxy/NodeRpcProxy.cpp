@@ -766,6 +766,15 @@ std::error_code NodeRpcProxy::doQueryBlocksLite(const std::vector<Crypto::Hash>&
     return ec;
   }
 
+  // The daemon replies HTTP 200 even when the query itself failed (e.g. our sparse
+  // history ends in a genesis it doesn't recognize because this wallet holds a stale
+  // chain). Surface that as an error instead of treating it as an empty, successful
+  // sync, which would leave the synchronizer spinning without progress.
+  if (rsp.status != CORE_RPC_STATUS_OK) {
+    return rsp.status == CORE_RPC_STATUS_BUSY ? make_error_code(error::NODE_BUSY)
+                                              : make_error_code(error::INTERNAL_NODE_ERROR);
+  }
+
   startHeight = static_cast<uint32_t>(rsp.startHeight);
 
   for (auto& item: rsp.items) {
