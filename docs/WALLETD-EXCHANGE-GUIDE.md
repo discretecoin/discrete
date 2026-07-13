@@ -699,6 +699,52 @@ If you operate a hot/cold split, use `sendTransaction` to move funds from the ho
 wallet to a cold PQ address. Keep cold keys offline; they are standard PQ wallet
 keys and do not need a special exchange mode.
 
+## Payment proofs (spend-authority)
+
+A **spend-authority payment proof** is an off-chain artifact the *payer* of a
+transaction can produce after the fact and hand to someone who does not hold the
+recipient's view key (an auditor, a counterparty, or a support desk). Encoded as a
+`disctxp1...` string, it reveals the `rho` opening for selected outputs of one
+transaction.
+
+**What it proves.** For the listed, txid- and network-bound outputs: each commits to
+the named recipient's ML-DSA **spend key** (account), the output indexes are unique
+and in range, and their **public on-chain amounts** sum to the returned total. A
+dishonest payer can only *under*-report (omit outputs), never inflate — so the claim
+is "**at least** this amount was paid to this account in this transaction."
+
+**What it does not prove.** It does **not** attest ML-KEM **view-key delivery** (that
+the recipient's wallet auto-detects the outputs by scanning) or the SingleKeyIndex
+routing index **`T`** (which deposit/subaddress was targeted). This is a deliberate
+tradeoff that keeps output construction on the standard, NIST-approved ML-KEM
+encapsulation path (no derandomized-encapsulation mode); see
+[PQ-PAYMENT-PROOF.md](PQ-PAYMENT-PROOF.md). **Call it a "spend-authority payment
+proof" in customer-facing and support material, and state this limitation** rather
+than implying it proves delivery or attribution.
+
+**How an exchange uses it.** You hold your own view key, so you confirm your *own*
+deposits by scanning the transaction with that key — your normal deposit flow — and
+do not need a customer's proof for routine crediting. The payer proof is the fallback
+for reconciling a **disputed or missed deposit**: the depositor produces the proof for
+the transaction hash and sends it to you; it pins down the outputs, their amounts, and
+the account they pay. Because you hold the view key, you can independently confirm
+delivery and `T` for those same outputs by scanning.
+
+**RPC (payer side).** The wallet that *sent* the transaction manages proofs:
+
+- `sendTransaction` returns the proofs inline in `paymentProofs`.
+- `getPaymentProofs` retrieves stored proofs by `transactionHash`.
+- `exportPaymentProof` / `importPaymentProof` move a single proof between wallets;
+  `deletePaymentProof` removes one from the local archive.
+
+A standalone *verification* RPC (checking a proof handed to you, without the view key)
+is not yet exposed — today a payee confirms a claimed payment by scanning the
+transaction with its own view key.
+
+**Storage.** Proofs are captured at send time and are **not recoverable from the
+mnemonic**. They live in the wallet's crash-safe proof archive; if you need them
+long-term, export and retain them alongside your other backups.
+
 ## Backup and restore
 
 Back up all of these:
