@@ -1096,10 +1096,6 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
       "**********************************************************************";
   }
 
-  if (auto* legacy = dynamic_cast<CryptoNote::WalletLegacy*>(m_wallet.get())) {
-    legacy->configurePaymentProofArchive(m_wallet_file);
-  }
-
   if (command_line::has_arg(vm, arg_reset))
     reset({});
 

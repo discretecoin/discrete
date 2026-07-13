@@ -558,15 +558,6 @@ void WalletLegacy::doLoad(std::istream& source) {
                         << "; a blockchain rescan will rebuild it";
     }
 
-    // The proof archive is authoritative and independent of blockchain cache.
-    // Reconcile it after every load/reset so reset cannot erase payer evidence.
-    if (m_paymentProofArchive.configured()) {
-      std::vector<std::string> warnings;
-      m_paymentProofArchive.configure(m_walletFile, m_currency.genesisBlockHash(),
-                                      m_sentPayments, &warnings);
-      for (const auto& warning : warnings) m_logger(WARNING) << warning;
-    }
-
     // History rows already on disk are this wallet's past; baseline the announce
     // cursor to them so reloading does not re-announce every old transaction. New
     // rows discovered during this session's sync grow past the baseline and fire.
@@ -977,11 +968,8 @@ PqSendResult WalletLegacy::sendPqTransfer(const std::vector<PqSendOutput>& recip
                  << ", fee atomic units " << result.fee
                  << ", change atomic units " << result.change;
 
-  // Re-verify Phase 2 against the exact final transaction, then persist the
-  // ordered SentPaymentEntry records before the first relay attempt.
-  if (!m_paymentProofArchive.configured()) {
-    throw std::runtime_error("payment-proof storage is not configured for this wallet");
-  }
+  // Re-verify Phase 2 against the exact final transaction, then record the ordered
+  // SentPaymentEntry rows in the wallet's cache-backed store before the first relay.
   if (!recipientAddresses.empty() && recipientAddresses.size() != recipients.size()) {
     throw std::runtime_error("payment-proof recipient label count mismatch");
   }
@@ -1009,7 +997,6 @@ PqSendResult WalletLegacy::sendPqTransfer(const std::vector<PqSendOutput>& recip
         std::move(address), recipients[i].amount,
         encodePqPaymentProof(result.proofs[i], m_currency.isTestnet())});
   }
-  m_paymentProofArchive.persist(txid, sent);
   {
     std::unique_lock<std::mutex> lock(m_cacheMutex);
     if (!m_sentPayments.recordChecked(txid, sent)) {
@@ -1028,14 +1015,6 @@ PqSendResult WalletLegacy::sendPqTransfer(const std::vector<PqSendOutput>& recip
   }
   m_logger(INFO) << "PQ transaction relay accepted: " << Common::podToHex(txid);
   return result;
-}
-
-void WalletLegacy::configurePaymentProofArchive(const std::string& walletFile) {
-  std::unique_lock<std::mutex> lock(m_cacheMutex);
-  m_walletFile = walletFile;
-  std::vector<std::string> warnings;
-  m_paymentProofArchive.configure(walletFile, m_currency.genesisBlockHash(), m_sentPayments, &warnings);
-  for (const auto& warning : warnings) m_logger(WARNING) << warning;
 }
 
 const SentPaymentRecord* WalletLegacy::getPaymentProofs(const Crypto::Hash& txid) const {
@@ -1062,7 +1041,7 @@ void WalletLegacy::exportPaymentProofs(const Crypto::Hash& txid, const std::stri
       throw std::runtime_error("payment-proof recipient index is out of range");
     exported.recipients = {exported.recipients[recipientIndex]};
   }
-  m_paymentProofArchive.exportRecord(txid, exported, path);
+  PaymentProofArchive::exportRecord(m_currency.genesisBlockHash(), txid, exported, path);
 }
 
 Crypto::Hash WalletLegacy::importPaymentProofs(const std::string& path) {
@@ -1099,7 +1078,6 @@ Crypto::Hash WalletLegacy::importPaymentProofs(const std::string& path) {
       throw std::runtime_error("payment-proof import verification failed");
   }
   std::unique_lock<std::mutex> lock(m_cacheMutex);
-  m_paymentProofArchive.persist(txid, record);
   if (!m_sentPayments.recordChecked(txid, record))
     throw std::runtime_error("conflicting in-wallet payment-proof record");
   return txid;
@@ -1112,12 +1090,10 @@ bool WalletLegacy::deletePaymentProofs(const Crypto::Hash& txid, std::size_t rec
   if (recipientIndex != static_cast<std::size_t>(-1) && recipientIndex >= found->recipients.size())
     throw std::runtime_error("payment-proof recipient index is out of range");
   if (recipientIndex == static_cast<std::size_t>(-1) || found->recipients.size() == 1) {
-    m_paymentProofArchive.erase(txid);
     return m_sentPayments.remove(txid);
   }
   SentPaymentRecord remaining = *found;
   remaining.recipients.erase(remaining.recipients.begin() + recipientIndex);
-  m_paymentProofArchive.replaceAfterExplicitDeletion(txid, remaining);
   m_sentPayments.record(txid, std::move(remaining));
   return true;
 }

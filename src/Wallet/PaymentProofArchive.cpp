@@ -3,15 +3,16 @@
 
 #include "PaymentProofArchive.h"
 
+#include <algorithm>
 #include <cerrno>
 #include <cstring>
 #include <fstream>
 #include <stdexcept>
+#include <system_error>
+#include <vector>
 
 #include <boost/filesystem.hpp>
-#include <boost/algorithm/string/case_conv.hpp>
 
-#include "Common/StringTools.h"
 #include "crypto_pq/PqPaymentProof.h"
 
 #ifdef _WIN32
@@ -27,7 +28,6 @@ namespace CryptoNote {
 namespace {
 
 constexpr char kMagic[] = {'D', 'P', 'P', 'R'};
-constexpr char kAuthorityMagic[] = {'D', 'P', 'P', 'A'};
 constexpr uint8_t kVersion = 1;
 constexpr uint32_t kMaxRecipients = 64;
 constexpr uint32_t kMaxAddress = 16 * 1024;
@@ -53,48 +53,9 @@ bool takeString(const std::string& in, size_t& p, uint32_t max, std::string& s) 
   uint32_t n = 0; if (!take32(in, p, n) || n > max || p + n > in.size()) return false;
   s.assign(in.data() + p, n); p += n; return true;
 }
-bool hashFromHexName(const std::string& name, Crypto::Hash& hash) {
-  if (name.size() != 64 + 7 || name.substr(64) != ".pproof") return false;
-  const std::string hex = name.substr(0, 64);
-  if (hex != boost::algorithm::to_lower_copy(hex)) return false;
-  return Common::podFromHex(hex, hash);
-}
-bool hashEqual(const Crypto::Hash& a, const Crypto::Hash& b) {
-  return std::memcmp(a.data, b.data, sizeof(a.data)) == 0;
-}
-
-bool recordEqual(const SentPaymentRecord& a, const SentPaymentRecord& b) {
-  if (a.recipients.size() != b.recipients.size()) return false;
-  for (size_t i = 0; i < a.recipients.size(); ++i) {
-    const auto& x = a.recipients[i];
-    const auto& y = b.recipients[i];
-    if (x.address != y.address || x.amount != y.amount || x.proof != y.proof) return false;
-  }
-  return true;
-}
-
-boost::filesystem::path normalizedPath(const boost::filesystem::path& path) {
-  boost::system::error_code ec;
-  const auto normalized = boost::filesystem::weakly_canonical(
-      boost::filesystem::absolute(path), ec);
-  return ec ? boost::filesystem::absolute(path).lexically_normal() : normalized;
-}
-
-bool isSameOrChildPath(const boost::filesystem::path& candidate,
-                       const boost::filesystem::path& directory) {
-  auto child = normalizedPath(candidate).generic_string();
-  auto parent = normalizedPath(directory).generic_string();
-#ifdef _WIN32
-  boost::algorithm::to_lower(child);
-  boost::algorithm::to_lower(parent);
-#endif
-  if (child == parent) return true;
-  if (!parent.empty() && parent.back() != '/') parent.push_back('/');
-  return child.size() > parent.size() && child.compare(0, parent.size(), parent) == 0;
-}
 
 #ifdef _WIN32
-void restrictPathToCurrentUser(const std::wstring& path, bool inheritToChildren) {
+void restrictPathToCurrentUser(const std::wstring& path) {
   HANDLE token = nullptr;
   if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token))
     throw std::system_error(GetLastError(), std::system_category(), "open process token");
@@ -111,8 +72,7 @@ void restrictPathToCurrentUser(const std::wstring& path, bool inheritToChildren)
   EXPLICIT_ACCESSW access{};
   access.grfAccessPermissions = GENERIC_ALL;
   access.grfAccessMode = SET_ACCESS;
-  access.grfInheritance = inheritToChildren
-      ? SUB_CONTAINERS_AND_OBJECTS_INHERIT : NO_INHERITANCE;
+  access.grfInheritance = NO_INHERITANCE;
   access.Trustee.TrusteeForm = TRUSTEE_IS_SID;
   access.Trustee.TrusteeType = TRUSTEE_IS_USER;
   access.Trustee.ptstrName = reinterpret_cast<LPWSTR>(
@@ -130,6 +90,41 @@ void restrictPathToCurrentUser(const std::wstring& path, bool inheritToChildren)
     throw std::system_error(error, std::system_category(), "secure payment-proof path");
 }
 #endif
+
+// Crash-safe write to a standalone file: write a temp sibling, flush, then
+// atomically rename it over the target.
+void durableReplace(const std::string& finalPath, const std::string& bytes) {
+  const std::string tempPath = finalPath + ".tmp";
+  boost::system::error_code ignored; boost::filesystem::remove(tempPath, ignored);
+#ifdef _WIN32
+  const std::wstring temp = boost::filesystem::path(tempPath).wstring();
+  HANDLE h = CreateFileW(temp.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW,
+                         FILE_ATTRIBUTE_NORMAL, nullptr);
+  if (h == INVALID_HANDLE_VALUE) throw std::system_error(GetLastError(), std::system_category());
+  try {
+    restrictPathToCurrentUser(temp);
+    size_t off = 0;
+    while (off < bytes.size()) { DWORD wrote = 0; DWORD n = static_cast<DWORD>((std::min)(bytes.size()-off, size_t(MAXDWORD)));
+      if (!WriteFile(h, bytes.data()+off, n, &wrote, nullptr) || wrote == 0) throw std::system_error(GetLastError(), std::system_category()); off += wrote; }
+    if (!FlushFileBuffers(h)) throw std::runtime_error("payment-proof flush failed");
+    CloseHandle(h); h = INVALID_HANDLE_VALUE;
+    if (!MoveFileExW(temp.c_str(), boost::filesystem::path(finalPath).wstring().c_str(),
+                     MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+      throw std::system_error(GetLastError(), std::system_category());
+  } catch (...) { if (h != INVALID_HANDLE_VALUE) CloseHandle(h); DeleteFileW(temp.c_str()); throw; }
+#else
+  int fd = ::open(tempPath.c_str(), O_WRONLY|O_CREAT|O_EXCL, 0600);
+  if (fd < 0) throw std::system_error(errno, std::system_category());
+  try {
+    size_t off = 0; while (off < bytes.size()) { ssize_t n = ::write(fd, bytes.data()+off, bytes.size()-off); if (n <= 0) throw std::system_error(errno, std::system_category()); off += size_t(n); }
+    if (::fsync(fd) != 0) throw std::runtime_error("payment-proof flush failed");
+    ::close(fd); fd = -1;
+    if (::rename(tempPath.c_str(), finalPath.c_str()) != 0) throw std::runtime_error("payment-proof rename failed");
+    const std::string parent = boost::filesystem::path(finalPath).parent_path().string();
+    int dfd = ::open(parent.empty() ? "." : parent.c_str(), O_RDONLY); if (dfd >= 0) { ::fsync(dfd); ::close(dfd); }
+  } catch (...) { if (fd >= 0) ::close(fd); ::unlink(tempPath.c_str()); throw; }
+#endif
+}
 
 }  // namespace
 
@@ -183,194 +178,21 @@ bool PaymentProofArchive::decodeRecord(const std::string& bytes, Crypto::Hash& g
   return true;
 }
 
-std::string PaymentProofArchive::readFile(const std::string& path) {
+std::string PaymentProofArchive::readExternalFile(const std::string& path) {
   std::ifstream in(path, std::ios::binary);
-  if (!in) throw std::runtime_error("cannot open payment-proof archive file");
+  if (!in) throw std::runtime_error("cannot open payment-proof file");
   in.seekg(0, std::ios::end); const auto n = in.tellg();
   if (n < 0 || n > static_cast<std::streamoff>(64 * 1024 * 1024))
-    throw std::runtime_error("invalid payment-proof archive file size");
+    throw std::runtime_error("invalid payment-proof file size");
   std::string bytes(static_cast<size_t>(n), '\0'); in.seekg(0);
-  if (n && !in.read(&bytes[0], n)) throw std::runtime_error("cannot read payment-proof archive file");
+  if (n && !in.read(&bytes[0], n)) throw std::runtime_error("cannot read payment-proof file");
   return bytes;
 }
 
-std::string PaymentProofArchive::pathFor(const Crypto::Hash& txid) const {
-  if (!configured()) throw std::runtime_error("payment-proof archive is not configured");
-  return (boost::filesystem::path(m_directory) / (Common::podToHex(txid) + ".pproof")).string();
-}
-
-void PaymentProofArchive::configure(const std::string& walletFile,
-                                    const Crypto::Hash& genesisId,
-                                    SentPaymentsStore& store,
-                                    std::vector<std::string>* warnings) {
-  if (walletFile.empty()) throw std::runtime_error("wallet filename is required for payment-proof storage");
-  m_directory = walletFile + ".payment-proofs";
-  m_genesisId = genesisId;
-  boost::filesystem::create_directories(m_directory);
-#ifdef _WIN32
-  restrictPathToCurrentUser(boost::filesystem::path(m_directory).wstring(), true);
-#else
-  ::chmod(m_directory.c_str(), 0700);
-#endif
-
-  // The marker makes this directory an authoritative snapshot. Before it exists,
-  // migrate the encrypted cache once; afterwards, a missing sidecar is an
-  // intentional deletion and must not be resurrected from a stale wallet cache.
-  const auto cached = store.records();
-  const auto markerPath = boost::filesystem::path(m_directory) / ".authority-v1";
-  std::string marker(kAuthorityMagic, sizeof(kAuthorityMagic));
-  marker.push_back(static_cast<char>(kVersion));
-  marker.append(reinterpret_cast<const char*>(m_genesisId.data), sizeof(m_genesisId.data));
-  bool authoritative = false;
-  if (boost::filesystem::exists(markerPath)) {
-    try {
-      authoritative = readFile(markerPath.string()) == marker;
-    } catch (...) {
-      authoritative = false;
-    }
-    if (!authoritative && warnings)
-      warnings->push_back("invalid payment-proof archive authority marker");
-  }
-  if (!authoritative) {
-    for (const auto& entry : cached) {
-      const std::string path = pathFor(entry.first);
-      if (boost::filesystem::exists(path)) {
-        try {
-          Crypto::Hash fileGenesis{}, fileTx{};
-          SentPaymentRecord fileRecord;
-          if (decodeRecord(readFile(path), fileGenesis, fileTx, fileRecord) &&
-              hashEqual(fileGenesis, m_genesisId) && hashEqual(fileTx, entry.first)) {
-            continue;
-          }
-        } catch (...) {
-          // Before the authority marker exists, a damaged partial sidecar may
-          // be repaired from the encrypted cache during one-time migration.
-        }
-        if (warnings) warnings->push_back(
-            "damaged pre-authority payment-proof record recovered from cache: " +
-            Common::podToHex(entry.first));
-      }
-      std::string bytes;
-      try {
-        bytes = encodeRecord(m_genesisId, entry.first, entry.second);
-      } catch (const std::runtime_error&) {
-        if (warnings) warnings->push_back(
-            "invalid cached payment-proof record skipped during archive migration: " +
-            Common::podToHex(entry.first));
-        continue;
-      }
-      durableReplace(path, bytes);
-    }
-    durableReplace(markerPath.string(), marker);
-  }
-
-  store.clear();
-  for (boost::filesystem::directory_iterator it(m_directory), end; it != end; ++it) {
-    if (!boost::filesystem::is_regular_file(it->path())) continue;
-    Crypto::Hash nameTx{};
-    if (!hashFromHexName(it->path().filename().string(), nameTx)) continue;
-    try {
-#ifdef _WIN32
-      restrictPathToCurrentUser(it->path().wstring(), false);
-#else
-      ::chmod(it->path().string().c_str(), 0600);
-#endif
-      Crypto::Hash fileGenesis{}, fileTx{}; SentPaymentRecord record; std::string why;
-      if (!decodeRecord(readFile(it->path().string()), fileGenesis, fileTx, record, &why) ||
-          !hashEqual(fileGenesis, m_genesisId) || !hashEqual(fileTx, nameTx)) {
-        if (warnings) warnings->push_back("invalid or conflicting payment-proof record: " + it->path().filename().string());
-      } else {
-        const auto cachedIt = cached.find(fileTx);
-        if (cachedIt != cached.end() && !recordEqual(cachedIt->second, record) && warnings)
-          warnings->push_back("cached payment-proof conflict replaced from archive: " + it->path().filename().string());
-        store.record(fileTx, record);
-      }
-    } catch (...) {
-      if (warnings) warnings->push_back("unreadable payment-proof record: " + it->path().filename().string());
-    }
-  }
-  for (const auto& entry : cached) {
-    if (store.find(entry.first) == nullptr && warnings)
-      warnings->push_back("cached payment-proof absent from authoritative archive and discarded: " +
-                          Common::podToHex(entry.first));
-  }
-}
-
-void PaymentProofArchive::durableReplace(const std::string& finalPath, const std::string& bytes) {
-  const std::string tempPath = finalPath + ".tmp";
-  boost::system::error_code ignored; boost::filesystem::remove(tempPath, ignored);
-  if (m_fault == Fault::Create) throw std::runtime_error("injected proof archive create failure");
-#ifdef _WIN32
-  const std::wstring temp = boost::filesystem::path(tempPath).wstring();
-  HANDLE h = CreateFileW(temp.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW,
-                         FILE_ATTRIBUTE_NORMAL, nullptr);
-  if (h == INVALID_HANDLE_VALUE) throw std::system_error(GetLastError(), std::system_category());
-  try {
-    restrictPathToCurrentUser(temp, false);
-    if (m_fault == Fault::Write) throw std::runtime_error("injected proof archive write failure");
-    size_t off = 0;
-    while (off < bytes.size()) { DWORD wrote = 0; DWORD n = static_cast<DWORD>((std::min)(bytes.size()-off, size_t(MAXDWORD)));
-      if (!WriteFile(h, bytes.data()+off, n, &wrote, nullptr) || wrote == 0) throw std::system_error(GetLastError(), std::system_category()); off += wrote; }
-    if (m_fault == Fault::Flush || !FlushFileBuffers(h)) throw std::runtime_error("payment-proof flush failed");
-    CloseHandle(h); h = INVALID_HANDLE_VALUE;
-    if (m_fault == Fault::Rename) throw std::runtime_error("injected proof archive rename failure");
-    if (!MoveFileExW(temp.c_str(), boost::filesystem::path(finalPath).wstring().c_str(),
-                     MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
-      throw std::system_error(GetLastError(), std::system_category());
-  } catch (...) { if (h != INVALID_HANDLE_VALUE) CloseHandle(h); DeleteFileW(temp.c_str()); throw; }
-#else
-  int fd = ::open(tempPath.c_str(), O_WRONLY|O_CREAT|O_EXCL, 0600);
-  if (fd < 0) throw std::system_error(errno, std::system_category());
-  try {
-    if (m_fault == Fault::Write) throw std::runtime_error("injected proof archive write failure");
-    size_t off = 0; while (off < bytes.size()) { ssize_t n = ::write(fd, bytes.data()+off, bytes.size()-off); if (n <= 0) throw std::system_error(errno, std::system_category()); off += size_t(n); }
-    if (m_fault == Fault::Flush || ::fsync(fd) != 0) throw std::runtime_error("payment-proof flush failed");
-    ::close(fd); fd = -1;
-    if (m_fault == Fault::Rename || ::rename(tempPath.c_str(), finalPath.c_str()) != 0) throw std::runtime_error("payment-proof rename failed");
-    const std::string parent = boost::filesystem::path(finalPath).parent_path().string();
-    int dfd = ::open(parent.empty() ? "." : parent.c_str(), O_RDONLY); if (dfd >= 0) { ::fsync(dfd); ::close(dfd); }
-  } catch (...) { if (fd >= 0) ::close(fd); ::unlink(tempPath.c_str()); throw; }
-#endif
-}
-
-void PaymentProofArchive::persist(const Crypto::Hash& txid, const SentPaymentRecord& record) {
-  const std::string bytes = encodeRecord(m_genesisId, txid, record);
-  const std::string path = pathFor(txid);
-  if (boost::filesystem::exists(path)) {
-    if (readFile(path) == bytes) return;
-    throw std::runtime_error("conflicting payment-proof record for transaction");
-  }
-  durableReplace(path, bytes);
-  const std::string readBack = readFile(path);
-  Crypto::Hash g{}, t{}; SentPaymentRecord check;
-  if (readBack != bytes || !decodeRecord(readBack, g, t, check) ||
-      !hashEqual(g, m_genesisId) || !hashEqual(t, txid))
-    throw std::runtime_error("payment-proof archive read-back validation failed");
-}
-
-void PaymentProofArchive::erase(const Crypto::Hash& txid) {
-  boost::system::error_code ec;
-  if (!boost::filesystem::remove(pathFor(txid), ec) && ec) throw boost::filesystem::filesystem_error("remove proof", pathFor(txid), ec);
-}
-
-void PaymentProofArchive::replaceAfterExplicitDeletion(const Crypto::Hash& txid,
-                                                       const SentPaymentRecord& record) {
-  if (record.recipients.empty()) throw std::runtime_error("empty payment-proof replacement");
-  durableReplace(pathFor(txid), encodeRecord(m_genesisId, txid, record));
-  Crypto::Hash g{}, t{};
-  SentPaymentRecord check;
-  if (!decodeRecord(readFile(pathFor(txid)), g, t, check) ||
-      !hashEqual(g, m_genesisId) || !hashEqual(t, txid))
-    throw std::runtime_error("payment-proof archive replacement validation failed");
-}
-
-void PaymentProofArchive::exportRecord(const Crypto::Hash& txid,
-                                       const SentPaymentRecord& record,
-                                       const std::string& path) {
+void PaymentProofArchive::exportRecord(const Crypto::Hash& genesisId, const Crypto::Hash& txid,
+                                       const SentPaymentRecord& record, const std::string& path) {
   if (path.empty()) throw std::runtime_error("payment-proof export path is empty");
-  if (isSameOrChildPath(path, m_directory))
-    throw std::runtime_error("payment-proof export path cannot be inside the authoritative archive");
-  durableReplace(path, encodeRecord(m_genesisId, txid, record));
+  durableReplace(path, encodeRecord(genesisId, txid, record));
 }
 
 }  // namespace CryptoNote

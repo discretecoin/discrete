@@ -99,9 +99,6 @@ public:
   Crypto::Hash importPaymentProofs(const std::string& bytes);
   bool deletePaymentProofs(const Crypto::Hash& txid,
                            std::size_t recipientIndex = static_cast<std::size_t>(-1));
-  void setPaymentProofArchiveFaultForTests(PaymentProofArchive::Fault fault) {
-    m_paymentProofArchive.setFaultForTests(fault);
-  }
   // Register this wallet's PQ identity with a fee-paying TX_PQ: a self-payment of
   // the smallest denomination whose tx.extra carries the account-registration tag.
   // Returns the built+relayed result. Throws on a tracking wallet / insufficient
@@ -355,7 +352,6 @@ protected:
   std::unique_ptr<WalletLedgerConsumer> m_pqConsumer;
   std::unique_ptr<PqTrackingKeys> m_pqTrackingKeys;
   SentPaymentsStore m_sentPayments;
-  PaymentProofArchive m_paymentProofArchive;
 
   System::Event m_eventOccurred;
   std::queue<WalletEvent> m_events;
