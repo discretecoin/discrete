@@ -27,9 +27,15 @@ signature is compressed into `Q`; the memory-hard core receives the fixed 64-byt
 `X`. yespower internally retains its established BLAKE-256/pwxform/Salsa-derived
 implementation; DiscretePower does not claim to replace or redesign that core.
 
-Because the nonce is in `blob` and therefore `H`, every nonce attempt requires a fresh
-signature. Five pinned domains separate the header, signature, memory input,
-personalization, and final target transcripts from every other protocol use.
+Every attempt requires a fresh ML-DSA signature over `H`, and no attempt can even begin
+without one: the memory-hard input `X` is derived from `Q = SHAKE256(signature)`, so a
+worker holding only the header cannot start yespower until the reward key has signed.
+Varying the nonce changes `H` and forces a new signature; and because ML-DSA-65 signing
+here is randomized (liboqs builds the pqcrystals reference core with
+`DILITHIUM_RANDOMIZED_SIGNING`), even a fixed nonce yields a fresh signature — and
+therefore fresh `Q`, `X`, and `Y` — on every call. Either way the candidate space cannot
+be explored without the signing key. Five pinned domains separate the header, signature,
+memory input, personalization, and final target transcripts from every other protocol use.
 
 ## What the construction guarantees
 
