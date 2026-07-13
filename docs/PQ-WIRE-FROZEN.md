@@ -36,7 +36,7 @@ All defined in `include/CryptoNote.h`.
 
 ---
 
-## 3. Domain-separation tags (SHA3-256 preimage prefix, NUL excluded)
+## 3. Domain-separation tags (ASCII, trailing NUL excluded)
 
 All tags are in `src/crypto_pq/PqDerive.h` and `src/crypto_pq/PqSeed.h`.
 The bytes hashed are the ASCII contents of the string **without** any trailing
@@ -70,6 +70,19 @@ NUL terminator.
 The proof preimage is `domain || viewPub || spendPub || refBlockHash || LE64(nonce)`.
 Both public keys are consensus-bound so a proof for one identity cannot be replayed
 with different spend keys.
+
+### DiscretePower-1 (CryptoNoteFormatUtils.h)
+
+| Constant | String (ASCII) | Len | SHAKE output |
+|---|---|---:|---:|
+| `DISCRETE_POWER_HEADER_DOMAIN` | `DiscretePower/v1/header` | 23 | 32 B |
+| `DISCRETE_POWER_SIGNATURE_DOMAIN` | `DiscretePower/v1/signature` | 26 | 32 B |
+| `DISCRETE_POWER_INPUT_DOMAIN` | `DiscretePower/v1/input` | 22 | 64 B |
+| `DISCRETE_POWER_MEMORY_DOMAIN` | `DiscretePower/v1/memory` | 23 | 32 B |
+| `DISCRETE_POWER_FINAL_DOMAIN` | `DiscretePower/v1/final` | 22 | 32 B |
+
+These tags define the SHAKE-256 transcript surrounding the ML-DSA-65 signature
+and yespower 1.0 memory-hard core. See [POW.md](POW.md) for the exact composition.
 
 ### Reserved (Phase 2, must not be used by Phase 1 code)
 
@@ -176,14 +189,17 @@ and ownership are independent of the lock).
 
 ## 8. Coinbase recipient == block signer (identity-bound mining)
 
-Every non-genesis block carries an ML-DSA-65 signature over
-`cn_fast_hash(get_block_hashing_blob(b))`, verified against the producer spend
-pubkey in the coinbase `extra` (tag `0x07`). (`cn_fast_hash` is the CryptoNote
-block hash — Keccak with 0x01 padding — i.e. the block's own identity hash, NOT
-NIST SHA3-256. The SHA3-256 family is used only for the PQ *derivations* in §§3–6;
-the block signature reuses the existing block-hash function. Enforced in
-`Blockchain::validate_block_signature`.) Additionally, the **single** coinbase
-`CoinbaseOutput` must pay that same identity:
+Every non-genesis block carries an ML-DSA-65 signature over the
+DiscretePower-1 header digest:
+
+```
+H = SHAKE256("DiscretePower/v1/header" || get_block_hashing_blob(b), 32)
+```
+
+It is verified against the producer spend pubkey in the coinbase `extra` (tag
+`0x07`). The signature is then committed through the remaining SHAKE-256 and
+yespower stages documented in [POW.md](POW.md). Additionally, the **single**
+coinbase `CoinbaseOutput` must pay that same identity:
 
 ```
 rho_C        = SHA3-256(kDomainCoinbaseRho || signerSpendPub || LE32(height) || LE32(outputIndex))

@@ -34,19 +34,18 @@ using namespace CryptoNote;
 namespace {
 
 // Sign a Discrete block with the miner's ML-DSA-65 spend key.
-// The PoW hash commits to SHA3(signature) via get_signed_block_hashing_blob,
-// so this must be called before each getBlockLongHash attempt.
+// DiscretePower-1 commits to the ML-DSA signature, so every varied nonce must
+// be re-signed before getBlockLongHash.
 static void signTestBlock(CryptoNote::Block& blk, const CryptoNote::AccountBase& minerAcc) {
-  CryptoNote::BinaryArray ba;
-  if (!CryptoNote::get_block_hashing_blob(blk, ba)) {
+  Crypto::Hash h{};
+  if (!CryptoNote::get_block_pow_signing_hash(blk, h)) {
     return;
   }
-  Crypto::Hash h = Crypto::cn_fast_hash(ba.data(), ba.size());
   CryptoPQ::DsaSignature sig = CryptoPQ::dsa_sign(minerAcc.pqSpendSk(), h.data, sizeof(h.data));
   blk.signature.assign(sig.begin(), sig.end());
 }
 
-// Discrete PoW is signed yespower (CryptoNote::get_block_longhash), a pure
+// DiscretePower-1 (CryptoNote::get_block_longhash) is a pure
 // function of the block. The `blockchain` pointer is now only a mode selector:
 // non-null → compute the real yespower PoW; null → the in-memory generator
 // (TestBlockchainGenerator) that feeds a WalletGreen through the node stub,
@@ -212,7 +211,7 @@ bool test_generator::constructBlock(CryptoNote::Block& blk, uint32_t height, con
     }
   }
 
-  // Nonce search. All Discrete blocks use yespower via Blockchain::getBlockLongHash.
+  // Nonce search. All Discrete blocks use DiscretePower-1 via getBlockLongHash.
   // The PoW input commits to SHA3(signature), so the block is re-signed each iteration.
   blk.nonce = 0;
   Crypto::cn_context context;
@@ -353,4 +352,3 @@ void fillNonce(CryptoNote::Block& blk, const Difficulty& diffic,
     if (blk.nonce == 0) blk.timestamp++;
   }
 }
-

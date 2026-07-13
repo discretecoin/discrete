@@ -460,12 +460,11 @@ namespace CryptoNote
       }
       if (!m_stop) {
         try {
-          BinaryArray ba;
-          if (!get_block_hashing_blob(b, ba)) {
-            logger(ERROR) << "get_block_hashing_blob for PQ block signature failed.";
+          Crypto::Hash h{};
+          if (!get_block_pow_signing_hash(b, h)) {
+            logger(ERROR) << "get_block_pow_signing_hash failed.";
             m_stop = true;
           } else {
-            Crypto::Hash h = Crypto::cn_fast_hash(ba.data(), ba.size());
             CryptoPQ::DsaSignature sig = CryptoPQ::dsa_sign(
                 m_pq_spend_sk, h.data, sizeof(h.data));
             b.signature.assign(sig.begin(), sig.end());

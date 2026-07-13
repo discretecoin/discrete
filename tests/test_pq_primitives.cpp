@@ -3,7 +3,7 @@
 // This file is part of Karbo.
 //
 // KAT-based tests for the PQ Phase 1 crypto primitives. Vectors:
-//   * SHA3-256          : FIPS 202 known answers (empty / "abc")
+//   * SHA3-256 / SHAKE256: FIPS 202 known answers
 //   * HMAC-SHA3-256     : NIST CAVP "Jefe / what do ya want for nothing?"
 //   * HKDF-SHA3-256     : internal consistency + length-extension
 //   * ChaCha20-Poly1305 : RFC 8439 §2.8.2 (the canonical AEAD KAT)
@@ -64,6 +64,16 @@ TEST(PqHash_Sha3_256, FIPS_202_Abc) {
     auto h = CryptoPQ::sha3_256("abc", 3);
     EXPECT_EQ(to_hex(h),
               "3a985da74fe225b2045c172d6bd390bd855f086e3e9d525b46bfe24511431532");
+}
+
+TEST(PqHash_Shake256, FIPS_202_Empty_512Bits) {
+    std::array<uint8_t, 64> out{};
+    CryptoPQ::shake256("", 0, out.data(), out.size());
+    EXPECT_EQ(to_hex(out),
+              "46b9dd2b0ba88d13233b3feb743eeb24"
+              "3fcd52ea62b81b82b50c27646ed5762f"
+              "d75dc4ddd8c0f200cb05019d67b592f6"
+              "fc821c49479ab48640292eacb3b7c4be");
 }
 
 // ===========================================================================

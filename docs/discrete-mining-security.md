@@ -2,7 +2,7 @@
 
 ## Scope
 
-Discrete combines identity-bound signed yespower with a local depth-10 reorganization
+Discrete combines DiscretePower-1 with a local depth-10 reorganization
 limit. These mechanisms narrow several attack paths, but they do not make a small
 proof-of-work network immune to pooling, partitions, eclipse attacks, or a self-funded
 majority. This document states the implemented guarantees and residual risks.
@@ -10,9 +10,9 @@ majority. This document states the implemented guarantees and residual risks.
 ## Identity-bound signed proof of work
 
 Every nonce candidate is signed with ML-DSA-65 by the spend key committed in the
-coinbase. yespower hashes the block hashing blob plus `cn_fast_hash(signature)`, and
-consensus verifies the full signature and reward commitment. See [POW.md](POW.md) for
-the exact byte sequence.
+coinbase. SHAKE-256 domain-separates the header, signature, memory input and final
+target transcript around the yespower 1.0 core. Consensus verifies the full signature
+and reward commitment. See [POW.md](POW.md) for the exact byte sequence.
 
 This provides:
 
@@ -61,7 +61,7 @@ Karbo's whole-history sampling and Discrete's experimental bounded trailing-wind
 are evaluated in [POW.md](POW.md). They can require recent chain data and complicate
 commodity rental, but public scratchpad data do not prevent a purpose-built pool from
 outsourcing work. The bounded `dev/pow-window` design is the better engineering experiment
-for full-node mining; neither design upgrades signed yespower into a strong
+for full-node mining; neither design upgrades DiscretePower-1 into a strong
 non-outsourceable puzzle.
 
 ## Residual attack surface

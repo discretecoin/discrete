@@ -20,11 +20,11 @@ Chancellor on brink of second bailout for banks"*:
 
 > Reuters 08/Jul/2026 — Crypto firms prepare defenses as quantum threat to encryption draws nearer
 
-The fixed block timestamp is 2026-06-22, earlier than the headline. It is therefore
-historical protocol metadata, not a publication-time or no-premine proof. The headline
-only establishes that this candidate artifact was assembled no earlier than the cited
-article; it does not prove when the network was publicly announced or exclude private
-mining after that date.
+The candidate block timestamp was captured when this genesis was regenerated after
+the headline. It is protocol metadata, not a publication-time or no-premine proof.
+The headline and timestamp establish only that this candidate artifact was assembled
+no earlier than the cited article; they do not prove when the network was publicly
+announced or exclude private mining after that date.
 
 ### Monetary policy
 
@@ -76,13 +76,13 @@ Each batch's full bech32m PQ address (~2.6 KB — too long to table here) is
 recorded in the offline secrets file below, and is recomputable by anyone from
 the committed `.inc` public keys (`makePqAddress(viewPub, spendPub)`).
 
-**Genesis block timestamp:** 2026-06-22 16:00:00 UTC (kept from original genesis generation).
-The embedded headline (Reuters 08/Jul/2026) post-dates the timestamp — the timestamp reflects
-when the genesis keys and structure were frozen; the headline is the canonical news anchor
-(`m_genesisBlock.timestamp` in `Currency::generateGenesisBlock`).
+**Genesis block timestamp:** 2026-07-13 02:39:16 UTC (`1783910356`).
+The timestamp was captured at the requested regeneration step and is pinned as
+`GENESIS_BLOCK_TIMESTAMP`; the Reuters 08/Jul/2026 headline remains the canonical
+news anchor. Neither value is a proof of fair launch.
 
 **Genesis block hash (mainnet):**
-`b1df0152bb41d12bef471f322ac8fef52889cdb4128759a41877d26d08edace8`
+`3101b248ac612883c47b93fa6a4d9d34020ee2f7541ad17e73c42088748a5219`
 (pinned by `tests/test_pq_genesis.cpp`).
 
 ## Recipient secrets

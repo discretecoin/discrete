@@ -21,7 +21,7 @@ spoken.
 | Block signatures (identity-bound mining) | ML-DSA-65 | FIPS 204 |
 | Key/commitment derivations | SHA3-256 + HKDF-SHA3-256 | FIPS 202 / RFC 5869 |
 | Per-output payload encryption | ChaCha20-Poly1305 (IETF) | RFC 8439 |
-| Proof-of-work | yespower | — |
+| Proof-of-work | DiscretePower-1: SHAKE-256 + ML-DSA-65 + yespower 1.0 core | FIPS 202 / FIPS 204 |
 
 Each identity has a long-term **ML-DSA-65 spend key** (spend authority) and an
 **ML-KEM-768 view key** (scanning / payment detection); a PQ address publishes
@@ -31,7 +31,12 @@ how the naive KEM-derived-spend-key design is broken). Mining is **identity-boun
 the coinbase reward can only be spent by the same ML-DSA key that signed the block,
 so pooling hash power requires sharing a spend secret.
 
-The consensus-frozen wire format, domain-separation tags, and blob sizes are
+Mining uses **DiscretePower-1**, a domain-separated SHAKE-256 transcript in which
+every nonce is signed by the reward identity's ML-DSA-65 key before entering the
+yespower 1.0 memory-hard core. It provides identity binding, not a proof that
+purpose-built custodial pools are impossible.
+
+The candidate wire format, domain-separation tags, and blob sizes are
 documented in `docs/PQ-WIRE-FROZEN.md` and pinned by `tests/test_pq_domains.cpp`.
 For exchange and service wallet operation, including the two `walletd` deposit
 modes and the recommended H-I-T-C workflow, see

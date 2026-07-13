@@ -34,6 +34,11 @@ using Hash256 = std::array<uint8_t, 32>;
 
 Hash256 sha3_256(const void* data, std::size_t len) noexcept;
 
+// FIPS 202 SHAKE-256 with caller-selected output length. Used by the
+// DiscretePower-1 consensus transcript around the yespower memory-hard core.
+void shake256(const void* data, std::size_t len,
+              void* out, std::size_t out_len) noexcept;
+
 // HMAC-SHA3-256 (NIST FIPS 198-1 + FIPS 202 / SP 800-224). Exposed publicly
 // because HKDF builds on it and tests want to KAT it directly against NIST
 // CAVP vectors; also a useful primitive in its own right.

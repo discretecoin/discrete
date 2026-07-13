@@ -118,10 +118,9 @@ namespace CryptoNote {
 
     m_genesisBlock.majorVersion = BLOCK_MAJOR_VERSION_1;
     m_genesisBlock.minorVersion = BLOCK_MINOR_VERSION_0;
-    // Frozen protocol timestamp: 2026-06-22 16:00:00 UTC. The coinbase headline
-    // is dated 2026-07-08, so this timestamp is historical network metadata, not
-    // a publication-time or no-premine proof.
-    m_genesisBlock.timestamp = 1782144000;
+    // Candidate protocol timestamp captured at genesis regeneration. It is
+    // metadata, not proof of public launch or absence of private mining.
+    m_genesisBlock.timestamp = GENESIS_BLOCK_TIMESTAMP;
     m_genesisBlock.nonce = 70;
     if (m_testnet) {
       ++m_genesisBlock.nonce;

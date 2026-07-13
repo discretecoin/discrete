@@ -215,20 +215,55 @@ bool get_block_hashing_blob(const Block& b, BinaryArray& ba) {
   return true;
 }
 
-bool get_signed_block_hashing_blob(const Block& b, BinaryArray& ba) {
-  if (!get_block_hashing_blob(b, ba)) {
+namespace {
+
+void appendBytes(BinaryArray& out, const void* data, size_t size) {
+  const auto* bytes = static_cast<const uint8_t*>(data);
+  out.insert(out.end(), bytes, bytes + size);
+}
+
+Crypto::Hash shake256Hash(const BinaryArray& input) {
+  Crypto::Hash result{};
+  CryptoPQ::shake256(input.data(), input.size(), result.data, sizeof(result.data));
+  return result;
+}
+
+}  // namespace
+
+bool get_block_pow_signing_hash(const Block& b, Crypto::Hash& hash) {
+  BinaryArray blockBlob;
+  if (!get_block_hashing_blob(b, blockBlob)) {
     return false;
   }
-  // Append cn_fast_hash(ML-DSA-65 block signature) — a 32-byte commitment that
-  // binds the PoW to the miner's
-  // signed commitment without including 3309 B in every PoW input blob.
-  if (!b.signature.empty()) {
-    Hash sigHash = cn_fast_hash(b.signature.data(), b.signature.size());
-    ba.insert(ba.end(), sigHash.data, sigHash.data + 32);
-  } else {
-    // Signature not yet computed (template construction): use zero hash.
-    ba.insert(ba.end(), 32, 0);
+
+  BinaryArray transcript;
+  transcript.reserve(sizeof(DISCRETE_POWER_HEADER_DOMAIN) - 1 + blockBlob.size());
+  appendBytes(transcript, DISCRETE_POWER_HEADER_DOMAIN,
+              sizeof(DISCRETE_POWER_HEADER_DOMAIN) - 1);
+  transcript.insert(transcript.end(), blockBlob.begin(), blockBlob.end());
+  hash = shake256Hash(transcript);
+  return true;
+}
+
+bool get_signed_block_hashing_blob(const Block& b, BinaryArray& ba) {
+  Crypto::Hash headerHash{};
+  if (!get_block_pow_signing_hash(b, headerHash)) {
+    return false;
   }
+
+  BinaryArray signatureTranscript;
+  signatureTranscript.reserve(sizeof(DISCRETE_POWER_SIGNATURE_DOMAIN) - 1 +
+                              b.signature.size());
+  appendBytes(signatureTranscript, DISCRETE_POWER_SIGNATURE_DOMAIN,
+              sizeof(DISCRETE_POWER_SIGNATURE_DOMAIN) - 1);
+  signatureTranscript.insert(signatureTranscript.end(), b.signature.begin(),
+                             b.signature.end());
+  const Crypto::Hash signatureHash = shake256Hash(signatureTranscript);
+
+  ba.clear();
+  ba.reserve(64);
+  appendBytes(ba, headerHash.data, sizeof(headerHash.data));
+  appendBytes(ba, signatureHash.data, sizeof(signatureHash.data));
   return true;
 }
 
@@ -237,31 +272,50 @@ bool get_parent_block_hashing_blob(const Block& b, BinaryArray& blob) {
   return toBinaryArray(serializer, blob);
 }
 
-// Proof-of-Work "long hash": yespower over the block's signed hashing blob.
-// The signed blob covers the header (nonce, previousBlockHash) and SHA3 of the
-// miner's ML-DSA signature, giving identity binding and tip-binding with no
-// blockchain access. See docs/POW.md.
+// DiscretePower-1: a domain-separated SHAKE-256 transcript and finalization
+// around the yespower 1.0 memory-hard core. The header digest is signed with
+// ML-DSA-65 on every nonce attempt; the signature digest is committed to the
+// memory-hard input and final result. See docs/POW.md.
 bool get_block_longhash(const Block& b, Crypto::Hash& res) {
-  BinaryArray pot;
-  if (!get_signed_block_hashing_blob(b, pot)) {
+  BinaryArray signedTranscript;
+  if (!get_signed_block_hashing_blob(b, signedTranscript)) {
     return false;
   }
-  // yespower personalization ("pers"): a FIXED domain-separation tag binding this
-  // PoW to Discrete. It is not a per-block value on purpose — the blob is already
-  // hashed as yespower's primary input, and the work factor is fixed by N/r, so a
-  // content-derived seed would add neither entropy nor hardness. What a constant
-  // pers *does* buy is domain separation: a yespower(N=2048,r=32) hash produced by
-  // any other chain can never be reused, precompute-table-shared, or merge-mine
-  // confused with Discrete's PoW. Computed once (thread-safe magic static).
-  static const char POW_DOMAIN_TAG[] = "Discrete/yespower/v1";
-  static const Crypto::Hash powSeed =
-      Crypto::cn_fast_hash(POW_DOMAIN_TAG, sizeof(POW_DOMAIN_TAG) - 1);
 
-  Crypto::Hash longHash;
-  if (!Crypto::y_slow_hash(pot.data(), pot.size(), powSeed, longHash)) {
+  BinaryArray inputTranscript;
+  inputTranscript.reserve(sizeof(DISCRETE_POWER_INPUT_DOMAIN) - 1 +
+                          signedTranscript.size());
+  appendBytes(inputTranscript, DISCRETE_POWER_INPUT_DOMAIN,
+              sizeof(DISCRETE_POWER_INPUT_DOMAIN) - 1);
+  inputTranscript.insert(inputTranscript.end(), signedTranscript.begin(),
+                         signedTranscript.end());
+  std::array<uint8_t, 64> memoryInput{};
+  CryptoPQ::shake256(inputTranscript.data(), inputTranscript.size(),
+                     memoryInput.data(), memoryInput.size());
+
+  static const Crypto::Hash memoryPersonalization = [] {
+    Crypto::Hash hash{};
+    CryptoPQ::shake256(DISCRETE_POWER_MEMORY_DOMAIN,
+                       sizeof(DISCRETE_POWER_MEMORY_DOMAIN) - 1,
+                       hash.data, sizeof(hash.data));
+    return hash;
+  }();
+
+  Crypto::Hash memoryHash{};
+  if (!Crypto::y_slow_hash(memoryInput.data(), memoryInput.size(),
+                           memoryPersonalization, memoryHash)) {
     return false;
   }
-  res = longHash;
+
+  BinaryArray finalTranscript;
+  finalTranscript.reserve(sizeof(DISCRETE_POWER_FINAL_DOMAIN) - 1 +
+                          signedTranscript.size() + sizeof(memoryHash.data));
+  appendBytes(finalTranscript, DISCRETE_POWER_FINAL_DOMAIN,
+              sizeof(DISCRETE_POWER_FINAL_DOMAIN) - 1);
+  finalTranscript.insert(finalTranscript.end(), signedTranscript.begin(),
+                         signedTranscript.end());
+  appendBytes(finalTranscript, memoryHash.data, sizeof(memoryHash.data));
+  res = shake256Hash(finalTranscript);
   return true;
 }
 
@@ -272,7 +326,7 @@ bool get_block_hash(const Block& b, Hash& res) {
   }
 
   // Consensus block IDs intentionally remain the unsigned header/tree hash.
-  // Discrete binds ML-DSA miner signatures into PoW via
+  // DiscretePower-1 binds ML-DSA miner signatures into PoW via
   // get_signed_block_hashing_blob(); changing block IDs to include signatures
   // would require a hard fork with regenerated genesis/checkpoint hashes.
   // The header of block version 1 differs from headers of blocks starting from v.2

@@ -59,9 +59,22 @@ uint64_t get_tx_fee(const Transaction& tx);
 std::string short_hash_str(const Crypto::Hash& h);
 
 bool get_block_hashing_blob(const Block& b, BinaryArray& blob);
+
+// DiscretePower-1 consensus domains. ASCII, hashed without a trailing NUL.
+constexpr char DISCRETE_POWER_HEADER_DOMAIN[]     = "DiscretePower/v1/header";
+constexpr char DISCRETE_POWER_SIGNATURE_DOMAIN[]  = "DiscretePower/v1/signature";
+constexpr char DISCRETE_POWER_INPUT_DOMAIN[]      = "DiscretePower/v1/input";
+constexpr char DISCRETE_POWER_MEMORY_DOMAIN[]     = "DiscretePower/v1/memory";
+constexpr char DISCRETE_POWER_FINAL_DOMAIN[]      = "DiscretePower/v1/final";
+
+// SHAKE256(header-domain || unsigned block hashing blob, 32). Signed with the
+// coinbase recipient's ML-DSA-65 key on every nonce attempt.
+bool get_block_pow_signing_hash(const Block& b, Crypto::Hash& hash);
+
+// The 64-byte signed transcript: headerHash || signatureHash.
 bool get_signed_block_hashing_blob(const Block& b, BinaryArray& blob);
-// Proof-of-Work "long hash": yespower over the signed hashing blob. Pure
-// function of the block (no chain access) — see docs/POW.md.
+// DiscretePower-1: SHAKE-256 transcript/finalization around an ML-DSA-bound
+// yespower 1.0 memory core. Pure function of the block (no chain access).
 bool get_block_longhash(const Block& b, Crypto::Hash& res);
 bool get_parent_block_hashing_blob(const Block& b, BinaryArray& blob);
 bool get_aux_block_header_hash(const Block& b, Crypto::Hash& res);

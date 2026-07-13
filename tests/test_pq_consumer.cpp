@@ -254,9 +254,8 @@ TEST(WalletLedgerConsumer, GenesisBlockCreditsTreasuryViaOnNewBlocks) {
     }
 
     // Wrap in a CompleteBlock at height 0, the way BlockchainSynchronizer does.
-    constexpr uint64_t kGenesisTimestamp = 1782144000;
     Block genesisBlock;
-    genesisBlock.timestamp = kGenesisTimestamp;
+    genesisBlock.timestamp = GENESIS_BLOCK_TIMESTAMP;
     genesisBlock.baseTransaction = tx;
 
     CompleteBlock cb;

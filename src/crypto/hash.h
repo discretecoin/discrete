@@ -44,9 +44,8 @@ namespace Crypto {
     return h;
   }
 
-  // Opaque PoW context token. Discrete's PoW is yespower (which needs no
-  // persistent context), but the type is still threaded through the block
-  // validation signatures, so it is kept as a trivial empty handle.
+  // Opaque PoW context token. DiscretePower-1's memory core is yespower, which
+  // needs no persistent chain context; keep the threaded type as an empty handle.
   class cn_context {
   public:
     cn_context() = default;

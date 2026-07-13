@@ -1,4 +1,4 @@
-# Discrete Proof-of-Work: identity-bound signed yespower
+# DiscretePower-1: identity-bound post-quantum proof of work
 
 Status: implemented in the pre-launch reference implementation. The exact code is
 `get_block_longhash` in `src/CryptoNoteCore/CryptoNoteFormatUtils.cpp` and block
@@ -6,26 +6,30 @@ signature validation in `src/CryptoNoteCore/Blockchain.cpp`.
 
 ## Exact construction
 
-For each nonce, the miner computes:
+DiscretePower-1 is a conservative composition of NIST SHAKE-256, ML-DSA-65,
+and the yespower 1.0 memory-hard core. For each nonce, the miner computes:
 
 ```
-h       = get_block_hashing_blob(B)
-m       = cn_fast_hash(h)
-sig     = ML-DSA-65.Sign(minerSpendSk, m)
-sigHash = cn_fast_hash(sig)
-pot     = h || sigHash
-pers    = cn_fast_hash("Discrete/yespower/v1")
-PoW     = yespower(pot, pers)       // N=2048, r=32, ~8 MiB
+blob    = get_block_hashing_blob(B)
+H       = SHAKE256("DiscretePower/v1/header" || blob, 32)
+sig     = ML-DSA-65.Sign(minerSpendSk, H)
+Q       = SHAKE256("DiscretePower/v1/signature" || sig, 32)
+X       = SHAKE256("DiscretePower/v1/input" || H || Q, 64)
+P       = SHAKE256("DiscretePower/v1/memory", 32)
+Y       = yespower-1.0(X, pers=P)   // N=2048, r=32, ~8 MiB
+PoW     = SHAKE256("DiscretePower/v1/final" || H || Q || Y, 32)
 ```
 
 Consensus verifies the full ML-DSA signature against the spend public key in the
 coinbase extra, requires the single coinbase output to commit to the same spend key,
-and checks the yespower target. `cn_fast_hash` is CryptoNote's Keccak-based chain hash;
-it is not NIST SHA3-256. The 3,309-byte signature is committed into the PoW through its
-32-byte `cn_fast_hash`, not appended directly to the yespower input.
+and checks the final SHAKE-256 value against the difficulty target. The 3,309-byte
+signature is compressed into `Q`; the memory-hard core receives the fixed 64-byte
+`X`. yespower internally retains its established BLAKE-256/pwxform/Salsa-derived
+implementation; DiscretePower does not claim to replace or redesign that core.
 
-Because the nonce is in `h`, every nonce attempt requires a fresh signature. The fixed
-personalization prevents cross-chain reuse for another yespower(N=2048,r=32) system.
+Because the nonce is in `blob` and therefore `H`, every nonce attempt requires a fresh
+signature. Five pinned domains separate the header, signature, memory input,
+personalization, and final target transcripts from every other protocol use.
 
 ## What the construction guarantees
 
@@ -40,7 +44,7 @@ personalization prevents cross-chain reuse for another yespower(N=2048,r=32) sys
 ## What it does not prove
 
 This is not a formally strong non-outsourceable scratch-off puzzle. A custodial pool can
-retain the reward key, sign batches of candidate nonces, distribute `(h, sigHash)` jobs,
+  retain the reward key, sign batches of candidate nonces, distribute `(H, Q)` jobs,
 accept lower-difficulty shares, and pay workers off-chain. The signing service must scale
 with aggregate attempt rate, which is friction, not impossibility. The scheme therefore
 raises the cost of conventional delegation and blocks unsigned reward redirection, but it
@@ -52,7 +56,7 @@ participation. Miller, Kosba, Katz, and Shi formalize that property in
 [Nonoutsourceable Scratch-Off Puzzles](https://www.cs.umd.edu/~jkatz/papers/nonoutsourceable_full.pdf).
 Adapting such a construction to a post-quantum chain would require a new, reviewed
 protocol (and likely post-quantum encryption plus zero-knowledge machinery); it is not a
-safe last-minute modification to the current yespower loop.
+safe assumption to add to the current memory-hard loop.
 
 ## Reevaluation of blockchain-dependent scratchpads
 
@@ -90,8 +94,8 @@ enough for farms and botnets.
 
 ## Recommendation
 
-Keep identity-bound signed yespower for the current candidate protocol, with the limited
-claims above. Do not merge either blockchain sampler as a non-outsourceability fix.
+Keep DiscretePower-1 for the candidate protocol, with the limited claims above. Do not
+merge either blockchain sampler as a non-outsourceability fix.
 
 If recent-chain possession is independently desired, continue `dev/pow-window` as a
 testnet research track with cross-platform deterministic vectors, cache/DB/alt-chain

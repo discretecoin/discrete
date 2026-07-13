@@ -103,6 +103,12 @@ Hash256 sha3_256(const void* data, std::size_t len) noexcept {
   return out;
 }
 
+void shake256(const void* data, std::size_t len,
+              void* out, std::size_t out_len) noexcept {
+  OQS_SHA3_shake256(static_cast<uint8_t*>(out), out_len,
+                    static_cast<const uint8_t*>(data), len);
+}
+
 Hash256 hmac_sha3_256(const void* key, std::size_t key_len,
                       const void* msg, std::size_t msg_len) noexcept {
   Hash256 out;

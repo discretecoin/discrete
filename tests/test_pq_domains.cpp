@@ -18,6 +18,7 @@
 #include "crypto_pq/PqDerive.h"   // kDomain*, kReservedCtMask
 #include "crypto_pq/PqSeed.h"     // kDomainViewRoot, kDomainSpendRoot
 #include "CryptoNoteCore/PqValidation.h" // FREE_REG_POW_DOMAIN
+#include "CryptoNoteCore/CryptoNoteFormatUtils.h" // DISCRETE_POWER_*_DOMAIN
 #include "CryptoNote.h"           // PQ_*_SIZE
 #include "CryptoNoteConfig.h"     // TRANSACTION_VERSION_1
 #include "PqTxType.h"             // TX_COINBASE, TX_PQ, TX_FREE_REG
@@ -110,6 +111,20 @@ TEST(PqDomains, FreeRegistrationPowDomain) {
     EXPECT_EQ(std::strlen(FREE_REG_POW_DOMAIN), 27u);
 }
 
+TEST(PqDomains, DiscretePowerDomains) {
+    EXPECT_STREQ(DISCRETE_POWER_HEADER_DOMAIN, "DiscretePower/v1/header");
+    EXPECT_STREQ(DISCRETE_POWER_SIGNATURE_DOMAIN, "DiscretePower/v1/signature");
+    EXPECT_STREQ(DISCRETE_POWER_INPUT_DOMAIN, "DiscretePower/v1/input");
+    EXPECT_STREQ(DISCRETE_POWER_MEMORY_DOMAIN, "DiscretePower/v1/memory");
+    EXPECT_STREQ(DISCRETE_POWER_FINAL_DOMAIN, "DiscretePower/v1/final");
+
+    EXPECT_EQ(std::strlen(DISCRETE_POWER_HEADER_DOMAIN), 23u);
+    EXPECT_EQ(std::strlen(DISCRETE_POWER_SIGNATURE_DOMAIN), 26u);
+    EXPECT_EQ(std::strlen(DISCRETE_POWER_INPUT_DOMAIN), 22u);
+    EXPECT_EQ(std::strlen(DISCRETE_POWER_MEMORY_DOMAIN), 23u);
+    EXPECT_EQ(std::strlen(DISCRETE_POWER_FINAL_DOMAIN), 22u);
+}
+
 TEST(PqDomains, ReservedCtMaskNotReused) {
     // kReservedCtMask is reserved for Phase 2 and must never collide with any
     // Phase 1 tag.  This test is belt-and-braces over the existing check in
@@ -121,7 +136,9 @@ TEST(PqDomains, ReservedCtMaskNotReused) {
         kDomainInputsHash, kDomainOutContext, kDomainAeadKey,
         kDomainSpendCommit, kDomainNullifier, kDomainTxSign,
         kDomainCoinbaseRho, kDomainViewRoot, kDomainSpendRoot,
-        FREE_REG_POW_DOMAIN,
+        FREE_REG_POW_DOMAIN, DISCRETE_POWER_HEADER_DOMAIN,
+        DISCRETE_POWER_SIGNATURE_DOMAIN, DISCRETE_POWER_INPUT_DOMAIN,
+        DISCRETE_POWER_MEMORY_DOMAIN, DISCRETE_POWER_FINAL_DOMAIN,
     };
     for (const char* tag : phase1) {
         EXPECT_STRNE(tag, kReservedCtMask) << "collision with reserved tag: " << tag;
@@ -142,7 +159,10 @@ TEST(PqDomains, ReservedShieldedSerialNotReused) {
         kDomainInputsHash, kDomainOutContext, kDomainAeadKey,
         kDomainSpendCommit, kDomainNullifier, kDomainTxSign,
         kDomainCoinbaseRho, kDomainViewRoot, kDomainSpendRoot,
-        kDomainDepositSpendRoot, FREE_REG_POW_DOMAIN, kReservedCtMask,
+        kDomainDepositSpendRoot, FREE_REG_POW_DOMAIN,
+        DISCRETE_POWER_HEADER_DOMAIN, DISCRETE_POWER_SIGNATURE_DOMAIN,
+        DISCRETE_POWER_INPUT_DOMAIN, DISCRETE_POWER_MEMORY_DOMAIN,
+        DISCRETE_POWER_FINAL_DOMAIN, kReservedCtMask,
     };
     for (const char* tag : phase12) {
         EXPECT_STRNE(tag, kReservedShieldedSerial)

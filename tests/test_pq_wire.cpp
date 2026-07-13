@@ -213,7 +213,7 @@ TEST(PqWire, CoinbaseOutputRoundTrips) {
     EXPECT_EQ(tx2.txType, TX_COINBASE);
 }
 
-TEST(PqWire, BlockIdExcludesSignatureButPowBlobIncludesSignatureHash) {
+TEST(PqWire, BlockIdExcludesSignatureButDiscretePowerTranscriptIncludesIt) {
     Block a = makePqBlock();
     Block b = a;
     b.signature = blob(PQ_SIGNATURE_SIZE, 13, 7);
@@ -234,9 +234,22 @@ TEST(PqWire, BlockIdExcludesSignatureButPowBlobIncludesSignatureHash) {
     BinaryArray signedB;
     ASSERT_TRUE(get_signed_block_hashing_blob(a, signedA));
     ASSERT_TRUE(get_signed_block_hashing_blob(b, signedB));
-    EXPECT_EQ(signedA.size(), unsignedA.size() + 32);
-    EXPECT_EQ(signedB.size(), unsignedB.size() + 32);
+    EXPECT_EQ(signedA.size(), 64u);  // SHAKE header hash || SHAKE signature hash
+    EXPECT_EQ(signedB.size(), 64u);
     EXPECT_NE(signedA, signedB);
+}
+
+TEST(PqWire, DiscretePowerKnownAnswer) {
+    Block b = makePqBlock();
+    Crypto::Hash signingHash{};
+    Crypto::Hash powHash{};
+    ASSERT_TRUE(get_block_pow_signing_hash(b, signingHash));
+    ASSERT_TRUE(get_block_longhash(b, powHash));
+
+    EXPECT_EQ(Common::podToHex(signingHash),
+              "03611b20a9036db643d742b53340314099fd0ef5b9f0145f71ea8fb15236d12c");
+    EXPECT_EQ(Common::podToHex(powHash),
+              "32c5a0f547f9646e2efd77f356ff8aab683de3a0e31c2f1b6b19e45dd1a7c71e");
 }
 
 int main(int argc, char** argv) {

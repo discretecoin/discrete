@@ -888,7 +888,7 @@ uint64_t Blockchain::getCurrentCumulativeBlocksizeLimit() {
 bool Blockchain::checkProofOfWork(Crypto::cn_context& context, const Block& block,
                                    Difficulty currentDiffic, Crypto::Hash& proofOfWork) {
   (void)context;
-  // Discrete PoW is a pure function of the block (signed yespower, no chain
+  // DiscretePower-1 is a pure function of the block (no chain
   // access): CryptoNote::get_block_longhash. See docs/POW.md.
   if (!get_block_longhash(block, proofOfWork))
     return false;
@@ -1181,13 +1181,12 @@ bool Blockchain::validate_block_signature(const Block& b, const Crypto::Hash& id
     return false;
   }
 
-  // Compute signing hash over the base block blob (header + tx_tree + tx_count).
-  BinaryArray ba;
-  if (!get_block_hashing_blob(b, ba)) {
-    logger(ERROR, BRIGHT_RED) << "Failed to get_block_hashing_blob of block " << id;
+  // Compute the domain-separated DiscretePower-1 header digest.
+  Crypto::Hash sigHash{};
+  if (!get_block_pow_signing_hash(b, sigHash)) {
+    logger(ERROR, BRIGHT_RED) << "Failed to get_block_pow_signing_hash of block " << id;
     return false;
   }
-  Crypto::Hash sigHash = Crypto::cn_fast_hash(ba.data(), ba.size());
 
   // Verify ML-DSA-65 signature.
   CryptoPQ::DsaPublicKey spendPub;
@@ -1204,9 +1203,9 @@ bool Blockchain::validate_block_signature(const Block& b, const Crypto::Hash& id
   // signer. The single coinbase output's spendCommit must equal
   // spendCommit(signerSpendPub, coinbaseRho(signerSpendPub, height, 0)) — so the
   // reward can only ever be spent by the same ML-DSA key that signed the block.
-  // This makes pools/botnets require sharing the spend secret (no separation of
-  // "who mines" from "who is paid"). The coinbase has a single, undivided output
-  // (one signature, minimal size) — enforced by prevalidate_miner_transaction.
+  // This blocks unsigned reward redirection. A custodial operator can still
+  // retain the key, sign candidate jobs, and pay workers off-chain. The coinbase
+  // has a single, undivided output — enforced by prevalidate_miner_transaction.
   if (b.baseTransaction.outputs.size() != 1 ||
       b.baseTransaction.outputs[0].target.type() != typeid(CoinbaseOutput)) {
     logger(ERROR, BRIGHT_RED) << "Block " << id << " coinbase must be a single CoinbaseOutput";

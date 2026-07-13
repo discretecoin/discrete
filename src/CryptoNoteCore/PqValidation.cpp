@@ -184,7 +184,7 @@ bool checkFreeRegPow(const std::array<uint8_t, 1184>& viewPub,
   buf.insert(buf.end(), refBlockHash.data, refBlockHash.data + 32);
   for (int i = 0; i < 8; ++i) buf.push_back(static_cast<uint8_t>((nonce >> (8 * i)) & 0xFF));
 
-  // Anti-spam PoW uses yespower (the same memory-hard PoW as block mining),
+  // Anti-spam PoW uses yespower (the same memory-hard core as block mining),
   // keyed with a fixed all-zero personalization seed. The preimage already
   // binds viewPub, refBlockHash, and the nonce, so a constant seed is safe.
   Crypto::Hash seed;

@@ -79,8 +79,9 @@ TEST(PqGenesis, FrozenHexMatchesBuilder) {
 TEST(PqGenesis, GenesisBlockHashPinned) {
   Logging::ConsoleLogger logger;
   Currency currency = makeCurrency(logger);
+  EXPECT_EQ(currency.genesisBlock().timestamp, GENESIS_BLOCK_TIMESTAMP);
   EXPECT_EQ(Common::podToHex(currency.genesisBlockHash()),
-            "f81c086362900be0257b44f6635ab832bc83eb7d911fa283f300ea43c7c43e91");
+            "3101b248ac612883c47b93fa6a4d9d34020ee2f7541ad17e73c42088748a5219");
 }
 
 int main(int argc, char** argv) {
