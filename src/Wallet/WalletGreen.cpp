@@ -329,11 +329,6 @@ void WalletGreen::initContainer(const std::string& path, const std::string& pass
 
   m_password = password;
   m_path = path;
-  {
-    std::vector<std::string> warnings;
-    m_paymentProofArchive.configure(m_path, m_currency.genesisBlockHash(), m_sentPayments, &warnings);
-    for (const auto& warning : warnings) m_logger(WARNING) << warning;
-  }
 
   assert(m_blockchain.empty());
   m_blockchain.push_back(m_currency.genesisBlockHash());
@@ -501,11 +496,6 @@ void WalletGreen::load(const std::string& path, const std::string& password, std
   m_password = password;
   m_path = path;
   m_extra = extra;
-  {
-    std::vector<std::string> warnings;
-    m_paymentProofArchive.configure(m_path, m_currency.genesisBlockHash(), m_sentPayments, &warnings);
-    for (const auto& warning : warnings) m_logger(WARNING) << warning;
-  }
 
   m_state = WalletState::INITIALIZED;
   m_logger(INFO, BRIGHT_WHITE) << "Container loaded, wallet count " << m_walletsContainer.size() <<
@@ -2079,8 +2069,6 @@ PqSendResult WalletGreen::sendPqTransfer(const std::vector<PqSendOutput>& recipi
                  << ", change atomic units " << result.change;
 
   try {
-    if (!m_paymentProofArchive.configured())
-      throw std::runtime_error("payment-proof storage is not configured for this wallet");
     if (!recipientAddresses.empty() && recipientAddresses.size() != recipients.size())
       throw std::runtime_error("payment-proof recipient label count mismatch");
     PqPaymentProofTransaction proofTx = makePqPaymentProofTransaction(result.tx);
@@ -2103,7 +2091,6 @@ PqSendResult WalletGreen::sendPqTransfer(const std::vector<PqSendOutput>& recipi
           std::move(address), recipients[i].amount,
           encodePqPaymentProof(result.proofs[i], m_currency.isTestnet())});
     }
-    m_paymentProofArchive.persist(txid, sent);
     {
       System::EventLock lk(m_readyEvent);
       if (!m_sentPayments.recordChecked(txid, sent))
@@ -2179,7 +2166,6 @@ Crypto::Hash WalletGreen::importPaymentProofs(const std::string& bytes) {
       throw std::runtime_error("payment-proof import verification failed");
   }
   System::EventLock lk(m_readyEvent);
-  m_paymentProofArchive.persist(txid, record);
   if (!m_sentPayments.recordChecked(txid, record))
     throw std::runtime_error("conflicting in-wallet payment-proof record");
   return txid;
@@ -2192,12 +2178,10 @@ bool WalletGreen::deletePaymentProofs(const Crypto::Hash& txid, std::size_t reci
   if (recipientIndex != static_cast<std::size_t>(-1) && recipientIndex >= found->recipients.size())
     throw std::runtime_error("payment-proof recipient index is out of range");
   if (recipientIndex == static_cast<std::size_t>(-1) || found->recipients.size() == 1) {
-    m_paymentProofArchive.erase(txid);
     return m_sentPayments.remove(txid);
   }
   SentPaymentRecord remaining = *found;
   remaining.recipients.erase(remaining.recipients.begin() + recipientIndex);
-  m_paymentProofArchive.replaceAfterExplicitDeletion(txid, remaining);
   m_sentPayments.record(txid, std::move(remaining));
   return true;
 }

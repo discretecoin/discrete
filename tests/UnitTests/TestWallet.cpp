@@ -598,9 +598,7 @@ TEST(PqWalletIntegration, RelayFailureRollsBackReservation) {
   CryptoNote::WalletGreen wallet(dispatcher, currency, node, logger);
 
   const std::string path = "pq_relayfail.wallet";
-  const boost::filesystem::path archiveDir(path + ".payment-proofs");
   boost::filesystem::remove(path);
-  boost::filesystem::remove_all(archiveDir);
   wallet.initialize(path, "pass");
   wallet.createAddress();
 
@@ -618,22 +616,6 @@ TEST(PqWalletIntegration, RelayFailureRollsBackReservation) {
   pumpUntil(dispatcher, wallet, [&wallet]() { return wallet.getActualBalance() == 800000u; });
   ASSERT_EQ(wallet.getActualBalance(), 800000u);
 
-  // Every archive fault is a hard pre-relay barrier and releases the reservation.
-  for (auto fault : {CryptoNote::PaymentProofArchive::Fault::Create,
-                     CryptoNote::PaymentProofArchive::Fault::Write,
-                     CryptoNote::PaymentProofArchive::Fault::Flush,
-                     CryptoNote::PaymentProofArchive::Fault::Rename}) {
-    wallet.setPaymentProofArchiveFaultForTests(fault);
-    const size_t relaysBefore = node.relayCount();
-    EXPECT_THROW(wallet.sendPqTransfer(
-                     {CryptoNote::PqSendOutput{them.viewPub, them.spendPub, 300000}}),
-                 std::exception);
-    EXPECT_EQ(node.relayCount(), relaysBefore);
-    EXPECT_EQ(wallet.getActualBalance(), 800000u);
-    EXPECT_EQ(wallet.getPendingBalance(), 0u);
-  }
-  wallet.setPaymentProofArchiveFaultForTests(CryptoNote::PaymentProofArchive::Fault::None);
-
   // Force the next relay to fail; the spend must throw and undo its reservation.
   node.setNextTransactionError();
   EXPECT_THROW(wallet.sendPqTransfer({ CryptoNote::PqSendOutput{ them.viewPub, them.spendPub, 300000 } }),
@@ -643,12 +625,6 @@ TEST(PqWalletIntegration, RelayFailureRollsBackReservation) {
   EXPECT_EQ(wallet.getActualBalance(), 800000u);
   EXPECT_EQ(wallet.getPendingBalance(), 0u);
 
-  // Relay errors are ambiguous, so the already-durable proof remains available.
-  size_t proofFiles = 0;
-  for (boost::filesystem::directory_iterator it(archiveDir), end; it != end; ++it)
-    if (it->path().extension() == ".pproof") ++proofFiles;
-  EXPECT_EQ(proofFiles, 1u);
-
   // And the wallet is still usable: a subsequent (successful) spend goes through.
   node.setNextTransactionToPool();
   CryptoNote::PqSendResult r =
@@ -656,6 +632,8 @@ TEST(PqWalletIntegration, RelayFailureRollsBackReservation) {
   EXPECT_EQ(r.sent, 300000u);
   const Crypto::Hash successfulTxid = CryptoNote::getObjectHash(r.tx);
 
+  // Payment proofs are wallet-cache metadata: they survive a reload once saved.
+  wallet.save();
   wallet.shutdown();
   {
     CryptoNote::WalletGreen reloaded(dispatcher, currency, node, logger);
@@ -668,7 +646,6 @@ TEST(PqWalletIntegration, RelayFailureRollsBackReservation) {
     reloaded.shutdown();
   }
   boost::filesystem::remove(path);
-  boost::filesystem::remove_all(archiveDir);
 }
 
 // A deposit credit is rolled back when its block is orphaned, the same as a primary
