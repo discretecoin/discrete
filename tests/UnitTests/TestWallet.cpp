@@ -21,7 +21,9 @@
 #include <chrono>
 #include <fstream>
 #include <numeric>
+#include <sstream>
 #include <system_error>
+#include <thread>
 #include <tuple>
 
 #include "Common/StringTools.h"
@@ -42,6 +44,7 @@
 #include "Wallet/WalletSerializationV2.h"
 #include "Wallet/WalletUtils.h"
 #include "WalletLegacy/WalletLegacy.h"  // simplewallet engine smoke test
+#include "WalletLegacy/WalletHelper.h"
 #include "PqAddress.h"
 #include "AccountNumber.h"
 #include "CryptoNoteCore/CryptoNoteFormatUtils.h"  // verifyMessagePq
@@ -887,6 +890,101 @@ TEST(WalletLegacySmoke, PqIdentityAndSigning) {
   EXPECT_FALSE(words.empty());
 
   wallet.shutdown();
+}
+
+// DiscreteWallet uses WalletLegacy rather than WalletGreen. Exercise the exact
+// GUI send/history backend and prove that its original recipient label and
+// payment proof survive a full cache-backed wallet save and reload.
+TEST(WalletLegacySmoke, StoredRecipientAndPaymentProofSurviveCacheReload) {
+  System::Dispatcher dispatcher;
+  (void)dispatcher;  // WalletLegacy manages its own threads
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(1000000).upgradeHeightV6(1000000)
+      .currency();
+  TestBlockchainGenerator generator(currency);
+  INodeTrivialRefreshStub node(generator);
+
+  CryptoNote::WalletLegacy wallet(currency, node, logger);
+  wallet.initAndGenerate("pass");
+
+  CryptoNote::AccountKeys accountKeys;
+  wallet.getAccountKeys(accountKeys);
+  CryptoNote::PqWalletKeys mine = CryptoNote::derivePqWalletKeys(accountKeys.spendSecretKey);
+
+  Crypto::SecretKey otherSecret;
+  for (std::size_t i = 0; i < sizeof(otherSecret.data); ++i)
+    otherSecret.data[i] = static_cast<uint8_t>(i * 7 + 3);
+  CryptoNote::PqWalletKeys them = CryptoNote::derivePqWalletKeys(otherSecret);
+
+  CryptoNote::Transaction funding = makePqPayTo(them, mine, 1000000, 800000, 0x55);
+  generator.setTxFee(CryptoNote::getObjectHash(funding), 200000);
+  generator.addTxToBlockchain(funding);
+  node.updateObservers();
+
+  const auto syncDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+  while (wallet.actualBalance() != 800000u && std::chrono::steady_clock::now() < syncDeadline) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  ASSERT_EQ(wallet.actualBalance(), 800000u);
+
+  const std::string recipient = CryptoNote::encodePqAddress(
+      CryptoNote::makePqAddress(currency.publicAddressBase58Prefix(), them.viewPub, them.spendPub),
+      CryptoNote::pqBech32Hrp(currency.isTestnet()));
+  node.setNextTransactionToPool();
+  const CryptoNote::TransactionId transactionId = wallet.sendTransaction(
+      CryptoNote::WalletLegacyTransfer{recipient, 300000}, 0, "", 0, 0);
+  ASSERT_NE(transactionId, CryptoNote::WALLET_LEGACY_INVALID_TRANSACTION_ID);
+
+  CryptoNote::WalletLegacyTransaction transaction;
+  ASSERT_TRUE(wallet.getTransaction(transactionId, transaction));
+  ASSERT_EQ(transaction.transferCount, 1u);
+
+  CryptoNote::SentPaymentRecord stored;
+  ASSERT_TRUE(wallet.copyPaymentProofs(transaction.hash, stored));
+  ASSERT_EQ(stored.recipients.size(), 1u);
+  EXPECT_EQ(stored.recipients[0].address, recipient);
+  EXPECT_EQ(stored.recipients[0].amount, 300000u);
+  ASSERT_FALSE(stored.recipients[0].proof.empty());
+
+  std::stringstream serialized;
+  CryptoNote::WalletHelper::SaveWalletResultObserver saveObserver;
+  {
+    CryptoNote::WalletHelper::IWalletRemoveObserverGuard guard(wallet, saveObserver);
+    std::future<std::error_code> saved = saveObserver.saveResult.get_future();
+    wallet.save(serialized, true, true);
+    ASSERT_FALSE(saved.get());
+  }
+  wallet.shutdown();
+
+  serialized.seekg(0);
+  CryptoNote::WalletLegacy reloaded(currency, node, logger);
+  CryptoNote::WalletHelper::InitWalletResultObserver initObserver;
+  {
+    CryptoNote::WalletHelper::IWalletRemoveObserverGuard guard(reloaded, initObserver);
+    std::future<std::error_code> loaded = initObserver.initResult.get_future();
+    reloaded.initAndLoad(serialized, "pass");
+    ASSERT_FALSE(loaded.get());
+  }
+
+  CryptoNote::SentPaymentRecord restored;
+  ASSERT_TRUE(reloaded.copyPaymentProofs(transaction.hash, restored));
+  ASSERT_EQ(restored.recipients.size(), 1u);
+  EXPECT_EQ(restored.recipients[0].address, recipient);
+  EXPECT_EQ(restored.recipients[0].amount, 300000u);
+  EXPECT_EQ(restored.recipients[0].proof, stored.recipients[0].proof);
+
+  CryptoNote::WalletLegacyTransaction restoredTransaction;
+  ASSERT_TRUE(reloaded.getTransaction(transactionId, restoredTransaction));
+  ASSERT_EQ(restoredTransaction.transferCount, 1u);
+  CryptoNote::WalletLegacyTransfer restoredTransfer;
+  ASSERT_TRUE(reloaded.getTransfer(restoredTransaction.firstTransferId, restoredTransfer));
+  EXPECT_EQ(restoredTransfer.address, recipient);
+  EXPECT_EQ(restoredTransfer.amount, 300000);
+
+  reloaded.shutdown();
 }
 
 // Full Index (H-I-T-C) receive + spend addressed by the account-number STRING: register,
