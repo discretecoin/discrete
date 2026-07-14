@@ -570,4 +570,16 @@ struct SendTransaction {
   };
 };
 
+struct PrepareTransaction {
+  using Request = SendTransaction::Request;
+
+  struct Response {
+    std::string transactionHash;
+    std::string transactionHex;
+    std::vector<std::string> paymentProofs;
+
+    void serialize(CryptoNote::ISerializer& serializer);
+  };
+};
+
 } //namespace PaymentService

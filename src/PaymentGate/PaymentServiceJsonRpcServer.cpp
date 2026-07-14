@@ -51,6 +51,7 @@ PaymentServiceJsonRpcServer::PaymentServiceJsonRpcServer(System::Dispatcher* sys
   handlers.emplace("getUnconfirmedTransactionHashes", jsonHandler<GetUnconfirmedTransactionHashes::Request, GetUnconfirmedTransactionHashes::Response>(std::bind(&PaymentServiceJsonRpcServer::handleGetUnconfirmedTransactionHashes, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("getTransaction", jsonHandler<GetTransaction::Request, GetTransaction::Response>(std::bind(&PaymentServiceJsonRpcServer::handleGetTransaction, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("sendTransaction", jsonHandler<SendTransaction::Request, SendTransaction::Response>(std::bind(&PaymentServiceJsonRpcServer::handleSendTransaction, this, std::placeholders::_1, std::placeholders::_2)));
+  handlers.emplace("prepareTransaction", jsonHandler<PrepareTransaction::Request, PrepareTransaction::Response>(std::bind(&PaymentServiceJsonRpcServer::handlePrepareTransaction, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("getPaymentProofs", jsonHandler<GetPaymentProofs::Request, GetPaymentProofs::Response>(std::bind(&PaymentServiceJsonRpcServer::handleGetPaymentProofs, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("deletePaymentProof", jsonHandler<DeletePaymentProof::Request, DeletePaymentProof::Response>(std::bind(&PaymentServiceJsonRpcServer::handleDeletePaymentProof, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("exportPaymentProof", jsonHandler<ExportPaymentProof::Request, ExportPaymentProof::Response>(std::bind(&PaymentServiceJsonRpcServer::handleExportPaymentProof, this, std::placeholders::_1, std::placeholders::_2)));
@@ -220,6 +221,11 @@ std::error_code PaymentServiceJsonRpcServer::handleVerifyMessage(const VerifyMes
 
 std::error_code PaymentServiceJsonRpcServer::handleSendTransaction(const SendTransaction::Request& request, SendTransaction::Response& response) {
   return service.sendTransaction(request, response.transactionHash, response.paymentProofs);
+}
+
+std::error_code PaymentServiceJsonRpcServer::handlePrepareTransaction(const PrepareTransaction::Request& request, PrepareTransaction::Response& response) {
+  return service.prepareTransaction(request, response.transactionHash,
+                                    response.transactionHex, response.paymentProofs);
 }
 
 std::error_code PaymentServiceJsonRpcServer::handleGetPaymentProofs(const GetPaymentProofs::Request& request, GetPaymentProofs::Response& response) {

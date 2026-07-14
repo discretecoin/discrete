@@ -2121,6 +2121,74 @@ PqSendResult WalletGreen::sendPqTransfer(const std::vector<PqSendOutput>& recipi
   return result;
 }
 
+PqSendResult WalletGreen::preparePqTransfer(const std::vector<PqSendOutput>& recipients,
+                                            uint64_t fee, uint64_t unlockHeight,
+                                            const std::vector<uint8_t>& extra,
+                                            const std::vector<std::string>& sourceAddresses,
+                                            const std::string& changeAddress) {
+  throwIfNotInitialized();
+  throwIfStopped();
+  if (!pqEnabled()) {
+    throw std::runtime_error("Spending is unavailable for this wallet");
+  }
+  CryptoPQ::SeedMaster seed = primarySeedMaster();
+  if (seed == CryptoPQ::SeedMaster{}) {
+    throw std::runtime_error("tracking wallet cannot spend");
+  }
+  PqWalletKeys keys = derivePqWalletKeys(seed);
+
+  PqSendRequest req;
+  req.recipients = recipients;
+  req.explicitFee = fee;
+  req.unlockHeight = unlockHeight;
+  req.extra = extra;
+  std::memcpy(req.genesisId.data(), m_currency.genesisBlockHash().data,
+              req.genesisId.size());
+  req.scheme = m_pqDepositScheme;
+  for (const auto& address : sourceAddresses) {
+    uint32_t bucket = 0;
+    if (!pqResolveAddressBucket(address, bucket)) {
+      throw std::system_error(make_error_code(error::BAD_ADDRESS),
+                              "source address is not owned by this wallet: " + address);
+    }
+    req.sourceBuckets.push_back(bucket);
+  }
+  if (!changeAddress.empty()) {
+    uint32_t changeBucket = 0;
+    if (!pqResolveAddressBucket(changeAddress, changeBucket)) {
+      throw std::system_error(make_error_code(error::CHANGE_ADDRESS_NOT_FOUND),
+                              "change address is not owned by this wallet: " + changeAddress);
+    }
+    req.hasChangeDest = true;
+    req.changeDest = pqChangeTemplate(changeBucket);
+  }
+
+  PqSendResult result;
+  std::size_t availableInputCount = 0;
+  try {
+    System::EventLock lk(m_readyEvent);
+    std::vector<PqSpendInput> spendable = m_pqConsumer->state().spendableInputs();
+    availableInputCount = spendable.size();
+    m_logger(INFO) << "Preparing PQ transaction without relay: recipients " << recipients.size()
+                   << ", available inputs " << availableInputCount
+                   << ", source buckets " << req.sourceBuckets.size()
+                   << ", requested fee atomic units " << fee
+                   << ", extra bytes " << extra.size();
+    result = buildPqSend(spendable, keys, req);
+  } catch (const PqSendError& e) {
+    m_logger(WARNING, BRIGHT_YELLOW) << "PQ transaction preparation rejected: " << e.what()
+                                    << ", available inputs " << availableInputCount;
+    throw;
+  }
+
+  const Crypto::Hash txid = getObjectHash(result.tx);
+  m_logger(INFO) << "PQ transaction prepared without relay: hash " << Common::podToHex(txid)
+                 << ", bytes " << toBinaryArray(result.tx).size()
+                 << ", sent atomic units " << result.sent
+                 << ", fee atomic units " << result.fee;
+  return result;
+}
+
 const SentPaymentRecord* WalletGreen::getPaymentProofs(const Crypto::Hash& txid) const {
   System::EventLock lk(m_readyEvent);
   return m_sentPayments.find(txid);

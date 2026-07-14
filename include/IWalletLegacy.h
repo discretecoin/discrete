@@ -141,6 +141,11 @@ public:
   virtual TransactionId sendTransaction(const WalletLegacyTransfer& transfer, uint64_t fee, const std::string& extra = "", uint64_t ignoredPrivacyWidth = 0, uint64_t unlockHeightstamp = 0) = 0;
   virtual TransactionId sendTransaction(const std::vector<WalletLegacyTransfer>& transfers, uint64_t fee, const std::string& extra = "", uint64_t ignoredPrivacyWidth = 0, uint64_t unlockHeightstamp = 0) = 0;
   virtual TransactionId sendTransaction(const std::vector<WalletLegacyTransfer>& transfers, const std::list<TransactionOutputInformation>& selectedOuts, uint64_t fee, const std::string& extra = "", uint64_t ignoredPrivacyWidth = 0, uint64_t unlockHeightstamp = 0) = 0;
+  // Build and sign a transaction, returning its binary serialization as hex,
+  // without submitting it to the node or changing the wallet ledger.
+  virtual std::string prepareRawTransaction(TransactionId& transactionId, const WalletLegacyTransfer& transfer, uint64_t fee, const std::string& extra = "", uint64_t ignoredPrivacyWidth = 0, uint64_t unlockHeightstamp = 0) = 0;
+  virtual std::string prepareRawTransaction(TransactionId& transactionId, const std::vector<WalletLegacyTransfer>& transfers, uint64_t fee, const std::string& extra = "", uint64_t ignoredPrivacyWidth = 0, uint64_t unlockHeightstamp = 0) = 0;
+  virtual std::string prepareRawTransaction(TransactionId& transactionId, const std::vector<WalletLegacyTransfer>& transfers, const std::list<TransactionOutputInformation>& selectedOuts, uint64_t fee, const std::string& extra = "", uint64_t ignoredPrivacyWidth = 0, uint64_t unlockHeightstamp = 0) = 0;
   virtual std::error_code cancelTransaction(size_t transferId) = 0;
 
   virtual bool getTransactionInformation(const Crypto::Hash& transactionHash, TransactionInformation& info,

@@ -118,6 +118,10 @@ public:
                               uint64_t fee = 0, uint64_t unlockHeight = 0,
                               const std::vector<uint8_t>& extra = {},
                               const std::vector<std::string>& recipientAddresses = {});
+  // Build and sign through the same sender without relay or wallet-state changes.
+  PqSendResult preparePqTransfer(const std::vector<PqSendOutput>& recipients,
+                                 uint64_t fee = 0, uint64_t unlockHeight = 0,
+                                 const std::vector<uint8_t>& extra = {});
   const SentPaymentRecord* getPaymentProofs(const Crypto::Hash& txid) const;
   bool copyPaymentProofs(const Crypto::Hash& txid, SentPaymentRecord& record) const;
   void exportPaymentProofs(const Crypto::Hash& txid, const std::string& path,
@@ -151,6 +155,9 @@ public:
   virtual TransactionId sendTransaction(const WalletLegacyTransfer& transfer, uint64_t fee, const std::string& extra = "", uint64_t ignoredPrivacyWidth = 0, uint64_t unlockHeightstamp = 0) override;
   virtual TransactionId sendTransaction(const std::vector<WalletLegacyTransfer>& transfers, uint64_t fee, const std::string& extra = "", uint64_t ignoredPrivacyWidth = 0, uint64_t unlockHeightstamp = 0) override;
   virtual TransactionId sendTransaction(const std::vector<WalletLegacyTransfer>& transfers, const std::list<TransactionOutputInformation>& selectedOuts, uint64_t fee, const std::string& extra = "", uint64_t ignoredPrivacyWidth = 0, uint64_t unlockHeightstamp = 0) override;
+  virtual std::string prepareRawTransaction(TransactionId& transactionId, const WalletLegacyTransfer& transfer, uint64_t fee, const std::string& extra = "", uint64_t ignoredPrivacyWidth = 0, uint64_t unlockHeightstamp = 0) override;
+  virtual std::string prepareRawTransaction(TransactionId& transactionId, const std::vector<WalletLegacyTransfer>& transfers, uint64_t fee, const std::string& extra = "", uint64_t ignoredPrivacyWidth = 0, uint64_t unlockHeightstamp = 0) override;
+  virtual std::string prepareRawTransaction(TransactionId& transactionId, const std::vector<WalletLegacyTransfer>& transfers, const std::list<TransactionOutputInformation>& selectedOuts, uint64_t fee, const std::string& extra = "", uint64_t ignoredPrivacyWidth = 0, uint64_t unlockHeightstamp = 0) override;
   virtual std::error_code cancelTransaction(size_t transactionId) override;
 
   virtual bool getTransactionInformation(const Crypto::Hash& transactionHash, TransactionInformation& info,

@@ -94,6 +94,13 @@ public:
                               const std::vector<std::string>& sourceAddresses = {},
                               const std::string& changeAddress = {},
                               const std::vector<std::string>& recipientAddresses = {});
+  // Build and sign through the same PQ sender, but do not reserve inputs, mutate
+  // wallet history, persist payment proofs, or relay to the node.
+  PqSendResult preparePqTransfer(const std::vector<PqSendOutput>& recipients,
+                                 uint64_t fee = 0, uint64_t unlockHeight = 0,
+                                 const std::vector<uint8_t>& extra = {},
+                                 const std::vector<std::string>& sourceAddresses = {},
+                                 const std::string& changeAddress = {});
   const SentPaymentRecord* getPaymentProofs(const Crypto::Hash& txid) const;
   bool copyPaymentProofs(const Crypto::Hash& txid, SentPaymentRecord& record) const;
   Crypto::Hash importPaymentProofs(const std::string& bytes);
