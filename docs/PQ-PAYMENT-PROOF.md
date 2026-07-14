@@ -163,8 +163,9 @@ The encrypted wallet cache mirrors the archive but is not the durability authori
 
 ## 8. RPC and logging security
 
-`walletd` requires both `--rpc-user` and `--rpc-password` and is restricted to a
-loopback bind. Remote operation must use an authenticated TLS tunnel or reverse proxy;
+RPC Basic Auth is optional for both `walletd` and `simplewallet`: authentication is
+disabled when both `--rpc-user` and `--rpc-password` are omitted. `walletd` is restricted
+to a loopback bind. Remote operation must use an authenticated TLS tunnel or reverse proxy;
 the built-in server always exposes a plaintext HTTP listener even when its additional
 HTTPS listener is enabled. Malformed JSON-RPC logs never serialize the request body, so
 proof blobs are not copied into logs.

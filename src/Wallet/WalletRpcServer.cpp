@@ -59,9 +59,9 @@ const command_line::arg_descriptor<std::string> wallet_rpc_server::arg_rpc_bind_
 const command_line::arg_descriptor<bool>    wallet_rpc_server::arg_rpc_bind_ssl_enable =
   { "rpc-bind-ssl-enable", "Enable SSL for RPC service", false, true };
 const command_line::arg_descriptor<std::string> wallet_rpc_server::arg_rpc_user = 
-  { "rpc-user"     , "Username to use with the RPC server. If empty, no server authorization will be done.", "" };
+  { "rpc-user"     , "Optional Basic Auth username for the RPC server. Authentication is disabled when both RPC credentials are empty.", "" };
 const command_line::arg_descriptor<std::string> wallet_rpc_server::arg_rpc_password = 
-  { "rpc-password" , "Password to use with the RPC server. If empty, no server authorization will be done.", "" };
+  { "rpc-password" , "Optional Basic Auth password for the RPC server. Authentication is disabled when both RPC credentials are empty.", "" };
 const command_line::arg_descriptor<std::string> wallet_rpc_server::arg_chain_file =
   { "rpc-chain-file" , "SSL chain file", RPC_DEFAULT_CHAIN_FILE };
 const command_line::arg_descriptor<std::string> wallet_rpc_server::arg_key_file =
