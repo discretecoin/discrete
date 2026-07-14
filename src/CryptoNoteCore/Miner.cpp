@@ -394,7 +394,7 @@ namespace CryptoNote
 
       b.nonce = nonce;
 
-      // DiscretePower-2 (https://docs.discrete.cash/#/consensus/discrete-pow-spec-002 §5): per nonce, sign the
+      // DiscretePower-2 (https://docs.discrete.cash/#/consensus/pow §5): per nonce, sign the
       // candidate header digest m with the resident hot-account spend key and run
       // the signature-tape yespower-dp2 chain in one shot. dp2_prove fills
       // b.powSignature and pow. This is identity-bound, delegation-hostile mining:

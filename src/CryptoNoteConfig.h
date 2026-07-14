@@ -164,7 +164,7 @@ const uint64_t FREE_REG_POOL_LIMIT                          = FREE_REG_PER_BLOCK
 // identity-bound and delegation-hostile — it binds the coinbase reward to the
 // signing key and forces a remote worker to carry the whole per-candidate tape,
 // not a short digest. It is NOT pool-proof or botnet-proof. See
-// https://docs.discrete.cash/#/consensus/discrete-pow-spec-002 (revision D) for the normative construction.
+// https://docs.discrete.cash/#/consensus/pow (revision D) for the normative construction.
 //
 // These are consensus constants; changing any of them is a hard fork. DP2_SIG_LEN
 // is compile-time checked against the liboqs ML-DSA-65 signature length in

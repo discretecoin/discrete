@@ -37,7 +37,7 @@ throughout a modified yespower (`yespower-dp2`) memory-hard core. It is
 identity-bound and delegation-hostile — a remote worker needs the whole
 per-candidate tape, not a short digest — but it is **not** a proof that
 purpose-built custodial pools are impossible. See the
-[DiscretePower-2 specification](https://docs.discrete.cash/#/consensus/discrete-pow-spec-002).
+[DiscretePower-2 specification](https://docs.discrete.cash/#/consensus/pow).
 
 The candidate wire format, domain-separation tags, and blob sizes are
 documented in the [PQ wire-format reference](https://docs.discrete.cash/#/consensus/pq-wire-format)

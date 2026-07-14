@@ -64,7 +64,7 @@ std::string short_hash_str(const Crypto::Hash& h);
 
 bool get_block_hashing_blob(const Block& b, BinaryArray& blob);
 
-// DiscretePower-2 consensus domains (https://docs.discrete.cash/#/consensus/discrete-pow-spec-002, revision D).
+// DiscretePower-2 consensus domains (https://docs.discrete.cash/#/consensus/pow, revision D).
 // ASCII, hashed with SHAKE-256 without a trailing NUL. No tag is reused by any
 // other subsystem (derivation, messaging, CT).
 constexpr char DISCRETE_POWER_HEADER_DOMAIN[]     = "DiscretePower/v2/header";  // -> H  (64 B)

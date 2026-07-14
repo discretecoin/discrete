@@ -150,7 +150,7 @@ struct Block : public BlockHeader {
   // ID. The miner signs m = SHAKE256("DiscretePower/v2/sign" || H) every attempt;
   // this same signature is the tape injected into yespower-dp2 AND the reward
   // binding (there is no separate reward signature). See
-  // https://docs.discrete.cash/#/consensus/discrete-pow-spec-002.
+  // https://docs.discrete.cash/#/consensus/pow.
   std::vector<uint8_t> powSignature;
   std::vector<Crypto::Hash> transactionHashes;
 };
