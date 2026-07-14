@@ -9,8 +9,9 @@ has been replaced by the focused documents below:
 - `https://docs.discrete.cash/#/consensus/pq-wire-format` for transaction format and domain constants.
 - `https://docs.discrete.cash/#/consensus/pq-fees` for fee floors and wallet fee behavior.
 - `https://docs.discrete.cash/#/wallets/wallet-behavior` for wallet semantics and test coverage.
-- `https://docs.discrete.cash/#/wallets/walletd-rpc` and `https://docs.discrete.cash/#/wallets/walletd-deposit-addresses` for walletd operation.
-- `https://docs.discrete.cash/#/operators/local-testnet` for local testnet bring-up.
+- `https://docs.discrete.cash/#/wallets/walletd-rpc`, `https://docs.discrete.cash/#/wallets/simplewallet-rpc`, and `https://docs.discrete.cash/#/wallets/walletd-deposit-addresses` for wallet RPC operation.
+- `https://docs.discrete.cash/#/operators/node-operation` and `https://docs.discrete.cash/#/operators/mining` for public node and mining operation.
+- `docs/TESTNET.md` for the internal local testnet bring-up runbook.
 
 Do not use this archived filename as evidence of remaining product gaps. Current
 readiness work should be tracked in issues or in a fresh release checklist.
