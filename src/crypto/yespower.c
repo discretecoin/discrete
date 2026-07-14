@@ -135,6 +135,42 @@
 #undef HUGEPAGE_SIZE
 #endif
 
+/*
+ * ─── DiscretePower-2 signature-tape injection ────────────────────────────────
+ *
+ * yespower-dp2 is yespower 1.0 with the miner's ML-DSA-65 signature injected as
+ * a 3312-byte "tape" throughout the memory-hard loops (see
+ * docs/DISCRETE-POW-SPEC-002.md). It is a DISTINCT consensus algorithm — never
+ * call it plain "yespower". The injection is gated on a thread-local tape
+ * pointer: when dp2_tape == NULL the code below is a no-op and yespower() is
+ * byte-for-byte the stock algorithm (this equivalence is the differential
+ * anchor asserted by the test suite). Only little-endian targets are supported
+ * (x86-64 and ARM64), matching yespower's own internal assumption.
+ */
+#define DP2_TAPE_LEN    3312u
+#define DP2_TAPE_WORDS  414u
+#define DP2_PHASE_SBOX  0u
+#define DP2_PHASE_FILL  1u
+#define DP2_PHASE_RW    2u
+#define DP2_PHASE_FINAL 3u
+
+#if defined(_MSC_VER)
+#define DP2_THREAD_LOCAL __declspec(thread)
+#else
+#define DP2_THREAD_LOCAL __thread
+#endif
+
+/* Injection state for the in-flight yespower-dp2 execution. Set by yespower_dp2()
+ * immediately before smix and cleared immediately after; NULL for plain yespower.
+ * dp2_ctr is the global counter (never reset between phases); dp2_phase and
+ * dp2_phase_i restart per phase. dp2_calls counts yespower-dp2 executions and
+ * backs the "zero yespower on early reject" test assertion. */
+static DP2_THREAD_LOCAL const uint8_t *dp2_tape = NULL;
+static DP2_THREAD_LOCAL uint64_t dp2_ctr = 0;
+static DP2_THREAD_LOCAL uint32_t dp2_phase = 0;
+static DP2_THREAD_LOCAL uint32_t dp2_phase_i = 0;
+static DP2_THREAD_LOCAL uint64_t dp2_calls = 0;
+
 static void *alloc_region(yespower_region_t *region, size_t size)
 {
     size_t base_size = size;
@@ -952,6 +988,88 @@ static inline uint32_t integerify(const salsa20_blk_t *B, size_t r)
 }
 #endif
 
+#if _YESPOWER_OPT_C_PASS_ > 1
+/*
+ * DiscretePower-2 injection helpers (see docs/DISCRETE-POW-SPEC-002.md §6).
+ * These exist only in the yespower 1.0 (pass 2) compilation, the sole variant
+ * yespower-dp2 uses.
+ */
+static inline uint32_t dp2_rotl32(uint32_t x, unsigned n)
+{
+    return (uint32_t)((x << n) | (x >> (32 - n)));
+}
+
+/*
+ * salsa20_simd_shuffle relocates the 16 logical 32-bit words of a 64-byte block
+ * to fixed slots of salsa20_blk_t.w[]: stored slot k holds logical word
+ * {0,5,10,15,4,9,14,3,8,13,2,7,12,1,6,11}[k]. dp2_slot is the inverse, mapping a
+ * logical little-endian word index to its storage slot, so GET/XOR address the
+ * spec's logical word array identically on every little-endian target regardless
+ * of SIMD layout.
+ */
+static const uint8_t dp2_slot[16] = {
+    0, 13, 10, 7, 4, 1, 14, 11, 8, 5, 2, 15, 12, 9, 6, 3
+};
+
+static inline uint32_t dp2_get(const salsa20_blk_t *blocks, uint32_t q)
+{
+    return blocks[q >> 4].w[dp2_slot[q & 15u]];
+}
+
+static inline void dp2_xorw(salsa20_blk_t *blocks, uint32_t q, uint32_t v)
+{
+    blocks[q >> 4].w[dp2_slot[q & 15u]] ^= v;
+}
+
+/*
+ * Inject one tape word pair into the block-set X (s = 2r blocks, 32r logical
+ * words) immediately before X is stored to V / used to index memory. r is the
+ * yespower block parameter of the calling smix (1 for S-box generation, DP2_R
+ * otherwise). No-op when dp2_tape is NULL. Advances the global counter and the
+ * phase-local iteration exactly once per call.
+ */
+static void dp2_inject(salsa20_blk_t *X, size_t r)
+{
+    uint64_t ctr;
+    uint32_t words, mask, i, q, lo, hi, pc, selector, lane0, delta, lane1;
+
+    if (!dp2_tape)
+        return;
+
+    ctr = dp2_ctr;
+    i = dp2_phase_i;
+    words = (uint32_t)(32u * r);
+    mask = words - 1u;
+    q = (uint32_t)(ctr % DP2_TAPE_WORDS);
+    lo = le32dec(dp2_tape + 8u * q);
+    hi = le32dec(dp2_tape + 8u * q + 4u);
+
+    switch (dp2_phase) {
+    case DP2_PHASE_SBOX:  pc = 0x243F6A88u; break;
+    case DP2_PHASE_FILL:  pc = 0x85A308D3u; break;
+    case DP2_PHASE_RW:    pc = 0x13198A2Eu; break;
+    default:              pc = 0x03707344u; break;
+    }
+
+    selector = dp2_get(X, 0)
+             ^ dp2_rotl32(dp2_get(X, words >> 1), 7)
+             ^ dp2_rotl32(dp2_get(X, words - 1u), 17)
+             ^ (uint32_t)(0x9E3779B9u * (uint32_t)(ctr + 1u))
+             ^ (uint32_t)(0x7F4A7C15u * (uint32_t)(i + 1u))
+             ^ pc;
+
+    lane0 = selector & mask;
+    delta = ((selector >> 16) & mask) | 1u;   /* odd and non-zero => lane1 != lane0 */
+    lane1 = (lane0 + delta) & mask;
+
+    dp2_xorw(X, lane0, lo);
+    dp2_xorw(X, lane1, hi);
+
+    dp2_ctr = ctr + 1u;
+    dp2_phase_i = i + 1u;
+}
+#endif
+
 /**
  * smix1(B, r, N, V, XY, S):
  * Compute first loop of B = SMix_r(B, N).  The input B must be 128r bytes in
@@ -986,8 +1104,14 @@ static void smix1(uint8_t *B, size_t r, uint32_t N,
         blockmix(&X[(i - 1) * 2], &X[i * 2], 1, ctx);
 #endif
 
+#if _YESPOWER_OPT_C_PASS_ > 1
+    dp2_inject(X, r);
+#endif
     blockmix(X, Y, r, ctx);
     X = Y + s;
+#if _YESPOWER_OPT_C_PASS_ > 1
+    dp2_inject(Y, r);
+#endif
     blockmix(Y, X, r, ctx);
     j = integerify(X, r);
 
@@ -998,11 +1122,17 @@ static void smix1(uint8_t *B, size_t r, uint32_t N,
             j &= n - 1;
             j += i - 1;
             V_j = &V[j * s];
+#if _YESPOWER_OPT_C_PASS_ > 1
+            dp2_inject(X, r);
+#endif
             j = blockmix_xor(X, V_j, Y, r, ctx);
             j &= n - 1;
             j += i;
             V_j = &V[j * s];
             X = Y + s;
+#if _YESPOWER_OPT_C_PASS_ > 1
+            dp2_inject(Y, r);
+#endif
             j = blockmix_xor(Y, V_j, X, r, ctx);
         }
     }
@@ -1012,10 +1142,16 @@ static void smix1(uint8_t *B, size_t r, uint32_t N,
     j += N - 2 - n;
     V_j = &V[j * s];
     Y = X + s;
+#if _YESPOWER_OPT_C_PASS_ > 1
+    dp2_inject(X, r);
+#endif
     j = blockmix_xor(X, V_j, Y, r, ctx);
     j &= n - 1;
     j += N - 1 - n;
     V_j = &V[j * s];
+#if _YESPOWER_OPT_C_PASS_ > 1
+    dp2_inject(Y, r);
+#endif
     blockmix_xor(Y, V_j, XY, r, ctx);
 
     for (i = 0; i < 2 * r; i++) {
@@ -1061,8 +1197,14 @@ static void smix2(uint8_t *B, size_t r, uint32_t N, uint32_t Nloop,
 #endif
         do {
             salsa20_blk_t *V_j = &V[j * s];
+#if _YESPOWER_OPT_C_PASS_ > 1
+            dp2_inject(X, r);
+#endif
             j = blockmix_xor_save(X, V_j, r, ctx) & (N - 1);
             V_j = &V[j * s];
+#if _YESPOWER_OPT_C_PASS_ > 1
+            dp2_inject(X, r);
+#endif
             j = blockmix_xor_save(X, V_j, r, ctx) & (N - 1);
         } while (Nloop -= 2);
 #if _YESPOWER_OPT_C_PASS_ == 1
@@ -1108,8 +1250,20 @@ static void smix(uint8_t *B, size_t r, uint32_t N,
     Nloop_rw++; Nloop_rw &= ~(uint32_t)1; /* round up to even */
 #endif
 
+#if _YESPOWER_OPT_C_PASS_ > 1
+    /* DiscretePower-2: the global counter is never reset here (only in
+     * yespower_dp2 before smix); the phase id and phase-local iteration restart
+     * per phase. No-op unless a tape is active. */
+    if (dp2_tape) { dp2_phase = DP2_PHASE_SBOX; dp2_phase_i = 0; }
+#endif
     smix1(B, 1, ctx->Sbytes / 128, (salsa20_blk_t *)ctx->S0, XY, NULL);
+#if _YESPOWER_OPT_C_PASS_ > 1
+    if (dp2_tape) { dp2_phase = DP2_PHASE_FILL; dp2_phase_i = 0; }
+#endif
     smix1(B, r, N, V, XY, ctx);
+#if _YESPOWER_OPT_C_PASS_ > 1
+    if (dp2_tape) { dp2_phase = DP2_PHASE_RW; dp2_phase_i = 0; }
+#endif
     smix2(B, r, N, Nloop_rw /* must be > 2 */, V, XY, ctx);
 #if _YESPOWER_OPT_C_PASS_ == 1
     if (Nloop_all > Nloop_rw)
@@ -1208,6 +1362,137 @@ int yespower(yespower_local_t *local,
 fail:
     memset(dst, 0xff, sizeof(*dst));
     return -1;
+}
+
+/**
+ * yespower_dp2(local, src, srclen, params, tape, dst):
+ * DiscretePower-2 memory-hard function (docs/DISCRETE-POW-SPEC-002.md §6). It is
+ * yespower 1.0 with the DP2_TAPE_LEN-byte signature tape injected throughout the
+ * memory loops. `tape` MUST be non-NULL and exactly DP2_TAPE_LEN bytes; `src` is
+ * the 64-byte H, `params->pers` the 32-byte P. This is a DISTINCT algorithm from
+ * yespower() and MUST NOT be represented as ordinary yespower.
+ *
+ * Return 0 on success; or -1 on error.
+ */
+int yespower_dp2(yespower_local_t *local,
+    const uint8_t *src, size_t srclen,
+    const yespower_params_t *params,
+    const uint8_t *tape,
+    yespower_binary_t *dst)
+{
+    uint32_t N = params->N;
+    uint32_t r = params->r;
+    const uint8_t *pers = params->pers;
+    size_t perslen = params->perslen;
+    uint32_t Swidth;
+    size_t B_size, V_size, XY_size, need;
+    uint8_t *B, *S;
+    salsa20_blk_t *V, *XY;
+    pwxform_ctx_t ctx;
+    uint8_t init_hash[32];
+
+    /* Sanity-check parameters */
+    if ((N < 1024 || N > 512 * 1024 || r < 8 || r > 32 ||
+        (N & (N - 1)) != 0 ||
+        (!pers && perslen) || !tape)) {
+        errno = EINVAL;
+        goto fail;
+    }
+
+    /* Allocate memory */
+    B_size = (size_t)128 * r;
+    V_size = B_size * N;
+
+    XY_size = B_size + 64;
+    Swidth = Swidth_1_0;
+    ctx.Sbytes = 3 * Swidth_to_Sbytes1(Swidth);
+
+    need = B_size + V_size + XY_size + ctx.Sbytes;
+    if (local->aligned_size < need) {
+        if (free_region(local))
+            goto fail;
+        if (!alloc_region(local, need))
+            goto fail;
+    }
+    B = (uint8_t *)local->aligned;
+    V = (salsa20_blk_t *)((uint8_t *)B + B_size);
+    XY = (salsa20_blk_t *)((uint8_t *)V + V_size);
+    S = (uint8_t *)XY + XY_size;
+    ctx.S0 = S;
+    ctx.S1 = S + Swidth_to_Sbytes1(Swidth);
+
+    blake256_hash(init_hash, src, srclen);
+
+    ctx.S2 = S + 2 * Swidth_to_Sbytes1(Swidth);
+    ctx.w = 0;
+
+    if (pers) {
+        src = pers;
+        srclen = perslen;
+    } else {
+        srclen = 0;
+    }
+
+    pbkdf2_blake256(init_hash, sizeof(init_hash), src, srclen, 1, B, 128);
+    memcpy(init_hash, B, sizeof(init_hash));
+
+    /* Arm signature-tape injection for exactly this smix, then disarm so plain
+     * yespower on this thread is never affected. dp2_ctr starts at zero here and
+     * is not reset again until the next execution. */
+    dp2_calls++;
+    dp2_tape = tape;
+    dp2_ctr = 0;
+    smix_1_0(B, r, N, V, XY, &ctx);
+    dp2_tape = NULL;
+
+    hmac_blake256_hash((uint8_t *)dst, B + B_size - 64, 64, init_hash, sizeof(init_hash));
+
+    /* Success! */
+    return 0;
+
+fail:
+    dp2_tape = NULL;
+    memset(dst, 0xff, sizeof(*dst));
+    return -1;
+}
+
+/**
+ * yespower_dp2_tls(src, srclen, params, tape, dst):
+ * yespower_dp2 with a thread-local scratch allocation reused across calls (no
+ * per-attempt heap allocation once warmed). MT-safe as long as dst is local.
+ *
+ * Return 0 on success; or -1 on error.
+ */
+int yespower_dp2_tls(const uint8_t *src, size_t srclen,
+    const yespower_params_t *params, const uint8_t *tape,
+    yespower_binary_t *dst)
+{
+#if defined(_MSC_VER)
+    static __declspec(thread) int initialized = 0;
+    static __declspec(thread) yespower_local_t local;
+#else
+    static __thread int initialized = 0;
+    static __thread yespower_local_t local;
+#endif
+
+    if (!initialized) {
+        init_region(&local);
+        initialized = 1;
+    }
+
+    return yespower_dp2(&local, src, srclen, params, tape, dst);
+}
+
+/* Test/telemetry hook: count of yespower-dp2 memory-hard executions on this
+ * thread. Used to assert that early-rejected blocks run zero yespower-dp2. */
+uint64_t yespower_dp2_call_count(void)
+{
+    return dp2_calls;
+}
+
+void yespower_dp2_call_count_reset(void)
+{
+    dp2_calls = 0;
 }
 
 /**

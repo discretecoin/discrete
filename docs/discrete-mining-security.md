@@ -2,24 +2,27 @@
 
 ## Scope
 
-Discrete combines DiscretePower-1 with a local depth-10 reorganization
+Discrete combines DiscretePower-2 with a local depth-10 reorganization
 limit. These mechanisms narrow several attack paths, but they do not make a small
 proof-of-work network immune to pooling, partitions, eclipse attacks, or a self-funded
 majority. This document states the implemented guarantees and residual risks.
 
 ## Identity-bound signed proof of work
 
-Every nonce candidate is signed with ML-DSA-65 by the spend key committed in the
-coinbase. SHAKE-256 domain-separates the header, signature, memory input and final
-target transcript around the yespower 1.0 core. Consensus verifies the full signature
-and reward commitment. See [POW.md](POW.md) for the exact byte sequence.
+Every candidate is signed with ML-DSA-65 by the spend key committed in the coinbase,
+and that raw 3,312-byte signature tape is injected throughout the `yespower-dp2`
+memory-hard core. Consensus verifies the full signature **before** running any
+yespower-dp2 (the DoS bound) and enforces the reward commitment. See
+[DISCRETE-POW-SPEC-002.md](DISCRETE-POW-SPEC-002.md) and [POW.md](POW.md).
 
 This provides:
 
 - reward-identity binding: a relayer cannot redirect a signed candidate's reward;
-- per-attempt signer involvement: every varied nonce needs a fresh signature;
-- friction against generic stateless rental and conventional unsigned Stratum jobs;
-- an ~8 MiB yespower working set per active attempt.
+- per-candidate signer involvement: every candidate needs a fresh signature, and no
+  memory-hard prefix is reusable across signatures;
+- a delegation data/interaction tax: a remote worker needs the whole per-candidate
+  tape, not a short digest;
+- a ~16 MiB yespower-dp2 working set per active attempt (draft N=4096, r=32).
 
 It is not a proof of strong non-outsourceability. A custodial operator can retain the
 reward key, sign candidate nonces at aggregate rate, distribute the resulting jobs, and
@@ -61,7 +64,7 @@ Karbo's whole-history sampling and Discrete's experimental bounded trailing-wind
 are evaluated in [POW.md](POW.md). They can require recent chain data and complicate
 commodity rental, but public scratchpad data do not prevent a purpose-built pool from
 outsourcing work. The bounded `dev/pow-window` design is the better engineering experiment
-for full-node mining; neither design upgrades DiscretePower-1 into a strong
+for full-node mining; neither design upgrades DiscretePower-2 into a strong
 non-outsourceable puzzle.
 
 ## Residual attack surface

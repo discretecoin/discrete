@@ -145,9 +145,13 @@ struct BlockHeader {
 struct Block : public BlockHeader {
   ParentBlock parentBlock;
   Transaction baseTransaction;
-  // PQ block signature: ML-DSA-65 signature (3309 bytes).
-  // The miner signs SHA3-256(get_block_hashing_blob) with their spend secret key.
-  std::vector<uint8_t> signature;
+  // DiscretePower-2 PoW signature: exactly one ML-DSA-65 signature (DP2_SIG_LEN =
+  // 3309 bytes), serialized OUTSIDE the hashing blob but committed by the block
+  // ID. The miner signs m = SHAKE256("DiscretePower/v2/sign" || H) every attempt;
+  // this same signature is the tape injected into yespower-dp2 AND the reward
+  // binding (there is no separate reward signature). See
+  // docs/DISCRETE-POW-SPEC-002.md.
+  std::vector<uint8_t> powSignature;
   std::vector<Crypto::Hash> transactionHashes;
 };
 

@@ -365,7 +365,6 @@ namespace CryptoNote
     uint32_t nonce = m_starter_nonce + th_local_index;
     Difficulty local_diff = 0;
     uint32_t local_template_ver = 0;
-    Crypto::cn_context context;
     Block b;
 
     while(!m_stop)
@@ -395,33 +394,29 @@ namespace CryptoNote
 
       b.nonce = nonce;
 
-      // step 1: sign the block with miner's ML-DSA-65 spend key.
+      // DiscretePower-2 (docs/DISCRETE-POW-SPEC-002.md §5): per nonce, sign the
+      // candidate header digest m with the resident hot-account spend key and run
+      // the signature-tape yespower-dp2 chain in one shot. dp2_prove fills
+      // b.powSignature and pow. This is identity-bound, delegation-hostile mining:
+      // the reward binds to the signing key. Key handling (mlock / zeroize / hot
+      // sweep / no-echo password) is owned by startPq() and untouched here.
+      Crypto::Hash pow;
       if (!m_pq_keys_set) {
         logger(ERROR) << "PQ miner keys not set — call startPq() before mining.";
         m_stop = true;
       }
       if (!m_stop) {
         try {
-          Crypto::Hash h{};
-          if (!get_block_pow_signing_hash(b, h)) {
-            logger(ERROR) << "get_block_pow_signing_hash failed.";
+          BinaryArray blob;
+          if (!get_block_hashing_blob(b, blob)) {
+            logger(ERROR) << "get_block_hashing_blob failed.";
             m_stop = true;
-          } else {
-            CryptoPQ::DsaSignature sig = CryptoPQ::dsa_sign(
-                m_pq_spend_sk, h.data, sizeof(h.data));
-            b.signature.assign(sig.begin(), sig.end());
+          } else if (!dp2_prove(blob, m_pq_spend_sk, b.powSignature, pow)) {
+            logger(ERROR) << "dp2_prove failed.";
+            m_stop = true;
           }
         } catch (const std::exception& e) {
-          logger(WARNING) << "PQ block signing failed: " << e.what();
-          m_stop = true;
-        }
-      }
-
-      // step 2: get long hash
-      Crypto::Hash pow;
-      if (!m_stop) {
-        if (!m_handler.getBlockLongHash(context, b, pow)) {
-          logger(ERROR) << "getBlockLongHash failed.";
+          logger(WARNING) << "PQ block signing / PoW failed: " << e.what();
           m_stop = true;
         }
       }

@@ -18,10 +18,14 @@
 
 #pragma once
 
+#include <array>
+#include <cstdint>
+
 #include <CryptoNote.h>
 #include "CryptoNoteBasic.h"
 #include "CryptoNoteSerialization.h"
 #include "ITransfersContainer.h"
+#include "crypto_pq/PqDsa.h"
 #include "Serialization/BinaryOutputStreamSerializer.h"
 #include "Serialization/BinaryInputStreamSerializer.h"
 
@@ -60,21 +64,42 @@ std::string short_hash_str(const Crypto::Hash& h);
 
 bool get_block_hashing_blob(const Block& b, BinaryArray& blob);
 
-// DiscretePower-1 consensus domains. ASCII, hashed without a trailing NUL.
-constexpr char DISCRETE_POWER_HEADER_DOMAIN[]     = "DiscretePower/v1/header";
-constexpr char DISCRETE_POWER_SIGNATURE_DOMAIN[]  = "DiscretePower/v1/signature";
-constexpr char DISCRETE_POWER_INPUT_DOMAIN[]      = "DiscretePower/v1/input";
-constexpr char DISCRETE_POWER_MEMORY_DOMAIN[]     = "DiscretePower/v1/memory";
-constexpr char DISCRETE_POWER_FINAL_DOMAIN[]      = "DiscretePower/v1/final";
+// DiscretePower-2 consensus domains (docs/DISCRETE-POW-SPEC-002.md, revision D).
+// ASCII, hashed with SHAKE-256 without a trailing NUL. No tag is reused by any
+// other subsystem (derivation, messaging, CT).
+constexpr char DISCRETE_POWER_HEADER_DOMAIN[]     = "DiscretePower/v2/header";  // -> H  (64 B)
+constexpr char DISCRETE_POWER_MEMORY_DOMAIN[]     = "DiscretePower/v2/memory";  // -> P  (32 B)
+constexpr char DISCRETE_POWER_SIGN_DOMAIN[]       = "DiscretePower/v2/sign";    // -> m  (64 B)
+constexpr char DISCRETE_POWER_FINAL_DOMAIN[]      = "DiscretePower/v2/final";   // -> PoW (32 B)
 
-// SHAKE256(header-domain || unsigned block hashing blob, 32). Signed with the
-// coinbase recipient's ML-DSA-65 key on every nonce attempt.
-bool get_block_pow_signing_hash(const Block& b, Crypto::Hash& hash);
+// H = SHAKE256(header-domain || get_block_hashing_blob(b), 64) — the 64-byte
+// DiscretePower-2 header digest that binds the whole candidate template.
+bool get_block_pow_header_hash(const Block& b, std::array<uint8_t, 64>& H);
+// m = SHAKE256(sign-domain || H, 64) — the ML-DSA-65 message signed per attempt.
+std::array<uint8_t, 64> dp2_sign_message(const std::array<uint8_t, 64>& H);
+// P = SHAKE256(memory-domain, 32) — the constant yespower-dp2 personalization.
+const std::array<uint8_t, 32>& dp2_memory_personalization();
 
-// The 64-byte signed transcript: headerHash || signatureHash.
-bool get_signed_block_hashing_blob(const Block& b, BinaryArray& blob);
-// DiscretePower-1: SHAKE-256 transcript/finalization around an ML-DSA-bound
-// yespower 1.0 memory core. Pure function of the block (no chain access).
+// Distinct reasons dp2_verify can reject before running any yespower-dp2 work.
+enum class Dp2Reject { None, BadLength, BadSignature };
+
+// Miner path (spec §5): sign m with the resident spend key and run the
+// signature-tape yespower-dp2 chain. `blob` is get_block_hashing_blob(b).
+// Fills powSignature (exactly DP2_SIG_LEN bytes) and powHash.
+bool dp2_prove(const BinaryArray& blob, const CryptoPQ::DsaSecretKey& sk,
+               std::vector<uint8_t>& powSignature, Crypto::Hash& powHash);
+
+// Verifier path (spec §9 steps 1-6), STRICTLY ordered: length check -> recompute
+// H/m -> ML-DSA Verify (BEFORE any yespower-dp2) -> tape chain -> final PoW. On a
+// length or signature failure it returns false having executed ZERO yespower-dp2
+// (the DoS bound); *reason distinguishes the cause when non-null.
+bool dp2_verify(const BinaryArray& blob, const CryptoPQ::DsaPublicKey& pk,
+                const std::vector<uint8_t>& powSignature, Crypto::Hash& powHash,
+                Dp2Reject* reason = nullptr);
+
+// PoW hash of an already-signed block, WITHOUT re-verifying the signature (uses
+// b.powSignature). For self-built blocks (miner/tests/Core); consensus uses
+// dp2_verify so the signature is checked before the memory-hard path runs.
 bool get_block_longhash(const Block& b, Crypto::Hash& res);
 bool get_parent_block_hashing_blob(const Block& b, BinaryArray& blob);
 bool get_aux_block_header_hash(const Block& b, Crypto::Hash& res);

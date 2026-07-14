@@ -157,6 +157,25 @@ const uint64_t FREE_REG_POW_TARGET                          = UINT64_C(0x00007FF
 // from while bounding pool occupancy (~20*100*3.2KB ~= 6.4 MB worst case).
 const uint64_t FREE_REG_POOL_LIMIT                          = FREE_REG_PER_BLOCK * 20;
 
+// ─── DiscretePower-2 (signature-tape proof of work) ────────────────────────────
+// Consensus PoW. Every candidate carries exactly one ML-DSA-65 signature which is
+// padded to a 3312-byte "tape" and injected, 8 bytes at a time, throughout a
+// modified yespower-1.0 memory-hard execution (yespower-dp2). The mechanism is
+// identity-bound and delegation-hostile — it binds the coinbase reward to the
+// signing key and forces a remote worker to carry the whole per-candidate tape,
+// not a short digest. It is NOT pool-proof or botnet-proof. See
+// docs/DISCRETE-POW-SPEC-002.md (revision D) for the normative construction.
+//
+// These are consensus constants; changing any of them is a hard fork. DP2_SIG_LEN
+// is compile-time checked against the liboqs ML-DSA-65 signature length in
+// CryptoNoteCore/CryptoNoteFormatUtils.cpp. DP2_N/DP2_R are the revision-D DRAFT
+// parameter set (16 MiB) and MUST be frozen after the §12 benchmark gate.
+const size_t   DP2_SIG_LEN                                  = 3309;   // ML-DSA-65 canonical signature length
+const size_t   DP2_TAPE_LEN                                 = 3312;   // sig || 0x80 || 0x00 || 0x00
+const size_t   DP2_TAPE_WORDS                               = 414;    // DP2_TAPE_LEN / 8 little-endian words
+const uint32_t DP2_N                                        = 4096;   // large-V memory: 128*r*N = 16 MiB / thread
+const uint32_t DP2_R                                        = 32;
+
 // Discrete is PQ-only from genesis: the node admission cap must match the
 // consensus TX_PQ cap that wallets fit against.
 const uint64_t MAX_TRANSACTION_SIZE_LIMIT                    = MAX_PQ_TX_SIZE;

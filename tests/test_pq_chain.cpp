@@ -62,12 +62,13 @@ template <std::size_t N> std::vector<uint8_t> toVec(const std::array<uint8_t, N>
 }
 
 bool signBlockForTest(CryptoNote::Block& blk, const CryptoNote::AccountBase& miner) {
-  Crypto::Hash hh{};
-  if (!CryptoNote::get_block_pow_signing_hash(blk, hh)) {
+  std::array<uint8_t, 64> H{};
+  if (!CryptoNote::get_block_pow_header_hash(blk, H)) {
     return false;
   }
-  CryptoPQ::DsaSignature sig = CryptoPQ::dsa_sign(miner.pqSpendSk(), hh.data, sizeof(hh.data));
-  blk.signature.assign(sig.begin(), sig.end());
+  std::array<uint8_t, 64> m = CryptoNote::dp2_sign_message(H);
+  CryptoPQ::DsaSignature sig = CryptoPQ::dsa_sign(miner.pqSpendSk(), m.data(), m.size());
+  blk.powSignature.assign(sig.begin(), sig.end());
   return true;
 }
 

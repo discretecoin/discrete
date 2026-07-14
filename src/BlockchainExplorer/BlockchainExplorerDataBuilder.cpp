@@ -174,7 +174,7 @@ bool BlockchainExplorerDataBuilder::fillBlockDetails(const Block &block, BlockDe
     blockDetails.penalty = static_cast<double>(maxReward - currentReward) / static_cast<double>(maxReward);
   }
 
-  blockDetails.minerSignature = block.signature;
+  blockDetails.minerSignature = block.powSignature;
 
   blockDetails.transactions.reserve(block.transactionHashes.size() + 1);
   TransactionDetails transactionDetails;

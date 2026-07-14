@@ -127,8 +127,8 @@ namespace CryptoNote {
     }
     // Genesis signature validation is skipped (height 0), but the wire format
     // requires exactly PQ_SIGNATURE_SIZE bytes. Fill with zeros.
-    if (m_genesisBlock.signature.empty()) {
-      m_genesisBlock.signature.assign(PQ_SIGNATURE_SIZE, 0);
+    if (m_genesisBlock.powSignature.empty()) {
+      m_genesisBlock.powSignature.assign(PQ_SIGNATURE_SIZE, 0);
     }
 
     return true;

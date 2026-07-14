@@ -21,7 +21,7 @@ spoken.
 | Block signatures (identity-bound mining) | ML-DSA-65 | FIPS 204 |
 | Key/commitment derivations | SHA3-256 + HKDF-SHA3-256 | FIPS 202 / RFC 5869 |
 | Per-output payload encryption | ChaCha20-Poly1305 (IETF) | RFC 8439 |
-| Proof-of-work | DiscretePower-1: SHAKE-256 + ML-DSA-65 + yespower 1.0 core | FIPS 202 / FIPS 204 |
+| Proof-of-work | DiscretePower-2: SHAKE-256 + ML-DSA-65 + signature-tape yespower-dp2 core | FIPS 202 / FIPS 204 |
 
 Each identity has a long-term **ML-DSA-65 spend key** (spend authority) and an
 **ML-KEM-768 view key** (scanning / payment detection); a PQ address publishes
@@ -31,10 +31,13 @@ how the naive KEM-derived-spend-key design is broken). Mining is **identity-boun
 the coinbase reward can only be spent by the same ML-DSA key that signed the block,
 so pooling hash power requires sharing a spend secret.
 
-Mining uses **DiscretePower-1**, a domain-separated SHAKE-256 transcript in which
-every nonce is signed by the reward identity's ML-DSA-65 key before entering the
-yespower 1.0 memory-hard core. It provides identity binding, not a proof that
-purpose-built custodial pools are impossible.
+Mining uses **DiscretePower-2**, in which every candidate is signed by the reward
+identity's ML-DSA-65 key and that raw 3,312-byte signature tape is injected
+throughout a modified yespower (`yespower-dp2`) memory-hard core. It is
+identity-bound and delegation-hostile — a remote worker needs the whole
+per-candidate tape, not a short digest — but it is **not** a proof that
+purpose-built custodial pools are impossible. See
+[docs/DISCRETE-POW-SPEC-002.md](docs/DISCRETE-POW-SPEC-002.md).
 
 The candidate wire format, domain-separation tags, and blob sizes are
 documented in `docs/PQ-WIRE-FROZEN.md` and pinned by `tests/test_pq_domains.cpp`.

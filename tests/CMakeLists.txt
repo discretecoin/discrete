@@ -56,6 +56,7 @@ add_executable(PqGenesisTests test_pq_genesis.cpp)
 add_executable(DenominationsTests test_denominations.cpp)
 add_executable(PqSenderTests test_pq_sender.cpp)
 add_executable(PqFinalityTests test_pq_finality.cpp)
+add_executable(PqPowTests test_pq_pow.cpp)
 
 target_link_libraries(IntegrationTests IntegrationTestLibrary Wallet NodeRpcProxy InProcessNode P2P Rpc Http CryptoNoteProtocol Transfers Serialization System CryptoNoteCore Logging Common Crypto BlockchainExplorer Checkpoints gtest Mnemonics upnpc-static ${Boost_LIBRARIES})
 target_link_libraries(NodeRpcProxyTests NodeRpcProxy CryptoNoteCore Rpc Http Serialization System Logging Common Crypto ${Boost_LIBRARIES})
@@ -86,6 +87,7 @@ target_link_libraries(PqGenesisTests CryptoNoteCore Serialization System Logging
 target_link_libraries(DenominationsTests gtest ${Boost_LIBRARIES})
 target_link_libraries(PqSenderTests Wallet CryptoNoteCore Serialization System Logging Common Crypto CryptoPq gtest ${Boost_LIBRARIES})
 target_link_libraries(PqFinalityTests Checkpoints CryptoNoteCore Serialization System Logging Common Crypto CryptoPq gtest ${Boost_LIBRARIES})
+target_link_libraries(PqPowTests CryptoNoteCore Serialization System Logging Common Crypto CryptoPq gtest ${Boost_LIBRARIES})
 
 if(MSVC)
   target_link_libraries(SystemTests ws2_32)
@@ -110,6 +112,7 @@ if(MSVC)
   target_link_libraries(DenominationsTests legacy_stdio_definitions.lib ws2_32)
   target_link_libraries(PqSenderTests legacy_stdio_definitions.lib ws2_32)
   target_link_libraries(PqFinalityTests legacy_stdio_definitions.lib ws2_32)
+  target_link_libraries(PqPowTests legacy_stdio_definitions.lib ws2_32)
 endif()
 
 if(${CMAKE_SYSTEM_NAME} STREQUAL "Linux" OR APPLE AND NOT ANDROID)
@@ -156,6 +159,7 @@ set_property(TARGET
   DenominationsTests
   PqSenderTests
   PqFinalityTests
+  PqPowTests
 PROPERTY FOLDER "tests")
 
 add_dependencies(IntegrationTestLibrary version)
@@ -188,6 +192,7 @@ set_property(TARGET PqGenesisTests PROPERTY OUTPUT_NAME "pq_genesis_tests")
 set_property(TARGET DenominationsTests PROPERTY OUTPUT_NAME "denominations_tests")
 set_property(TARGET PqSenderTests PROPERTY OUTPUT_NAME "pq_sender_tests")
 set_property(TARGET PqFinalityTests PROPERTY OUTPUT_NAME "pq_finality_tests")
+set_property(TARGET PqPowTests PROPERTY OUTPUT_NAME "pq_pow_tests")
 
 add_test(HashTests hash_tests)
 add_test(HashTargetTests hash_target_tests)
@@ -215,6 +220,7 @@ add_test(PqGenesisTests pq_genesis_tests)
 add_test(DenominationsTests denominations_tests)
 add_test(PqSenderTests pq_sender_tests)
 add_test(PqFinalityTests pq_finality_tests)
+add_test(PqPowTests pq_pow_tests)
 # Wallet-sync E2E lives in unit_tests; expose just the PQ integration case under a
 # Pq* name so it joins the regression gate (ctest -R "Pq|Denomination") without
 # pulling in the runtime-broken classical UnitTests suites.

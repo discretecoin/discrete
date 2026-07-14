@@ -385,9 +385,17 @@ void serialize(BlockHeader& header, ISerializer& serializer) {
 
 void serialize(Block& block, ISerializer& serializer) {
   serializeBlockHeader(block, serializer);
-  // All Discrete blocks (PQ from genesis) carry an ML-DSA-65 block signature;
-  // merge-mining parent block is never present.
-  serializePqBlob(block.signature, CryptoNote::PQ_SIGNATURE_SIZE, "signature", serializer);
+  // Every Discrete block (PQ from genesis) carries exactly one ML-DSA-65
+  // DiscretePower-2 PoW signature (DP2_SIG_LEN bytes), serialized OUTSIDE the
+  // hashing blob. serializePqBlob reads/writes a fixed-size field, so any other
+  // length is rejected at deserialization (a short stream throws; nothing else
+  // can consume the extra bytes). Merge-mining parent block is never present.
+  //
+  // TODO(DP2 §14): powSignature MAY be pruned at depth >= CRYPTONOTE_FINALITY_DEPTH
+  // under the chain's PQ-signature pruning/checkpoint model. That mechanism (shared
+  // with transaction PQ-signature pruning) is not yet implemented, so the full
+  // signature is retained here; wire pruning through this field when it lands.
+  serializePqBlob(block.powSignature, CryptoNote::PQ_SIGNATURE_SIZE, "signature", serializer);
   serializer(block.baseTransaction, "miner_tx");
   serializer(block.transactionHashes, "tx_hashes");
 }

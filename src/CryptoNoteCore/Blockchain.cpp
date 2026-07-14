@@ -888,10 +888,41 @@ uint64_t Blockchain::getCurrentCumulativeBlocksizeLimit() {
 bool Blockchain::checkProofOfWork(Crypto::cn_context& context, const Block& block,
                                    Difficulty currentDiffic, Crypto::Hash& proofOfWork) {
   (void)context;
-  // DiscretePower-1 is a pure function of the block (no chain
-  // access): CryptoNote::get_block_longhash. See docs/POW.md.
-  if (!get_block_longhash(block, proofOfWork))
+  // DiscretePower-2 (docs/DISCRETE-POW-SPEC-002.md §9). Stateless: a pure function
+  // of the block. The ML-DSA-65 PoW signature is verified BEFORE the memory-hard
+  // yespower-dp2 runs, so a garbage block costs only one signature verification
+  // (the DoS bound). dp2_verify keeps the exact spec ordering internally.
+  BinaryArray blob;
+  if (!get_block_hashing_blob(block, blob)) {
+    logger(ERROR, BRIGHT_RED) << "Block PoW: failed to build hashing blob";
     return false;
+  }
+  std::array<uint8_t, CryptoNote::PQ_AUTH_PUB_SIZE> spendPubBytes;
+  if (!getPqMinerSpendPubFromExtra(block.baseTransaction.extra, spendPubBytes)) {
+    logger(ERROR, BRIGHT_RED) << "Block PoW: coinbase extra missing PQ miner spend pub";
+    return false;
+  }
+  CryptoPQ::DsaPublicKey spendPub;
+  std::copy(spendPubBytes.begin(), spendPubBytes.end(), spendPub.begin());
+
+  Dp2Reject reason = Dp2Reject::None;
+  if (!dp2_verify(blob, spendPub, block.powSignature, proofOfWork, &reason)) {
+    switch (reason) {
+    case Dp2Reject::BadLength:
+      logger(ERROR, BRIGHT_RED) << "Block PoW: wrong powSignature length "
+                                << block.powSignature.size() << " (expected " << parameters::DP2_SIG_LEN << ")";
+      break;
+    case Dp2Reject::BadSignature:
+      logger(ERROR, BRIGHT_RED) << "Block PoW: ML-DSA-65 signature verification failed "
+                                   "(rejected before any yespower-dp2 work)";
+      break;
+    default:
+      logger(ERROR, BRIGHT_RED) << "Block PoW: yespower-dp2 evaluation failed";
+      break;
+    }
+    return false;
+  }
+  // PoW >= target — the caller logs the difficulty context.
   if (!check_hash(proofOfWork, currentDiffic))
     return false;
   return true;
@@ -1163,10 +1194,15 @@ bool Blockchain::validate_block_signature(const Block& b, const Crypto::Hash& id
   // Genesis block is trusted by definition — no signature required.
   if (height == 0) return true;
 
-  // All Discrete blocks carry an ML-DSA-65 block signature.
-  if (b.signature.size() != CryptoNote::PQ_SIGNATURE_SIZE) {
+  // DiscretePower-2 reward binding (docs/DISCRETE-POW-SPEC-002.md §8.3). The PoW
+  // signature (b.powSignature) has ALREADY been verified against minerSpendPk by
+  // checkProofOfWork, which every caller runs first and which enforces the spec's
+  // verify-before-yespower ordering. There is no second reward signature: here we
+  // only enforce that the single coinbase output commits to that same signer, so
+  // the reward can only ever be spent by the key that signed the block.
+  if (b.powSignature.size() != CryptoNote::PQ_SIGNATURE_SIZE) {
     logger(ERROR, BRIGHT_RED) << "Block " << id << " at height " << height
-                               << " has wrong signature size " << b.signature.size();
+                               << " has wrong PoW signature size " << b.powSignature.size();
     return false;
   }
   if (b.baseTransaction.outputs.empty()) {
@@ -1180,24 +1216,8 @@ bool Blockchain::validate_block_signature(const Block& b, const Crypto::Hash& id
     logger(ERROR, BRIGHT_RED) << "Block " << id << " coinbase extra missing PQ miner spend pub";
     return false;
   }
-
-  // Compute the domain-separated DiscretePower-1 header digest.
-  Crypto::Hash sigHash{};
-  if (!get_block_pow_signing_hash(b, sigHash)) {
-    logger(ERROR, BRIGHT_RED) << "Failed to get_block_pow_signing_hash of block " << id;
-    return false;
-  }
-
-  // Verify ML-DSA-65 signature.
   CryptoPQ::DsaPublicKey spendPub;
   std::copy(spendPubBytes.begin(), spendPubBytes.end(), spendPub.begin());
-  CryptoPQ::DsaSignature sig;
-  std::copy(b.signature.begin(), b.signature.end(), sig.begin());
-  if (!CryptoPQ::dsa_verify(spendPub, sigHash.data, sizeof(sigHash.data), sig)) {
-    logger(Logging::ERROR, Logging::BRIGHT_RED) << "ML-DSA block signature mismatch in block "
-      << id << " at height " << height;
-    return false;
-  }
 
   // Identity-bound mining: the coinbase reward recipient MUST be the block
   // signer. The single coinbase output's spendCommit must equal
@@ -2203,7 +2223,14 @@ bool Blockchain::pushBlock(const Block& blockData, const std::vector<Transaction
   Crypto::Hash proof_of_work = NULL_HASH;
   
   const bool inCheckpoint = m_checkpoints.is_in_checkpoint_zone(newHeight);
-  if (inCheckpoint) {
+  if (newHeight == 0) {
+    // Genesis is trusted by definition — its powSignature is an all-zero
+    // placeholder that no key signs. Skip PoW/signature here exactly as
+    // validate_block_signature skips the signature at height 0. (DiscretePower-2
+    // verifies the ML-DSA signature inside checkProofOfWork, so genesis must be
+    // exempted here rather than relying on a trivial difficulty pass.)
+  }
+  else if (inCheckpoint) {
     if (!m_checkpoints.check_block(newHeight, blockHash)) {
       logger(ERROR, BRIGHT_RED) << "CHECKPOINT VALIDATION FAILED";
       bvc.m_verification_failed = true;
