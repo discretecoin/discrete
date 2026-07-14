@@ -391,11 +391,11 @@ void serialize(Block& block, ISerializer& serializer) {
   // length is rejected at deserialization (a short stream throws; nothing else
   // can consume the extra bytes). Merge-mining parent block is never present.
   //
-  // TODO(DiscretePower §14): powSignature MAY be pruned at depth >= CRYPTONOTE_FINALITY_DEPTH
+  // TODO(DiscretePower §14): signature MAY be pruned at depth >= CRYPTONOTE_FINALITY_DEPTH
   // under the chain's PQ-signature pruning/checkpoint model. That mechanism (shared
   // with transaction PQ-signature pruning) is not yet implemented, so the full
   // signature is retained here; wire pruning through this field when it lands.
-  serializePqBlob(block.powSignature, CryptoNote::PQ_SIGNATURE_SIZE, "signature", serializer);
+  serializePqBlob(block.signature, CryptoNote::PQ_SIGNATURE_SIZE, "signature", serializer);
   serializer(block.baseTransaction, "miner_tx");
   serializer(block.transactionHashes, "tx_hashes");
 }

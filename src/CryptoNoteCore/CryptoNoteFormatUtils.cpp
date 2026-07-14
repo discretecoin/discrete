@@ -318,20 +318,20 @@ bool get_block_pow_header_hash(const Block& b, std::array<uint8_t, 64>& H) {
 }
 
 bool discrete_power_prove(const BinaryArray& blob, const CryptoPQ::DsaSecretKey& sk,
-               std::vector<uint8_t>& powSignature, Crypto::Hash& powHash) {
+               std::vector<uint8_t>& signature, Crypto::Hash& powHash) {
   std::array<uint8_t, 64> H = discretePowerHeaderFromBlob(blob);
   std::array<uint8_t, 64> m = discrete_power_sign_message(H);
   CryptoPQ::DsaSignature sig = CryptoPQ::dsa_sign(sk, m.data(), m.size());
-  powSignature.assign(sig.begin(), sig.end());
+  signature.assign(sig.begin(), sig.end());
   return discretePowerMemoryAndFinal(H, sig.data(), powHash);
 }
 
 bool discrete_power_verify(const BinaryArray& blob, const CryptoPQ::DsaPublicKey& pk,
-                const std::vector<uint8_t>& powSignature, Crypto::Hash& powHash,
+                const std::vector<uint8_t>& signature, Crypto::Hash& powHash,
                 DiscretePowerReject* reason) {
   if (reason) *reason = DiscretePowerReject::None;
   // §9 step 1: exact signature length, cheaply, before touching anything else.
-  if (powSignature.size() != parameters::DISCRETE_POWER_SIG_LEN) {
+  if (signature.size() != parameters::DISCRETE_POWER_SIG_LEN) {
     if (reason) *reason = DiscretePowerReject::BadLength;
     return false;
   }
@@ -340,7 +340,7 @@ bool discrete_power_verify(const BinaryArray& blob, const CryptoPQ::DsaPublicKey
   std::array<uint8_t, 64> m = discrete_power_sign_message(H);
   // step 3: ML-DSA-65 Verify BEFORE any yespower-discrete work — this is the DoS bound.
   CryptoPQ::DsaSignature sig{};
-  std::copy(powSignature.begin(), powSignature.end(), sig.begin());
+  std::copy(signature.begin(), signature.end(), sig.begin());
   if (!CryptoPQ::dsa_verify(pk, m.data(), m.size(), sig)) {
     if (reason) *reason = DiscretePowerReject::BadSignature;
     return false;
@@ -356,11 +356,11 @@ bool get_parent_block_hashing_blob(const Block& b, BinaryArray& blob) {
 
 // DiscretePower (https://docs.discrete.cash/#/consensus/pow): PoW hash of an ALREADY-signed
 // block. Recomputes H from the hashing blob and runs the signature-tape
-// yespower-discrete chain over b.powSignature, then finalizes. It does NOT verify the
+// yespower-discrete chain over b.signature, then finalizes. It does NOT verify the
 // signature — consensus uses discrete_power_verify (verify-before-yespower); this entry is
 // for self-built blocks (miner/tests/Core) and is a pure function of the block.
 bool get_block_longhash(const Block& b, Crypto::Hash& res) {
-  if (b.powSignature.size() != parameters::DISCRETE_POWER_SIG_LEN) {
+  if (b.signature.size() != parameters::DISCRETE_POWER_SIG_LEN) {
     return false;
   }
   BinaryArray blob;
@@ -368,7 +368,7 @@ bool get_block_longhash(const Block& b, Crypto::Hash& res) {
     return false;
   }
   std::array<uint8_t, 64> H = discretePowerHeaderFromBlob(blob);
-  return discretePowerMemoryAndFinal(H, b.powSignature.data(), res);
+  return discretePowerMemoryAndFinal(H, b.signature.data(), res);
 }
 
 bool get_block_hash(const Block& b, Hash& res) {
@@ -377,17 +377,12 @@ bool get_block_hash(const Block& b, Hash& res) {
     return false;
   }
 
-  // Block ID is currently the unsigned header/tree hash (the hashing blob),
-  // which excludes powSignature.
-  //
-  // TODO(DiscretePower §8.2/§9.9): the canonical block ID SHOULD commit to powSignature so
-  // that two valid hedged signatures over one hashing blob yield distinct block
-  // IDs and PoW caches cannot be keyed by header alone (https://docs.discrete.cash/#/consensus/pow
-  // §15). Implementing it changes every block ID including genesis, so it is a
-  // deferred consensus change bundled with genesis/checkpoint/KAT regeneration —
-  // out of scope for the in-place PoW swap, mirroring the deferred pruning hook.
-  // Until then, checkProofOfWork always recomputes the PoW from powSignature via
-  // discrete_power_verify, so a swapped signature cannot ride a cached header verdict here.
+  // The block ID intentionally remains the hash of the unsigned block hashing
+  // blob (header plus transaction-tree commitment), which excludes signature.
+  // It is not the DiscretePower result or a hash of full block serialization.
+  // Consensus admission separately verifies signature and recomputes its
+  // signature-dependent PoW, so code must never treat an ID/header cache hit as
+  // proof that an unverified signature has already passed PoW.
   //
   // The header of block version 1 differs from headers of blocks starting from v.2
   if (BLOCK_MAJOR_VERSION_2 == b.majorVersion || BLOCK_MAJOR_VERSION_3 == b.majorVersion) {

@@ -397,7 +397,7 @@ namespace CryptoNote
       // DiscretePower (https://docs.discrete.cash/#/consensus/pow §5): per nonce, sign the
       // candidate header digest m with the resident hot-account spend key and run
       // the signature-tape yespower-discrete chain in one shot. discrete_power_prove fills
-      // b.powSignature and pow. This is identity-bound, delegation-hostile mining:
+      // b.signature and pow. This is identity-bound, delegation-hostile mining:
       // the reward binds to the signing key. Key handling (mlock / zeroize / hot
       // sweep / no-echo password) is owned by startPq() and untouched here.
       Crypto::Hash pow;
@@ -411,7 +411,7 @@ namespace CryptoNote
           if (!get_block_hashing_blob(b, blob)) {
             logger(ERROR) << "get_block_hashing_blob failed.";
             m_stop = true;
-          } else if (!discrete_power_prove(blob, m_pq_spend_sk, b.powSignature, pow)) {
+          } else if (!discrete_power_prove(blob, m_pq_spend_sk, b.signature, pow)) {
             logger(ERROR) << "discrete_power_prove failed.";
             m_stop = true;
           }

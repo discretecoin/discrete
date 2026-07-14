@@ -43,7 +43,7 @@ static void signTestBlock(CryptoNote::Block& blk, const CryptoNote::AccountBase&
   }
   std::array<uint8_t, 64> m = CryptoNote::discrete_power_sign_message(H);
   CryptoPQ::DsaSignature sig = CryptoPQ::dsa_sign(minerAcc.pqSpendSk(), m.data(), m.size());
-  blk.powSignature.assign(sig.begin(), sig.end());
+  blk.signature.assign(sig.begin(), sig.end());
 }
 
 // DiscretePower (CryptoNote::get_block_longhash) is a pure

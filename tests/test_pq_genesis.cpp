@@ -80,6 +80,10 @@ TEST(PqGenesis, GenesisBlockHashPinned) {
   Logging::ConsoleLogger logger;
   Currency currency = makeCurrency(logger);
   EXPECT_EQ(currency.genesisBlock().timestamp, GENESIS_BLOCK_TIMESTAMP);
+  ASSERT_EQ(currency.genesisBlock().signature.size(), PQ_SIGNATURE_SIZE);
+  for (uint8_t byte : currency.genesisBlock().signature) {
+    EXPECT_EQ(byte, 0u);  // trusted wire-shape placeholder; genesis is not mined
+  }
   EXPECT_EQ(Common::podToHex(currency.genesisBlockHash()),
             "3101b248ac612883c47b93fa6a4d9d34020ee2f7541ad17e73c42088748a5219");
 }

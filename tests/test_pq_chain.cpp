@@ -68,7 +68,7 @@ bool signBlockForTest(CryptoNote::Block& blk, const CryptoNote::AccountBase& min
   }
   std::array<uint8_t, 64> m = CryptoNote::discrete_power_sign_message(H);
   CryptoPQ::DsaSignature sig = CryptoPQ::dsa_sign(miner.pqSpendSk(), m.data(), m.size());
-  blk.powSignature.assign(sig.begin(), sig.end());
+  blk.signature.assign(sig.begin(), sig.end());
   return true;
 }
 

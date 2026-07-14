@@ -85,20 +85,20 @@ enum class DiscretePowerReject { None, BadLength, BadSignature };
 
 // Miner path (spec §5): sign m with the resident spend key and run the
 // signature-tape yespower-discrete chain. `blob` is get_block_hashing_blob(b).
-// Fills powSignature (exactly DISCRETE_POWER_SIG_LEN bytes) and powHash.
+// Fills signature (exactly DISCRETE_POWER_SIG_LEN bytes) and powHash.
 bool discrete_power_prove(const BinaryArray& blob, const CryptoPQ::DsaSecretKey& sk,
-               std::vector<uint8_t>& powSignature, Crypto::Hash& powHash);
+               std::vector<uint8_t>& signature, Crypto::Hash& powHash);
 
 // Verifier path (spec §9 steps 1-6), STRICTLY ordered: length check -> recompute
 // H/m -> ML-DSA Verify (BEFORE any yespower-discrete) -> tape chain -> final PoW. On a
 // length or signature failure it returns false having executed ZERO yespower-discrete
 // (the DoS bound); *reason distinguishes the cause when non-null.
 bool discrete_power_verify(const BinaryArray& blob, const CryptoPQ::DsaPublicKey& pk,
-                const std::vector<uint8_t>& powSignature, Crypto::Hash& powHash,
+                const std::vector<uint8_t>& signature, Crypto::Hash& powHash,
                 DiscretePowerReject* reason = nullptr);
 
 // PoW hash of an already-signed block, WITHOUT re-verifying the signature (uses
-// b.powSignature). For self-built blocks (miner/tests/Core); consensus uses
+// b.signature). For self-built blocks (miner/tests/Core); consensus uses
 // discrete_power_verify so the signature is checked before the memory-hard path runs.
 bool get_block_longhash(const Block& b, Crypto::Hash& res);
 bool get_parent_block_hashing_blob(const Block& b, BinaryArray& blob);

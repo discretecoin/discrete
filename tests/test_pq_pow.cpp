@@ -6,13 +6,13 @@
 // https://docs.discrete.cash/#/consensus/pow (revision D). Covers:
 //   * the zero-tape differential anchor (yespower-discrete == stock yespower);
 //   * a frozen known-answer transcript for the yespower-discrete core (§13.1);
-//   * a frozen (blob, minerSpendPk, powSignature) pipeline KAT that discrete_power_verify
+//   * a frozen (blob, minerSpendPk, signature) pipeline KAT that discrete_power_verify
 //     replays byte-identically and mode-independently (§13.1);
 //   * tape sensitivity (§13.5);
 //   * discrete_power_prove / discrete_power_verify round trips (§13.3);
 //   * the rejection matrix + the "zero yespower-discrete on early reject" DoS bound
 //     asserted via an instrumented counter (§13.4);
-//   * block serialize/deserialize preserving powSignature (§13.6);
+//   * block serialize/deserialize preserving signature (§13.6);
 //   * an informational per-attempt timing split (§12 bench).
 //
 // The frozen KAT constants below are generated once by the DISABLED_GenerateKat
@@ -145,7 +145,7 @@ Block makeSerializableBlock(const std::vector<uint8_t>& powSig) {
   out.target = co;
   tx.outputs.push_back(out);
   b.baseTransaction = tx;
-  b.powSignature = powSig;
+  b.signature = powSig;
   return b;
 }
 
@@ -213,7 +213,7 @@ TEST(PqPow, CoreKnownAnswer) {
   }
 }
 
-// Frozen (blob, minerSpendPk, powSignature) → discrete_power_verify must replay the exact H,
+// Frozen (blob, minerSpendPk, signature) → discrete_power_verify must replay the exact H,
 // m, and PoW. The stored signature bytes make this independent of signing mode.
 TEST(PqPow, PipelineKnownAnswerVector) {
   if (!katFrozen()) {
@@ -380,16 +380,16 @@ TEST(PqPow, PowTargetGate) {
   EXPECT_FALSE(check_hash(pow, std::numeric_limits<Difficulty>::max()));  // above target
 }
 
-// powSignature survives block serialize/deserialize byte-for-byte and stays out
+// signature survives block serialize/deserialize byte-for-byte and stays out
 // of the hashing blob.
-TEST(PqPow, BlockSerializeRoundTripPreservesPowSignature) {
+TEST(PqPow, BlockSerializeRoundTripPreservesSignature) {
   std::vector<uint8_t> powSig = patternBytes(parameters::DISCRETE_POWER_SIG_LEN, 11, 3);
   Block b = makeSerializableBlock(powSig);
 
   BinaryArray ba = toBinaryArray(b);
   Block b2;
   ASSERT_TRUE(fromBinaryArray(b2, ba));
-  EXPECT_EQ(b2.powSignature, powSig);
+  EXPECT_EQ(b2.signature, powSig);
 
   BinaryArray hashingBlob;
   ASSERT_TRUE(get_block_hashing_blob(b, hashingBlob));

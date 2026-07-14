@@ -153,7 +153,7 @@ struct Block : public BlockHeader {
   // this same signature is the tape injected into yespower-discrete AND the reward
   // binding (there is no separate reward signature). See
   // https://docs.discrete.cash/#/consensus/pow.
-  std::vector<uint8_t> powSignature;
+  std::vector<uint8_t> signature;
   std::vector<Crypto::Hash> transactionHashes;
 };
 

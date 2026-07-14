@@ -87,7 +87,7 @@ Block makePqBlock() {
     tx.inputs.push_back(bi);
     tx.outputs.push_back(makePqOutput());
     b.baseTransaction = tx;
-    b.powSignature = blob(PQ_SIGNATURE_SIZE, 11, 3);
+    b.signature = blob(PQ_SIGNATURE_SIZE, 11, 3);
     return b;
 }
 
@@ -214,18 +214,25 @@ TEST(PqWire, CoinbaseOutputRoundTrips) {
 }
 
 TEST(PqWire, HashingBlobExcludesSignatureButDiscretePowerDependsOnIt) {
-    // DiscretePower: the hashing blob (and, for now, the block ID) exclude
-    // powSignature, but the PoW hash injects the signature throughout yespower-discrete
-    // so two different signatures over the same header yield different PoW.
+    // DiscretePower: the hashing blob and block ID intentionally exclude
+    // signature, while the PoW hash injects it throughout yespower-discrete.
+    // Alternate proofs for one candidate therefore share an ID but have
+    // different PoW values.
     Block a = makePqBlock();
     Block b = a;
-    b.powSignature = blob(PQ_SIGNATURE_SIZE, 13, 7);
+    b.signature = blob(PQ_SIGNATURE_SIZE, 13, 7);
 
     BinaryArray unsignedA;
     BinaryArray unsignedB;
     ASSERT_TRUE(get_block_hashing_blob(a, unsignedA));
     ASSERT_TRUE(get_block_hashing_blob(b, unsignedB));
-    EXPECT_EQ(unsignedA, unsignedB);  // hashing blob excludes powSignature
+    EXPECT_EQ(unsignedA, unsignedB);  // hashing blob excludes signature
+
+    Crypto::Hash idA{};
+    Crypto::Hash idB{};
+    ASSERT_TRUE(get_block_hash(a, idA));
+    ASSERT_TRUE(get_block_hash(b, idB));
+    EXPECT_EQ(idA, idB);  // block identity is the unsigned header/tree hash
 
     Crypto::Hash powA{};
     Crypto::Hash powB{};
