@@ -48,7 +48,7 @@
 #define TX_EXTRA_PQ_VIEW_PUBKEY_SIZE          1184
 // ML-DSA-65 public (spend) key length. A registration carries BOTH keys so an
 // account number resolves to a full, payable PqAddress (the ownership fix binds
-// spend_commit to the recipient's spend pubkey — see docs/PQ-OWNERSHIP-FIX.md).
+// spend_commit to the recipient's spend pubkey — see https://docs.discrete.cash/#/reference/pq-ownership-model).
 #define TX_EXTRA_PQ_SPEND_PUBKEY_SIZE         1952
 
 namespace CryptoNote {

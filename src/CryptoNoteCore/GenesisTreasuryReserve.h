@@ -31,7 +31,7 @@
 // seed-derived rho per batch), so two `--print-genesis-tx` runs on any host
 // produce byte-identical hex. Only the recipients' PUBLIC keys are baked into
 // GenesisTreasuryReserveKeys.inc; the matching mnemonics/secrets live outside the
-// repo (see docs/GENESIS.md).
+// repo (see https://docs.discrete.cash/#/consensus/genesis).
 
 namespace CryptoNote {
 

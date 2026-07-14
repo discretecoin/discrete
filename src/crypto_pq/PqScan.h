@@ -27,7 +27,7 @@
 #include "PqDerive.h"
 
 // Receiver-side PQ output scanning (spec §7, amended by the ownership-model fix
-// in docs/PQ-OWNERSHIP-FIX.md).
+// in https://docs.discrete.cash/#/reference/pq-ownership-model).
 //
 // Scanning needs only the VIEW SECRET (to decapsulate) and the wallet's own
 // long-term spend PUBLIC key (to recompute spend_commit) — NOT the spend

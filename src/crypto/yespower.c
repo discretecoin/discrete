@@ -140,7 +140,7 @@
  *
  * yespower-dp2 is yespower 1.0 with the miner's ML-DSA-65 signature injected as
  * a 3312-byte "tape" throughout the memory-hard loops (see
- * docs/DISCRETE-POW-SPEC-002.md). It is a DISTINCT consensus algorithm — never
+ * https://docs.discrete.cash/#/consensus/discrete-pow-spec-002). It is a DISTINCT consensus algorithm — never
  * call it plain "yespower". The injection is gated on a thread-local tape
  * pointer: when dp2_tape == NULL the code below is a no-op and yespower() is
  * byte-for-byte the stock algorithm (this equivalence is the differential
@@ -990,7 +990,7 @@ static inline uint32_t integerify(const salsa20_blk_t *B, size_t r)
 
 #if _YESPOWER_OPT_C_PASS_ > 1
 /*
- * DiscretePower-2 injection helpers (see docs/DISCRETE-POW-SPEC-002.md §6).
+ * DiscretePower-2 injection helpers (see https://docs.discrete.cash/#/consensus/discrete-pow-spec-002 §6).
  * These exist only in the yespower 1.0 (pass 2) compilation, the sole variant
  * yespower-dp2 uses.
  */
@@ -1366,7 +1366,7 @@ fail:
 
 /**
  * yespower_dp2(local, src, srclen, params, tape, dst):
- * DiscretePower-2 memory-hard function (docs/DISCRETE-POW-SPEC-002.md §6). It is
+ * DiscretePower-2 memory-hard function (https://docs.discrete.cash/#/consensus/discrete-pow-spec-002 §6). It is
  * yespower 1.0 with the DP2_TAPE_LEN-byte signature tape injected throughout the
  * memory loops. `tape` MUST be non-NULL and exactly DP2_TAPE_LEN bytes; `src` is
  * the 64-byte H, `params->pers` the 32-byte P. This is a DISTINCT algorithm from

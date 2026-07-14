@@ -309,7 +309,7 @@ struct GetPqAccountStatus {
 };
 
 // The container's deposit-wallet scheme (fixed at creation): "aggregated-multikey"
-// (Spec 1) or "single-key-index" (Spec 2). See docs/WALLETD-PQ.md.
+// (Spec 1) or "single-key-index" (Spec 2). See https://docs.discrete.cash/#/wallets/walletd-rpc.
 struct GetPqDepositScheme {
   struct Request {
     void serialize(CryptoNote::ISerializer& serializer);

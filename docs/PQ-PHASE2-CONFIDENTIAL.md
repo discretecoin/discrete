@@ -6,7 +6,7 @@ chain: every non-coinbase transaction is `TX_PQ` or `TX_FREE_REG` under
 
 This note records the preferred direction for a future confidential-amount fork.
 No wire field, parameter, proof system, or activation rule in this document is
-consensus until it is implemented, audited, and frozen in `docs/PQ-WIRE-FROZEN.md`.
+consensus until it is implemented, audited, and frozen in `https://docs.discrete.cash/#/consensus/pq-wire-format`.
 
 ## Direction
 

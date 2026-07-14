@@ -236,7 +236,7 @@ Crypto::Hash shake256Hash(const BinaryArray& input) {
 
 namespace {
 
-// DiscretePower-2 compile-time bindings (docs/DISCRETE-POW-SPEC-002.md §4).
+// DiscretePower-2 compile-time bindings (https://docs.discrete.cash/#/consensus/discrete-pow-spec-002 §4).
 static_assert(parameters::DP2_SIG_LEN == CryptoPQ::kDsaSignatureBytes,
               "DP2_SIG_LEN must equal the liboqs ML-DSA-65 signature length");
 static_assert(parameters::DP2_SIG_LEN == PQ_SIGNATURE_SIZE,
@@ -354,7 +354,7 @@ bool get_parent_block_hashing_blob(const Block& b, BinaryArray& blob) {
   return toBinaryArray(serializer, blob);
 }
 
-// DiscretePower-2 (docs/DISCRETE-POW-SPEC-002.md): PoW hash of an ALREADY-signed
+// DiscretePower-2 (https://docs.discrete.cash/#/consensus/discrete-pow-spec-002): PoW hash of an ALREADY-signed
 // block. Recomputes H from the hashing blob and runs the signature-tape
 // yespower-dp2 chain over b.powSignature, then finalizes. It does NOT verify the
 // signature — consensus uses dp2_verify (verify-before-yespower); this entry is
@@ -382,7 +382,7 @@ bool get_block_hash(const Block& b, Hash& res) {
   //
   // TODO(DP2 §8.2/§9.9): the canonical block ID SHOULD commit to powSignature so
   // that two valid hedged signatures over one hashing blob yield distinct block
-  // IDs and PoW caches cannot be keyed by header alone (docs/DISCRETE-POW-SPEC-002.md
+  // IDs and PoW caches cannot be keyed by header alone (https://docs.discrete.cash/#/consensus/discrete-pow-spec-002
   // §15). Implementing it changes every block ID including genesis, so it is a
   // deferred consensus change bundled with genesis/checkpoint/KAT regeneration —
   // out of scope for the in-place PoW swap, mirroring the deferred pruning hook.

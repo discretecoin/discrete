@@ -1275,7 +1275,7 @@ void CryptoNoteProtocolHandler::logFinalityFork(const CryptoNoteConnectionContex
     << "and ended up on a side chain, and funds are unaffected. Nothing to do if it is in "
     << "sync; if it is behind, check the current tip on the official block explorer and run "
     << "'resync_to_majority --confirm' to rejoin the main chain. "
-    << "See: docs/discrete-finality-recovery.md";
+    << "See: https://docs.discrete.cash/#/operators/finality-recovery";
 }
 
 bool CryptoNoteProtocolHandler::addObserver(ICryptoNoteProtocolObserver* observer) {

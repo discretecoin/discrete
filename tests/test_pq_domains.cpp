@@ -113,7 +113,7 @@ TEST(PqDomains, FreeRegistrationPowDomain) {
 
 TEST(PqDomains, DiscretePowerDomains) {
     // DiscretePower-2 (revision D) consensus domains. See
-    // docs/DISCRETE-POW-SPEC-002.md and CryptoNoteFormatUtils.h.
+    // https://docs.discrete.cash/#/consensus/discrete-pow-spec-002 and CryptoNoteFormatUtils.h.
     EXPECT_STREQ(DISCRETE_POWER_HEADER_DOMAIN, "DiscretePower/v2/header");
     EXPECT_STREQ(DISCRETE_POWER_MEMORY_DOMAIN, "DiscretePower/v2/memory");
     EXPECT_STREQ(DISCRETE_POWER_SIGN_DOMAIN,   "DiscretePower/v2/sign");

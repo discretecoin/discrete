@@ -44,7 +44,7 @@
 // the spend key and spend the output it sent — every payment was clawable. We
 // fix this by giving each identity a LONG-TERM ML-DSA-65 spend keypair (this
 // "spend branch", formerly reserved). The spend public key lives in the address;
-// only the holder of spend_sk can sign a spend. See docs/PQ-OWNERSHIP-FIX.md.
+// only the holder of spend_sk can sign a spend. See https://docs.discrete.cash/#/reference/pq-ownership-model.
 //
 // L note: ML-DSA.KeyGen takes a 32-byte xi (FIPS 204), so the spend branch uses
 // L=32 directly. The view branch uses L=64 because FIPS 203 ML-KEM.KeyGen

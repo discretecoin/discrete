@@ -29,7 +29,7 @@
 
 // Consensus validation for PQ Phase 1 transactions (TRANSACTION_VERSION_1,
 // subtype TX_PQ). Spec §9, amended by the ownership-model fix
-// (docs/PQ-OWNERSHIP-FIX.md). These functions are CONTEXT-FREE: chain-state
+// (https://docs.discrete.cash/#/reference/pq-ownership-model). These functions are CONTEXT-FREE: chain-state
 // lookups (resolving referenced outputs, checking the on-disk nullifier set,
 // height gating) are done by the caller (Blockchain) and fed in here, so the
 // consensus crypto is deterministic and unit-testable in isolation.

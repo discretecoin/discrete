@@ -26,8 +26,8 @@ spoken.
 Each identity has a long-term **ML-DSA-65 spend key** (spend authority) and an
 **ML-KEM-768 view key** (scanning / payment detection); a PQ address publishes
 both. Only the holder of the spend secret can spend — the sender, who runs the
-KEM encapsulation, cannot (see `docs/PQ-OWNERSHIP-FIX.md` for why this matters and
-how the naive KEM-derived-spend-key design is broken). Mining is **identity-bound**:
+KEM encapsulation, cannot. See the [PQ ownership and authorization model](https://docs.discrete.cash/#/reference/pq-ownership-model)
+for the complete construction. Mining is **identity-bound**:
 the coinbase reward can only be spent by the same ML-DSA key that signed the block,
 so pooling hash power requires sharing a spend secret.
 
@@ -36,14 +36,15 @@ identity's ML-DSA-65 key and that raw 3,312-byte signature tape is injected
 throughout a modified yespower (`yespower-dp2`) memory-hard core. It is
 identity-bound and delegation-hostile — a remote worker needs the whole
 per-candidate tape, not a short digest — but it is **not** a proof that
-purpose-built custodial pools are impossible. See
-[docs/DISCRETE-POW-SPEC-002.md](docs/DISCRETE-POW-SPEC-002.md).
+purpose-built custodial pools are impossible. See the
+[DiscretePower-2 specification](https://docs.discrete.cash/#/consensus/discrete-pow-spec-002).
 
 The candidate wire format, domain-separation tags, and blob sizes are
-documented in `docs/PQ-WIRE-FROZEN.md` and pinned by `tests/test_pq_domains.cpp`.
+documented in the [PQ wire-format reference](https://docs.discrete.cash/#/consensus/pq-wire-format)
+and pinned by `tests/test_pq_domains.cpp`.
 For exchange and service wallet operation, including the two `walletd` deposit
-modes and the recommended H-I-T-C workflow, see
-`docs/WALLETD-EXCHANGE-GUIDE.md`.
+modes and the recommended H-I-T-C workflow, see the
+[walletd exchange integration guide](https://docs.discrete.cash/#/wallets/walletd-exchange-guide).
 
 ## Building (Windows / Visual Studio 2022, x64)
 

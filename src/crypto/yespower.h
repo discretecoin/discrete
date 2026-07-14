@@ -122,7 +122,7 @@ extern int yespower_tls(const uint8_t *src, size_t srclen,
 /*
  * DiscretePower-2 (yespower-dp2): yespower 1.0 with the miner's ML-DSA-65
  * signature injected as a 3312-byte tape throughout the memory-hard loops. This
- * is a DISTINCT consensus algorithm — see docs/DISCRETE-POW-SPEC-002.md. `tape`
+ * is a DISTINCT consensus algorithm — see https://docs.discrete.cash/#/consensus/discrete-pow-spec-002. `tape`
  * must be non-NULL and exactly 3312 bytes; `src`/`srclen` is the 64-byte H and
  * `params->pers` the 32-byte P. Never present this as ordinary yespower.
  *

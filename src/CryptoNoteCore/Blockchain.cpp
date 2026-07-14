@@ -888,7 +888,7 @@ uint64_t Blockchain::getCurrentCumulativeBlocksizeLimit() {
 bool Blockchain::checkProofOfWork(Crypto::cn_context& context, const Block& block,
                                    Difficulty currentDiffic, Crypto::Hash& proofOfWork) {
   (void)context;
-  // DiscretePower-2 (docs/DISCRETE-POW-SPEC-002.md §9). Stateless: a pure function
+  // DiscretePower-2 (https://docs.discrete.cash/#/consensus/discrete-pow-spec-002 §9). Stateless: a pure function
   // of the block. The ML-DSA-65 PoW signature is verified BEFORE the memory-hard
   // yespower-dp2 runs, so a garbage block costs only one signature verification
   // (the DoS bound). dp2_verify keeps the exact spec ordering internally.
@@ -1194,7 +1194,7 @@ bool Blockchain::validate_block_signature(const Block& b, const Crypto::Hash& id
   // Genesis block is trusted by definition — no signature required.
   if (height == 0) return true;
 
-  // DiscretePower-2 reward binding (docs/DISCRETE-POW-SPEC-002.md §8.3). The PoW
+  // DiscretePower-2 reward binding (https://docs.discrete.cash/#/consensus/discrete-pow-spec-002 §8.3). The PoW
   // signature (b.powSignature) has ALREADY been verified against minerSpendPk by
   // checkProofOfWork, which every caller runs first and which enforces the spec's
   // verify-before-yespower ordering. There is no second reward signature: here we

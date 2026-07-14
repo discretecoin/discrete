@@ -82,7 +82,7 @@ public:
   virtual std::string getNodeVersion() const override;
   // First-seen finality: true while the connected daemon reports a finality-fork
   // warning in getinfo (it ignored a deeper competing chain). Not part of INode —
-  // surfaced only for status/UI. See discrete-finality-recovery.md.
+  // surfaced only for status/UI. See https://docs.discrete.cash/#/operators/finality-recovery.
   bool getFinalityForkActive() const;
 
   virtual void relayTransaction(const CryptoNote::Transaction& transaction, const Callback& callback) override;

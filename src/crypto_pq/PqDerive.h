@@ -73,7 +73,7 @@ constexpr char kReservedShieldedSerial[] = "discrete-pq-serial-v1";
 
 using Rho = std::array<uint8_t, 32>;
 
-// NOTE (ownership-model fix, docs/PQ-OWNERSHIP-FIX.md): the "spend public key"
+// NOTE (ownership-model fix, https://docs.discrete.cash/#/reference/pq-ownership-model): the "spend public key"
 // bound by spendCommit / nullifier / revealed as authPub is the recipient's
 // LONG-TERM ML-DSA-65 spend key (from the address), NOT a per-output key derived
 // from the KEM shared secret. The draft's per-output spend_seed derivation was

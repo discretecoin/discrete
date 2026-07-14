@@ -29,7 +29,7 @@
 #include "crypto_pq/PqPaymentProof.h"
 
 // High-level builders for the PQ transaction family (spec §6/§8, ownership fix
-// in docs/PQ-OWNERSHIP-FIX.md). These assemble a fully-signed CryptoNote::
+// in https://docs.discrete.cash/#/reference/pq-ownership-model). These assemble a fully-signed CryptoNote::
 // Transaction the node will accept; tests previously hand-rolled this.
 //
 // This header covers TX_PQ (PQ inputs -> PQ outputs), which is node-independent,

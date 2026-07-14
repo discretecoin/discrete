@@ -34,7 +34,7 @@
 // The address carries TWO public keys:
 //   * viewPub  (ML-KEM-768, 1184 B) — stealth delivery / scanning.
 //   * spendPub (ML-DSA-65,  1952 B) — spending authority. Added by the
-//     ownership-model fix (docs/PQ-OWNERSHIP-FIX.md): only the holder of the
+//     ownership-model fix (https://docs.discrete.cash/#/reference/pq-ownership-model): only the holder of the
 //     matching spend secret can spend, so the sender cannot claw payments back.
 //
 // Wire layout fed to the encoder:

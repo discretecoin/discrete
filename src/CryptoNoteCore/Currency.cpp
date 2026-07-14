@@ -170,7 +170,7 @@ namespace CryptoNote {
   // Per-block emission. Discrete has NO fixed supply cap: the block reward is the
   // larger of a decaying exponential term and a PERPETUAL 2%-per-year tail
   // (Friedman's k-percent rule). See the EMISSION_CURVE_TARGET note in
-  // CryptoNoteConfig.h and docs/EMISSION.md for the full policy rationale.
+  // CryptoNoteConfig.h and https://docs.discrete.cash/#/consensus/emission for the full policy rationale.
   uint64_t Currency::calculateReward(uint64_t alreadyGeneratedCoins) const {
     assert(m_emissionSpeedFactor > 0 && m_emissionSpeedFactor <= 8 * sizeof(uint64_t));
     // Exponential term: decays toward zero as circulating supply approaches

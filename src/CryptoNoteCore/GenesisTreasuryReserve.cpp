@@ -25,7 +25,7 @@
 namespace CryptoNote {
 
 // Recipient PUBLIC keys (view + spend), one per Treasury Reserve batch.
-// AUTO-GENERATED; see docs/GENESIS.md. Defines kGenesisTreasuryReserveViewPubHex[]
+// AUTO-GENERATED; see https://docs.discrete.cash/#/consensus/genesis. Defines kGenesisTreasuryReserveViewPubHex[]
 // / kGenesisTreasuryReserveSpendPubHex[] (GENESIS_TREASURY_RESERVE_BATCHES entries
 // each).
 #include "GenesisTreasuryReserveKeys.inc"

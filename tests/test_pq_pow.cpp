@@ -3,7 +3,7 @@
 // This file is part of Discrete.
 //
 // DiscretePower-2 (signature-tape proof of work) tests — see
-// docs/DISCRETE-POW-SPEC-002.md (revision D). Covers:
+// https://docs.discrete.cash/#/consensus/discrete-pow-spec-002 (revision D). Covers:
 //   * the zero-tape differential anchor (yespower-dp2 == stock yespower);
 //   * a frozen known-answer transcript for the yespower-dp2 core (§13.1);
 //   * a frozen (blob, minerSpendPk, powSignature) pipeline KAT that dp2_verify

@@ -40,7 +40,7 @@
 //
 // This store re-introduces exactly that: a txid-keyed, send-time capture of the
 // external recipients, serialized into the wallet's encrypted cache section. It is
-// deliberately shaped to also carry the off-chain payment proof (docs/PQ-PAYMENT-PROOF.md)
+// deliberately shaped to also carry the off-chain payment proof (https://docs.discrete.cash/#/reference/payment-proof)
 // per recipient, since both are the same payer-side, send-time, txid-keyed data — see
 // SentPaymentEntry::proof.
 

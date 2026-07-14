@@ -26,7 +26,7 @@
 #include "PqDerive.h"
 
 // Sender-side construction of one PQ output (spec §6, amended by the
-// ownership-model fix in docs/PQ-OWNERSHIP-FIX.md).
+// ownership-model fix in https://docs.discrete.cash/#/reference/pq-ownership-model).
 //
 // The output binds the RECIPIENT'S long-term ML-DSA spend public key (from
 // their address) via spend_commit = SHA3(spend_pub || rho). The sender can

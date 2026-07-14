@@ -44,7 +44,7 @@ namespace CryptoNote {
 
 // Deposit-wallet scheme, chosen once at container creation and persisted (it
 // changes how deposit keys are derived and how the encPayload routing field is
-// interpreted, so it cannot be a per-run toggle). See docs/WALLETD-PQ.md and the
+// interpreted, so it cannot be a per-run toggle). See https://docs.discrete.cash/#/wallets/walletd-rpc and the
 // deposit-wallet-modes spec.
 enum class PqDepositScheme : uint8_t {
   // Spec 1: one shared ML-KEM view key + a FAMILY of ML-DSA spend keys (one per
