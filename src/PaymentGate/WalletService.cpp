@@ -1463,8 +1463,24 @@ std::error_code WalletService::listPqDepositAddresses(std::vector<std::string>& 
 
 std::error_code WalletService::sendTransaction(const SendTransaction::Request& request, std::string& transactionHash,
                                                std::vector<std::string>& paymentProofs) {
+  std::string ignoredTransactionHex;
+  return createTransaction(request, true, transactionHash, ignoredTransactionHex, paymentProofs);
+}
+
+std::error_code WalletService::prepareTransaction(const SendTransaction::Request& request,
+                                                  std::string& transactionHash,
+                                                  std::string& transactionHex,
+                                                  std::vector<std::string>& paymentProofs) {
+  return createTransaction(request, false, transactionHash, transactionHex, paymentProofs);
+}
+
+std::error_code WalletService::createTransaction(const SendTransaction::Request& request, bool relay,
+                                                 std::string& transactionHash,
+                                                 std::string& transactionHex,
+                                                 std::vector<std::string>& paymentProofs) {
   try {
     paymentProofs.clear();
+    transactionHex.clear();
     System::EventLock lk(readyEvent);
 
     // PQ-native path: destinations are PQ addresses / account numbers, and the
@@ -1530,15 +1546,27 @@ std::error_code WalletService::sendTransaction(const SendTransaction::Request& r
       std::vector<std::string> recipientAddresses;
       recipientAddresses.reserve(request.transfers.size());
       for (const auto& transfer : request.transfers) recipientAddresses.push_back(transfer.address);
-      CryptoNote::PqSendResult r = gw->sendPqTransfer(recipients, request.fee, request.unlockHeight,
-                                                      extra, sourceAddresses, changeAddress,
-                                                      recipientAddresses);
+      CryptoNote::PqSendResult r = relay
+          ? gw->sendPqTransfer(recipients, request.fee, request.unlockHeight,
+                               extra, sourceAddresses, changeAddress, recipientAddresses)
+          : gw->preparePqTransfer(recipients, request.fee, request.unlockHeight,
+                                  extra, sourceAddresses, changeAddress);
       transactionHash = Common::podToHex(CryptoNote::getObjectHash(r.tx));
+      if (!relay) {
+        transactionHex = Common::toHex(CryptoNote::toBinaryArray(r.tx));
+      }
       paymentProofs.reserve(r.proofs.size());
       for (const auto& proof : r.proofs)
         paymentProofs.push_back(CryptoNote::encodePqPaymentProof(proof, currency.isTestnet()));
-      logger(Logging::DEBUGGING) << "Transaction " << transactionHash << " has been sent";
+      logger(Logging::DEBUGGING) << "Transaction " << transactionHash
+                                 << (relay ? " has been sent" : " has been prepared without relay");
       return std::error_code();
+    }
+
+    if (!relay) {
+      logger(Logging::WARNING, Logging::BRIGHT_YELLOW)
+          << "Raw transaction preparation is unavailable for a non-PQ wallet";
+      return make_error_code(CryptoNote::error::WRONG_PARAMETERS);
     }
 
     validateAddresses(request.sourceAddresses, currency, logger);
@@ -1567,7 +1595,8 @@ std::error_code WalletService::sendTransaction(const SendTransaction::Request& r
   } catch (const CryptoNote::PqSendError& e) {
     // Map the builder's failure to a specific, self-explanatory wallet error code so
     // the client sees the reason instead of a bare "Internal error occurred".
-    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while sending transaction: " << e.what();
+    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while "
+        << (relay ? "sending" : "preparing") << " transaction: " << e.what();
     switch (e.code) {
       case CryptoNote::PqSendErrorCode::InsufficientFunds:
         return make_error_code(CryptoNote::error::INSUFFICIENT_FUNDS);
@@ -1582,10 +1611,12 @@ std::error_code WalletService::sendTransaction(const SendTransaction::Request& r
     }
     return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
   } catch (std::system_error& x) {
-    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while sending transaction: " << x.what();
+    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while "
+        << (relay ? "sending" : "preparing") << " transaction: " << x.what();
     return x.code();
   } catch (std::exception& x) {
-    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while sending transaction: " << x.what();
+    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while "
+        << (relay ? "sending" : "preparing") << " transaction: " << x.what();
     return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
   }
 

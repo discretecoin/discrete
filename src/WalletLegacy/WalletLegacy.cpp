@@ -1017,6 +1017,51 @@ PqSendResult WalletLegacy::sendPqTransfer(const std::vector<PqSendOutput>& recip
   return result;
 }
 
+PqSendResult WalletLegacy::preparePqTransfer(const std::vector<PqSendOutput>& recipients,
+                                             uint64_t fee, uint64_t unlockHeight,
+                                             const std::vector<uint8_t>& extra) {
+  if (!pqEnabled()) {
+    throw std::runtime_error("Spending is unavailable for this wallet");
+  }
+  AccountKeys keys;
+  getAccountKeys(keys);
+  if (keys.spendSecretKey == NULL_SECRET_KEY) {
+    throw std::runtime_error("tracking wallet cannot spend");
+  }
+
+  PqWalletKeys pq = derivePqWalletKeys(keys.spendSecretKey);
+  PqSendRequest req;
+  req.recipients = recipients;
+  req.explicitFee = fee;
+  req.unlockHeight = unlockHeight;
+  req.extra = extra;
+  std::memcpy(req.genesisId.data(), m_currency.genesisBlockHash().data,
+              req.genesisId.size());
+  req.scheme = PqDepositScheme::SingleKeyIndex;
+
+  std::vector<PqSpendInput> spendable = pqSpendableInputs();
+  m_logger(INFO) << "Preparing PQ transaction without relay: recipients " << recipients.size()
+                 << ", available inputs " << spendable.size()
+                 << ", requested fee atomic units " << fee
+                 << ", extra bytes " << extra.size();
+
+  PqSendResult result;
+  try {
+    result = buildPqSend(spendable, pq, req);
+  } catch (const PqSendError& e) {
+    m_logger(WARNING) << "PQ transaction preparation rejected: " << e.what()
+                      << ", available inputs " << spendable.size();
+    throw;
+  }
+
+  const Crypto::Hash txid = getObjectHash(result.tx);
+  m_logger(INFO) << "PQ transaction prepared without relay: hash " << Common::podToHex(txid)
+                 << ", bytes " << toBinaryArray(result.tx).size()
+                 << ", sent atomic units " << result.sent
+                 << ", fee atomic units " << result.fee;
+  return result;
+}
+
 const SentPaymentRecord* WalletLegacy::getPaymentProofs(const Crypto::Hash& txid) const {
   std::unique_lock<std::mutex> lock(m_cacheMutex);
   return m_sentPayments.find(txid);
@@ -1321,6 +1366,58 @@ TransactionId WalletLegacy::sendTransaction(const std::vector<WalletLegacyTransf
 TransactionId WalletLegacy::sendTransaction(const std::vector<WalletLegacyTransfer>& transfers, const std::list<TransactionOutputInformation>& /*selectedOuts*/, uint64_t fee, const std::string& extra, uint64_t ignoredPrivacyWidth, uint64_t unlockHeightstamp) {
   // PQ input selection is internal to buildPqSend; the caller-chosen output set is ignored.
   return sendTransaction(transfers, fee, extra, ignoredPrivacyWidth, unlockHeightstamp);
+}
+
+std::string WalletLegacy::prepareRawTransaction(TransactionId& transactionId,
+                                                const WalletLegacyTransfer& transfer,
+                                                uint64_t fee, const std::string& extra,
+                                                uint64_t ignoredPrivacyWidth,
+                                                uint64_t unlockHeightstamp) {
+  return prepareRawTransaction(transactionId, std::vector<WalletLegacyTransfer>{transfer},
+                               fee, extra, ignoredPrivacyWidth, unlockHeightstamp);
+}
+
+std::string WalletLegacy::prepareRawTransaction(TransactionId& transactionId,
+                                                const std::vector<WalletLegacyTransfer>& transfers,
+                                                uint64_t fee, const std::string& extra,
+                                                uint64_t ignoredPrivacyWidth,
+                                                uint64_t unlockHeightstamp) {
+  throwIfNotInitialised();
+  (void)ignoredPrivacyWidth;
+  transactionId = WALLET_LEGACY_INVALID_TRANSACTION_ID;
+
+  std::vector<PqSendOutput> recipients;
+  recipients.reserve(transfers.size());
+  for (const auto& transfer : transfers) {
+    if (transfer.amount < 0) {
+      throw std::system_error(make_error_code(std::errc::invalid_argument));
+    }
+    CryptoPQ::KemPublicKey viewPub;
+    CryptoPQ::DsaPublicKey spendPub;
+    uint64_t subaddrT = 0;
+    if (!resolvePqRecipient(m_node, m_currency.isTestnet(), transfer.address,
+                            viewPub, spendPub, subaddrT)) {
+      m_logger(ERROR) << "prepareRawTransaction: failed to resolve recipient '"
+                      << transfer.address << "'";
+      throw std::system_error(make_error_code(CryptoNote::error::BAD_ADDRESS));
+    }
+    recipients.push_back(PqSendOutput{viewPub, spendPub,
+                                      static_cast<uint64_t>(transfer.amount), subaddrT});
+  }
+
+  const std::vector<uint8_t> extraBytes(extra.begin(), extra.end());
+  PqSendResult result = preparePqTransfer(recipients, fee, unlockHeightstamp, extraBytes);
+  return Common::toHex(toBinaryArray(result.tx));
+}
+
+std::string WalletLegacy::prepareRawTransaction(TransactionId& transactionId,
+                                                const std::vector<WalletLegacyTransfer>& transfers,
+                                                const std::list<TransactionOutputInformation>& /*selectedOuts*/,
+                                                uint64_t fee, const std::string& extra,
+                                                uint64_t ignoredPrivacyWidth,
+                                                uint64_t unlockHeightstamp) {
+  return prepareRawTransaction(transactionId, transfers, fee, extra,
+                               ignoredPrivacyWidth, unlockHeightstamp);
 }
 
 void WalletLegacy::sendTransactionCallback(WalletRequest::Callback callback, std::error_code ec) {

@@ -112,6 +112,10 @@ public:
     std::vector<std::string> ignored;
     return sendTransaction(request, transactionHash, ignored);
   }
+  std::error_code prepareTransaction(const SendTransaction::Request& request,
+                                     std::string& transactionHash,
+                                     std::string& transactionHex,
+                                     std::vector<std::string>& paymentProofs);
   std::error_code getPaymentProofs(const std::string& transactionHash, std::vector<PaymentProofRpcEntry>& entries);
   std::error_code deletePaymentProof(const std::string& transactionHash, uint32_t recipientIndex,
                                      bool confirm, bool& deleted);
@@ -124,6 +128,10 @@ public:
   std::error_code verifyMessage(const std::string& message, const std::string& signature, const std::string& address, bool& isValid);
 
 private:
+  std::error_code createTransaction(const SendTransaction::Request& request, bool relay,
+                                    std::string& transactionHash,
+                                    std::string& transactionHex,
+                                    std::vector<std::string>& paymentProofs);
   void refresh();
   void reset();
 

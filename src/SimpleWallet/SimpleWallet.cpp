@@ -476,6 +476,8 @@ simple_wallet::simple_wallet(System::Dispatcher& dispatcher, const CryptoNote::C
   m_consoleHandler.setHandler("bc_height", std::bind(&simple_wallet::show_blockchain_height, this, std::placeholders::_1), "Show blockchain height");
   m_consoleHandler.setHandler("transfer", std::bind(&simple_wallet::pq_transfer, this, std::placeholders::_1),
     "transfer <address> <amount> [-p <payment_id>] - Send funds to an address (or account number)");
+  m_consoleHandler.setHandler("prepare", std::bind(&simple_wallet::pq_prepare, this, std::placeholders::_1),
+    "prepare <address> <amount> [-p <payment_id>] - Build and print a raw transaction without relaying it");
   m_consoleHandler.setHandler("payment_proof", std::bind(&simple_wallet::payment_proof, this, std::placeholders::_1),
     "payment_proof <txid> - List stored recipient rows and spend-authority proofs");
   m_consoleHandler.setHandler("export_payment_proof", std::bind(&simple_wallet::export_payment_proof, this, std::placeholders::_1),
@@ -2082,6 +2084,60 @@ bool simple_wallet::pq_transfer(const std::vector<std::string> &args) {
     fail_msg_writer() << "Cannot send: " << e.what();
   } catch (const std::exception& e) {
     fail_msg_writer() << "Failed to send transaction: " << e.what();
+  }
+  return true;
+}
+//----------------------------------------------------------------------------------------------------
+bool simple_wallet::pq_prepare(const std::vector<std::string> &args) {
+  if (args.size() != 2 && args.size() != 4) {
+    fail_msg_writer() << "usage: prepare <address> <amount> [-p <payment_id>]";
+    return true;
+  }
+  if (m_trackingWallet) {
+    fail_msg_writer() << "This is a tracking wallet and cannot spend.";
+    return true;
+  }
+  auto* wl = dynamic_cast<CryptoNote::WalletLegacy*>(m_wallet.get());
+  if (!wl || !wl->pqEnabled()) {
+    fail_msg_writer() << "Spending is unavailable for this wallet.";
+    return true;
+  }
+
+  uint64_t amount = 0;
+  if (!m_currency.parseAmount(args[1], amount) || amount == 0 ||
+      amount > static_cast<uint64_t>((std::numeric_limits<int64_t>::max)())) {
+    fail_msg_writer() << "Invalid amount.";
+    return true;
+  }
+
+  std::vector<uint8_t> extra;
+  if (args.size() == 4) {
+    if (args[2] != "-p") {
+      fail_msg_writer() << "usage: prepare <address> <amount> [-p <payment_id>]";
+      return true;
+    }
+    if (!CryptoNote::createTxExtraWithPaymentId(args[3], extra)) {
+      fail_msg_writer() << "payment ID has invalid format: \"" << args[3]
+                        << "\", expected 64-character hex string";
+      return true;
+    }
+  }
+
+  try {
+    CryptoNote::WalletLegacyTransfer transfer;
+    transfer.address = args[0];
+    transfer.amount = static_cast<int64_t>(amount);
+    std::string extraString(extra.begin(), extra.end());
+    CryptoNote::TransactionId unusedTransactionId = CryptoNote::WALLET_LEGACY_INVALID_TRANSACTION_ID;
+    const std::string raw = m_wallet->prepareRawTransaction(
+        unusedTransactionId, transfer, 0, extraString, 0, 0);
+    success_msg_writer() << "Raw transaction prepared successfully (not relayed):";
+    success_msg_writer(true) << raw;
+    success_msg_writer() << "The wallet has not reserved these inputs; avoid preparing or sending another transaction until this one is relayed or discarded.";
+  } catch (const CryptoNote::PqSendError& e) {
+    fail_msg_writer() << "Cannot prepare transaction: " << e.what();
+  } catch (const std::exception& e) {
+    fail_msg_writer() << "Failed to prepare transaction: " << e.what();
   }
   return true;
 }

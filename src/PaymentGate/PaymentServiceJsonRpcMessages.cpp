@@ -424,4 +424,10 @@ void SendTransaction::Response::serialize(CryptoNote::ISerializer& serializer) {
   serializer(paymentProofs, "paymentProofs");
 }
 
+void PrepareTransaction::Response::serialize(CryptoNote::ISerializer& serializer) {
+  serializer(transactionHash, "transactionHash");
+  serializer(transactionHex, "transactionHex");
+  serializer(paymentProofs, "paymentProofs");
+}
+
 }
