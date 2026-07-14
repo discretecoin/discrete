@@ -1,6 +1,7 @@
 // Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 // Copyright (c) 2016, The Forknote developers
 // Copyright (c) 2017-2026, The Karbo developers
+// Copyright (c) 2026, The Discrete developers
 //
 // This file is part of Karbo.
 //
@@ -1210,9 +1211,12 @@ struct COMMAND_RPC_CHECK_TRANSACTION_PROOF {
   };
 
   struct response {
+    // Retained under the historical Karbo field name for RPC compatibility;
+    // in Discrete it reports validity of the PQ payment proof.
     bool signature_valid;
     uint64_t received_amount;
     std::vector<TransactionOutput> outputs;
+    std::vector<uint32_t> output_indices;
     uint32_t confirmations = 0;
     std::string status;
 
@@ -1220,6 +1224,7 @@ struct COMMAND_RPC_CHECK_TRANSACTION_PROOF {
       KV_MEMBER(signature_valid)
       KV_MEMBER(received_amount)
       KV_MEMBER(outputs)
+      KV_MEMBER(output_indices)
       KV_MEMBER(confirmations)
       KV_MEMBER(status)
     }

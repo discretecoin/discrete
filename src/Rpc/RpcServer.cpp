@@ -3,6 +3,7 @@
 // Copyright (c) 2016, The Forknote developers
 // Copyright (c) 2018-2023 Conceal Network & Conceal Devs
 // Copyright (c) 2016-2026, The Karbo developers
+// Copyright (c) 2026, The Discrete developers
 //
 // This file is part of Karbo.
 //
@@ -52,6 +53,7 @@
 #include "CryptoNoteCore/CryptoNoteBasicImpl.h"
 #include "CryptoNoteProtocol/ICryptoNoteProtocolQuery.h"
 #include "PqTxType.h"
+#include "Wallet/PqTransactionBuilder.h"
 #include "P2p/ConnectionContext.h"
 #include "P2p/NetNode.h"
 
@@ -672,6 +674,7 @@ bool RpcServer::processJsonRpcRequest(const CryptoNote::HttpRequest& request, Cr
       { "getcurrencyid", { makeMemberMethod(&RpcServer::on_get_currency_id), true } },
       { "getstatsbyheights", { makeMemberMethod(&RpcServer::on_get_stats_by_heights), false } },
       { "getstatsinrange", { makeMemberMethod(&RpcServer::on_get_stats_by_heights_range), false } },
+      { "checktransactionproof", { makeMemberMethod(&RpcServer::on_check_transaction_proof), true } },
       { "validateaddress", { makeMemberMethod(&RpcServer::on_validate_address), true } },
       { "verifymessage", { makeMemberMethod(&RpcServer::on_verify_message), true } },
       { "resolveopenalias", { makeMemberMethod(&RpcServer::on_resolve_open_alias), true } },
@@ -2037,6 +2040,99 @@ bool RpcServer::on_get_block_timestamp_by_height(const COMMAND_RPC_GET_BLOCK_TIM
 
   m_core.getBlockTimestamp(req.height, res.timestamp);
 
+  return true;
+}
+
+bool RpcServer::on_check_transaction_proof(
+    const COMMAND_RPC_CHECK_TRANSACTION_PROOF::request& req,
+    COMMAND_RPC_CHECK_TRANSACTION_PROOF::response& res) {
+  Crypto::Hash transactionId;
+  if (!parse_hash256(req.transaction_id, transactionId)) {
+    throw JsonRpc::JsonRpcError{
+        CORE_RPC_ERROR_CODE_WRONG_PARAM, "Failed to parse transaction ID"};
+  }
+
+  ResolvedRecipient recipient;
+  PqAddress address;
+  if (decodePqAddress(req.destination_address, m_core.currency().isTestnet(), address)) {
+    recipient.viewPub = address.viewPub;
+    recipient.spendPub = address.spendPub;
+  } else {
+    AccountNumber account;
+    uint32_t subaddressIndex = 0;
+    const bool hasSubaddress = AccountNumber::fromStringWithIndex(
+        req.destination_address, account, subaddressIndex);
+    if (!hasSubaddress && !AccountNumber::fromString(req.destination_address, account)) {
+      throw JsonRpc::JsonRpcError{
+          CORE_RPC_ERROR_CODE_WRONG_PARAM, "Failed to parse destination address"};
+    }
+    if (!m_core.resolvePqAccountNumber(
+            account.blockHeight, account.txIndex,
+            recipient.viewPub, recipient.spendPub)) {
+      throw JsonRpc::JsonRpcError{
+          CORE_RPC_ERROR_CODE_WRONG_PARAM, "Destination account number was not found"};
+    }
+    recipient.subaddrIndexT = hasSubaddress ? subaddressIndex : 0;
+  }
+
+  PqPaymentProof proof;
+  if (!decodePqPaymentProof(req.signature, m_core.currency().isTestnet(), proof)) {
+    throw JsonRpc::JsonRpcError{
+        CORE_RPC_ERROR_CODE_WRONG_PARAM, "Payment proof decoding error"};
+  }
+
+  std::vector<Crypto::Hash> transactionIds{transactionId};
+  std::list<Transaction> transactions;
+  std::list<Crypto::Hash> missedTransactions;
+  m_core.getTransactions(transactionIds, transactions, missedTransactions, true);
+  if (!missedTransactions.empty() || transactions.size() != 1) {
+    throw JsonRpc::JsonRpcError{
+        CORE_RPC_ERROR_CODE_WRONG_PARAM,
+        "Couldn't find transaction " + req.transaction_id};
+  }
+
+  res.signature_valid = false;
+  res.received_amount = 0;
+  res.outputs.clear();
+  res.output_indices.clear();
+  res.confirmations = 0;
+
+  try {
+    const Transaction& transaction = transactions.front();
+    if (transaction.txType != TX_PQ) {
+      res.status = CORE_RPC_STATUS_OK;
+      return true;
+    }
+    const PqPaymentProofTransaction proofTransaction =
+        makePqPaymentProofTransaction(transaction);
+    CryptoPQ::Hash256 expectedGenesis{};
+    const Crypto::Hash genesis = m_core.currency().genesisBlockHash();
+    std::memcpy(expectedGenesis.data(), genesis.data, expectedGenesis.size());
+
+    res.received_amount = verifyPqPaymentProof(
+        proof, expectedGenesis, proofTransaction, recipient);
+    res.signature_valid = true;
+    res.output_indices.reserve(proof.entries.size());
+    res.outputs.reserve(proof.entries.size());
+    for (const PqPaymentProofEntry& entry : proof.entries) {
+      res.output_indices.push_back(entry.outputIndex);
+      res.outputs.push_back(transaction.outputs[entry.outputIndex]);
+    }
+  } catch (const PqPaymentProofError&) {
+    res.status = CORE_RPC_STATUS_OK;
+    return true;
+  }
+
+  Crypto::Hash blockHash;
+  uint32_t blockHeight = 0;
+  if (m_core.getBlockContainingTx(transactionId, blockHash, blockHeight)) {
+    const uint32_t chainHeight = m_core.getCurrentBlockchainHeight();
+    if (chainHeight > blockHeight) {
+      res.confirmations = chainHeight - blockHeight;
+    }
+  }
+
+  res.status = CORE_RPC_STATUS_OK;
   return true;
 }
 
