@@ -64,7 +64,7 @@ std::string short_hash_str(const Crypto::Hash& h);
 
 bool get_block_hashing_blob(const Block& b, BinaryArray& blob);
 
-// DiscretePower-2 consensus domains (https://docs.discrete.cash/#/consensus/pow, revision D).
+// DiscretePower consensus domains (https://docs.discrete.cash/#/consensus/pow, revision D).
 // ASCII, hashed with SHAKE-256 without a trailing NUL. No tag is reused by any
 // other subsystem (derivation, messaging, CT).
 constexpr char DISCRETE_POWER_HEADER_DOMAIN[]     = "DiscretePower/v2/header";  // -> H  (64 B)
@@ -73,33 +73,33 @@ constexpr char DISCRETE_POWER_SIGN_DOMAIN[]       = "DiscretePower/v2/sign";    
 constexpr char DISCRETE_POWER_FINAL_DOMAIN[]      = "DiscretePower/v2/final";   // -> PoW (32 B)
 
 // H = SHAKE256(header-domain || get_block_hashing_blob(b), 64) — the 64-byte
-// DiscretePower-2 header digest that binds the whole candidate template.
+// DiscretePower header digest that binds the whole candidate template.
 bool get_block_pow_header_hash(const Block& b, std::array<uint8_t, 64>& H);
 // m = SHAKE256(sign-domain || H, 64) — the ML-DSA-65 message signed per attempt.
-std::array<uint8_t, 64> dp2_sign_message(const std::array<uint8_t, 64>& H);
-// P = SHAKE256(memory-domain, 32) — the constant yespower-dp2 personalization.
-const std::array<uint8_t, 32>& dp2_memory_personalization();
+std::array<uint8_t, 64> discrete_power_sign_message(const std::array<uint8_t, 64>& H);
+// P = SHAKE256(memory-domain, 32) — the constant yespower-discrete personalization.
+const std::array<uint8_t, 32>& discrete_power_memory_personalization();
 
-// Distinct reasons dp2_verify can reject before running any yespower-dp2 work.
-enum class Dp2Reject { None, BadLength, BadSignature };
+// Distinct reasons discrete_power_verify can reject before running any yespower-discrete work.
+enum class DiscretePowerReject { None, BadLength, BadSignature };
 
 // Miner path (spec §5): sign m with the resident spend key and run the
-// signature-tape yespower-dp2 chain. `blob` is get_block_hashing_blob(b).
-// Fills powSignature (exactly DP2_SIG_LEN bytes) and powHash.
-bool dp2_prove(const BinaryArray& blob, const CryptoPQ::DsaSecretKey& sk,
+// signature-tape yespower-discrete chain. `blob` is get_block_hashing_blob(b).
+// Fills powSignature (exactly DISCRETE_POWER_SIG_LEN bytes) and powHash.
+bool discrete_power_prove(const BinaryArray& blob, const CryptoPQ::DsaSecretKey& sk,
                std::vector<uint8_t>& powSignature, Crypto::Hash& powHash);
 
 // Verifier path (spec §9 steps 1-6), STRICTLY ordered: length check -> recompute
-// H/m -> ML-DSA Verify (BEFORE any yespower-dp2) -> tape chain -> final PoW. On a
-// length or signature failure it returns false having executed ZERO yespower-dp2
+// H/m -> ML-DSA Verify (BEFORE any yespower-discrete) -> tape chain -> final PoW. On a
+// length or signature failure it returns false having executed ZERO yespower-discrete
 // (the DoS bound); *reason distinguishes the cause when non-null.
-bool dp2_verify(const BinaryArray& blob, const CryptoPQ::DsaPublicKey& pk,
+bool discrete_power_verify(const BinaryArray& blob, const CryptoPQ::DsaPublicKey& pk,
                 const std::vector<uint8_t>& powSignature, Crypto::Hash& powHash,
-                Dp2Reject* reason = nullptr);
+                DiscretePowerReject* reason = nullptr);
 
 // PoW hash of an already-signed block, WITHOUT re-verifying the signature (uses
 // b.powSignature). For self-built blocks (miner/tests/Core); consensus uses
-// dp2_verify so the signature is checked before the memory-hard path runs.
+// discrete_power_verify so the signature is checked before the memory-hard path runs.
 bool get_block_longhash(const Block& b, Crypto::Hash& res);
 bool get_parent_block_hashing_blob(const Block& b, BinaryArray& blob);
 bool get_aux_block_header_hash(const Block& b, Crypto::Hash& res);

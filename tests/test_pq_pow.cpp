@@ -2,22 +2,22 @@
 //
 // This file is part of Discrete.
 //
-// DiscretePower-2 (signature-tape proof of work) tests — see
+// DiscretePower (signature-tape proof of work) tests — see
 // https://docs.discrete.cash/#/consensus/pow (revision D). Covers:
-//   * the zero-tape differential anchor (yespower-dp2 == stock yespower);
-//   * a frozen known-answer transcript for the yespower-dp2 core (§13.1);
-//   * a frozen (blob, minerSpendPk, powSignature) pipeline KAT that dp2_verify
+//   * the zero-tape differential anchor (yespower-discrete == stock yespower);
+//   * a frozen known-answer transcript for the yespower-discrete core (§13.1);
+//   * a frozen (blob, minerSpendPk, powSignature) pipeline KAT that discrete_power_verify
 //     replays byte-identically and mode-independently (§13.1);
 //   * tape sensitivity (§13.5);
-//   * dp2_prove / dp2_verify round trips (§13.3);
-//   * the rejection matrix + the "zero yespower-dp2 on early reject" DoS bound
+//   * discrete_power_prove / discrete_power_verify round trips (§13.3);
+//   * the rejection matrix + the "zero yespower-discrete on early reject" DoS bound
 //     asserted via an instrumented counter (§13.4);
 //   * block serialize/deserialize preserving powSignature (§13.6);
 //   * an informational per-attempt timing split (§12 bench).
 //
 // The frozen KAT constants below are generated once by the DISABLED_GenerateKat
 // test (see the note there) and pasted in. Regenerate them if — and only if —
-// the yespower-dp2 algorithm or the transcript domains change on purpose.
+// the yespower-discrete algorithm or the transcript domains change on purpose.
 
 #include "gtest/gtest.h"
 
@@ -89,13 +89,13 @@ std::array<uint8_t, 64> computeH(const std::vector<uint8_t>& blob) {
   return H;
 }
 
-// Run the yespower-dp2 core directly for a raw (H, tape) pair (bypasses ML-DSA).
+// Run the yespower-discrete core directly for a raw (H, tape) pair (bypasses ML-DSA).
 std::array<uint8_t, 32> runCore(const std::array<uint8_t, 64>& H,
-                                const std::array<uint8_t, parameters::DP2_TAPE_LEN>& tape) {
-  const std::array<uint8_t, 32>& P = dp2_memory_personalization();
-  yespower_params_t yp{ parameters::DP2_N, parameters::DP2_R, P.data(), P.size() };
+                                const std::array<uint8_t, parameters::DISCRETE_POWER_TAPE_LEN>& tape) {
+  const std::array<uint8_t, 32>& P = discrete_power_memory_personalization();
+  yespower_params_t yp{ parameters::DISCRETE_POWER_N, parameters::DISCRETE_POWER_R, P.data(), P.size() };
   yespower_binary_t y{};
-  EXPECT_EQ(yespower_dp2_tls(H.data(), H.size(), &yp, tape.data(), &y), 0);
+  EXPECT_EQ(yespower_discrete_tls(H.data(), H.size(), &yp, tape.data(), &y), 0);
   std::array<uint8_t, 32> out{};
   std::memcpy(out.data(), y.uc, 32);
   return out;
@@ -112,12 +112,12 @@ Crypto::Hash finalizePow(const std::array<uint8_t, 64>& H, const std::array<uint
   return h;
 }
 
-std::array<uint8_t, parameters::DP2_TAPE_LEN> tapeFromSig(const std::vector<uint8_t>& sig) {
-  std::array<uint8_t, parameters::DP2_TAPE_LEN> tape{};
-  std::memcpy(tape.data(), sig.data(), parameters::DP2_SIG_LEN);
-  tape[parameters::DP2_SIG_LEN + 0] = 0x80;
-  tape[parameters::DP2_SIG_LEN + 1] = 0x00;
-  tape[parameters::DP2_SIG_LEN + 2] = 0x00;
+std::array<uint8_t, parameters::DISCRETE_POWER_TAPE_LEN> tapeFromSig(const std::vector<uint8_t>& sig) {
+  std::array<uint8_t, parameters::DISCRETE_POWER_TAPE_LEN> tape{};
+  std::memcpy(tape.data(), sig.data(), parameters::DISCRETE_POWER_SIG_LEN);
+  tape[parameters::DISCRETE_POWER_SIG_LEN + 0] = 0x80;
+  tape[parameters::DISCRETE_POWER_SIG_LEN + 1] = 0x00;
+  tape[parameters::DISCRETE_POWER_SIG_LEN + 2] = 0x00;
   return tape;
 }
 
@@ -170,26 +170,26 @@ bool katFrozen() { return kPipeSig[0] != '@'; }
 
 }  // namespace
 
-// The zero/NULL-tape no-op makes yespower-dp2 collapse to stock yespower 1.0.
+// The zero/NULL-tape no-op makes yespower-discrete collapse to stock yespower 1.0.
 // This is the differential anchor that the unmodified memory-hard machinery is
 // preserved and that the injection plumbing is a pure XOR add-on.
 TEST(PqPow, ZeroTapeEqualsStockYespower) {
-  const std::array<uint8_t, 32>& P = dp2_memory_personalization();
+  const std::array<uint8_t, 32>& P = discrete_power_memory_personalization();
   for (uint8_t k = 1; k <= 3; ++k) {
     std::array<uint8_t, 64> H{};
     for (size_t i = 0; i < H.size(); ++i) H[i] = static_cast<uint8_t>(i * 7 + k);
-    yespower_params_t yp{ parameters::DP2_N, parameters::DP2_R, P.data(), P.size() };
+    yespower_params_t yp{ parameters::DISCRETE_POWER_N, parameters::DISCRETE_POWER_R, P.data(), P.size() };
     yespower_binary_t stock{};
-    yespower_binary_t dp2{};
+    yespower_binary_t discrete{};
     ASSERT_EQ(yespower_tls(H.data(), H.size(), &yp, &stock), 0);
-    std::array<uint8_t, parameters::DP2_TAPE_LEN> zeroTape{};  // all-zero => XOR no-op
-    ASSERT_EQ(yespower_dp2_tls(H.data(), H.size(), &yp, zeroTape.data(), &dp2), 0);
-    EXPECT_EQ(std::memcmp(stock.uc, dp2.uc, 32), 0)
-        << "zero-tape yespower-dp2 must equal stock yespower 1.0";
+    std::array<uint8_t, parameters::DISCRETE_POWER_TAPE_LEN> zeroTape{};  // all-zero => XOR no-op
+    ASSERT_EQ(yespower_discrete_tls(H.data(), H.size(), &yp, zeroTape.data(), &discrete), 0);
+    EXPECT_EQ(std::memcmp(stock.uc, discrete.uc, 32), 0)
+        << "zero-tape yespower-discrete must equal stock yespower 1.0";
   }
 }
 
-// Frozen reference transcript for the yespower-dp2 core (mode-independent; no
+// Frozen reference transcript for the yespower-discrete core (mode-independent; no
 // ML-DSA). Any change to y/PoW here means the memory algorithm changed.
 TEST(PqPow, CoreKnownAnswer) {
   std::array<uint8_t, 64> H{};
@@ -197,9 +197,9 @@ TEST(PqPow, CoreKnownAnswer) {
     std::vector<uint8_t> hp = patternBytes(64, 7, 3);
     std::copy(hp.begin(), hp.end(), H.begin());
   }
-  std::array<uint8_t, parameters::DP2_TAPE_LEN> tape{};
+  std::array<uint8_t, parameters::DISCRETE_POWER_TAPE_LEN> tape{};
   {
-    std::vector<uint8_t> tp = patternBytes(parameters::DP2_TAPE_LEN, 5, 1);
+    std::vector<uint8_t> tp = patternBytes(parameters::DISCRETE_POWER_TAPE_LEN, 5, 1);
     std::copy(tp.begin(), tp.end(), tape.begin());
   }
   std::array<uint8_t, 32> y = runCore(H, tape);
@@ -213,7 +213,7 @@ TEST(PqPow, CoreKnownAnswer) {
   }
 }
 
-// Frozen (blob, minerSpendPk, powSignature) → dp2_verify must replay the exact H,
+// Frozen (blob, minerSpendPk, powSignature) → discrete_power_verify must replay the exact H,
 // m, and PoW. The stored signature bytes make this independent of signing mode.
 TEST(PqPow, PipelineKnownAnswerVector) {
   if (!katFrozen()) {
@@ -223,25 +223,25 @@ TEST(PqPow, PipelineKnownAnswerVector) {
   auto kp = CryptoPQ::dsa_keygen_from_seed(pipelineSeed());
   std::vector<uint8_t> blob = pipelineBlob();
   std::vector<uint8_t> sig = fromHex(kPipeSig);
-  ASSERT_EQ(sig.size(), static_cast<size_t>(parameters::DP2_SIG_LEN));
+  ASSERT_EQ(sig.size(), static_cast<size_t>(parameters::DISCRETE_POWER_SIG_LEN));
 
   std::array<uint8_t, 64> H = computeH(blob);
-  std::array<uint8_t, 64> m = dp2_sign_message(H);
+  std::array<uint8_t, 64> m = discrete_power_sign_message(H);
   EXPECT_EQ(toHex(H), kPipeH);
   EXPECT_EQ(toHex(m), kPipeM);
 
   Crypto::Hash pow{};
-  Dp2Reject reason = Dp2Reject::None;
-  ASSERT_TRUE(dp2_verify(blob, kp.first, sig, pow, &reason));
-  EXPECT_EQ(reason, Dp2Reject::None);
+  DiscretePowerReject reason = DiscretePowerReject::None;
+  ASSERT_TRUE(discrete_power_verify(blob, kp.first, sig, pow, &reason));
+  EXPECT_EQ(reason, DiscretePowerReject::None);
   EXPECT_EQ(toHex(pow.data, 32), kPipePow);
 }
 
-// Flipping any tape byte must perturb the yespower-dp2 output (§13.5 regression).
+// Flipping any tape byte must perturb the yespower-discrete output (§13.5 regression).
 TEST(PqPow, TapeByteChangesOutput) {
   std::array<uint8_t, 64> H{};
   for (size_t i = 0; i < H.size(); ++i) H[i] = static_cast<uint8_t>(i * 3 + 1);
-  std::array<uint8_t, parameters::DP2_TAPE_LEN> tape{};
+  std::array<uint8_t, parameters::DISCRETE_POWER_TAPE_LEN> tape{};
   for (size_t i = 0; i < tape.size(); ++i) tape[i] = static_cast<uint8_t>(i * 5 + 2);
 
   std::array<uint8_t, 32> y0 = runCore(H, tape);
@@ -249,11 +249,11 @@ TEST(PqPow, TapeByteChangesOutput) {
   auto t1 = tape; t1[0] ^= 0x01;
   EXPECT_NE(y0, runCore(H, t1)) << "first tape word must matter";
 
-  auto t2 = tape; t2[parameters::DP2_SIG_LEN - 1] ^= 0x01;
+  auto t2 = tape; t2[parameters::DISCRETE_POWER_SIG_LEN - 1] ^= 0x01;
   EXPECT_NE(y0, runCore(H, t2)) << "last signature tape byte must matter";
 }
 
-// dp2_prove output verifies with dp2_verify (matching key), and get_block_longhash
+// discrete_power_prove output verifies with discrete_power_verify (matching key), and get_block_longhash
 // on a signed block reproduces the same PoW. Multiple random keys and blobs.
 TEST(PqPow, ProveVerifyRoundTrip) {
   for (uint8_t k = 1; k <= 3; ++k) {
@@ -264,13 +264,13 @@ TEST(PqPow, ProveVerifyRoundTrip) {
 
     std::vector<uint8_t> sig;
     Crypto::Hash powProve{};
-    ASSERT_TRUE(dp2_prove(blob, kp.second, sig, powProve));
-    EXPECT_EQ(sig.size(), static_cast<size_t>(parameters::DP2_SIG_LEN));
+    ASSERT_TRUE(discrete_power_prove(blob, kp.second, sig, powProve));
+    EXPECT_EQ(sig.size(), static_cast<size_t>(parameters::DISCRETE_POWER_SIG_LEN));
 
     Crypto::Hash powVerify{};
-    Dp2Reject reason = Dp2Reject::None;
-    ASSERT_TRUE(dp2_verify(blob, kp.first, sig, powVerify, &reason));
-    EXPECT_EQ(reason, Dp2Reject::None);
+    DiscretePowerReject reason = DiscretePowerReject::None;
+    ASSERT_TRUE(discrete_power_verify(blob, kp.first, sig, powVerify, &reason));
+    EXPECT_EQ(reason, DiscretePowerReject::None);
     EXPECT_EQ(powProve, powVerify);
 
     // Re-running the memory core over the same (H, tape) is deterministic.
@@ -291,8 +291,8 @@ TEST(PqPow, DistinctSignaturesGiveDistinctPow) {
 
   std::vector<uint8_t> sig1, sig2;
   Crypto::Hash pow1{}, pow2{};
-  ASSERT_TRUE(dp2_prove(blob, kp.second, sig1, pow1));
-  ASSERT_TRUE(dp2_prove(blob, kp.second, sig2, pow2));
+  ASSERT_TRUE(discrete_power_prove(blob, kp.second, sig1, pow1));
+  ASSERT_TRUE(discrete_power_prove(blob, kp.second, sig2, pow2));
   if (sig1 != sig2) {
     EXPECT_NE(pow1, pow2) << "distinct signatures must yield distinct PoW";
   } else {
@@ -301,7 +301,7 @@ TEST(PqPow, DistinctSignaturesGiveDistinctPow) {
 }
 
 // Rejection matrix + DoS ordering: length and signature-verify failures must
-// reject with the right reason AND run ZERO yespower-dp2 (asserted via the
+// reject with the right reason AND run ZERO yespower-discrete (asserted via the
 // instrumented counter). A good verify runs exactly one.
 TEST(PqPow, RejectMatrixAndDosOrdering) {
   auto kp = CryptoPQ::dsa_keygen_from_seed([] {
@@ -318,53 +318,53 @@ TEST(PqPow, RejectMatrixAndDosOrdering) {
 
   std::vector<uint8_t> sig;
   Crypto::Hash pow{};
-  ASSERT_TRUE(dp2_prove(blob, kp.second, sig, pow));
+  ASSERT_TRUE(discrete_power_prove(blob, kp.second, sig, pow));
 
-  // Good baseline: exactly one yespower-dp2 execution.
-  yespower_dp2_call_count_reset();
+  // Good baseline: exactly one yespower-discrete execution.
+  yespower_discrete_call_count_reset();
   {
     Crypto::Hash h{};
-    Dp2Reject r = Dp2Reject::None;
-    EXPECT_TRUE(dp2_verify(blob, kp.first, sig, h, &r));
-    EXPECT_EQ(r, Dp2Reject::None);
+    DiscretePowerReject r = DiscretePowerReject::None;
+    EXPECT_TRUE(discrete_power_verify(blob, kp.first, sig, h, &r));
+    EXPECT_EQ(r, DiscretePowerReject::None);
   }
-  EXPECT_EQ(yespower_dp2_call_count(), 1u);
+  EXPECT_EQ(yespower_discrete_call_count(), 1u);
 
   auto expectReject = [&](const std::vector<uint8_t>& s, const CryptoPQ::DsaPublicKey& pk,
-                          const std::vector<uint8_t>& b, Dp2Reject want) {
-    yespower_dp2_call_count_reset();
+                          const std::vector<uint8_t>& b, DiscretePowerReject want) {
+    yespower_discrete_call_count_reset();
     Crypto::Hash h{};
-    Dp2Reject r = Dp2Reject::None;
-    EXPECT_FALSE(dp2_verify(b, pk, s, h, &r));
+    DiscretePowerReject r = DiscretePowerReject::None;
+    EXPECT_FALSE(discrete_power_verify(b, pk, s, h, &r));
     EXPECT_EQ(r, want);
     // Both bad-length and bad-signature reject BEFORE any memory-hard work.
-    EXPECT_EQ(yespower_dp2_call_count(), 0u);
+    EXPECT_EQ(yespower_discrete_call_count(), 0u);
   };
 
   // Length: truncated, oversized, absent.
-  { auto s = sig; s.pop_back();      expectReject(s, kp.first, blob, Dp2Reject::BadLength); }
-  { auto s = sig; s.push_back(0x00); expectReject(s, kp.first, blob, Dp2Reject::BadLength); }
-  { std::vector<uint8_t> s;          expectReject(s, kp.first, blob, Dp2Reject::BadLength); }
+  { auto s = sig; s.pop_back();      expectReject(s, kp.first, blob, DiscretePowerReject::BadLength); }
+  { auto s = sig; s.push_back(0x00); expectReject(s, kp.first, blob, DiscretePowerReject::BadLength); }
+  { std::vector<uint8_t> s;          expectReject(s, kp.first, blob, DiscretePowerReject::BadLength); }
 
   // Bit flip in each of the four signature quarters.
-  const size_t q = parameters::DP2_SIG_LEN / 4;
+  const size_t q = parameters::DISCRETE_POWER_SIG_LEN / 4;
   for (int i = 0; i < 4; ++i) {
     auto s = sig;
-    size_t pos = (i == 3) ? (parameters::DP2_SIG_LEN - 1) : static_cast<size_t>(i) * q + 3;
+    size_t pos = (i == 3) ? (parameters::DISCRETE_POWER_SIG_LEN - 1) : static_cast<size_t>(i) * q + 3;
     s[pos] ^= 0x40;
-    expectReject(s, kp.first, blob, Dp2Reject::BadSignature);
+    expectReject(s, kp.first, blob, DiscretePowerReject::BadSignature);
   }
 
   // Wrong public key.
-  expectReject(sig, other.first, blob, Dp2Reject::BadSignature);
+  expectReject(sig, other.first, blob, DiscretePowerReject::BadSignature);
 
   // Valid signature over the wrong m: mutate the template (nonce/coinbase) after
   // signing so the recomputed H and m no longer match the signature.
-  { auto b2 = blob; b2[0] ^= 0x01; expectReject(sig, kp.first, b2, Dp2Reject::BadSignature); }
+  { auto b2 = blob; b2[0] ^= 0x01; expectReject(sig, kp.first, b2, DiscretePowerReject::BadSignature); }
 }
 
 // The target gate lives in the consensus check (check_hash), separate from
-// dp2_verify. A valid PoW passes difficulty 1 and fails an unreachable difficulty.
+// discrete_power_verify. A valid PoW passes difficulty 1 and fails an unreachable difficulty.
 TEST(PqPow, PowTargetGate) {
   auto kp = CryptoPQ::dsa_keygen_from_seed([] {
     CryptoPQ::DsaKeypairSeed s{};
@@ -374,7 +374,7 @@ TEST(PqPow, PowTargetGate) {
   std::vector<uint8_t> blob = patternBytes(96, 7, 2);
   std::vector<uint8_t> sig;
   Crypto::Hash pow{};
-  ASSERT_TRUE(dp2_prove(blob, kp.second, sig, pow));
+  ASSERT_TRUE(discrete_power_prove(blob, kp.second, sig, pow));
 
   EXPECT_TRUE(check_hash(pow, 1));                                  // any PoW meets difficulty 1
   EXPECT_FALSE(check_hash(pow, std::numeric_limits<Difficulty>::max()));  // above target
@@ -383,7 +383,7 @@ TEST(PqPow, PowTargetGate) {
 // powSignature survives block serialize/deserialize byte-for-byte and stays out
 // of the hashing blob.
 TEST(PqPow, BlockSerializeRoundTripPreservesPowSignature) {
-  std::vector<uint8_t> powSig = patternBytes(parameters::DP2_SIG_LEN, 11, 3);
+  std::vector<uint8_t> powSig = patternBytes(parameters::DISCRETE_POWER_SIG_LEN, 11, 3);
   Block b = makeSerializableBlock(powSig);
 
   BinaryArray ba = toBinaryArray(b);
@@ -407,7 +407,7 @@ TEST(PqPow, BenchTimingSplit) {
   }());
   std::vector<uint8_t> blob = patternBytes(160, 13, 9);
   std::array<uint8_t, 64> H = computeH(blob);
-  std::array<uint8_t, 64> m = dp2_sign_message(H);
+  std::array<uint8_t, 64> m = discrete_power_sign_message(H);
 
   const int iters = 8;
   double signMs = 0, coreMs = 0, shakeMs = 0;
@@ -425,8 +425,8 @@ TEST(PqPow, BenchTimingSplit) {
     coreMs += std::chrono::duration<double, std::milli>(t2 - t1).count();
     shakeMs += std::chrono::duration<double, std::milli>(t3 - t2).count();
   }
-  std::printf("[dp2 bench N=%u r=%u] sign=%.3f ms  yespower-dp2=%.3f ms  shake=%.3f ms  (per attempt, avg of %d)\n",
-              parameters::DP2_N, parameters::DP2_R, signMs / iters, coreMs / iters, shakeMs / iters, iters);
+  std::printf("[DiscretePower bench N=%u r=%u] sign=%.3f ms  yespower-discrete=%.3f ms  shake=%.3f ms  (per attempt, avg of %d)\n",
+              parameters::DISCRETE_POWER_N, parameters::DISCRETE_POWER_R, signMs / iters, coreMs / iters, shakeMs / iters, iters);
   SUCCEED();
 }
 
@@ -437,8 +437,8 @@ TEST(PqPow, DISABLED_GenerateKat) {
   // Core transcript.
   std::array<uint8_t, 64> H{};
   { auto hp = patternBytes(64, 7, 3); std::copy(hp.begin(), hp.end(), H.begin()); }
-  std::array<uint8_t, parameters::DP2_TAPE_LEN> tape{};
-  { auto tp = patternBytes(parameters::DP2_TAPE_LEN, 5, 1); std::copy(tp.begin(), tp.end(), tape.begin()); }
+  std::array<uint8_t, parameters::DISCRETE_POWER_TAPE_LEN> tape{};
+  { auto tp = patternBytes(parameters::DISCRETE_POWER_TAPE_LEN, 5, 1); std::copy(tp.begin(), tp.end(), tape.begin()); }
   std::array<uint8_t, 32> y = runCore(H, tape);
   Crypto::Hash corePow = finalizePow(H, y);
   std::printf("kCoreY   = \"%s\"\n", toHex(y).c_str());
@@ -449,9 +449,9 @@ TEST(PqPow, DISABLED_GenerateKat) {
   std::vector<uint8_t> blob = pipelineBlob();
   std::vector<uint8_t> sig;
   Crypto::Hash pipePow{};
-  ASSERT_TRUE(dp2_prove(blob, kp.second, sig, pipePow));
+  ASSERT_TRUE(discrete_power_prove(blob, kp.second, sig, pipePow));
   std::array<uint8_t, 64> pipeH = computeH(blob);
-  std::array<uint8_t, 64> pipeM = dp2_sign_message(pipeH);
+  std::array<uint8_t, 64> pipeM = discrete_power_sign_message(pipeH);
   std::printf("kPipeH   = \"%s\"\n", toHex(pipeH).c_str());
   std::printf("kPipeM   = \"%s\"\n", toHex(pipeM).c_str());
   std::printf("kPipePow = \"%s\"\n", toHex(pipePow.data, 32).c_str());

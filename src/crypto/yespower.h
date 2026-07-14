@@ -120,7 +120,7 @@ extern int yespower_tls(const uint8_t *src, size_t srclen,
     const yespower_params_t *params, yespower_binary_t *dst);
 
 /*
- * DiscretePower-2 (yespower-dp2): yespower 1.0 with the miner's ML-DSA-65
+ * DiscretePower (yespower-discrete): yespower 1.0 with the miner's ML-DSA-65
  * signature injected as a 3312-byte tape throughout the memory-hard loops. This
  * is a DISTINCT consensus algorithm — see https://docs.discrete.cash/#/consensus/pow. `tape`
  * must be non-NULL and exactly 3312 bytes; `src`/`srclen` is the 64-byte H and
@@ -128,19 +128,19 @@ extern int yespower_tls(const uint8_t *src, size_t srclen,
  *
  * Return 0 on success; or -1 on error.
  */
-extern int yespower_dp2(yespower_local_t *local,
+extern int yespower_discrete(yespower_local_t *local,
     const uint8_t *src, size_t srclen,
     const yespower_params_t *params, const uint8_t *tape,
     yespower_binary_t *dst);
 
-extern int yespower_dp2_tls(const uint8_t *src, size_t srclen,
+extern int yespower_discrete_tls(const uint8_t *src, size_t srclen,
     const yespower_params_t *params, const uint8_t *tape,
     yespower_binary_t *dst);
 
-/* Count of yespower-dp2 memory-hard executions on the calling thread, and a
- * reset. Backs the "zero yespower-dp2 on early-rejected block" test assertion. */
-extern uint64_t yespower_dp2_call_count(void);
-extern void yespower_dp2_call_count_reset(void);
+/* Count of yespower-discrete memory-hard executions on the calling thread, and a
+ * reset. Backs the "zero yespower-discrete on early-rejected block" test assertion. */
+extern uint64_t yespower_discrete_call_count(void);
+extern void yespower_discrete_call_count_reset(void);
 
 #ifdef __cplusplus
 }

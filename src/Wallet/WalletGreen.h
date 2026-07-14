@@ -117,7 +117,7 @@ public:
   // tracking wallet.
   uint32_t reservePqDepositIndex();
   // The deposit address for `index` under THIS container's scheme:
-  //  - AggregatedMultikey: base58 PQ address = (shared view key, deposit spend key
+  //  - AggregatedMultikey: Bech32m PQ address = (shared view key, deposit spend key
   //    #index). regBlockHeight/regTxIndex are ignored.
   //  - SingleKeyIndex: the H-I-T-C account number built from the account's on-chain
   //    registration coords (regBlockHeight=H, regTxIndex=I) and T=index. The caller

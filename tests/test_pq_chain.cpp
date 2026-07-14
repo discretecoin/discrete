@@ -66,7 +66,7 @@ bool signBlockForTest(CryptoNote::Block& blk, const CryptoNote::AccountBase& min
   if (!CryptoNote::get_block_pow_header_hash(blk, H)) {
     return false;
   }
-  std::array<uint8_t, 64> m = CryptoNote::dp2_sign_message(H);
+  std::array<uint8_t, 64> m = CryptoNote::discrete_power_sign_message(H);
   CryptoPQ::DsaSignature sig = CryptoPQ::dsa_sign(miner.pqSpendSk(), m.data(), m.size());
   blk.powSignature.assign(sig.begin(), sig.end());
   return true;
@@ -102,7 +102,7 @@ bool mineBlock(CryptoNote::Core& core, const CryptoNote::Currency& currency,
 
   CryptoNote::Difficulty diff = core.getNextBlockDifficulty();
   if (diff > 1) {
-    // Discrete PoW commits to SHA3(ML-DSA signature), so the block must be
+    // DiscretePower binds PoW to the ML-DSA signature, so the block must be
     // re-signed after every nonce change. Use the signing fillNonce overload.
     fillNonce(blk, diff, &core.get_blockchain_storage(), miner);
   }

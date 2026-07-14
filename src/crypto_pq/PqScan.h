@@ -64,7 +64,7 @@ struct PqScanOutput {
   uint32_t             outputIndex = 0;
   uint64_t             amount = 0;
   KemCiphertext        kemCt{};
-  std::vector<uint8_t> encPayload;   // 48 bytes
+  std::vector<uint8_t> encPayload;   // 56 bytes: 40-byte plaintext + 16-byte tag
   Hash256              spendCommit{};
 };
 
@@ -118,9 +118,8 @@ struct PqAggregateOwned {
 };
 
 // Try to recognize ONE output against a set of deposit spend keys sharing viewSk.
-// Iterates T = 0..spendPubs.size()-1: for each T, derives outContext(T), decrypts,
-// reads back T from the payload, and checks spend_commit(spendPubs[T]).
-// Decapsulates once per call; each T trial is a cheap AEAD + SHA3 operation.
+// Aggregated-multikey addresses always use T=0, so this decapsulates and decrypts
+// once, then checks spend_commit against each known derived spend key.
 // Returns the first match (or nullopt). Tampering and non-ownership are silent.
 std::optional<PqAggregateOwned> scanPqOutputAggregate(
     const KemSecretKey& viewSk,

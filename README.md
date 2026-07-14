@@ -21,7 +21,7 @@ spoken.
 | Block signatures (identity-bound mining) | ML-DSA-65 | FIPS 204 |
 | Key/commitment derivations | SHA3-256 + HKDF-SHA3-256 | FIPS 202 / RFC 5869 |
 | Per-output payload encryption | ChaCha20-Poly1305 (IETF) | RFC 8439 |
-| Proof-of-work | DiscretePower-2: SHAKE-256 + ML-DSA-65 + signature-tape yespower-dp2 core | FIPS 202 / FIPS 204 |
+| Proof-of-work | DiscretePower: SHAKE-256 + ML-DSA-65 + signature-tape yespower-discrete core | FIPS 202 / FIPS 204 |
 
 Each identity has a long-term **ML-DSA-65 spend key** (spend authority) and an
 **ML-KEM-768 view key** (scanning / payment detection); a PQ address publishes
@@ -31,13 +31,13 @@ for the complete construction. Mining is **identity-bound**:
 the coinbase reward can only be spent by the same ML-DSA key that signed the block,
 so pooling hash power requires sharing a spend secret.
 
-Mining uses **DiscretePower-2**, in which every candidate is signed by the reward
+Mining uses **DiscretePower**, in which every candidate is signed by the reward
 identity's ML-DSA-65 key and that raw 3,312-byte signature tape is injected
-throughout a modified yespower (`yespower-dp2`) memory-hard core. It is
+throughout a modified yespower (`yespower-discrete`) memory-hard core. It is
 identity-bound and delegation-hostile — a remote worker needs the whole
 per-candidate tape, not a short digest — but it is **not** a proof that
 purpose-built custodial pools are impossible. See the
-[DiscretePower-2 specification](https://docs.discrete.cash/#/consensus/pow).
+[DiscretePower specification](https://docs.discrete.cash/#/consensus/pow).
 
 The candidate wire format, domain-separation tags, and blob sizes are
 documented in the [PQ wire-format reference](https://docs.discrete.cash/#/consensus/pq-wire-format)

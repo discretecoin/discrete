@@ -35,7 +35,7 @@ using Hash256 = std::array<uint8_t, 32>;
 Hash256 sha3_256(const void* data, std::size_t len) noexcept;
 
 // FIPS 202 SHAKE-256 with caller-selected output length. Used by the
-// DiscretePower-2 consensus transcript around the yespower-dp2 memory-hard core.
+// DiscretePower consensus transcript around the yespower-discrete memory-hard core.
 void shake256(const void* data, std::size_t len,
               void* out, std::size_t out_len) noexcept;
 

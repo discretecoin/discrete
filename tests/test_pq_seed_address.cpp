@@ -3,8 +3,8 @@
 // This file is part of Discrete.
 //
 // Tests for the PQ Phase 1 seed-derivation chain (PqSeed) and address format
-// (PqAddress) — spec §3/§4. Covers deterministic recovery, address round-trips
-// under both encodings, checksum tamper rejection, and varying network prefix.
+// (PqAddress) — spec §3/§4. Covers deterministic recovery, extended-Bech32m
+// address round-trips, checksum tamper rejection, and varying network prefix.
 
 #include "gtest/gtest.h"
 

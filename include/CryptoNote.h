@@ -145,10 +145,12 @@ struct BlockHeader {
 struct Block : public BlockHeader {
   ParentBlock parentBlock;
   Transaction baseTransaction;
-  // DiscretePower-2 PoW signature: exactly one ML-DSA-65 signature (DP2_SIG_LEN =
-  // 3309 bytes), serialized OUTSIDE the hashing blob but committed by the block
-  // ID. The miner signs m = SHAKE256("DiscretePower/v2/sign" || H) every attempt;
-  // this same signature is the tape injected into yespower-dp2 AND the reward
+  // DiscretePower PoW signature: exactly one ML-DSA-65 signature (DISCRETE_POWER_SIG_LEN =
+  // 3309 bytes), serialized OUTSIDE the hashing blob. The current block-v1 ID
+  // also excludes it; admission still recomputes and verifies the signature-bound
+  // PoW for every candidate. The miner signs
+  // m = SHAKE256("DiscretePower/v2/sign" || H) every attempt;
+  // this same signature is the tape injected into yespower-discrete AND the reward
   // binding (there is no separate reward signature). See
   // https://docs.discrete.cash/#/consensus/pow.
   std::vector<uint8_t> powSignature;

@@ -888,10 +888,10 @@ uint64_t Blockchain::getCurrentCumulativeBlocksizeLimit() {
 bool Blockchain::checkProofOfWork(Crypto::cn_context& context, const Block& block,
                                    Difficulty currentDiffic, Crypto::Hash& proofOfWork) {
   (void)context;
-  // DiscretePower-2 (https://docs.discrete.cash/#/consensus/pow §9). Stateless: a pure function
+  // DiscretePower (https://docs.discrete.cash/#/consensus/pow §9). Stateless: a pure function
   // of the block. The ML-DSA-65 PoW signature is verified BEFORE the memory-hard
-  // yespower-dp2 runs, so a garbage block costs only one signature verification
-  // (the DoS bound). dp2_verify keeps the exact spec ordering internally.
+  // yespower-discrete runs, so a garbage block costs only one signature verification
+  // (the DoS bound). discrete_power_verify keeps the exact spec ordering internally.
   BinaryArray blob;
   if (!get_block_hashing_blob(block, blob)) {
     logger(ERROR, BRIGHT_RED) << "Block PoW: failed to build hashing blob";
@@ -905,19 +905,19 @@ bool Blockchain::checkProofOfWork(Crypto::cn_context& context, const Block& bloc
   CryptoPQ::DsaPublicKey spendPub;
   std::copy(spendPubBytes.begin(), spendPubBytes.end(), spendPub.begin());
 
-  Dp2Reject reason = Dp2Reject::None;
-  if (!dp2_verify(blob, spendPub, block.powSignature, proofOfWork, &reason)) {
+  DiscretePowerReject reason = DiscretePowerReject::None;
+  if (!discrete_power_verify(blob, spendPub, block.powSignature, proofOfWork, &reason)) {
     switch (reason) {
-    case Dp2Reject::BadLength:
+    case DiscretePowerReject::BadLength:
       logger(ERROR, BRIGHT_RED) << "Block PoW: wrong powSignature length "
-                                << block.powSignature.size() << " (expected " << parameters::DP2_SIG_LEN << ")";
+                                << block.powSignature.size() << " (expected " << parameters::DISCRETE_POWER_SIG_LEN << ")";
       break;
-    case Dp2Reject::BadSignature:
+    case DiscretePowerReject::BadSignature:
       logger(ERROR, BRIGHT_RED) << "Block PoW: ML-DSA-65 signature verification failed "
-                                   "(rejected before any yespower-dp2 work)";
+                                   "(rejected before any yespower-discrete work)";
       break;
     default:
-      logger(ERROR, BRIGHT_RED) << "Block PoW: yespower-dp2 evaluation failed";
+      logger(ERROR, BRIGHT_RED) << "Block PoW: yespower-discrete evaluation failed";
       break;
     }
     return false;
@@ -1194,7 +1194,7 @@ bool Blockchain::validate_block_signature(const Block& b, const Crypto::Hash& id
   // Genesis block is trusted by definition — no signature required.
   if (height == 0) return true;
 
-  // DiscretePower-2 reward binding (https://docs.discrete.cash/#/consensus/pow §8.3). The PoW
+  // DiscretePower reward binding (https://docs.discrete.cash/#/consensus/pow §8.3). The PoW
   // signature (b.powSignature) has ALREADY been verified against minerSpendPk by
   // checkProofOfWork, which every caller runs first and which enforces the spec's
   // verify-before-yespower ordering. There is no second reward signature: here we
@@ -2226,7 +2226,7 @@ bool Blockchain::pushBlock(const Block& blockData, const std::vector<Transaction
   if (newHeight == 0) {
     // Genesis is trusted by definition — its powSignature is an all-zero
     // placeholder that no key signs. Skip PoW/signature here exactly as
-    // validate_block_signature skips the signature at height 0. (DiscretePower-2
+    // validate_block_signature skips the signature at height 0. (DiscretePower
     // verifies the ML-DSA signature inside checkProofOfWork, so genesis must be
     // exempted here rather than relying on a trivial difficulty pass.)
   }

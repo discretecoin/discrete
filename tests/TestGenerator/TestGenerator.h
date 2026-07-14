@@ -72,7 +72,7 @@ public:
   }
 
   // Optional sink for V5+ PoW evaluation. Production V5+ blocks are hashed via
-  // Blockchain::getBlockLongHash (DiscretePower-2); the standalone get_block_longhash
+  // Blockchain::getBlockLongHash (DiscretePower); the standalone get_block_longhash
   // returns false for V5+. Without setBlockchain(), the PoW search loop for a
   // V5+ block would spin forever. Wire it once if the test mines past V5:
   //   test_generator gen(currency);
@@ -124,13 +124,13 @@ inline CryptoNote::Difficulty getTestDifficulty() { return 1; }
 // PoW search (difficulty=1 shortcut — no signing needed for single-attempt fills).
 void fillNonce(CryptoNote::Block& blk, const CryptoNote::Difficulty& diffic);
 
-// PoW search delegating to Blockchain::getBlockLongHash (DiscretePower-2).
+// PoW search delegating to Blockchain::getBlockLongHash (DiscretePower).
 // `blockchain` may be null — blocks fail to mine (logged once).
 void fillNonce(CryptoNote::Block& blk, const CryptoNote::Difficulty& diffic,
                CryptoNote::Blockchain* blockchain);
 
-// PoW search with ML-DSA re-signing on every nonce attempt (required for Discrete
-// because the PoW input commits to SHA3(signature)).
+// PoW search with ML-DSA re-signing on every nonce attempt (required because
+// DiscretePower injects the candidate signature into the memory-hard PoW).
 void fillNonce(CryptoNote::Block& blk, const CryptoNote::Difficulty& diffic,
                CryptoNote::Blockchain* blockchain,
                const CryptoNote::AccountBase& minerAcc);

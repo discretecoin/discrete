@@ -62,8 +62,7 @@ add_library(CryptoPq ${CryptoPq})
 target_link_libraries(Crypto PUBLIC oqs)
 target_include_directories(Crypto PUBLIC
   $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/external/liboqs/include>)
-# Common provides Tools::Base58 used by PqAddress encoding; Base58 in turn
-# references Crypto::cn_fast_hash.
+# CryptoPq depends on shared utilities in Common and chain hash helpers in Crypto.
 target_link_libraries(CryptoPq PUBLIC oqs chacha20poly1305 Common Crypto)
 # liboqs's generated <oqs/*.h> headers live in PROJECT_BINARY_DIR/include but
 # are only exposed via include_directories() in liboqs's own subdir, so they

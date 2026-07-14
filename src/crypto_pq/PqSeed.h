@@ -28,7 +28,8 @@
 // Wallet seed -> key derivation chain for the Discrete PQ transaction family.
 // CEMENTED v2 surface: recovery from a seed must always produce the same keys.
 //
-//   seed_master  (32 bytes, BIP39 or CSPRNG)
+//   seed_master  (32 CSPRNG bytes; reference wallets render it as a
+//                 25-word Electrum-style mnemonic)
 //
 //   view branch (scanning / stealth delivery):
 //     view_seed  = HKDF-SHA3-256(seed_master, salt=0, info="discrete-pq-view-root-v1", L=64)

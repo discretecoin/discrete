@@ -34,21 +34,21 @@ using namespace CryptoNote;
 namespace {
 
 // Sign a Discrete block with the miner's ML-DSA-65 spend key.
-// DiscretePower-2 injects this signature throughout the yespower-dp2 memory core,
+// DiscretePower injects this signature throughout the yespower-discrete memory core,
 // so every varied nonce must be re-signed before the PoW is recomputed.
 static void signTestBlock(CryptoNote::Block& blk, const CryptoNote::AccountBase& minerAcc) {
   std::array<uint8_t, 64> H{};
   if (!CryptoNote::get_block_pow_header_hash(blk, H)) {
     return;
   }
-  std::array<uint8_t, 64> m = CryptoNote::dp2_sign_message(H);
+  std::array<uint8_t, 64> m = CryptoNote::discrete_power_sign_message(H);
   CryptoPQ::DsaSignature sig = CryptoPQ::dsa_sign(minerAcc.pqSpendSk(), m.data(), m.size());
   blk.powSignature.assign(sig.begin(), sig.end());
 }
 
-// DiscretePower-2 (CryptoNote::get_block_longhash) is a pure
+// DiscretePower (CryptoNote::get_block_longhash) is a pure
 // function of the block. The `blockchain` pointer is now only a mode selector:
-// non-null → compute the real yespower-dp2 PoW; null → the in-memory generator
+// non-null → compute the real yespower-discrete PoW; null → the in-memory generator
 // (TestBlockchainGenerator) that feeds a WalletGreen through the node stub,
 // where PoW is NEVER validated (the wallet trusts its node) and difficulty is 1,
 // so a fast deterministic block-blob hash suffices.
@@ -212,8 +212,8 @@ bool test_generator::constructBlock(CryptoNote::Block& blk, uint32_t height, con
     }
   }
 
-  // Nonce search. All Discrete blocks use DiscretePower-2 via getBlockLongHash.
-  // The signature is injected throughout yespower-dp2, so the block is re-signed
+  // Nonce search. All Discrete blocks use DiscretePower via getBlockLongHash.
+  // The signature is injected throughout yespower-discrete, so the block is re-signed
   // each iteration before its PoW is recomputed.
   blk.nonce = 0;
   Crypto::cn_context context;

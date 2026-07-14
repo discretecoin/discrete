@@ -44,7 +44,7 @@ namespace Crypto {
     return h;
   }
 
-  // Opaque PoW context token. DiscretePower-2's memory core is yespower-dp2, which
+  // Opaque PoW context token. DiscretePower's memory core is yespower-discrete, which
   // needs no persistent chain context; keep the threaded type as an empty handle.
   class cn_context {
   public:

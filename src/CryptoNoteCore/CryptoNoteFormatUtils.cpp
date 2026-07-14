@@ -236,18 +236,18 @@ Crypto::Hash shake256Hash(const BinaryArray& input) {
 
 namespace {
 
-// DiscretePower-2 compile-time bindings (https://docs.discrete.cash/#/consensus/pow §4).
-static_assert(parameters::DP2_SIG_LEN == CryptoPQ::kDsaSignatureBytes,
-              "DP2_SIG_LEN must equal the liboqs ML-DSA-65 signature length");
-static_assert(parameters::DP2_SIG_LEN == PQ_SIGNATURE_SIZE,
-              "DP2_SIG_LEN must equal PQ_SIGNATURE_SIZE");
-static_assert(parameters::DP2_TAPE_LEN == parameters::DP2_SIG_LEN + 3,
-              "DP2 tape is the signature plus the 3-byte 0x80 00 00 delimiter");
-static_assert(parameters::DP2_TAPE_WORDS * 8 == parameters::DP2_TAPE_LEN,
-              "DP2 tape must be an integral number of 8-byte words");
+// DiscretePower compile-time bindings (https://docs.discrete.cash/#/consensus/pow §4).
+static_assert(parameters::DISCRETE_POWER_SIG_LEN == CryptoPQ::kDsaSignatureBytes,
+              "DISCRETE_POWER_SIG_LEN must equal the liboqs ML-DSA-65 signature length");
+static_assert(parameters::DISCRETE_POWER_SIG_LEN == PQ_SIGNATURE_SIZE,
+              "DISCRETE_POWER_SIG_LEN must equal PQ_SIGNATURE_SIZE");
+static_assert(parameters::DISCRETE_POWER_TAPE_LEN == parameters::DISCRETE_POWER_SIG_LEN + 3,
+              "DiscretePower tape is the signature plus the 3-byte 0x80 00 00 delimiter");
+static_assert(parameters::DISCRETE_POWER_TAPE_WORDS * 8 == parameters::DISCRETE_POWER_TAPE_LEN,
+              "DiscretePower tape must be an integral number of 8-byte words");
 
 // H = SHAKE256("DiscretePower/v2/header" || blob, 64).
-std::array<uint8_t, 64> dp2HeaderFromBlob(const BinaryArray& blob) {
+std::array<uint8_t, 64> discretePowerHeaderFromBlob(const BinaryArray& blob) {
   BinaryArray t;
   t.reserve(sizeof(DISCRETE_POWER_HEADER_DOMAIN) - 1 + blob.size());
   appendBytes(t, DISCRETE_POWER_HEADER_DOMAIN, sizeof(DISCRETE_POWER_HEADER_DOMAIN) - 1);
@@ -258,21 +258,21 @@ std::array<uint8_t, 64> dp2HeaderFromBlob(const BinaryArray& blob) {
 }
 
 // Spec §5/§9 steps 4-6: build the 3312-byte tape from the raw signature bytes,
-// run one yespower-dp2 execution, and finalize. Returns false only on a
-// yespower-dp2 allocation failure (never on a mere hash mismatch).
-bool dp2MemoryAndFinal(const std::array<uint8_t, 64>& H,
-                       const uint8_t* sig /* DP2_SIG_LEN bytes */,
+// run one yespower-discrete execution, and finalize. Returns false only on a
+// yespower-discrete allocation failure (never on a mere hash mismatch).
+bool discretePowerMemoryAndFinal(const std::array<uint8_t, 64>& H,
+                       const uint8_t* sig /* DISCRETE_POWER_SIG_LEN bytes */,
                        Crypto::Hash& powHash) {
-  std::array<uint8_t, parameters::DP2_TAPE_LEN> tape{};
-  std::memcpy(tape.data(), sig, parameters::DP2_SIG_LEN);
-  tape[parameters::DP2_SIG_LEN + 0] = 0x80;   // §5.1 fixed delimiter
-  tape[parameters::DP2_SIG_LEN + 1] = 0x00;
-  tape[parameters::DP2_SIG_LEN + 2] = 0x00;
+  std::array<uint8_t, parameters::DISCRETE_POWER_TAPE_LEN> tape{};
+  std::memcpy(tape.data(), sig, parameters::DISCRETE_POWER_SIG_LEN);
+  tape[parameters::DISCRETE_POWER_SIG_LEN + 0] = 0x80;   // §5.1 fixed delimiter
+  tape[parameters::DISCRETE_POWER_SIG_LEN + 1] = 0x00;
+  tape[parameters::DISCRETE_POWER_SIG_LEN + 2] = 0x00;
 
-  const std::array<uint8_t, 32>& P = dp2_memory_personalization();
-  yespower_params_t yp{ parameters::DP2_N, parameters::DP2_R, P.data(), P.size() };
+  const std::array<uint8_t, 32>& P = discrete_power_memory_personalization();
+  yespower_params_t yp{ parameters::DISCRETE_POWER_N, parameters::DISCRETE_POWER_R, P.data(), P.size() };
   yespower_binary_t y{};
-  if (yespower_dp2_tls(H.data(), H.size(), &yp, tape.data(), &y) != 0) {
+  if (yespower_discrete_tls(H.data(), H.size(), &yp, tape.data(), &y) != 0) {
     return false;
   }
 
@@ -287,7 +287,7 @@ bool dp2MemoryAndFinal(const std::array<uint8_t, 64>& H,
 
 }  // namespace
 
-const std::array<uint8_t, 32>& dp2_memory_personalization() {
+const std::array<uint8_t, 32>& discrete_power_memory_personalization() {
   static const std::array<uint8_t, 32> P = [] {
     std::array<uint8_t, 32> p{};
     CryptoPQ::shake256(DISCRETE_POWER_MEMORY_DOMAIN,
@@ -298,7 +298,7 @@ const std::array<uint8_t, 32>& dp2_memory_personalization() {
   return P;
 }
 
-std::array<uint8_t, 64> dp2_sign_message(const std::array<uint8_t, 64>& H) {
+std::array<uint8_t, 64> discrete_power_sign_message(const std::array<uint8_t, 64>& H) {
   BinaryArray t;
   t.reserve(sizeof(DISCRETE_POWER_SIGN_DOMAIN) - 1 + H.size());
   appendBytes(t, DISCRETE_POWER_SIGN_DOMAIN, sizeof(DISCRETE_POWER_SIGN_DOMAIN) - 1);
@@ -313,40 +313,40 @@ bool get_block_pow_header_hash(const Block& b, std::array<uint8_t, 64>& H) {
   if (!get_block_hashing_blob(b, blob)) {
     return false;
   }
-  H = dp2HeaderFromBlob(blob);
+  H = discretePowerHeaderFromBlob(blob);
   return true;
 }
 
-bool dp2_prove(const BinaryArray& blob, const CryptoPQ::DsaSecretKey& sk,
+bool discrete_power_prove(const BinaryArray& blob, const CryptoPQ::DsaSecretKey& sk,
                std::vector<uint8_t>& powSignature, Crypto::Hash& powHash) {
-  std::array<uint8_t, 64> H = dp2HeaderFromBlob(blob);
-  std::array<uint8_t, 64> m = dp2_sign_message(H);
+  std::array<uint8_t, 64> H = discretePowerHeaderFromBlob(blob);
+  std::array<uint8_t, 64> m = discrete_power_sign_message(H);
   CryptoPQ::DsaSignature sig = CryptoPQ::dsa_sign(sk, m.data(), m.size());
   powSignature.assign(sig.begin(), sig.end());
-  return dp2MemoryAndFinal(H, sig.data(), powHash);
+  return discretePowerMemoryAndFinal(H, sig.data(), powHash);
 }
 
-bool dp2_verify(const BinaryArray& blob, const CryptoPQ::DsaPublicKey& pk,
+bool discrete_power_verify(const BinaryArray& blob, const CryptoPQ::DsaPublicKey& pk,
                 const std::vector<uint8_t>& powSignature, Crypto::Hash& powHash,
-                Dp2Reject* reason) {
-  if (reason) *reason = Dp2Reject::None;
+                DiscretePowerReject* reason) {
+  if (reason) *reason = DiscretePowerReject::None;
   // §9 step 1: exact signature length, cheaply, before touching anything else.
-  if (powSignature.size() != parameters::DP2_SIG_LEN) {
-    if (reason) *reason = Dp2Reject::BadLength;
+  if (powSignature.size() != parameters::DISCRETE_POWER_SIG_LEN) {
+    if (reason) *reason = DiscretePowerReject::BadLength;
     return false;
   }
   // step 2: recompute H and m from the candidate template.
-  std::array<uint8_t, 64> H = dp2HeaderFromBlob(blob);
-  std::array<uint8_t, 64> m = dp2_sign_message(H);
-  // step 3: ML-DSA-65 Verify BEFORE any yespower-dp2 work — this is the DoS bound.
+  std::array<uint8_t, 64> H = discretePowerHeaderFromBlob(blob);
+  std::array<uint8_t, 64> m = discrete_power_sign_message(H);
+  // step 3: ML-DSA-65 Verify BEFORE any yespower-discrete work — this is the DoS bound.
   CryptoPQ::DsaSignature sig{};
   std::copy(powSignature.begin(), powSignature.end(), sig.begin());
   if (!CryptoPQ::dsa_verify(pk, m.data(), m.size(), sig)) {
-    if (reason) *reason = Dp2Reject::BadSignature;
+    if (reason) *reason = DiscretePowerReject::BadSignature;
     return false;
   }
-  // steps 4-6: reconstruct the tape, run one yespower-dp2, and finalize.
-  return dp2MemoryAndFinal(H, sig.data(), powHash);
+  // steps 4-6: reconstruct the tape, run one yespower-discrete, and finalize.
+  return discretePowerMemoryAndFinal(H, sig.data(), powHash);
 }
 
 bool get_parent_block_hashing_blob(const Block& b, BinaryArray& blob) {
@@ -354,21 +354,21 @@ bool get_parent_block_hashing_blob(const Block& b, BinaryArray& blob) {
   return toBinaryArray(serializer, blob);
 }
 
-// DiscretePower-2 (https://docs.discrete.cash/#/consensus/pow): PoW hash of an ALREADY-signed
+// DiscretePower (https://docs.discrete.cash/#/consensus/pow): PoW hash of an ALREADY-signed
 // block. Recomputes H from the hashing blob and runs the signature-tape
-// yespower-dp2 chain over b.powSignature, then finalizes. It does NOT verify the
-// signature — consensus uses dp2_verify (verify-before-yespower); this entry is
+// yespower-discrete chain over b.powSignature, then finalizes. It does NOT verify the
+// signature — consensus uses discrete_power_verify (verify-before-yespower); this entry is
 // for self-built blocks (miner/tests/Core) and is a pure function of the block.
 bool get_block_longhash(const Block& b, Crypto::Hash& res) {
-  if (b.powSignature.size() != parameters::DP2_SIG_LEN) {
+  if (b.powSignature.size() != parameters::DISCRETE_POWER_SIG_LEN) {
     return false;
   }
   BinaryArray blob;
   if (!get_block_hashing_blob(b, blob)) {
     return false;
   }
-  std::array<uint8_t, 64> H = dp2HeaderFromBlob(blob);
-  return dp2MemoryAndFinal(H, b.powSignature.data(), res);
+  std::array<uint8_t, 64> H = discretePowerHeaderFromBlob(blob);
+  return discretePowerMemoryAndFinal(H, b.powSignature.data(), res);
 }
 
 bool get_block_hash(const Block& b, Hash& res) {
@@ -380,14 +380,14 @@ bool get_block_hash(const Block& b, Hash& res) {
   // Block ID is currently the unsigned header/tree hash (the hashing blob),
   // which excludes powSignature.
   //
-  // TODO(DP2 §8.2/§9.9): the canonical block ID SHOULD commit to powSignature so
+  // TODO(DiscretePower §8.2/§9.9): the canonical block ID SHOULD commit to powSignature so
   // that two valid hedged signatures over one hashing blob yield distinct block
   // IDs and PoW caches cannot be keyed by header alone (https://docs.discrete.cash/#/consensus/pow
   // §15). Implementing it changes every block ID including genesis, so it is a
   // deferred consensus change bundled with genesis/checkpoint/KAT regeneration —
   // out of scope for the in-place PoW swap, mirroring the deferred pruning hook.
   // Until then, checkProofOfWork always recomputes the PoW from powSignature via
-  // dp2_verify, so a swapped signature cannot ride a cached header verdict here.
+  // discrete_power_verify, so a swapped signature cannot ride a cached header verdict here.
   //
   // The header of block version 1 differs from headers of blocks starting from v.2
   if (BLOCK_MAJOR_VERSION_2 == b.majorVersion || BLOCK_MAJOR_VERSION_3 == b.majorVersion) {

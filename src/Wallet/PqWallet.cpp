@@ -25,7 +25,7 @@
 namespace CryptoNote {
 
 namespace {
-// Any PQ address (base58 ~4300 chars, bech32m ~5000) is vastly longer than a
+// A PQ Bech32m address (~5,000 chars) is vastly longer than a
 // classical Karbo address (~98, ~187 with payment id). This length floor cheaply
 // rejects classical strings before any decode work; it sits comfortably below
 // the shortest real PQ address.

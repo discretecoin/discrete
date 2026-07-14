@@ -324,7 +324,7 @@ struct GetPqDepositScheme {
 };
 
 // Create a new deposit address (the familiar exchange surface). In
-// aggregated-multikey mode `address` is a base58 PQ address with its own spend
+// aggregated-multikey mode `address` is a Bech32m PQ address with its own spend
 // key; in single-key-index mode it is the H-I-T-C account number. `index` is the
 // deposit index (the subaddress T in single-key-index mode).
 struct CreatePqDepositAddress {

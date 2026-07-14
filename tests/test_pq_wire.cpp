@@ -214,8 +214,8 @@ TEST(PqWire, CoinbaseOutputRoundTrips) {
 }
 
 TEST(PqWire, HashingBlobExcludesSignatureButDiscretePowerDependsOnIt) {
-    // DiscretePower-2: the hashing blob (and, for now, the block ID) exclude
-    // powSignature, but the PoW hash injects the signature throughout yespower-dp2
+    // DiscretePower: the hashing blob (and, for now, the block ID) exclude
+    // powSignature, but the PoW hash injects the signature throughout yespower-discrete
     // so two different signatures over the same header yield different PoW.
     Block a = makePqBlock();
     Block b = a;
