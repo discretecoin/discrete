@@ -1,6 +1,6 @@
-// Copyright (c) 2026, The Karbo developers
+// Copyright (c) 2026, The Discrete developers
 //
-// This file is part of Karbo.
+// This file is part of Discrete.
 //
 // Consensus-validation tests for v2 TX_PQ (spec §9, ownership-fixed). Builds a
 // real signed PQ transaction (outputs via PqOutputBuilder, inputs signed with

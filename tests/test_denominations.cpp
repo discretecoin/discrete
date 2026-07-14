@@ -1,4 +1,4 @@
-// Copyright (c) 2026, The Karbo developers
+// Copyright (c) 2026, The Discrete developers
 //
 // Tests for the canonical Discrete denomination table (include/Denominations.h):
 // shape, membership/index lookup, and greedy decomposition.

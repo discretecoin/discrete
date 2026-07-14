@@ -1,6 +1,6 @@
-// Copyright (c) 2026, The Karbo developers
+// Copyright (c) 2026, The Discrete developers
 //
-// This file is part of Karbo.
+// This file is part of Discrete.
 //
 // KAT-based tests for the PQ Phase 1 crypto primitives. Vectors:
 //   * SHA3-256 / SHAKE256: FIPS 202 known answers
@@ -15,7 +15,7 @@
 // liboqs's own KAT suite covers the lattice primitives byte-exactly against
 // the FIPS 203 / 204 reference vectors; we focus here on (a) round-trip
 // correctness through our wrappers and (b) determinism of the seed-driven
-// keygens that Karbo PQ depends on.
+// keygens that Discrete PQ depends on.
 
 #include "gtest/gtest.h"
 

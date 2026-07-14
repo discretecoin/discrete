@@ -1,4 +1,4 @@
-// Copyright (c) 2026, The Karbo developers
+// Copyright (c) 2026, The Discrete developers
 //
 // Tests for the common engine-agnostic PQ sender (src/Wallet/PqSender): input
 // selection, canonical denomination decomposition, the flat fee (MINIMUM_FEE +

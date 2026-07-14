@@ -1,6 +1,6 @@
-// Copyright (c) 2026, The Karbo developers
+// Copyright (c) 2026, The Discrete developers
 //
-// This file is part of Karbo.
+// This file is part of Discrete.
 //
 // Tests for WalletLedger: scanning raw transactions for owned PQ outputs,
 // separate balance accounting, spend detection via nullifiers, and reorg

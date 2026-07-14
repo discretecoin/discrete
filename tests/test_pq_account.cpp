@@ -1,6 +1,6 @@
-// Copyright (c) 2026, The Karbo developers
+// Copyright (c) 2026, The Discrete developers
 //
-// This file is part of Karbo.
+// This file is part of Discrete.
 //
 // Tests for the PQ account-number registry (spec §11): the LMDB pq_acct_reg
 // table with first-registration-wins + reorg rollback semantics, and the

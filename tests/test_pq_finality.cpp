@@ -1,6 +1,6 @@
 // Copyright (c) 2026, The Discrete developers
 //
-// This file is part of Karbo.
+// This file is part of Discrete.
 //
 // Functional test for the node-local first-seen finality rule
 // (CRYPTONOTE_FINALITY_DEPTH). The accept/reject decision lives in

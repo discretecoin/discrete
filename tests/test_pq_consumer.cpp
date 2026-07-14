@@ -1,6 +1,6 @@
-// Copyright (c) 2026, The Karbo developers
+// Copyright (c) 2026, The Discrete developers
 //
-// This file is part of Karbo.
+// This file is part of Discrete.
 //
 // Tests for WalletLedgerConsumer: the BlockchainSynchronizer consumer that scans blocks
 // for PQ outputs. Drives it with synthetic CompleteBlocks built from real PQ

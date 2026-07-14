@@ -1,4 +1,4 @@
-// Copyright (c) 2026, The Karbo developers
+// Copyright (c) 2026, The Discrete developers
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 #pragma once

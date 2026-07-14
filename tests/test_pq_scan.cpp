@@ -1,6 +1,6 @@
-// Copyright (c) 2026, The Karbo developers
+// Copyright (c) 2026, The Discrete developers
 //
-// This file is part of Karbo.
+// This file is part of Discrete.
 //
 // Tests for receiver-side PQ scanning (spec §7, ownership-fixed). Covers:
 // recognizing one's own outputs, ignoring others' outputs (silent), amount

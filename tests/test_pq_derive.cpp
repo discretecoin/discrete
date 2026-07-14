@@ -1,6 +1,6 @@
-// Copyright (c) 2026, The Karbo developers
+// Copyright (c) 2026, The Discrete developers
 //
-// This file is part of Karbo.
+// This file is part of Discrete.
 //
 // KAT-based tests for the PQ Phase 1 domain-separated derivations (spec §6/§8).
 // The pinned expected values are mirrored in tests/pq/kat_vectors.json — that

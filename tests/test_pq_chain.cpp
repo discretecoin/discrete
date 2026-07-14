@@ -1,6 +1,6 @@
-// Copyright (c) 2026, The Karbo developers
+// Copyright (c) 2026, The Discrete developers
 //
-// This file is part of Karbo.
+// This file is part of Discrete.
 //
 // End-to-end integration test through the real Core/Blockchain:
 //   * drives a synthetic chain across the v6 (PQ) activation using the V5+

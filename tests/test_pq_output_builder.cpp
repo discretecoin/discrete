@@ -1,6 +1,6 @@
-// Copyright (c) 2026, The Karbo developers
+// Copyright (c) 2026, The Discrete developers
 //
-// This file is part of Karbo.
+// This file is part of Discrete.
 //
 // Tests for sender-side PQ output construction (spec §6, ownership-fixed).
 // Covers: a deterministic KAT, cross-consistency with PqDerive, end-to-end

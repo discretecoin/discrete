@@ -1,6 +1,6 @@
-// Copyright (c) 2026, The Karbo developers
+// Copyright (c) 2026, The Discrete developers
 //
-// This file is part of Karbo.
+// This file is part of Discrete.
 //
 // Tests for the PQ Phase 1 seed-derivation chain (PqSeed) and address format
 // (PqAddress) — spec §3/§4. Covers deterministic recovery, address round-trips

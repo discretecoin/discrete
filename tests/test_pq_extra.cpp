@@ -1,6 +1,6 @@
-// Copyright (c) 2026, The Karbo developers
+// Copyright (c) 2026, The Discrete developers
 //
-// This file is part of Karbo.
+// This file is part of Discrete.
 //
 // Tests for PQ Phase 1 consensus taxonomy (spec §1.2 / §4 / §11):
 //   * version-gated tx_extra size cap (maxExtraSize)

@@ -1,9 +1,8 @@
-// Copyright (c) 2016-2026, The Karbo developers
 // Copyright (c) 2026, The Discrete developers
 //
-// This file is part of Karbo.
+// This file is part of Discrete.
 //
-// Karbo is free software: you can redistribute it and/or modify
+// Discrete is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Lesser General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.

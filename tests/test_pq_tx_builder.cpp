@@ -1,6 +1,6 @@
-// Copyright (c) 2026, The Karbo developers
+// Copyright (c) 2026, The Discrete developers
 //
-// This file is part of Karbo.
+// This file is part of Discrete.
 //
 // Tests for the high-level TX_PQ builder (src/Wallet/PqTransactionBuilder).
 // A transaction built here must satisfy the SAME consensus checks the node runs

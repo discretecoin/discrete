@@ -1,6 +1,6 @@
-// Copyright (c) 2026, The Karbo developers
+// Copyright (c) 2026, The Discrete developers
 //
-// This file is part of Karbo.
+// This file is part of Discrete.
 //
 // PQ (v2 TX_PQ) nullifiers are stored in the SAME type-agnostic spent-key set as
 // classical/CT key images: a nullifier is just a 32-byte spend tag, and the two

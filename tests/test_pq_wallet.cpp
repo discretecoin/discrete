@@ -1,6 +1,6 @@
-// Copyright (c) 2026, The Karbo developers
+// Copyright (c) 2026, The Discrete developers
 //
-// This file is part of Karbo.
+// This file is part of Discrete.
 //
 // Tests for the wallet-core PQ identity derivation (src/Wallet/PqWallet). Covers
 // deterministic derivation from the account spend secret key (recovery

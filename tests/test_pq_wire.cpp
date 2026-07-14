@@ -1,6 +1,6 @@
-// Copyright (c) 2026, The Karbo developers
+// Copyright (c) 2026, The Discrete developers
 //
-// This file is part of Karbo.
+// This file is part of Discrete.
 //
 // Round-trip + tamper tests for the PQ Phase 1 wire format (transaction
 // version 2): PqInput / PqOutput variants, the txType prefix byte, and the
