@@ -122,7 +122,7 @@ RpcServer::HandlerFunction jsonMethod(bool (RpcServer::*handler)(typename Comman
     if (!cors_domain.empty()) {
       response.addHeader("Access-Control-Allow-Origin", cors_domain);
       response.addHeader("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
-      response.addHeader("Access-Control-Allow-Methods", "POST, GET");
+      response.addHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
     }
     response.setBody(storeToJson(res.data()));
     response.addHeader("Content-Type", "application/json");
@@ -147,7 +147,7 @@ RpcServer::HandlerFunction httpMethod(bool (RpcServer::*handler)(typename Comman
     if (!cors_domain.empty()) {
       response.addHeader("Access-Control-Allow-Origin", cors_domain);
       response.addHeader("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
-      response.addHeader("Access-Control-Allow-Methods", "POST, GET");
+      response.addHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
     }
     response.addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
     response.addHeader("Expires", "0");
@@ -319,6 +319,20 @@ size_t RpcServer::getRpcConnectionsCount() {
 
 void RpcServer::processRequest(const CryptoNote::HttpRequest& request, CryptoNote::HttpResponse& response) {
   logger(Logging::TRACE) << "Incoming RPC request to endpoint " << request.getUrl();
+
+  // CORS must be attached before dispatch so preflight and error responses are
+  // readable by browser-based clients such as the block explorer.
+  if (!m_cors_domain.empty()) {
+    response.addHeader("Access-Control-Allow-Origin", m_cors_domain);
+    response.addHeader("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
+    response.addHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
+  }
+
+  if (request.getMethod() == "OPTIONS") {
+    response.setStatus(CryptoNote::HttpResponse::STATUS_200);
+    response.setBody("");
+    return;
+  }
 
   try {
     const std::string url = request.getUrl();
@@ -637,7 +651,7 @@ bool RpcServer::processJsonRpcRequest(const CryptoNote::HttpRequest& request, Cr
     response.addHeader("Access-Control-Allow-Origin", m_cors_domain);
     response.addHeader("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
   }
-  response.addHeader("Access-Control-Allow-Methods", "POST, GET");
+  response.addHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
 
   JsonRpcRequest jsonRequest;
   JsonRpcResponse jsonResponse;
