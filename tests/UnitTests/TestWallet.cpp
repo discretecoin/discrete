@@ -48,6 +48,7 @@
 #include "PqAddress.h"
 #include "AccountNumber.h"
 #include "CryptoNoteCore/CryptoNoteFormatUtils.h"  // verifyMessagePq
+#include "CryptoNoteCore/TransactionExtra.h"  // createTxExtraWithPaymentId / getPaymentIdFromTxExtra
 #include "CryptoNoteCore/CryptoNoteTools.h"  // getObjectHash
 #include "WalletLegacy/WalletUserTransactionsCache.h"
 #include "WalletLegacy/WalletLegacySerializer.h"
@@ -151,7 +152,8 @@ namespace {
 CryptoNote::Transaction makePqPayTo(const CryptoNote::PqWalletKeys& from,
                                     const CryptoNote::PqWalletKeys& to,
                                     uint64_t inAmount, uint64_t payAmount, uint8_t seed,
-                                    uint64_t subaddrT = 0, uint64_t outUnlockHeight = 0) {
+                                    uint64_t subaddrT = 0, uint64_t outUnlockHeight = 0,
+                                    const std::vector<uint8_t>& extra = {}) {
   std::vector<CryptoPQ::InputRef> refs(1);
   for (auto& b : refs[0].prevTxid) b = seed;
   refs[0].prevOutIndex = 1;
@@ -166,7 +168,8 @@ CryptoNote::Transaction makePqPayTo(const CryptoNote::PqWalletKeys& from,
   CryptoNote::PqSendOutput out{to.viewPub, to.spendPub, payAmount};
   out.subaddrIndexT = subaddrT;       // SingleKeyIndex deposit routing (0 = base address)
   out.unlockHeight = outUnlockHeight;  // per-output spend lock (0 = none); 0 != coinbase maturity
-  return CryptoNote::buildPqTransaction({in}, {out}, from.spendPub, from.spendSk);
+  return CryptoNote::buildPqTransaction({in}, {out}, from.spendPub, from.spendSk,
+                                        /*unlockHeight=*/0, extra);
 }
 // Pump wallet events until `pred` holds or the timeout elapses.
 void pumpUntil(System::Dispatcher& dispatcher, CryptoNote::WalletGreen& wallet,
@@ -298,6 +301,92 @@ TEST(PqWalletIntegration, BalanceSurvivesSaveAndReload) {
     EXPECT_EQ(reloaded.getActualBalance(), 800000u);
     ASSERT_EQ(reloaded.getTransactionCount(), 1u);
     EXPECT_EQ(reloaded.getTransaction(0).hash, txHash);
+    reloaded.shutdown();
+  }
+
+  boost::filesystem::remove(path);
+}
+
+// Classic payment ids are RETAINED alongside H-I-T-C for exchange integrations
+// (kept out of the Qt GUI deliberately; simplewallet `transfer -p` and walletd
+// sendTransaction.paymentId are the entry points). This is the PQ round trip: a
+// TX_PQ whose tx_extra carries the classic payment-id nonce must (1) embed it on
+// the wire, (2) surface it in the receiving wallet's history row — WalletLedger
+// captures it at scan time and WalletGreen re-encodes it as the classic extra
+// nonce — and (3) keep it across save/reload (ledger v6+ persists the field).
+TEST(PqWalletIntegration, PaymentIdRoundTrip) {
+  System::Dispatcher dispatcher;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(1000000).upgradeHeightV6(1000000)
+      .currency();
+  TestBlockchainGenerator generator(currency);
+  INodeTrivialRefreshStub node(generator);
+
+  const std::string path = "pq_payment_id.wallet";
+  boost::filesystem::remove(path);
+
+  const std::string paymentIdHex =
+      "f00dfaceb00c00010203040506070809f00dfaceb00c00010203040506070809";
+  Crypto::Hash txHash;
+  {
+    CryptoNote::WalletGreen wallet(dispatcher, currency, node, logger);
+    wallet.initialize(path, "pass");
+    wallet.createAddress();
+    Crypto::SecretKey spend = wallet.getAddressSpendKey(0).secretKey;
+    CryptoNote::PqWalletKeys mine = pqKeysFromWalletSeed(spend);
+
+    Crypto::SecretKey otherSecret;
+    for (std::size_t i = 0; i < sizeof(otherSecret.data); ++i)
+      otherSecret.data[i] = static_cast<uint8_t>(i * 7 + 3);
+    CryptoNote::PqWalletKeys them = CryptoNote::derivePqWalletKeys(otherSecret);
+
+    // Sender side: the same helper simplewallet -p / walletd paymentId use.
+    std::vector<uint8_t> extra;
+    ASSERT_TRUE(CryptoNote::createTxExtraWithPaymentId(paymentIdHex, extra));
+
+    CryptoNote::Transaction pqTx =
+        makePqPayTo(them, mine, 1000000, 800000, 0x66, 0, 0, extra);
+
+    // (1) The id is embedded in the signed wire transaction.
+    Crypto::Hash embedded;
+    ASSERT_TRUE(CryptoNote::getPaymentIdFromTxExtra(pqTx.extra, embedded));
+    EXPECT_EQ(Common::podToHex(embedded), paymentIdHex);
+
+    txHash = CryptoNote::getObjectHash(pqTx);
+    generator.setTxFee(txHash, 1000000 - 800000);
+    generator.addTxToBlockchain(pqTx);
+    node.updateObservers();
+
+    pumpUntil(dispatcher, wallet, [&wallet]() { return wallet.getActualBalance() == 800000u; });
+
+    // (2) The receiving wallet's history row carries the id, re-encoded as the
+    // classic extra nonce (what walletd listings/filters parse).
+    ASSERT_EQ(wallet.getTransactionCount(), 1u);
+    CryptoNote::WalletTransaction tx0 = wallet.getTransaction(0);
+    EXPECT_EQ(tx0.hash, txHash);
+    Crypto::Hash received;
+    ASSERT_TRUE(CryptoNote::getPaymentIdFromTxExtra(
+        Common::asBinaryArray(tx0.extra), received));
+    EXPECT_EQ(Common::podToHex(received), paymentIdHex);
+
+    wallet.save();
+    wallet.shutdown();
+  }
+
+  // (3) Persistence: the id survives save/reload straight from the ledger blob.
+  {
+    CryptoNote::WalletGreen reloaded(dispatcher, currency, node, logger);
+    ASSERT_NO_THROW(reloaded.load(path, "pass"));
+    ASSERT_EQ(reloaded.getTransactionCount(), 1u);
+    CryptoNote::WalletTransaction tx0 = reloaded.getTransaction(0);
+    EXPECT_EQ(tx0.hash, txHash);
+    Crypto::Hash persisted;
+    ASSERT_TRUE(CryptoNote::getPaymentIdFromTxExtra(
+        Common::asBinaryArray(tx0.extra), persisted));
+    EXPECT_EQ(Common::podToHex(persisted), paymentIdHex);
     reloaded.shutdown();
   }
 
