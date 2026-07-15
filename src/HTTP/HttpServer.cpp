@@ -245,6 +245,8 @@ void HttpServer::connectionWorker(System::TcpConnection& connection) {
       HttpResponse resp;
 
       resp.addHeader("Access-Control-Allow-Origin", "*");
+      resp.addHeader("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
+      resp.addHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
 
       try {
         parser.receiveRequest(stream, req);
