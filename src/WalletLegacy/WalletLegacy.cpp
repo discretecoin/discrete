@@ -414,7 +414,19 @@ void WalletLegacy::initWithKeys(const AccountKeys& accountKeys, const std::strin
       throw std::system_error(make_error_code(error::ALREADY_INITIALIZED));
     }
 
-    m_account.setAccountKeys(accountKeys);
+    // The wallet-file password check compares cn_fast_hash(spendSecretKey) against the
+    // spendPublicKey slot (see WalletLegacySerializer::deserialize). Import paths
+    // (mnemonic phrase / raw keys) supply only the 32-byte secret seed and leave the
+    // vestigial spendPublicKey zero, so the file we save here would fail its own
+    // password check on reopen and report "wrong password". Recompute the checksum —
+    // the same value AccountBase::generate() writes for freshly minted wallets — so
+    // every imported wallet round-trips. Recomputing is idempotent for callers that
+    // already filled it in.
+    AccountKeys keys = accountKeys;
+    Crypto::cn_fast_hash(keys.spendSecretKey.data, sizeof(keys.spendSecretKey.data),
+                         reinterpret_cast<Crypto::Hash&>(keys.address.spendPublicKey));
+
+    m_account.setAccountKeys(keys);
     m_account.set_createtime(scanHeightToTimestamp(scanHeight));
     m_password = password;
     m_pqTrackingKeys.reset();
@@ -442,7 +454,16 @@ void WalletLegacy::initWithPqTrackingKeys(const AccountKeys& accountKeys, const 
       throw std::system_error(make_error_code(error::WRONG_PARAMETERS));
     }
 
-    m_account.setAccountKeys(accountKeys);
+    // Same password-checksum invariant as initWithKeys: spendPublicKey must hold
+    // cn_fast_hash(spendSecretKey) for the saved file to reopen. A tracking wallet's
+    // spendSecretKey is NULL (asserted above), so this stores cn_fast_hash(0) and
+    // corrects the placeholder keys, whose spendPublicKey otherwise carried the hash
+    // of a discarded random seed.
+    AccountKeys keys = accountKeys;
+    Crypto::cn_fast_hash(keys.spendSecretKey.data, sizeof(keys.spendSecretKey.data),
+                         reinterpret_cast<Crypto::Hash&>(keys.address.spendPublicKey));
+
+    m_account.setAccountKeys(keys);
     m_account.set_createtime(scanHeightToTimestamp(scanHeight));
     m_password = password;
     m_pqTrackingKeys.reset(new PqTrackingKeys(pqTrackingKeys));
