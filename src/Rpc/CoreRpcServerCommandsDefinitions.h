@@ -1183,6 +1183,64 @@ struct COMMAND_RPC_GET_TRANSACTIONS_WITH_OUTPUT_GLOBAL_INDEXES_BY_HEIGHTS {
   };
 };
 
+// Compact, contiguous chain data for non-custodial wallets. Discrete PQ inputs
+// spend explicit outpoints, so scanners need neither CryptoNote global output
+// indexes nor transaction signatures. This mirrors queryBlocksLite's payload in
+// browser-friendly JSON while retaining block linkage for reorg detection.
+struct wallet_sync_transaction {
+  TransactionPrefix transaction;
+  Crypto::Hash hash;
+  bool coinbase;
+
+  void serialize(ISerializer& s) {
+    KV_MEMBER(transaction)
+    KV_MEMBER(hash)
+    KV_MEMBER(coinbase)
+  }
+};
+
+struct wallet_sync_block {
+  uint32_t height;
+  Crypto::Hash hash;
+  Crypto::Hash previous_hash;
+  uint64_t timestamp;
+  std::vector<wallet_sync_transaction> transactions;
+
+  void serialize(ISerializer& s) {
+    KV_MEMBER(height)
+    KV_MEMBER(hash)
+    KV_MEMBER(previous_hash)
+    KV_MEMBER(timestamp)
+    KV_MEMBER(transactions)
+  }
+};
+
+struct COMMAND_RPC_GET_WALLET_SYNC_DATA {
+  struct request {
+    uint32_t start_height = 0;
+    uint32_t block_count = 100;
+    bool include_miner_txs = true;
+
+    void serialize(ISerializer& s) {
+      KV_MEMBER(start_height)
+      KV_MEMBER(block_count)
+      KV_MEMBER(include_miner_txs)
+    }
+  };
+
+  struct response {
+    uint32_t top_height = 0;
+    std::vector<wallet_sync_block> blocks;
+    std::string status;
+
+    void serialize(ISerializer& s) {
+      KV_MEMBER(top_height)
+      KV_MEMBER(blocks)
+      KV_MEMBER(status)
+    }
+  };
+};
+
 struct COMMAND_RPC_GET_RAW_TRANSACTIONS_POOL {
   typedef EMPTY_STRUCT request;
 
