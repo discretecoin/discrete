@@ -424,7 +424,7 @@ bool BuiltinExplorer::on_get_explorer_block_by_hash(const COMMAND_EXPLORER_GET_B
     body += "<a href=\"/explorer/\">Home</a>";
     body += "<hr />";
 
-    body += "<h2>Block <span class=\"wrap\">" + Common::podToHex(blockHash) + "</span></h2>\n";
+    body += "<h2>Block ID <span class=\"wrap\">" + Common::podToHex(blockHash) + "</span></h2>\n";
 
     body += "<ul>\n";
     body += "  <li>\n";
@@ -497,6 +497,10 @@ bool BuiltinExplorer::on_get_explorer_block_by_hash(const COMMAND_EXPLORER_GET_B
     body += "  </li>\n";
     body += "  <li>\n";
     body += "    " + foldedHex("PoW signature, ML-DSA-65", blk.signature.data(), blk.signature.size()) + "\n";
+    body += "  </li>\n";
+    body += "  <li>\n";
+    body += "    Signature witness (W_B): <span class=\"wrap\">" +
+      Common::podToHex(get_block_signature_witness(blk.signature)) + "</span>\n";
     body += "  </li>\n";
     body += "</ul>";
 

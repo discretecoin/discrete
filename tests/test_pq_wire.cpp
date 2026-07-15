@@ -15,6 +15,7 @@
 #include "CryptoNoteCore/CryptoNoteFormatUtils.h"
 #include "CryptoNoteCore/CryptoNoteTools.h"
 #include "CryptoNoteCore/PqValidation.h"
+#include "Common/StringTools.h"
 
 #include <cstdint>
 #include <vector>
@@ -213,13 +214,19 @@ TEST(PqWire, CoinbaseOutputRoundTrips) {
     EXPECT_EQ(tx2.txType, TX_COINBASE);
 }
 
+TEST(PqWire, BlockSignatureWitnessKat) {
+    Block b = makePqBlock();
+    EXPECT_EQ(Common::podToHex(get_block_signature_witness(b.signature)),
+              "42d793bf8916e049c9d4efdd827dca0fd7e9b039015124ab8143b16b1d7212bf");
+}
+
 TEST(PqWire, BlockIdCommitsToSignatureViaWitness) {
     // DiscretePower: the hashing blob C_B excludes the signature, but the block ID
     // folds in a 32-byte witness over it. Two blocks that share a header but carry
     // different valid-length signatures therefore have the SAME hashing blob yet
-    // DISTINCT block IDs (and DISTINCT PoW). This closes signature/PoW
-    // malleability: an alternate signature can no longer masquerade under the same
-    // block ID, so no in-zone/cache path can be poisoned by a same-ID variant.
+    // DISTINCT block IDs (and DISTINCT PoW). This eliminates same-ID proof
+    // aliasing: an alternate signature can no longer masquerade under the same
+    // block ID or cross-poison a block-ID keyed cache.
     Block a = makePqBlock();
     Block b = a;
     b.signature = blob(PQ_SIGNATURE_SIZE, 13, 7);  // differs from makePqBlock()'s (11,3)

@@ -847,6 +847,108 @@ bool runMinerBinding() {
   return ok;
 }
 
+// Regression for randomized ML-DSA block proofs. Two signatures over the same
+// unsigned candidate must have different block IDs, and admitting one proof must
+// not make a second proof hit the already-exists path. An invalid third witness
+// must still reach signature verification and fail independently.
+bool runBlockWitnessIsolation() {
+  using namespace CryptoNote;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  const Currency currency = CurrencyBuilder(logger).testnet(true).currency();
+
+  std::filesystem::path dataDir("pq_block_witness_test_data");
+  std::error_code ec;
+  std::filesystem::remove_all(dataDir, ec);
+  std::filesystem::create_directories(dataDir, ec);
+
+  System::Dispatcher dispatcher;
+  Core core(currency, nullptr, logger, dispatcher);
+  CoreConfig coreConfig; coreConfig.configFolder = dataDir.string();
+  MinerConfig minerConfig;
+  if (!expect(core.init(coreConfig, minerConfig, false), "witness: core.init")) return false;
+
+  test_generator gen(currency);
+  gen.setBlockchain(&core.get_blockchain_storage());
+  AccountBase miner; miner.generate();
+
+  Crypto::Hash genesisHash = core.getBlockIdByHeight(0);
+  Block genesis;
+  if (!expect(core.getBlockByHash(genesisHash, genesis), "witness: load genesis")) {
+    core.deinit(); return false;
+  }
+  std::vector<size_t> emptySizes;
+  gen.addBlock(genesis, 0, 0, emptySizes, 0);
+
+  const uint32_t height = core.getCurrentBlockchainHeight();
+  const Crypto::Hash tail = core.get_tail_id();
+  uint64_t generated = 0;
+  if (!expect(core.getAlreadyGeneratedCoins(tail, generated), "witness: generated coins")) {
+    core.deinit(); return false;
+  }
+  std::vector<size_t> sizes;
+  if (!expect(core.getBackwardBlocksSizes(height - 1, sizes, currency.rewardBlocksWindow()),
+              "witness: block sizes")) {
+    core.deinit(); return false;
+  }
+
+  gen.defaultMajorVersion = core.getBlockMajorVersionForHeight(height);
+  Block first;
+  std::list<Transaction> txs;
+  const uint64_t timestamp = static_cast<uint64_t>(std::time(nullptr));
+  if (!expect(gen.constructBlock(first, height, tail, miner, timestamp, generated, sizes, txs),
+              "witness: construct candidate")) {
+    core.deinit(); return false;
+  }
+  if (!expect(signBlockForTest(first, miner), "witness: sign first proof")) {
+    core.deinit(); return false;
+  }
+
+  Block second = first;
+  for (unsigned attempt = 0; attempt < 4 && second.signature == first.signature; ++attempt) {
+    if (!expect(signBlockForTest(second, miner), "witness: sign alternate proof")) {
+      core.deinit(); return false;
+    }
+  }
+
+  bool ok = true;
+  ok &= expect(first.signature != second.signature,
+               "witness: randomized signatures over one candidate are distinct");
+  BinaryArray firstBlob;
+  BinaryArray secondBlob;
+  ok &= expect(get_block_hashing_blob(first, firstBlob) &&
+               get_block_hashing_blob(second, secondBlob) && firstBlob == secondBlob,
+               "witness: alternate proofs share the unsigned candidate blob");
+
+  const Crypto::Hash firstId = get_block_hash(first);
+  const Crypto::Hash secondId = get_block_hash(second);
+  ok &= expect(firstId != secondId,
+               "witness: alternate valid signatures have distinct block IDs");
+
+  block_verification_context firstBvc{};
+  core.handle_incoming_block(first, firstBvc, false, false);
+  ok &= expect(firstBvc.m_added_to_main_chain && !firstBvc.m_verification_failed,
+               "witness: first proof accepted on the main chain");
+
+  block_verification_context secondBvc{};
+  core.handle_incoming_block(second, secondBvc, false, false);
+  ok &= expect(!secondBvc.m_already_exists && !secondBvc.m_verification_failed,
+               "witness: second valid proof independently admitted as an alternative block");
+
+  Block invalid = first;
+  invalid.signature[0] ^= 0x01;
+  const Crypto::Hash invalidId = get_block_hash(invalid);
+  ok &= expect(invalidId != firstId && invalidId != secondId,
+               "witness: invalid signature variant also has its own ID");
+  block_verification_context invalidBvc{};
+  core.handle_incoming_block(invalid, invalidBvc, false, false);
+  ok &= expect(!invalidBvc.m_already_exists && invalidBvc.m_verification_failed,
+               "witness: known candidate content cannot bypass validation for a new witness");
+
+  core.deinit();
+  std::filesystem::remove_all(dataDir, ec);
+  return ok;
+}
+
 }  // namespace
 
 int main() {
@@ -872,6 +974,10 @@ int main() {
   }
   if (!runMinerBinding()) {
     std::cerr << "[FAIL] PQ miner identity-binding test" << std::endl;
+    return 1;
+  }
+  if (!runBlockWitnessIsolation()) {
+    std::cerr << "[FAIL] PQ block-witness isolation test" << std::endl;
     return 1;
   }
   std::cout << "[PASS] PQ chain integration test" << std::endl;

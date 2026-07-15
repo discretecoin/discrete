@@ -89,6 +89,7 @@ bool BlockchainExplorerDataBuilder::fillBlockDetails(const Block &block, BlockDe
   blockDetails.prevBlockHash = block.previousBlockHash;
   blockDetails.nonce = block.nonce;
   blockDetails.hash = hash;
+  blockDetails.signatureWitness = get_block_signature_witness(block.signature);
 
   blockDetails.reward = 0;
   for (const TransactionOutput& out : block.baseTransaction.outputs) {

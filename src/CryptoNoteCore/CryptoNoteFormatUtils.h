@@ -75,11 +75,16 @@ constexpr char DISCRETE_POWER_FINAL_DOMAIN[]      = "DiscretePower/v2/final";   
 // 32-byte witness W = SHAKE256(witness-domain || signature), then
 // ID = SHAKE256(block-id-domain || LE64(|C_B|) || C_B || W) where C_B is the
 // unsigned block-hashing blob. Distinct valid signatures over one header yield
-// distinct IDs (no signature/PoW malleability), a checkpoint pin transitively
-// commits to every signature below it, and W stays separable so the signature can
-// later be pruned while the ID remains recomputable from the retained witness.
+// distinct IDs (no same-ID proof aliasing), and a checkpoint pin transitively
+// commits to every signature below it. W is separable so a future pruned-storage
+// format can retain it, but the current wire and database keep full signatures.
 constexpr char DISCRETE_POWER_WITNESS_DOMAIN[]    = "DiscretePower/v2/witness";  // -> W  (32 B)
 constexpr char DISCRETE_POWER_BLOCK_ID_DOMAIN[]   = "DiscretePower/v2/block-id"; // -> block ID (32 B)
+
+// W = SHAKE256(witness-domain || signature, 32). This commitment is part of
+// the block ID and is exposed separately for diagnostics/explorers. It is
+// derived on demand today; no pruned-block storage format is implemented yet.
+Crypto::Hash get_block_signature_witness(const std::vector<uint8_t>& signature);
 
 // H = SHAKE256(header-domain || get_block_hashing_blob(b), 64) — the 64-byte
 // DiscretePower header digest that binds the whole candidate template.

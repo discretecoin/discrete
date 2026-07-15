@@ -39,6 +39,11 @@ per-candidate tape, not a short digest — but it is **not** a proof that
 purpose-built custodial pools are impossible. See the
 [DiscretePower specification](https://docs.discrete.cash/#/consensus/pow).
 
+The block ID is distinct from the PoW hash. It commits to the exact ML-DSA-65
+block signature through a 32-byte SHAKE-256 witness, so randomized signatures
+over one candidate are separate proof-bearing block IDs and cannot alias in
+deduplication, checkpoints, or explorer lookups.
+
 The candidate wire format, domain-separation tags, and blob sizes are
 documented in the [PQ wire-format reference](https://docs.discrete.cash/#/consensus/pq-wire-format)
 and pinned by `tests/test_pq_domains.cpp`.

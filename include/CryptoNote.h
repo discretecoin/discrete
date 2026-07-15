@@ -146,9 +146,9 @@ struct Block : public BlockHeader {
   ParentBlock parentBlock;
   Transaction baseTransaction;
   // DiscretePower PoW signature: exactly one ML-DSA-65 signature (DISCRETE_POWER_SIG_LEN =
-  // 3309 bytes), serialized OUTSIDE the hashing blob. The current block-v1 ID
-  // also excludes it; admission still recomputes and verifies the signature-bound
-  // PoW for every candidate. The miner signs
+  // 3309 bytes), serialized OUTSIDE the hashing blob. The block-v1 ID commits to
+  // it through a 32-byte SHAKE-256 witness, while admission independently verifies
+  // the signature-bound PoW for every new proof-bearing ID. The miner signs
   // m = SHAKE256("DiscretePower/v2/sign" || H) every attempt;
   // this same signature is the tape injected into yespower-discrete AND the reward
   // binding (there is no separate reward signature). See

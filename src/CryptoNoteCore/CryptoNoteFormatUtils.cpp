@@ -234,32 +234,36 @@ Crypto::Hash shake256Hash(const BinaryArray& input) {
 
 // Witness-commitment block identity (DiscretePower). cB is the unsigned
 // block-hashing blob C_B. The signature is bound through a separable 32-byte
-// witness so it can later be pruned while the ID stays recomputable:
+// witness:
 //   W  = SHAKE256(witness-domain  || signature, 32)
 //   ID = SHAKE256(block-id-domain || LE64(|C_B|) || C_B || W, 32)
 Crypto::Hash discretePowerBlockId(const BinaryArray& cB,
                                   const std::vector<uint8_t>& signature) {
-  std::array<uint8_t, 32> W{};
-  {
-    BinaryArray t;
-    t.reserve(sizeof(DISCRETE_POWER_WITNESS_DOMAIN) - 1 + signature.size());
-    appendBytes(t, DISCRETE_POWER_WITNESS_DOMAIN, sizeof(DISCRETE_POWER_WITNESS_DOMAIN) - 1);
-    appendBytes(t, signature.data(), signature.size());
-    CryptoPQ::shake256(t.data(), t.size(), W.data(), W.size());
-  }
+  const Crypto::Hash witness = get_block_signature_witness(signature);
   uint8_t lenLE[8];
   const uint64_t n = static_cast<uint64_t>(cB.size());
   for (int i = 0; i < 8; ++i) lenLE[i] = static_cast<uint8_t>((n >> (8 * i)) & 0xFFu);
   BinaryArray t;
-  t.reserve(sizeof(DISCRETE_POWER_BLOCK_ID_DOMAIN) - 1 + sizeof(lenLE) + cB.size() + W.size());
+  t.reserve(sizeof(DISCRETE_POWER_BLOCK_ID_DOMAIN) - 1 + sizeof(lenLE) + cB.size() + sizeof(witness.data));
   appendBytes(t, DISCRETE_POWER_BLOCK_ID_DOMAIN, sizeof(DISCRETE_POWER_BLOCK_ID_DOMAIN) - 1);
   appendBytes(t, lenLE, sizeof(lenLE));
   appendBytes(t, cB.data(), cB.size());
-  appendBytes(t, W.data(), W.size());
+  appendBytes(t, witness.data, sizeof(witness.data));
   return shake256Hash(t);
 }
 
 }  // namespace
+
+Crypto::Hash get_block_signature_witness(const std::vector<uint8_t>& signature) {
+  BinaryArray transcript;
+  transcript.reserve(sizeof(DISCRETE_POWER_WITNESS_DOMAIN) - 1 + signature.size());
+  appendBytes(transcript, DISCRETE_POWER_WITNESS_DOMAIN,
+              sizeof(DISCRETE_POWER_WITNESS_DOMAIN) - 1);
+  if (!signature.empty()) {
+    appendBytes(transcript, signature.data(), signature.size());
+  }
+  return shake256Hash(transcript);
+}
 
 namespace {
 
@@ -417,11 +421,12 @@ bool get_block_hash(const Block& b, Hash& res) {
   // Witness-commitment block ID: ba is the unsigned block-hashing blob C_B
   // (header + transaction-tree commitment). The ID commits to b.signature through
   // a 32-byte witness (discretePowerBlockId), so distinct valid signatures over
-  // one header yield distinct IDs — closing signature/PoW malleability — and a
+  // one header yield distinct IDs — eliminating same-ID proof aliasing — and a
   // checkpoint pin transitively commits to every signature below it. Non-circular:
   // the signature signs C_B; the ID is computed afterward. The block ID is an
-  // identifier only; consensus admission still verifies the signature and
-  // recomputes the DiscretePower PoW, never treating an ID cache hit as a verdict.
+  // identifier only; consensus admission still verifies new IDs. A cache hit can
+  // safely deduplicate the exact proof-bearing ID because another signature has
+  // a different witness and therefore a different ID (up to SHAKE-256 collision).
   res = discretePowerBlockId(ba, b.signature);
   return true;
 }

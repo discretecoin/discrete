@@ -140,6 +140,7 @@ struct BlockDetails {
   uint64_t timestamp = 0;
   Crypto::Hash prevBlockHash;
   Crypto::Hash proofOfWork;
+  Crypto::Hash signatureWitness;  // W_B = SHAKE256(domain || minerSignature)
   uint32_t nonce = 0;
   bool isOrphaned = false;
   uint32_t height = 0;

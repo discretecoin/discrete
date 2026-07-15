@@ -391,10 +391,10 @@ void serialize(Block& block, ISerializer& serializer) {
   // length is rejected at deserialization (a short stream throws; nothing else
   // can consume the extra bytes). Merge-mining parent block is never present.
   //
-  // TODO(DiscretePower §14): signature MAY be pruned at depth >= CRYPTONOTE_FINALITY_DEPTH
-  // under the chain's PQ-signature pruning/checkpoint model. That mechanism (shared
-  // with transaction PQ-signature pruning) is not yet implemented, so the full
-  // signature is retained here; wire pruning through this field when it lands.
+  // The block ID commits to SHAKE256(signature), which permits a future pruned
+  // storage representation to retain that 32-byte witness. No such database or
+  // wire representation exists today: every serialized block must carry the full
+  // signature, and the finality depth alone is not authorization to discard it.
   serializePqBlob(block.signature, CryptoNote::PQ_SIGNATURE_SIZE, "signature", serializer);
   serializer(block.baseTransaction, "miner_tx");
   serializer(block.transactionHashes, "tx_hashes");

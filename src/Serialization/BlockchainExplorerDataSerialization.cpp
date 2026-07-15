@@ -193,6 +193,7 @@ void serialize(BlockDetails& block, ISerializer& serializer) {
   serializer(block.timestamp, "timestamp");
   serializePod(block.prevBlockHash, "prevBlockHash", serializer);
   serializePod(block.proofOfWork, "proofOfWork", serializer);
+  serializePod(block.signatureWitness, "signatureWitness", serializer);
   serializer(block.nonce, "nonce");
   serializer(block.isOrphaned, "isOrphaned");
   serializer(block.height, "index");
