@@ -16,6 +16,7 @@
 #include "gtest/gtest.h"
 
 #include "Checkpoints/Checkpoints.h"
+#include "Checkpoints/CheckpointsData.h"
 #include "CryptoNoteConfig.h"
 #include <Logging/LoggerGroup.h>
 
@@ -113,6 +114,26 @@ TEST(finality_depth, checkpoint_zone_exempt)
   // Shallow fork above the checkpoint zone: allowed.
   EXPECT_FALSE(cp.is_finality_violation(1100, 1095)); // depth 5
   EXPECT_TRUE (cp.is_alternative_block_allowed(1100, 1095));
+}
+
+// Discrete must ship with NO hardcoded checkpoints yet. Inside the checkpoint
+// zone the main-chain admission path legitimately skips the expensive per-block
+// re-validation (yespower + per-input ML-DSA verification) because a pinned block
+// ID transitively commits, through the prevHash chain and tx Merkle roots, to the
+// whole history below it — that is the standard fast-sync optimization and is
+// wanted. The inherited Karbo list is invalid DATA, not a broken mechanism: its
+// entries pin another chain's block IDs, so they (a) hard-stall Discrete at the
+// first entry, height 3,436 (no Discrete block ID ever matches a Karbo hash), and
+// (b) leave heights below it in-zone with the validation skip applied but no pin.
+// Real Discrete checkpoints may be added once genuine block IDs exist AND the
+// block ID commits to the block signature (witness commitment) so an in-zone
+// garbage-signature block cannot share a pinned ID; update this guard then.
+TEST(checkpoints, list_is_empty)
+{
+  EXPECT_EQ(CryptoNote::CHECKPOINTS.size(), 0u)
+      << "CHECKPOINTS must be empty until genuine Discrete block IDs exist and the "
+         "block ID commits to the signature; inherited Karbo entries stall the chain "
+         "at height 3,436 and skip validation on unpinned in-zone heights";
 }
 
 // The decision is deterministic and a pure function of its arguments — repeated
