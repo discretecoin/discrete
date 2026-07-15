@@ -28,20 +28,13 @@ struct CheckpointData {
   const char* blockId;
 };
 
-// Discrete launches with NO hardcoded checkpoints yet. A checkpoint pins a block
-// ID that transitively commits — through the prevHash chain and tx Merkle roots —
-// to the whole header/transaction history below it, so inside the checkpoint zone
-// the node may skip the expensive per-block re-validation (yespower + per-input
-// ML-DSA verification) during initial sync. That fast-sync skip is intended and
-// will be used once real Discrete checkpoints exist.
+// A checkpoint pins a block ID that transitively commits — through the prevHash 
+// chain and tx Merkle roots — to the whole header/transaction history below it, 
+// so inside the checkpoint zone the node may skip the expensive per-block 
+// re-validation (yespower + per-input ML-DSA verification) during initial sync. 
+// That fast-sync skip is intended.
 //
-// The inherited Karbo list removed here was invalid DATA, not a broken mechanism:
-// its entries (heights 3,436 .. 1,266,456) pinned ANOTHER chain's block IDs, which
-// (a) hard-stall a Discrete node at height 3,436 (no Discrete block ID ever equals
-// a Karbo hash) and (b) leave every height below the last entry in-zone with the
-// validation skip applied but no pin to anchor it.
-//
-// Add real Discrete checkpoints here only once genuine Discrete block IDs exist
+// Add Discrete checkpoints here only once genuine Discrete block IDs exist
 // AND the block ID commits to the block signature (witness commitment), so that an
 // in-zone block carrying a garbage signature cannot share a pinned ID. Keep this
 // list empty until then; enforced by the checkpoints.list_is_empty test.
