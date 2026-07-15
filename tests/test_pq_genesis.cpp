@@ -84,8 +84,11 @@ TEST(PqGenesis, GenesisBlockHashPinned) {
   for (uint8_t byte : currency.genesisBlock().signature) {
     EXPECT_EQ(byte, 0u);  // trusted wire-shape placeholder; genesis is not mined
   }
+  // Regenerated 2026-07-15 (fresh GENESIS_BLOCK_TIMESTAMP) under the
+  // witness-commitment block ID (get_block_hash now folds a 32-byte witness over
+  // the block signature). Genesis carries an all-zero placeholder signature.
   EXPECT_EQ(Common::podToHex(currency.genesisBlockHash()),
-            "3101b248ac612883c47b93fa6a4d9d34020ee2f7541ad17e73c42088748a5219");
+            "06c4df2cd46045b9fbc1664a10f1bdf0355f672c8349bbd29d671bf48e83d7bd");
 }
 
 int main(int argc, char** argv) {

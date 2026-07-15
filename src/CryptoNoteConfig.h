@@ -241,8 +241,8 @@ const char     MINER_CONFIG_FILE_NAME[]                      = "miner_conf.json"
 
 const char     CRYPTONOTE_NAME[]                             = "Discrete";
 const char     CRYPTONOTE_TICKER[]                           = "XDS";
-// Candidate genesis generated 2026-07-13 02:39:16 UTC.
-const uint64_t GENESIS_BLOCK_TIMESTAMP                      = UINT64_C(1783910356);
+// Candidate genesis generated 2026-07-15 13:49:13 UTC.
+const uint64_t GENESIS_BLOCK_TIMESTAMP                      = UINT64_C(1784123353);
 // FROZEN genesis coinbase. Carries the 1,050,000 XDS Discrete Treasury Reserve
 // (5% of the 21,000,000 XDS ceiling) as 21 per-output-unlocked PqOutputs of
 // 50,000 XDS each (unlock heights 0, 87600, ... 1,752,000 — one batch per quarter

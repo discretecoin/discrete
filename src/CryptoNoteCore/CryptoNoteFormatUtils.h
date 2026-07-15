@@ -71,6 +71,15 @@ constexpr char DISCRETE_POWER_HEADER_DOMAIN[]     = "DiscretePower/v2/header";  
 constexpr char DISCRETE_POWER_MEMORY_DOMAIN[]     = "DiscretePower/v2/memory";  // -> P  (32 B)
 constexpr char DISCRETE_POWER_SIGN_DOMAIN[]       = "DiscretePower/v2/sign";    // -> m  (64 B)
 constexpr char DISCRETE_POWER_FINAL_DOMAIN[]      = "DiscretePower/v2/final";   // -> PoW (32 B)
+// Block-identity domains. The block ID commits to the block signature through a
+// 32-byte witness W = SHAKE256(witness-domain || signature), then
+// ID = SHAKE256(block-id-domain || LE64(|C_B|) || C_B || W) where C_B is the
+// unsigned block-hashing blob. Distinct valid signatures over one header yield
+// distinct IDs (no signature/PoW malleability), a checkpoint pin transitively
+// commits to every signature below it, and W stays separable so the signature can
+// later be pruned while the ID remains recomputable from the retained witness.
+constexpr char DISCRETE_POWER_WITNESS_DOMAIN[]    = "DiscretePower/v2/witness";  // -> W  (32 B)
+constexpr char DISCRETE_POWER_BLOCK_ID_DOMAIN[]   = "DiscretePower/v2/block-id"; // -> block ID (32 B)
 
 // H = SHAKE256(header-domain || get_block_hashing_blob(b), 64) — the 64-byte
 // DiscretePower header digest that binds the whole candidate template.

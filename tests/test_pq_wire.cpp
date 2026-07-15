@@ -213,32 +213,58 @@ TEST(PqWire, CoinbaseOutputRoundTrips) {
     EXPECT_EQ(tx2.txType, TX_COINBASE);
 }
 
-TEST(PqWire, HashingBlobExcludesSignatureButDiscretePowerDependsOnIt) {
-    // DiscretePower: the hashing blob and block ID intentionally exclude
-    // signature, while the PoW hash injects it throughout yespower-discrete.
-    // Alternate proofs for one candidate therefore share an ID but have
-    // different PoW values.
+TEST(PqWire, BlockIdCommitsToSignatureViaWitness) {
+    // DiscretePower: the hashing blob C_B excludes the signature, but the block ID
+    // folds in a 32-byte witness over it. Two blocks that share a header but carry
+    // different valid-length signatures therefore have the SAME hashing blob yet
+    // DISTINCT block IDs (and DISTINCT PoW). This closes signature/PoW
+    // malleability: an alternate signature can no longer masquerade under the same
+    // block ID, so no in-zone/cache path can be poisoned by a same-ID variant.
     Block a = makePqBlock();
     Block b = a;
-    b.signature = blob(PQ_SIGNATURE_SIZE, 13, 7);
+    b.signature = blob(PQ_SIGNATURE_SIZE, 13, 7);  // differs from makePqBlock()'s (11,3)
 
     BinaryArray unsignedA;
     BinaryArray unsignedB;
     ASSERT_TRUE(get_block_hashing_blob(a, unsignedA));
     ASSERT_TRUE(get_block_hashing_blob(b, unsignedB));
-    EXPECT_EQ(unsignedA, unsignedB);  // hashing blob excludes signature
+    EXPECT_EQ(unsignedA, unsignedB);  // hashing blob C_B still excludes the signature
 
     Crypto::Hash idA{};
     Crypto::Hash idB{};
     ASSERT_TRUE(get_block_hash(a, idA));
     ASSERT_TRUE(get_block_hash(b, idB));
-    EXPECT_EQ(idA, idB);  // block identity is the unsigned header/tree hash
+    EXPECT_NE(idA, idB);  // block ID commits to the signature via the witness
 
     Crypto::Hash powA{};
     Crypto::Hash powB{};
     ASSERT_TRUE(get_block_longhash(a, powA));
     ASSERT_TRUE(get_block_longhash(b, powB));
     EXPECT_NE(powA, powB);  // the raw signature bytes drive the memory-hard core
+}
+
+TEST(PqWire, BlockIdDeterministicAndHeaderSensitive) {
+    // The ID is a pure function of (C_B, signature): recomputing it for the same
+    // block agrees, changing a header field (nonce) changes it, and changing the
+    // signature changes it — the three properties the witness commitment must have.
+    Block a = makePqBlock();
+    Crypto::Hash id1{};
+    Crypto::Hash id2{};
+    ASSERT_TRUE(get_block_hash(a, id1));
+    ASSERT_TRUE(get_block_hash(a, id2));
+    EXPECT_EQ(id1, id2);  // deterministic
+
+    Block hdr = a;
+    hdr.nonce = a.nonce + 1;
+    Crypto::Hash idHdr{};
+    ASSERT_TRUE(get_block_hash(hdr, idHdr));
+    EXPECT_NE(id1, idHdr);  // C_B change flows into the ID
+
+    Block sig = a;
+    sig.signature = blob(PQ_SIGNATURE_SIZE, 2, 5);
+    Crypto::Hash idSig{};
+    ASSERT_TRUE(get_block_hash(sig, idSig));
+    EXPECT_NE(id1, idSig);  // signature change flows into the ID via the witness
 }
 
 int main(int argc, char** argv) {

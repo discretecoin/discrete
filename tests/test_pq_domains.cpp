@@ -114,15 +114,19 @@ TEST(PqDomains, FreeRegistrationPowDomain) {
 TEST(PqDomains, DiscretePowerDomains) {
     // DiscretePower (revision D) consensus domains. See
     // https://docs.discrete.cash/#/consensus/pow and CryptoNoteFormatUtils.h.
-    EXPECT_STREQ(DISCRETE_POWER_HEADER_DOMAIN, "DiscretePower/v2/header");
-    EXPECT_STREQ(DISCRETE_POWER_MEMORY_DOMAIN, "DiscretePower/v2/memory");
-    EXPECT_STREQ(DISCRETE_POWER_SIGN_DOMAIN,   "DiscretePower/v2/sign");
-    EXPECT_STREQ(DISCRETE_POWER_FINAL_DOMAIN,  "DiscretePower/v2/final");
+    EXPECT_STREQ(DISCRETE_POWER_HEADER_DOMAIN,   "DiscretePower/v2/header");
+    EXPECT_STREQ(DISCRETE_POWER_MEMORY_DOMAIN,   "DiscretePower/v2/memory");
+    EXPECT_STREQ(DISCRETE_POWER_SIGN_DOMAIN,     "DiscretePower/v2/sign");
+    EXPECT_STREQ(DISCRETE_POWER_FINAL_DOMAIN,    "DiscretePower/v2/final");
+    EXPECT_STREQ(DISCRETE_POWER_WITNESS_DOMAIN,  "DiscretePower/v2/witness");
+    EXPECT_STREQ(DISCRETE_POWER_BLOCK_ID_DOMAIN, "DiscretePower/v2/block-id");
 
-    EXPECT_EQ(std::strlen(DISCRETE_POWER_HEADER_DOMAIN), 23u);
-    EXPECT_EQ(std::strlen(DISCRETE_POWER_MEMORY_DOMAIN), 23u);
-    EXPECT_EQ(std::strlen(DISCRETE_POWER_SIGN_DOMAIN),   21u);
-    EXPECT_EQ(std::strlen(DISCRETE_POWER_FINAL_DOMAIN),  22u);
+    EXPECT_EQ(std::strlen(DISCRETE_POWER_HEADER_DOMAIN),   23u);
+    EXPECT_EQ(std::strlen(DISCRETE_POWER_MEMORY_DOMAIN),   23u);
+    EXPECT_EQ(std::strlen(DISCRETE_POWER_SIGN_DOMAIN),     21u);
+    EXPECT_EQ(std::strlen(DISCRETE_POWER_FINAL_DOMAIN),    22u);
+    EXPECT_EQ(std::strlen(DISCRETE_POWER_WITNESS_DOMAIN),  24u);
+    EXPECT_EQ(std::strlen(DISCRETE_POWER_BLOCK_ID_DOMAIN), 25u);
 }
 
 TEST(PqDomains, ReservedCtMaskNotReused) {
@@ -138,7 +142,8 @@ TEST(PqDomains, ReservedCtMaskNotReused) {
         kDomainCoinbaseRho, kDomainViewRoot, kDomainSpendRoot,
         FREE_REG_POW_DOMAIN, DISCRETE_POWER_HEADER_DOMAIN,
         DISCRETE_POWER_MEMORY_DOMAIN, DISCRETE_POWER_SIGN_DOMAIN,
-        DISCRETE_POWER_FINAL_DOMAIN,
+        DISCRETE_POWER_FINAL_DOMAIN, DISCRETE_POWER_WITNESS_DOMAIN,
+        DISCRETE_POWER_BLOCK_ID_DOMAIN,
     };
     for (const char* tag : phase1) {
         EXPECT_STRNE(tag, kReservedCtMask) << "collision with reserved tag: " << tag;
@@ -162,6 +167,7 @@ TEST(PqDomains, ReservedShieldedSerialNotReused) {
         kDomainDepositSpendRoot, FREE_REG_POW_DOMAIN,
         DISCRETE_POWER_HEADER_DOMAIN, DISCRETE_POWER_MEMORY_DOMAIN,
         DISCRETE_POWER_SIGN_DOMAIN, DISCRETE_POWER_FINAL_DOMAIN,
+        DISCRETE_POWER_WITNESS_DOMAIN, DISCRETE_POWER_BLOCK_ID_DOMAIN,
         kReservedCtMask,
     };
     for (const char* tag : phase12) {
