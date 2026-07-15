@@ -386,6 +386,82 @@ uint32_t LMDBBlockchainDB::getChainHeight() const {
 
 // ─── block_meta ───────────────────────────────────────────────────────────
 
+bool LMDBBlockchainDB::getWalletSyncRange(
+    uint32_t startHeight, uint32_t endHeight, uint32_t& chainHeight,
+    std::vector<DbWalletSyncBlock>& blocks) const {
+  auto guard = readTxn();
+  MDB_cursor* metaCursor = nullptr;
+  int rc = mdb_cursor_open(guard.txn, m_dbiBlockMeta, &metaCursor);
+  checkRc(rc, "getWalletSyncRange:meta_cursor_open");
+
+  MDB_val key{}, value{};
+  rc = mdb_cursor_get(metaCursor, &key, &value, MDB_LAST);
+  if (rc == MDB_NOTFOUND) {
+    mdb_cursor_close(metaCursor);
+    chainHeight = 0;
+    return true;
+  }
+  if (rc != 0) {
+    mdb_cursor_close(metaCursor);
+    checkRc(rc, "getWalletSyncRange:height");
+  }
+  chainHeight = decBE32(static_cast<const uint8_t*>(key.mv_data)) + 1;
+
+  const uint32_t boundedEnd = std::min(endHeight, chainHeight);
+  if (startHeight >= boundedEnd) {
+    mdb_cursor_close(metaCursor);
+    return true;
+  }
+  blocks.reserve(blocks.size() + (boundedEnd - startHeight));
+
+  for (uint32_t height = startHeight; height < boundedEnd; ++height) {
+    DbWalletSyncBlock record;
+    uint8_t heightKey[4];
+    encBE32(heightKey, height);
+    key = MDB_val{sizeof(heightKey), heightKey};
+    value = MDB_val{};
+    rc = mdb_cursor_get(metaCursor, &key, &value, MDB_SET);
+    if (rc != 0 || value.mv_size < sizeof(DbBlockMeta)) {
+      mdb_cursor_close(metaCursor);
+      if (rc != 0) checkRc(rc, "getWalletSyncRange:block_meta");
+      throw std::runtime_error("LMDB getWalletSyncRange:block_meta corrupt value");
+    }
+    std::memcpy(&record.meta, value.mv_data, sizeof(DbBlockMeta));
+
+    key = MDB_val{sizeof(heightKey), heightKey};
+    value = MDB_val{};
+    rc = mdb_get(guard.txn, m_dbiBlockData, &key, &value);
+    if (rc != 0) {
+      mdb_cursor_close(metaCursor);
+      checkRc(rc, "getWalletSyncRange:block_data");
+    }
+    record.blockData.assign(static_cast<const uint8_t*>(value.mv_data),
+                            static_cast<const uint8_t*>(value.mv_data) + value.mv_size);
+
+    record.transactionEntries.reserve(record.meta.txCount > 0 ? record.meta.txCount - 1 : 0);
+    for (uint16_t slot = 1; slot < record.meta.txCount; ++slot) {
+      uint8_t txKey[6];
+      encBE32(txKey, height);
+      txKey[4] = static_cast<uint8_t>(slot >> 8);
+      txKey[5] = static_cast<uint8_t>(slot);
+      key = MDB_val{sizeof(txKey), txKey};
+      value = MDB_val{};
+      rc = mdb_get(guard.txn, m_dbiTxEntries, &key, &value);
+      if (rc != 0) {
+        mdb_cursor_close(metaCursor);
+        checkRc(rc, "getWalletSyncRange:tx_entry");
+      }
+      record.transactionEntries.emplace_back(
+          static_cast<const uint8_t*>(value.mv_data),
+          static_cast<const uint8_t*>(value.mv_data) + value.mv_size);
+    }
+    blocks.push_back(std::move(record));
+  }
+
+  mdb_cursor_close(metaCursor);
+  return true;
+}
+
 bool LMDBBlockchainDB::putBlockMeta(uint32_t height, const DbBlockMeta& meta) {
   assert(m_writeTxn);
   uint8_t keyBuf[4]; encBE32(keyBuf, height);

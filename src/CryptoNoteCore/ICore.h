@@ -53,6 +53,13 @@ struct KeyInput;
 struct TransactionPrefixInfo;
 struct tx_verification_context;
 
+struct WalletSyncBlockInfo {
+  uint32_t height = 0;
+  Crypto::Hash hash{};
+  Block block;
+  std::vector<Transaction> transactions;
+};
+
 class ICore {
 public:
   virtual ~ICore() {}
@@ -93,6 +100,8 @@ public:
     uint32_t& start_height, uint32_t& current_height, uint32_t& full_offset, std::vector<BlockFullInfo>& entries) = 0;
   virtual bool queryBlocksLite(const std::vector<Crypto::Hash>& block_ids, uint64_t timestamp,
     uint32_t& start_height, uint32_t& current_height, uint32_t& full_offset, std::vector<BlockShortInfo>& entries) = 0;
+  virtual bool getWalletSyncBlocks(uint32_t startHeight, uint32_t blockCount,
+    uint32_t& currentHeight, std::vector<WalletSyncBlockInfo>& blocks) { return false; }
 
   virtual Crypto::Hash getBlockIdByHeight(uint32_t height) = 0;
   virtual bool getBlockByHash(const Crypto::Hash &h, Block &blk) = 0;

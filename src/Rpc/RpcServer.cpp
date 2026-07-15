@@ -1154,56 +1154,40 @@ bool RpcServer::on_get_transactions_details_by_heights(const COMMAND_RPC_GET_TRA
 bool RpcServer::on_get_wallet_sync_data(const COMMAND_RPC_GET_WALLET_SYNC_DATA::request& req,
                                         COMMAND_RPC_GET_WALLET_SYNC_DATA::response& rsp) {
   try {
-    const uint32_t chainHeight = m_core.getCurrentBlockchainHeight();
-    rsp.top_height = chainHeight == 0 ? 0 : chainHeight - 1;
-
     if (req.block_count == 0 || req.block_count > BLOCK_LIST_MAX_COUNT) {
       throw JsonRpc::JsonRpcError{CORE_RPC_ERROR_CODE_WRONG_PARAM,
         std::string("block_count must be between 1 and ") + std::to_string(BLOCK_LIST_MAX_COUNT)};
     }
 
-    if (chainHeight == 0 || req.start_height >= chainHeight) {
-      rsp.status = CORE_RPC_STATUS_OK;
-      return true;
+    uint32_t chainHeight = 0;
+    std::vector<WalletSyncBlockInfo> blocks;
+    if (!m_core.getWalletSyncBlocks(req.start_height, req.block_count, chainHeight, blocks)) {
+      throw JsonRpc::JsonRpcError{CORE_RPC_ERROR_CODE_INTERNAL_ERROR,
+        "Failed to read wallet synchronization snapshot"};
     }
+    rsp.top_height = chainHeight == 0 ? 0 : chainHeight - 1;
+    rsp.blocks.reserve(blocks.size());
 
-    const uint64_t requestedEnd = static_cast<uint64_t>(req.start_height) + req.block_count;
-    const uint32_t endHeight = static_cast<uint32_t>(std::min<uint64_t>(requestedEnd, chainHeight));
-    rsp.blocks.reserve(endHeight - req.start_height);
-
-    for (uint32_t height = req.start_height; height < endHeight; ++height) {
-      const Crypto::Hash blockHash = m_core.getBlockIdByHeight(height);
-      Block block;
-      if (!m_core.getBlockByHash(blockHash, block)) {
-        throw JsonRpc::JsonRpcError{CORE_RPC_ERROR_CODE_INTERNAL_ERROR,
-          std::string("Failed to get block at height ") + std::to_string(height)};
-      }
-
+    for (auto& source : blocks) {
       wallet_sync_block entry;
-      entry.height = height;
-      entry.hash = blockHash;
-      entry.previous_hash = block.previousBlockHash;
-      entry.timestamp = block.timestamp;
-      entry.transactions.reserve(block.transactionHashes.size() + (req.include_miner_txs ? 1 : 0));
+      entry.height = source.height;
+      entry.hash = source.hash;
+      entry.previous_hash = source.block.previousBlockHash;
+      entry.timestamp = source.block.timestamp;
+      entry.transactions.reserve(source.transactions.size() + (req.include_miner_txs ? 1 : 0));
 
       if (req.include_miner_txs) {
         wallet_sync_transaction coinbase;
-        coinbase.transaction = static_cast<const TransactionPrefix&>(block.baseTransaction);
-        coinbase.hash = getObjectHash(block.baseTransaction);
+        coinbase.transaction = static_cast<const TransactionPrefix&>(source.block.baseTransaction);
+        coinbase.hash = getObjectHash(source.block.baseTransaction);
         coinbase.coinbase = true;
         entry.transactions.push_back(std::move(coinbase));
       }
 
-      for (const Crypto::Hash& transactionHash : block.transactionHashes) {
-        Transaction transaction;
-        if (!m_core.getTransaction(transactionHash, transaction, false)) {
-          throw JsonRpc::JsonRpcError{CORE_RPC_ERROR_CODE_INTERNAL_ERROR,
-            std::string("Failed to get transaction ") + Common::podToHex(transactionHash)};
-        }
-
+      for (size_t index = 0; index < source.transactions.size(); ++index) {
         wallet_sync_transaction txEntry;
-        txEntry.transaction = static_cast<const TransactionPrefix&>(transaction);
-        txEntry.hash = transactionHash;
+        txEntry.transaction = static_cast<const TransactionPrefix&>(source.transactions[index]);
+        txEntry.hash = source.block.transactionHashes[index];
         txEntry.coinbase = false;
         entry.transactions.push_back(std::move(txEntry));
       }

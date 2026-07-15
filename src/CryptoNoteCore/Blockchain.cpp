@@ -718,6 +718,54 @@ bool Blockchain::getBlockByHash(const Crypto::Hash& blockHash, Block& b) {
   return false;
 }
 
+bool Blockchain::getWalletSyncBlocks(uint32_t startHeight, uint32_t blockCount,
+                                     uint32_t& currentHeight,
+                                     std::vector<WalletSyncBlockInfo>& blocks) {
+  std::lock_guard<decltype(m_blockchain_lock)> lock(m_blockchain_lock);
+  const uint64_t requestedEnd = static_cast<uint64_t>(startHeight) + blockCount;
+  const uint32_t endHeight = static_cast<uint32_t>(
+      std::min<uint64_t>(requestedEnd, std::numeric_limits<uint32_t>::max()));
+
+  std::vector<DbWalletSyncBlock> records;
+  if (!m_db.getWalletSyncRange(startHeight, endHeight, currentHeight, records)) {
+    return false;
+  }
+
+  blocks.reserve(blocks.size() + records.size());
+  for (const auto& record : records) {
+    WalletSyncBlockInfo result;
+    result.height = record.meta.height;
+    std::memcpy(result.hash.data, record.meta.hash, sizeof(result.hash.data));
+    if (!fromBinaryArray(result.block, record.blockData)) {
+      throw std::runtime_error("getWalletSyncBlocks: block deserialize failed at height " +
+                               std::to_string(result.height));
+    }
+
+    result.transactions.reserve(record.transactionEntries.size());
+    for (const auto& raw : record.transactionEntries) {
+      if (raw.size() < sizeof(uint32_t)) {
+        throw std::runtime_error("getWalletSyncBlocks: corrupt transaction entry");
+      }
+      uint32_t transactionSize = 0;
+      std::memcpy(&transactionSize, raw.data(), sizeof(transactionSize));
+      if (transactionSize > raw.size() - sizeof(transactionSize)) {
+        throw std::runtime_error("getWalletSyncBlocks: truncated transaction entry");
+      }
+      Transaction transaction;
+      const uint8_t* begin = raw.data() + sizeof(transactionSize);
+      if (!fromBinaryArray(transaction, BinaryArray(begin, begin + transactionSize))) {
+        throw std::runtime_error("getWalletSyncBlocks: transaction deserialize failed");
+      }
+      result.transactions.push_back(std::move(transaction));
+    }
+    if (result.transactions.size() != result.block.transactionHashes.size()) {
+      throw std::runtime_error("getWalletSyncBlocks: transaction count mismatch");
+    }
+    blocks.push_back(std::move(result));
+  }
+  return true;
+}
+
 bool Blockchain::getBlockHeight(const Crypto::Hash& blockId, uint32_t& blockHeight) {
   std::lock_guard<decltype(m_blockchain_lock)> lock(m_blockchain_lock);
   return m_db.getHashHeight(blockId, blockHeight);

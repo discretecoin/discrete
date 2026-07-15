@@ -55,6 +55,12 @@ struct DbBlockMeta {
 #pragma pack(pop)
 static_assert(sizeof(DbBlockMeta) == 100, "DbBlockMeta must be 100 bytes");
 
+struct DbWalletSyncBlock {
+  DbBlockMeta meta{};
+  std::vector<uint8_t> blockData;
+  std::vector<std::vector<uint8_t>> transactionEntries;
+};
+
 // ─── Exception thrown when LMDB map is full ────────────────────────────────
 class LMDBMapFullException : public std::runtime_error {
 public:
@@ -85,6 +91,12 @@ public:
 
   // Chain height  (= number of blocks stored = last_height + 1)
   uint32_t getChainHeight() const;
+
+  // Reads a contiguous wallet synchronization snapshot using one LMDB read
+  // transaction. `endHeight` is exclusive and is clamped to the snapshot tip.
+  bool getWalletSyncRange(uint32_t startHeight, uint32_t endHeight,
+                          uint32_t& chainHeight,
+                          std::vector<DbWalletSyncBlock>& blocks) const;
 
   // ── block_meta ────────────────────────────────────────────────────────────
   bool putBlockMeta(uint32_t height, const DbBlockMeta& meta);

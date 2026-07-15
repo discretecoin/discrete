@@ -31,6 +31,7 @@
 #include "CryptoNoteCore/LMDBBlockchainDB.h"
 #include "CryptoNoteCore/Currency.h"
 #include "CryptoNoteCore/IBlockchainStorageObserver.h"
+#include "CryptoNoteCore/ICore.h"
 #include "CryptoNoteCore/TransactionExtra.h"
 #include "CryptoNoteCore/ITransactionValidator.h"
 #include "CryptoNoteCore/SwappedVector.h"        // kept for migrateFromSwappedVector
@@ -82,6 +83,9 @@ namespace CryptoNote {
     void setCheckpoints(Checkpoints&& chk_pts) { m_checkpoints = chk_pts; }
     bool getBlocks(uint32_t start_offset, uint32_t count, std::list<Block>& blocks, std::list<Transaction>& txs);
     bool getBlocks(uint32_t start_offset, uint32_t count, std::list<Block>& blocks);
+    bool getWalletSyncBlocks(uint32_t startHeight, uint32_t blockCount,
+                             uint32_t& currentHeight,
+                             std::vector<WalletSyncBlockInfo>& blocks);
     bool getTransactionsWithOutputGlobalIndexes(const std::vector<Crypto::Hash>& txs_ids,
                                                 std::list<Crypto::Hash>& missed_txs,
                                                 std::vector<std::pair<Transaction, std::vector<uint32_t>>>& txs);

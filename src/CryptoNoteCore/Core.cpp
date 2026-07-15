@@ -988,6 +988,12 @@ bool Core::queryBlocksLite(const std::vector<Crypto::Hash>& knownBlockIds, uint6
   return true;
 }
 
+bool Core::getWalletSyncBlocks(uint32_t startHeight, uint32_t blockCount,
+                               uint32_t& currentHeight,
+                               std::vector<WalletSyncBlockInfo>& blocks) {
+  return m_blockchain.getWalletSyncBlocks(startHeight, blockCount, currentHeight, blocks);
+}
+
 bool Core::getBackwardBlocksSizes(uint32_t fromHeight, std::vector<size_t>& sizes, size_t count) {
   return m_blockchain.getBackwardBlocksSize(fromHeight, sizes, count);
 }
