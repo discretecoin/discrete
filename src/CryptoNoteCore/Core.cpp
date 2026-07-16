@@ -512,31 +512,68 @@ bool Core::get_block_template_pq(Block& b, const CryptoPQ::KemPublicKey& /*viewP
     already_generated_coins = m_blockchain.getCoinsInCirculation();
   }
 
-  size_t txs_size;
-  uint64_t fee;
-  if (!m_mempool.fill_block_template(b, median_size, m_currency.maxBlockCumulativeSize(height), already_generated_coins, txs_size, fee)) {
-    return false;
-  }
+  const size_t max_cumulative_size = m_currency.maxBlockCumulativeSize(height);
+  size_t transaction_selection_limit = max_cumulative_size;
 
-  // PQ coinbase construction.
-  bool r = m_currency.constructMinerTxPq(b.majorVersion, height, median_size, already_generated_coins, txs_size, fee, spendPub, b.baseTransaction, ex_nonce);
-  if (!r) {
-    logger(ERROR, BRIGHT_RED) << "Failed to construct PQ miner tx (first chance)";
-    return false;
-  }
+  // The generic pool selector reserves CRYPTONOTE_COINBASE_BLOB_RESERVED_SIZE,
+  // but a PQ coinbase carries an ML-DSA public key and is substantially larger.
+  // Select, construct, and measure the real payload; if it is oversized, reduce
+  // the selector's budget by the exact overflow and rebuild. This avoids coupling
+  // consensus safety to a hard-coded estimate of the PQ coinbase size.
+  for (size_t selection_try = 0; selection_try != 10; ++selection_try) {
+    size_t txs_size;
+    uint64_t fee;
+    if (!m_mempool.fill_block_template(b, median_size, transaction_selection_limit,
+                                       already_generated_coins, txs_size, fee)) {
+      return false;
+    }
 
-  size_t cumulative_size = txs_size + getObjectBinarySize(b.baseTransaction);
-  for (size_t try_count = 0; try_count != 10; ++try_count) {
-    r = m_currency.constructMinerTxPq(b.majorVersion, height, median_size, already_generated_coins, cumulative_size, fee, spendPub, b.baseTransaction, ex_nonce);
-    if (!r) { logger(ERROR, BRIGHT_RED) << "Failed to construct PQ miner tx (retry)"; return false; }
-    size_t coinbase_blob_size = getObjectBinarySize(b.baseTransaction);
-    if (coinbase_blob_size <= cumulative_size - txs_size) {
+    bool r = m_currency.constructMinerTxPq(b.majorVersion, height, median_size,
+      already_generated_coins, txs_size, fee, spendPub, b.baseTransaction, ex_nonce);
+    if (!r) {
+      logger(ERROR, BRIGHT_RED) << "Failed to construct PQ miner tx (first chance)";
+      return false;
+    }
+
+    size_t cumulative_size = txs_size + getObjectBinarySize(b.baseTransaction);
+    bool size_stabilized = false;
+    for (size_t coinbase_try = 0; coinbase_try != 10; ++coinbase_try) {
+      r = m_currency.constructMinerTxPq(b.majorVersion, height, median_size,
+        already_generated_coins, cumulative_size, fee, spendPub, b.baseTransaction, ex_nonce);
+      if (!r) {
+        logger(ERROR, BRIGHT_RED) << "Failed to construct PQ miner tx (retry)";
+        return false;
+      }
+
+      const size_t measured_size = txs_size + getObjectBinarySize(b.baseTransaction);
+      if (measured_size == cumulative_size) {
+        size_stabilized = true;
+        break;
+      }
+      cumulative_size = measured_size;
+    }
+
+    if (!size_stabilized) {
+      logger(ERROR, BRIGHT_RED) << "Failed to stabilize PQ coinbase size after 10 tries";
+      return false;
+    }
+
+    if (cumulative_size <= max_cumulative_size) {
       return true;
     }
-    cumulative_size = txs_size + coinbase_blob_size;
+
+    const size_t overflow = cumulative_size - max_cumulative_size;
+    if (overflow >= transaction_selection_limit) {
+      logger(ERROR, BRIGHT_RED) << "PQ block template exceeds the cumulative size limit even without transactions";
+      return false;
+    }
+
+    transaction_selection_limit -= overflow;
+    logger(DEBUGGING) << "PQ block template exceeded the cumulative size limit by " << overflow
+      << " bytes; rebuilding with transaction selection limit " << transaction_selection_limit;
   }
 
-  logger(ERROR, BRIGHT_RED) << "Failed to create PQ block template after 10 tries";
+  logger(ERROR, BRIGHT_RED) << "Failed to fit PQ block template within the cumulative size limit after 10 tries";
   return false;
 }
 
