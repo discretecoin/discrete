@@ -198,7 +198,7 @@ const size_t   DIFFICULTY_LAG                                = 0;
 const uint64_t MINIMUM_DIFFICULTY                            = 10000;
 
 const size_t   MAX_BLOCK_SIZE_INITIAL                        = 1000000;
-const uint64_t MAX_BLOCK_SIZE_GROWTH_SPEED_NUMERATOR         = 100 * 1024;
+const uint64_t MAX_BLOCK_SIZE_GROWTH_SPEED_NUMERATOR         = 512 * 1024;
 const uint64_t MAX_BLOCK_SIZE_GROWTH_SPEED_DENOMINATOR       = 365 * 24 * 60 * 60 / DIFFICULTY_TARGET;
 
 const uint64_t CRYPTONOTE_LOCKED_TX_ALLOWED_DELTA_BLOCKS     = 1;
