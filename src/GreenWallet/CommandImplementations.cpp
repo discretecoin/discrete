@@ -1082,8 +1082,7 @@ void pqAccount(std::shared_ptr<WalletInfo> walletInfo, CryptoNote::INode &node)
     std::cout << SuccessMsg("Your account number: " + acct.toString(fp)) << std::endl;
     std::cout << InformationMsg(
                      "The '" + CryptoNote::AccountNumber::encodeFingerprint(fp) +
-                     "' part is a fingerprint of your keys: a payer's wallet refuses this number "
-                     "if a chain reorg ever repoints it. Others can pay it after " +
+                     "' part is a fingerprint of your keys. It is safe to share and use once it has " +
                      std::to_string(CryptoNote::parameters::CRYPTONOTE_FINALITY_DEPTH) +
                      " confirmations.")
               << std::endl;

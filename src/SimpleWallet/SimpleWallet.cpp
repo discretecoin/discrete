@@ -2446,9 +2446,9 @@ bool simple_wallet::pq_account(const std::vector<std::string> &args) {
       pq.viewPub.data(), pq.viewPub.size());
   success_msg_writer(true) << "Your account number: " << acct.toString(fp);
   success_msg_writer() << "The '" << CryptoNote::AccountNumber::encodeFingerprint(fp)
-                       << "' part is a fingerprint of your keys: a payer's wallet refuses this "
-                          "number if a chain reorg ever repoints it. Others can pay it after "
-                       << CryptoNote::parameters::CRYPTONOTE_FINALITY_DEPTH << " confirmations.";
+                       << "' part is a fingerprint of your keys. It is safe to share and use once it "
+                          "has " << CryptoNote::parameters::CRYPTONOTE_FINALITY_DEPTH
+                       << " confirmations.";
   return true;
 }
 //----------------------------------------------------------------------------------------------------
