@@ -2479,6 +2479,15 @@ int main(int argc, char* argv[]) {
 
   setbuf(stdout, NULL);
 
+  // Boost.Program_options rejects an explicitly empty value (`--password=`)
+  // before it can apply the option's implicit empty-string value. Normalize
+  // that common spelling to the equivalent bare option.
+  for (int i = 1; i < argc; ++i) {
+    if (std::string(argv[i]) == "--password=") {
+      argv[i] = const_cast<char*>("--password");
+    }
+  }
+
   po::options_description desc_general("General options");
   command_line::add_arg(desc_general, command_line::arg_help);
   command_line::add_arg(desc_general, command_line::arg_version);
@@ -2494,7 +2503,12 @@ int main(int argc, char* argv[]) {
   command_line::add_arg(desc_params, arg_dump_keys_file);
   command_line::add_arg(desc_params, arg_view_secret_key);
   command_line::add_arg(desc_params, arg_spend_secret_key);
-  command_line::add_arg(desc_params, arg_password);
+  // An empty password is a valid wallet password. Boost.Program_options rejects
+  // `--password=` for a normal value<string>() option as a missing token, so give
+  // this option an explicit empty implicit value. This also makes `--password`
+  // mean "use no password", which is useful for unattended local wallets.
+  desc_params.add_options()
+    (arg_password.name, po::value<std::string>()->implicit_value(""), arg_password.description);
   command_line::add_arg(desc_params, arg_change_password);
   command_line::add_arg(desc_params, arg_daemon_address);
   command_line::add_arg(desc_params, arg_daemon_host);
