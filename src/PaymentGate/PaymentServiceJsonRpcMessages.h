@@ -292,7 +292,7 @@ struct RegisterPqAccountPaid {
 };
 
 // Poll the registration status of this wallet's PQ identity against the node's
-// PQ account registry. `accountNumber` (H-I-C) is set only once `registered`.
+// PQ account registry. `accountNumber` (H-I-A-C) is set only once `registered`.
 struct GetPqAccountStatus {
   struct Request {
     void serialize(CryptoNote::ISerializer& serializer);
@@ -300,7 +300,7 @@ struct GetPqAccountStatus {
 
   struct Response {
     bool registered;
-    std::string accountNumber;  // H-I-C; empty until registered
+    std::string accountNumber;  // H-I-A-C; empty until registered
     uint32_t blockHeight;
     uint32_t txIndex;
 
@@ -325,7 +325,7 @@ struct GetPqDepositScheme {
 
 // Create a new deposit address (the familiar exchange surface). In
 // aggregated-multikey mode `address` is a Bech32m PQ address with its own spend
-// key; in single-key-index mode it is the H-I-T-C account number. `index` is the
+// key; in single-key-index mode it is the H-I-A-T-C account number. `index` is the
 // deposit index (the subaddress T in single-key-index mode).
 struct CreatePqDepositAddress {
   struct Request {

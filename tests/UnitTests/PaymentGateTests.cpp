@@ -146,7 +146,7 @@ TEST_F(PaymentGateTest, getSpendKeysAcceptsOwnAddress) {
 
 // Every address-taking RPC accepts the same selector forms: a numeric address index
 // (0 = primary, 1.. = deposit in issue order), the raw PQ address, and (for the
-// validation gate) an H-I-C / H-I-T-C account number. Index and address must resolve
+// validation gate) an H-I-A-C / H-I-A-T-C account number. Index and address must resolve
 // to the same bucket.
 TEST_F(PaymentGateTest, addressIndexAndAccountNumberSelectors) {
   auto cfg = createWalletConfiguration();
@@ -193,12 +193,12 @@ TEST_F(PaymentGateTest, addressIndexAndAccountNumberSelectors) {
   ASSERT_FALSE(service->validateAddress(depositAddr, valid, norm, spk, vpk));
   EXPECT_TRUE(valid);
 
-  // A filter-gated RPC accepts index, raw address, and a syntactic H-I-T-C account
+  // A filter-gated RPC accepts index, raw address, and a syntactic H-I-A-T-C account
   // number (empty wallet -> empty result, but crucially no BAD_ADDRESS rejection).
   std::vector<std::string> hashes;
   ASSERT_FALSE(service->getUnconfirmedTransactionHashes(std::vector<std::string>{ "1" }, hashes));
   ASSERT_FALSE(service->getUnconfirmedTransactionHashes(std::vector<std::string>{ depositAddr }, hashes));
-  const std::string hitc = CryptoNote::AccountNumber{ 10, 2 }.toStringWithIndex(3);
+  const std::string hitc = CryptoNote::AccountNumber{ 10, 2 }.toStringWithIndex(3, /*fingerprint*/ 0);
   ASSERT_FALSE(service->getUnconfirmedTransactionHashes(std::vector<std::string>{ hitc }, hashes));
 
   // An out-of-range index is rejected.
@@ -300,9 +300,9 @@ TEST_F(PaymentGateTest, RestoreAddressCountRegeneratesDeposits) {
   EXPECT_EQ(addrs.size(), 3u);  // primary + 2 deposits regenerated from the seed
 }
 
-// Full Index (SingleKeyIndex / H-I-T-C) registration plumbing, end to end against the
-// PQ-account-aware node stub: register the base account once, resolve its H-I-C, then
-// issue an H-I-T-C deposit under it and confirm the wallet owns it.
+// Full Index (SingleKeyIndex / H-I-A-T-C) registration plumbing, end to end against the
+// PQ-account-aware node stub: register the base account once, resolve its H-I-A-C, then
+// issue an H-I-A-T-C deposit under it and confirm the wallet owns it.
 TEST_F(PaymentGateTest, IndexModeRegistersAndIssuesHITC) {
   auto cfg = createWalletConfiguration();
   unlink(cfg.walletFile.c_str());
@@ -324,7 +324,7 @@ TEST_F(PaymentGateTest, IndexModeRegistersAndIssuesHITC) {
   ASSERT_FALSE(service->registerPqAccount(regTxHash));
   ASSERT_FALSE(regTxHash.empty());
 
-  // Status now resolves to the base account number H-I-C via the node.
+  // Status now resolves to the base account number H-I-A-C via the node.
   bool registered = false;
   std::string accountNumber;
   uint32_t H = 0, I = 0;
@@ -335,7 +335,7 @@ TEST_F(PaymentGateTest, IndexModeRegistersAndIssuesHITC) {
   EXPECT_EQ(base.blockHeight, H);
   EXPECT_EQ(base.txIndex, I);
 
-  // Issue an H-I-T-C deposit under the SAME (H, I); T = 0.
+  // Issue an H-I-A-T-C deposit under the SAME (H, I); T = 0.
   std::string depositAddr;
   uint32_t depIdx = 99;
   ASSERT_FALSE(service->createPqDepositAddress(depositAddr, depIdx));
@@ -347,7 +347,7 @@ TEST_F(PaymentGateTest, IndexModeRegistersAndIssuesHITC) {
   EXPECT_EQ(acct.txIndex, I);
   EXPECT_EQ(t, 0u);
 
-  // The wallet recognizes its own H-I-T-C deposit as ours.
+  // The wallet recognizes its own H-I-A-T-C deposit as ours.
   bool ours = false;
   ASSERT_FALSE(service->hasAddress(depositAddr, ours));
   EXPECT_TRUE(ours);

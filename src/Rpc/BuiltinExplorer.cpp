@@ -348,7 +348,7 @@ bool BuiltinExplorer::on_get_explorer(const COMMAND_EXPLORER::request& req, COMM
 }
 
 bool BuiltinExplorer::on_explorer_search(const COMMAND_RPC_EXPLORER_SEARCH::request& req, COMMAND_RPC_EXPLORER_SEARCH::response& res) {
-  // Try as address (PQ bech32m for this network, or an H-I-C / H-I-T-C account number)
+  // Try as address (PQ bech32m for this network, or an H-I-A-C / H-I-A-T-C account number)
   {
     PqAddress pq;
     AccountNumber acct;
@@ -669,8 +669,11 @@ bool BuiltinExplorer::on_get_explorer_tx_by_hash(const COMMAND_EXPLORER_GET_TRAN
             if (m_core.resolvePqAccountNumber(bh, i, viewPub, spendPub) &&
                 viewPub == reg.viewPub && spendPub == reg.spendPub) {
               AccountNumber an{bh, i};
+              uint32_t fp = pqAccountFingerprint(
+                  m_core.currency().isTestnet(), reg.spendPub.data(), reg.spendPub.size(),
+                  reg.viewPub.data(), reg.viewPub.size());
               body += "  <li>\n";
-              body += "    Account number: " + an.toString() + "\n";
+              body += "    Account number: " + an.toString(fp) + "\n";
               body += "  </li>\n";
               break;
             }
@@ -843,7 +846,7 @@ bool BuiltinExplorer::on_get_explorer_txs_by_payment_id(const COMMAND_EXPLORER_G
 
 bool BuiltinExplorer::on_get_explorer_address(const COMMAND_EXPLORER_GET_ADDRESS::request& req, COMMAND_EXPLORER_GET_ADDRESS::response& res) {
   // Discrete addresses are PQ: a bech32m address for this network, or an
-  // H-I-C / H-I-T-C account number. Both are self-validating (bech32m checksum /
+  // H-I-A-C / H-I-A-T-C account number. Both are self-validating (bech32m checksum /
   // Luhn check char), so a successful decode means the address is well-formed.
   PqAddress pq;
   AccountNumber acct;
@@ -873,7 +876,10 @@ bool BuiltinExplorer::on_get_explorer_address(const COMMAND_EXPLORER_GET_ADDRESS
     // If this identity is registered on-chain, show its account number too.
     uint32_t regHeight = 0, regTxIndex = 0;
     if (m_core.getPqAccountNumber(getPqAccountIdentityHash(pq.viewPub, pq.spendPub), regHeight, regTxIndex)) {
-      std::string an = AccountNumber{regHeight, regTxIndex}.toString();
+      uint32_t fp = pqAccountFingerprint(
+          m_core.currency().isTestnet(), pq.spendPub.data(), pq.spendPub.size(),
+          pq.viewPub.data(), pq.viewPub.size());
+      std::string an = AccountNumber{regHeight, regTxIndex}.toString(fp);
       body += "  <li>Registered account number: <a href=\"/explorer/address/" + an + "\">" + an + "</a></li>\n";
     }
   } else {

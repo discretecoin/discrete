@@ -42,13 +42,19 @@ bool resolvePqRecipient(INode& node, bool testnet, const std::string& s,
     return true;
   }
 
-  // 2. An account number, either H-I-C (base account, T = 0) or H-I-T-C (deposit
-  //    subaddress, T = parsed index). BOTH resolve the SAME (H,I) registration via
-  //    the node; only the subaddress T differs.
+  // 2. An account number, either H-I-A-C (base account, T = 0) or H-I-A-T-C
+  //    (deposit subaddress, T = parsed index). BOTH resolve the SAME (H,I)
+  //    registration via the node; only the subaddress T differs. The node only
+  //    resolves a registration once it is buried past first-seen finality, so a
+  //    reorg cannot repoint (H,I) under a payer's feet (finality gate). The A
+  //    fingerprint is the belt-and-suspenders failsafe: we recompute it from the
+  //    keys the node returned and refuse the number unless it matches the A the
+  //    payer typed — even a lying node cannot steer the payment to other keys.
   CryptoNote::AccountNumber acct;
   uint32_t t = 0;
-  bool isHitc = CryptoNote::AccountNumber::fromStringWithIndex(s, acct, t);
-  if (isHitc || CryptoNote::AccountNumber::fromString(s, acct)) {
+  uint32_t wantFingerprint = 0;
+  bool isHitc = CryptoNote::AccountNumber::fromStringWithIndex(s, acct, t, wantFingerprint);
+  if (isHitc || CryptoNote::AccountNumber::fromString(s, acct, wantFingerprint)) {
     if (isHitc) subaddrIndexT = t;
     bool found = false;
     std::string viewHex, spendHex;
@@ -64,6 +70,12 @@ bool resolvePqRecipient(INode& node, bool testnet, const std::string& s,
       return false;
     }
     if (!Common::fromHex(spendHex, spendPub.data(), spendPub.size(), sz) || sz != spendPub.size()) {
+      return false;
+    }
+    // Failsafe: the on-chain keys must fingerprint to the A embedded in the number.
+    const uint32_t gotFingerprint = CryptoNote::pqAccountFingerprint(
+        testnet, spendPub.data(), spendPub.size(), viewPub.data(), viewPub.size());
+    if (gotFingerprint != wantFingerprint) {
       return false;
     }
     return true;

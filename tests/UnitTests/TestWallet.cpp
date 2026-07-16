@@ -307,7 +307,7 @@ TEST(PqWalletIntegration, BalanceSurvivesSaveAndReload) {
   boost::filesystem::remove(path);
 }
 
-// Classic payment ids are RETAINED alongside H-I-T-C for exchange integrations
+// Classic payment ids are RETAINED alongside H-I-A-T-C for exchange integrations
 // (kept out of the Qt GUI deliberately; simplewallet `transfer -p` and walletd
 // sendTransaction.paymentId are the entry points). This is the PQ round trip: a
 // TX_PQ whose tx_extra carries the classic payment-id nonce must (1) embed it on
@@ -579,9 +579,9 @@ TEST(PqWalletIntegration, RestoreFromSeedNeedsDepositCountToRecoverDepositFunds)
   EXPECT_EQ(restoreAndSync("pq_restore_dep.wallet", 1), 800000u);
 }
 
-// SingleKeyIndex (H-I-T-C) differentiator: every deposit shares the ONE spend key and is
+// SingleKeyIndex (H-I-A-T-C) differentiator: every deposit shares the ONE spend key and is
 // distinguished only by the subaddress index T carried in the output. The scanner must
-// attribute each output to the bucket whose T it scans under. (The H-I-T-C address
+// attribute each output to the bucket whose T it scans under. (The H-I-A-T-C address
 // string + registration are a separate concern needing node-side account resolution.)
 TEST(PqWalletIntegration, SingleKeyIndexAttributesDepositsByT) {
   System::Dispatcher dispatcher;
@@ -1076,8 +1076,8 @@ TEST(WalletLegacySmoke, StoredRecipientAndPaymentProofSurviveCacheReload) {
   reloaded.shutdown();
 }
 
-// Full Index (H-I-T-C) receive + spend addressed by the account-number STRING: register,
-// issue an H-I-T-C deposit, receive to it, read its balance by the H-I-T-C string, and
+// Full Index (H-I-A-T-C) receive + spend addressed by the account-number STRING: register,
+// issue an H-I-A-T-C deposit, receive to it, read its balance by the H-I-A-T-C string, and
 // spend restricted to it by that same string.
 TEST(PqWalletIntegration, IndexHITCReceiveAndSpendByAddressString) {
   System::Dispatcher dispatcher;
@@ -1100,12 +1100,12 @@ TEST(PqWalletIntegration, IndexHITCReceiveAndSpendByAddressString) {
   Crypto::SecretKey spend = wallet.getAddressSpendKey(0).secretKey;
   CryptoNote::PqWalletKeys mine = pqKeysFromWalletSeed(spend);
 
-  // Register the base account on-chain so H-I-T-C addresses can be formed.
+  // Register the base account on-chain so H-I-A-T-C addresses can be formed.
   Crypto::Hash refHash = node.getLastLocalBlockHeaderInfo().hash;
   CryptoNote::Transaction regTx = wallet.buildPqFreeRegTransaction(refHash);
   generator.addTxToBlockchain(regTx);
 
-  // Reserve two deposits and address deposit #1 (T=1) by its H-I-T-C string.
+  // Reserve two deposits and address deposit #1 (T=1) by its H-I-A-T-C string.
   ASSERT_EQ(wallet.reservePqDepositIndex(), 0u);
   ASSERT_EQ(wallet.reservePqDepositIndex(), 1u);
   const std::string hitc = wallet.getAddress(2);  // deposit index 1 -> T=1
@@ -1125,10 +1125,10 @@ TEST(PqWalletIntegration, IndexHITCReceiveAndSpendByAddressString) {
   node.updateObservers();
   pumpUntil(dispatcher, wallet, [&wallet]() { return wallet.getActualBalance() == 800000u; });
 
-  // Balance read BY THE H-I-T-C STRING resolves to that deposit bucket.
+  // Balance read BY THE H-I-A-T-C STRING resolves to that deposit bucket.
   EXPECT_EQ(wallet.getActualBalance(hitc), 800000u);
 
-  // Spend restricted to that deposit BY THE H-I-T-C STRING (SingleKeyIndex -> one key).
+  // Spend restricted to that deposit BY THE H-I-A-T-C STRING (SingleKeyIndex -> one key).
   node.setNextTransactionToPool();
   CryptoNote::PqSendResult r = wallet.sendPqTransfer(
       { CryptoNote::PqSendOutput{ them.viewPub, them.spendPub, 300000 } },

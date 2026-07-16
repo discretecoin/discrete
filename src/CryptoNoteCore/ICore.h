@@ -167,8 +167,8 @@ public:
   // PQ account registry. Concrete on Core (backed by the blockchain), but surfaced
   // on the interface so an in-process node — which holds only an ICore& — can
   // resolve account numbers for the wallet's send path, exactly as NodeRpcProxy
-  // does over RPC. Without this an embedded-node wallet cannot send to an H-I-C /
-  // H-I-T-C account number (the INode base stub reports not_supported).
+  // does over RPC. Without this an embedded-node wallet cannot send to an H-I-A-C /
+  // H-I-A-T-C account number (the INode base stub reports not_supported).
   virtual bool resolvePqAccountNumber(uint32_t blockHeight, uint32_t txIndex,
                                       std::array<uint8_t, TX_EXTRA_PQ_VIEW_PUBKEY_SIZE>& viewPub,
                                       std::array<uint8_t, TX_EXTRA_PQ_SPEND_PUBKEY_SIZE>& spendPub) = 0;

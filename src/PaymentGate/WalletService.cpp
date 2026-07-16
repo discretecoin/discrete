@@ -290,7 +290,7 @@ void validateAddresses(const std::vector<std::string>& addresses, const CryptoNo
 // Resolve an address-or-index selector to the wallet's canonical address string.
 // A pure-decimal selector is an address INDEX (0 = the wallet's primary address,
 // 1.. = deposit subaddress in issue order) and is mapped to wallet.getAddress(index);
-// anything else (a PQ address, a classical address, or an H-I-C / H-I-T-C account
+// anything else (a PQ address, a classical address, or an H-I-A-C / H-I-A-T-C account
 // number) passes through unchanged for the wallet / validateAddress to resolve. This
 // is what lets every per-address RPC accept "address OR index" in the same field.
 std::string canonicalizeAddressSelector(CryptoNote::IWallet& wallet, const std::string& selector) {
@@ -1314,7 +1314,8 @@ std::error_code WalletService::getPqAccountStatus(bool& registered, std::string&
     }
 
     if (registered) {
-      accountNumber = CryptoNote::AccountNumber{blockHeight, txIndex}.toString();
+      accountNumber = CryptoNote::AccountNumber{blockHeight, txIndex}
+                          .toString(greenWallet->pqAccountFingerprint());
     }
   } catch (std::system_error& x) {
     logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while getting account status: " << x.what();
@@ -1385,7 +1386,7 @@ std::error_code WalletService::createPqDepositAddress(std::string& address, uint
       return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
     }
 
-    // single-key-index deposit identities are H-I-T-C, which needs the account's
+    // single-key-index deposit identities are H-I-A-T-C, which needs the account's
     // on-chain registration coords (H, I). Resolve them first; require registration.
     uint32_t regH = 0, regI = 0;
     if (gw->getPqDepositScheme() == CryptoNote::PqDepositScheme::SingleKeyIndex) {
@@ -1438,7 +1439,7 @@ std::error_code WalletService::listPqDepositAddresses(std::vector<std::string>& 
       if (rc) {
         return rc;
       }
-      // If unregistered we simply cannot render H-I-T-C; return the empty list.
+      // If unregistered we simply cannot render H-I-A-T-C; return the empty list.
       if (!registered) {
         return std::error_code();
       }
@@ -1774,12 +1775,12 @@ std::error_code WalletService::validateAddress(const std::string& address, bool&
     System::EventLock lk(readyEvent);
 
     // Accept any selector form: a numeric index resolves to one of our addresses,
-    // then a PQ address / H-I-C / H-I-T-C account number is recognized. Discrete is
+    // then a PQ address / H-I-A-C / H-I-A-T-C account number is recognized. Discrete is
     // PQ-only — the classical base58 ECC address form is never valid.
     const std::string resolved = canonicalizeAddressSelector(wallet, address);
 
     if (CryptoNote::validateAddress(resolved, currency)) {
-      // A PQ address or an H-I-C / H-I-T-C account number: valid. Its spend/view
+      // A PQ address or an H-I-A-C / H-I-A-T-C account number: valid. Its spend/view
       // authority is not a classical 32-byte keypair (PQ keys are large; account-
       // number keys live on-chain), so only echo the normalized address.
       isValid = true;

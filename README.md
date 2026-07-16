@@ -48,7 +48,7 @@ The candidate wire format, domain-separation tags, and blob sizes are
 documented in the [PQ wire-format reference](https://docs.discrete.cash/#/consensus/pq-wire-format)
 and pinned by `tests/test_pq_domains.cpp`.
 For exchange and service wallet operation, including the two `walletd` deposit
-modes and the recommended H-I-T-C workflow, see the
+modes and the recommended H-I-A-T-C workflow, see the
 [walletd exchange integration guide](https://docs.discrete.cash/#/wallets/walletd-exchange-guide).
 
 ## Building (Windows / Visual Studio 2022, x64)

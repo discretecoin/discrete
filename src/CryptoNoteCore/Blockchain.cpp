@@ -36,6 +36,7 @@
 #include "Common/StdOutputStream.h"
 #include "Rpc/CoreRpcServerCommandsDefinitions.h"
 #include "Serialization/BinarySerializationTools.h"
+#include "CryptoNoteConfig.h"
 #include "CryptoNoteTools.h"
 #include "TransactionExtra.h"
 #include "PqValidation.h"
@@ -3103,6 +3104,15 @@ bool Blockchain::resolvePqAccountNumber(uint32_t blockHeight, uint32_t txIndex,
   std::lock_guard<std::recursive_mutex> lk(m_blockchain_lock);
   const uint32_t chainHeight = m_db.getChainHeight();
   if (blockHeight >= chainHeight || txIndex > std::numeric_limits<uint16_t>::max()) {
+    return false;
+  }
+  // Finality gate: an account number is only resolvable (payable) once its
+  // registration is buried past first-seen finality (CRYPTONOTE_FINALITY_DEPTH).
+  // Below that horizon a reorg could still repoint (blockHeight, txIndex) to a
+  // different registration, so we refuse to hand out keys — the payer's wallet
+  // treats it as "not yet resolvable". The owner can still display their own
+  // number immediately (that path renders from the owner's keys, not this lookup).
+  if (static_cast<uint64_t>(blockHeight) + parameters::CRYPTONOTE_FINALITY_DEPTH >= chainHeight) {
     return false;
   }
   try {

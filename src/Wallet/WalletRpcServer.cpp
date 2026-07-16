@@ -680,7 +680,7 @@ bool wallet_rpc_server::on_validate_address(const wallet_rpc::COMMAND_RPC_VALIDA
   wallet_rpc::COMMAND_RPC_VALIDATE_ADDRESS::response& res)
 {
   // Discrete is PQ-only: a bech32m PQ address (this network's HRP) or an
-  // H-I-C / H-I-T-C account number. The classical base58 ECC form is never valid.
+  // H-I-A-C / H-I-A-T-C account number. The classical base58 ECC form is never valid.
   CryptoNote::PqAddress pq;
   CryptoNote::AccountNumber acct;
   uint32_t subaddrIndex = 0;
@@ -790,8 +790,11 @@ bool wallet_rpc_server::on_register_pq_account(const wallet_rpc::COMMAND_RPC_REG
     }
     if (registered) {
       CryptoNote::AccountNumber acct{blockHeight, txIndex};
+      uint32_t fp = CryptoNote::pqAccountFingerprint(
+          m_currency.isTestnet(), pq.spendPub.data(), pq.spendPub.size(),
+          pq.viewPub.data(), pq.viewPub.size());
       throw JsonRpc::JsonRpcError(WALLET_RPC_ERROR_CODE_GENERIC_TRANSFER_ERROR,
-        "This identity already has account number: " + acct.toString());
+        "This identity already has account number: " + acct.toString(fp));
     }
   }
 

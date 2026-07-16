@@ -804,7 +804,7 @@ std::string WalletGreen::getAddress(size_t index) const {
   }
   uint32_t regH = 0, regI = 0;
   if (m_pqDepositScheme == PqDepositScheme::SingleKeyIndex && !pqRegistrationCoords(regH, regI)) {
-    // H-I-T-C needs the account's on-chain coords; surface that it isn't ready.
+    // H-I-A-T-C needs the account's on-chain coords; surface that it isn't ready.
     throw std::system_error(make_error_code(error::INTERNAL_WALLET_ERROR),
                             "single-key-index deposit address requires a confirmed registration");
   }
@@ -1557,7 +1557,7 @@ bool WalletGreen::verifyMessage(const std::string &message, const std::string& a
 
   try {
     // The signer is identified by its PQ (ML-DSA) spend key. Accept a raw PQ
-    // address or an H-I-C / H-I-T-C account number (resolved via the node), the
+    // address or an H-I-A-C / H-I-A-T-C account number (resolved via the node), the
     // same surface simplewallet and greenwallet accept.
     CryptoPQ::KemPublicKey viewPub;
     CryptoPQ::DsaPublicKey spendPub;
@@ -2331,8 +2331,13 @@ std::string WalletGreen::pqDepositAddress(uint32_t index, uint32_t regBlockHeigh
   PqWalletKeys base = derivePqWalletKeys(seed);
 
   if (m_pqDepositScheme == PqDepositScheme::SingleKeyIndex) {
-    // Spec 2: one keypair; the deposit identity is the H-I-T-C account number.
-    return CryptoNote::AccountNumber{regBlockHeight, regTxIndex}.toStringWithIndex(index);
+    // Spec 2: one keypair; the deposit identity is the H-I-A-T-C account number.
+    const uint32_t fingerprint = CryptoNote::pqAccountFingerprint(
+        m_currency.isTestnet(),
+        base.spendPub.data(), base.spendPub.size(),
+        base.viewPub.data(), base.viewPub.size());
+    return CryptoNote::AccountNumber{regBlockHeight, regTxIndex}
+        .toStringWithIndex(index, fingerprint);
   }
 
   // Spec 1: shared view key + a per-deposit ML-DSA spend key. The address carries
@@ -2341,6 +2346,22 @@ std::string WalletGreen::pqDepositAddress(uint32_t index, uint32_t regBlockHeigh
   PqAddress addr = makePqAddress(CryptoNote::parameters::CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX,
                                  base.viewPub, depositSpend.first);
   return encodePqAddress(addr, pqBech32Hrp(m_currency.isTestnet()));
+}
+
+uint32_t WalletGreen::pqAccountFingerprint() const {
+  throwIfNotInitialized();
+  throwIfStopped();
+  if (getAddressCount() == 0) {
+    return 0;
+  }
+  CryptoPQ::SeedMaster seed = primarySeedMaster();
+  if (seed == CryptoPQ::SeedMaster{}) {
+    return 0;  // tracking wallet: no spend authority, no own identity to fingerprint
+  }
+  PqWalletKeys base = derivePqWalletKeys(seed);
+  return CryptoNote::pqAccountFingerprint(m_currency.isTestnet(),
+                                          base.spendPub.data(), base.spendPub.size(),
+                                          base.viewPub.data(), base.viewPub.size());
 }
 
 PqSendOutput WalletGreen::pqChangeTemplate(uint32_t depositIndex) const {

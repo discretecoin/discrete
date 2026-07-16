@@ -193,6 +193,22 @@ std::array<uint8_t, 4> pqAddressChecksum(const PqAddress& addr) {
   return chk;
 }
 
+uint32_t pqAccountFingerprint(bool testnet,
+                              const uint8_t* spendPub, std::size_t spendLen,
+                              const uint8_t* viewPub, std::size_t viewLen) {
+  static const char kDomain[] = "DISCRETE-ACCT-FP-v1";
+  std::string pre;
+  pre.reserve(sizeof(kDomain) - 1 + 1 + spendLen + viewLen);
+  pre.append(kDomain, sizeof(kDomain) - 1);
+  pre.push_back(static_cast<char>(testnet ? 0x01 : 0x00));
+  pre.append(reinterpret_cast<const char*>(spendPub), spendLen);
+  pre.append(reinterpret_cast<const char*>(viewPub), viewLen);
+  CryptoPQ::Hash256 h = CryptoPQ::sha3_256(pre.data(), pre.size());
+  return ((static_cast<uint32_t>(h[0]) << 12) |
+          (static_cast<uint32_t>(h[1]) << 4) |
+          (static_cast<uint32_t>(h[2]) >> 4)) & 0xFFFFFu;
+}
+
 PqAddress makePqAddress(uint64_t networkPrefix,
                         const CryptoPQ::KemPublicKey& viewPub,
                         const CryptoPQ::DsaPublicKey& spendPub) {

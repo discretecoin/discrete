@@ -90,7 +90,7 @@ void Configuration::initOptions(po::options_description& desc) {
       ("log-level", po::value<size_t>(), "log level")
       ("scan-height", po::value<uint32_t>(), "The height to begin scanning a wallet from")
       ("aggregated-multikey", "deposit-wallet scheme = Spec 1 (custodial web-wallet): one shared ML-KEM view key plus a separate ML-DSA spend key per deposit, giving per-deposit spend isolation. DEFAULT. Valid only with --generate-container; immutable after creation. Mutually exclusive with --single-key-index.")
-      ("single-key-index", "deposit-wallet scheme = Spec 2 / H-I-T-C (exchange): one view + one spend key; deposits are distinguished by an integer subaddress index (no per-deposit key, no per-deposit registration). NO per-deposit spend isolation — a spend-key compromise exposes every deposit. Valid only with --generate-container; immutable after creation. Mutually exclusive with --aggregated-multikey.")
+      ("single-key-index", "deposit-wallet scheme = Spec 2 / H-I-A-T-C (exchange): one view + one spend key; deposits are distinguished by an integer subaddress index (no per-deposit key, no per-deposit registration). NO per-deposit spend isolation — a spend-key compromise exposes every deposit. Valid only with --generate-container; immutable after creation. Mutually exclusive with --aggregated-multikey.")
       ("address", "print wallet addresses and exit");
 }
 

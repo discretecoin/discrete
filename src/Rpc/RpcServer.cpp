@@ -2006,9 +2006,10 @@ bool RpcServer::on_check_transaction_proof(
   } else {
     AccountNumber account;
     uint32_t subaddressIndex = 0;
+    uint32_t wantFingerprint = 0;
     const bool hasSubaddress = AccountNumber::fromStringWithIndex(
-        req.destination_address, account, subaddressIndex);
-    if (!hasSubaddress && !AccountNumber::fromString(req.destination_address, account)) {
+        req.destination_address, account, subaddressIndex, wantFingerprint);
+    if (!hasSubaddress && !AccountNumber::fromString(req.destination_address, account, wantFingerprint)) {
       throw JsonRpc::JsonRpcError{
           CORE_RPC_ERROR_CODE_WRONG_PARAM, "Failed to parse destination address"};
     }
@@ -2017,6 +2018,16 @@ bool RpcServer::on_check_transaction_proof(
             recipient.viewPub, recipient.spendPub)) {
       throw JsonRpc::JsonRpcError{
           CORE_RPC_ERROR_CODE_WRONG_PARAM, "Destination account number was not found"};
+    }
+    // Failsafe: the resolved keys must fingerprint to the A embedded in the number.
+    const uint32_t gotFingerprint = pqAccountFingerprint(
+        m_core.currency().isTestnet(),
+        recipient.spendPub.data(), recipient.spendPub.size(),
+        recipient.viewPub.data(), recipient.viewPub.size());
+    if (gotFingerprint != wantFingerprint) {
+      throw JsonRpc::JsonRpcError{
+          CORE_RPC_ERROR_CODE_WRONG_PARAM,
+          "Destination account fingerprint does not match the on-chain keys"};
     }
     recipient.subaddrIndexT = hasSubaddress ? subaddressIndex : 0;
   }
@@ -2084,7 +2095,7 @@ bool RpcServer::on_check_transaction_proof(
 
 bool RpcServer::on_validate_address(const COMMAND_RPC_VALIDATE_ADDRESS::request& req, COMMAND_RPC_VALIDATE_ADDRESS::response& res) {
   // Discrete is PQ-only: valid forms are a bech32m PQ address (this network's HRP)
-  // or an H-I-C / H-I-T-C account number. The classical base58 ECC form is never valid.
+  // or an H-I-A-C / H-I-A-T-C account number. The classical base58 ECC form is never valid.
   CryptoNote::PqAddress pq;
   CryptoNote::AccountNumber acct;
   uint32_t subaddrIndex = 0;
@@ -2152,6 +2163,15 @@ bool RpcServer::on_get_pq_account(const COMMAND_RPC_GET_PQ_ACCOUNT::request& req
   res.registered = m_core.getPqAccountNumber(getPqAccountIdentityHash(viewPub, spendPub), blockHeight, txIndex);
   res.block_height = res.registered ? blockHeight : 0;
   res.tx_index = res.registered ? txIndex : 0;
+  if (res.registered) {
+    // Render the full H-I-A-C number from the caller's own keys. This does NOT go
+    // through resolvePqAccountNumber, so the owner sees their number as soon as the
+    // registration is confirmed — even before it is final and payable by others.
+    const uint32_t fp = pqAccountFingerprint(m_core.currency().isTestnet(),
+                                             spendPub.data(), spendPub.size(),
+                                             viewPub.data(), viewPub.size());
+    res.account_number = AccountNumber{blockHeight, txIndex}.toString(fp);
+  }
   res.status = CORE_RPC_STATUS_OK;
   return true;
 }
@@ -2164,6 +2184,10 @@ bool RpcServer::on_resolve_pq_account(const COMMAND_RPC_RESOLVE_PQ_ACCOUNT::requ
   if (res.found) {
     res.view_pub = Common::toHex(viewPub.data(), viewPub.size());
     res.spend_pub = Common::toHex(spendPub.data(), spendPub.size());
+    const uint32_t fp = pqAccountFingerprint(m_core.currency().isTestnet(),
+                                             spendPub.data(), spendPub.size(),
+                                             viewPub.data(), viewPub.size());
+    res.account_number = AccountNumber{req.block_height, req.tx_index}.toString(fp);
   }
   res.status = CORE_RPC_STATUS_OK;
   return true;

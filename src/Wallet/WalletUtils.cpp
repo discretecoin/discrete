@@ -28,7 +28,7 @@ namespace CryptoNote {
 bool validateAddress(const std::string& address, const CryptoNote::Currency& currency) {
   // Discrete is PQ-only: the classical base58 ECC address form is never issued and
   // can't be spent to, so it is NOT accepted here. Valid forms are a bech32m PQ
-  // address or an H-I-C / H-I-T-C account number.
+  // address or an H-I-A-C / H-I-A-T-C account number.
   //
   // PQ addresses (what the wallet actually issues) — restrict to THIS network's
   // HRP: mainnet and testnet share the same numeric networkPrefix, so the bech32m
@@ -38,7 +38,7 @@ bool validateAddress(const std::string& address, const CryptoNote::Currency& cur
   if (CryptoNote::decodePqAddress(address, currency.isTestnet(), pq)) {
     return true;
   }
-  // H-I-T-C deposit subaddress (SingleKeyIndex scheme) or its H-I-C base account.
+  // H-I-A-T-C deposit subaddress (SingleKeyIndex scheme) or its H-I-A-C base account.
   // Both are self-validating (Luhn mod-36 check char), so accept either form so the
   // per-index RPCs can filter/select by account number, not just by raw address.
   CryptoNote::AccountNumber acct;

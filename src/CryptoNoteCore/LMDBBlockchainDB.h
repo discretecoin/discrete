@@ -153,7 +153,7 @@ public:
   // PQ account-number registry (first-registration-wins). Key:
   // SHA3-256(viewPub) (32B — the full 1184B viewPub stays in the registration
   // tx, read on demand). Value: BE32(height) || BE32(txIndex). The (height,
-  // txIndex) pair renders to the human account number (H-I-C).
+  // txIndex) pair renders to the human account number (H-I-A-C).
   bool putPqAcctReg(const Crypto::Hash& accountId, uint32_t blockHeight,
                     uint32_t txIndex);
   bool hasPqAcctReg(const Crypto::Hash& accountId) const;

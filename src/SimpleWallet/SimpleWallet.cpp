@@ -72,6 +72,7 @@
 #include "Common/ColouredMsg.h"
 #include "CryptoNoteCore/Account.h"
 #include "AccountNumber.h"
+#include "PqAddress.h"  // pqAccountFingerprint
 #include "CryptoNoteCore/CryptoNoteFormatUtils.h"
 #include "CryptoNoteCore/TransactionExtra.h"
 #include "CryptoNoteCore/CryptoNoteTools.h"
@@ -313,7 +314,7 @@ void printListTransfersHeader(LoggerRef& logger) {
 }
 
 // Attribution lines for amounts routed to a subaddress index T > 0 of this
-// wallet's identity (H-I-T-C deposits). T routes attribution only; the funds
+// wallet's identity (H-I-A-T-C deposits). T routes attribution only; the funds
 // belong to the wallet's single key pair either way.
 void printSubaddressAmounts(LoggerRef& logger, const std::string& rowColor,
                             IWalletLegacy& wallet, CryptoNote::TransactionId transactionId,
@@ -2034,7 +2035,7 @@ bool simple_wallet::pq_transfer(const std::vector<std::string> &args) {
 
   CryptoPQ::KemPublicKey destView;
   CryptoPQ::DsaPublicKey destSpend;
-  uint64_t destSubaddrT = 0;  // non-zero only when paying an H-I-T-C deposit subaddress
+  uint64_t destSubaddrT = 0;  // non-zero only when paying an H-I-A-T-C deposit subaddress
   if (!resolvePqRecipient(args[0], destView, destSpend, destSubaddrT)) {
     fail_msg_writer() << "Recipient is not a valid address or account number.";
     return true;
@@ -2355,7 +2356,10 @@ bool simple_wallet::pq_register_paid(const std::vector<std::string> &args) {
   }
   if (registered) {
     CryptoNote::AccountNumber acct{blockHeight, txIndex};
-    fail_msg_writer() << "This identity already has account number: " << acct.toString();
+    uint32_t fp = CryptoNote::pqAccountFingerprint(
+        m_currency.isTestnet(), pq.spendPub.data(), pq.spendPub.size(),
+        pq.viewPub.data(), pq.viewPub.size());
+    fail_msg_writer() << "This identity already has account number: " << acct.toString(fp);
     return true;
   }
 
@@ -2437,7 +2441,14 @@ bool simple_wallet::pq_account(const std::vector<std::string> &args) {
     return true;
   }
   CryptoNote::AccountNumber acct{blockHeight, txIndex};
-  success_msg_writer(true) << "Your account number: " << acct.toString();
+  uint32_t fp = CryptoNote::pqAccountFingerprint(
+      m_currency.isTestnet(), pq.spendPub.data(), pq.spendPub.size(),
+      pq.viewPub.data(), pq.viewPub.size());
+  success_msg_writer(true) << "Your account number: " << acct.toString(fp);
+  success_msg_writer() << "The '" << CryptoNote::AccountNumber::encodeFingerprint(fp)
+                       << "' part is a fingerprint of your keys: a payer's wallet refuses this "
+                          "number if a chain reorg ever repoints it. Others can pay it after "
+                       << CryptoNote::parameters::CRYPTONOTE_FINALITY_DEPTH << " confirmations.";
   return true;
 }
 //----------------------------------------------------------------------------------------------------

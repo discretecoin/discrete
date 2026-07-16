@@ -33,8 +33,8 @@ namespace CryptoNote {
 
 // Resolve `s` into recipient keys + subaddress index T. Accepts:
 //   - a raw bech32m PQ address — keys carried directly, T = 0;
-//   - an H-I-C account number — base account resolved via the node, T = 0;
-//   - an H-I-T-C deposit subaddress — same account resolved via the node, T = parsed.
+//   - an H-I-A-C account number — base account resolved via the node, T = 0;
+//   - an H-I-A-T-C deposit subaddress — same account resolved via the node, T = parsed.
 // Account-number forms block on `node` for the registry lookup. Returns false if `s`
 // is not a valid PQ recipient or the referenced account is not registered.
 //

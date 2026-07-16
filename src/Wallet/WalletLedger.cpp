@@ -336,7 +336,7 @@ bool WalletLedger::processTransaction(const TransactionPrefix& tx, const Crypto:
     // GUI (History "MINED" label, Mining tab found-block stats) keys off this.
     h.coinbase = tx.txType == TX_COINBASE;
     // Classic CryptoNote payment id, if the sender put one in tx_extra (used by
-    // exchanges and other CryptoNote-familiar integrations alongside H-I-T-C).
+    // exchanges and other CryptoNote-familiar integrations alongside H-I-A-T-C).
     getPaymentIdFromTxExtra(tx.extra, h.paymentId);
     if (h.outgoing) {
       // All inputs of a TX_PQ we sign are ours, so our input total == debited.

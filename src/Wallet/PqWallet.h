@@ -50,7 +50,7 @@ enum class PqDepositScheme : uint8_t {
   // Spec 1: one shared ML-KEM view key + a FAMILY of ML-DSA spend keys (one per
   // deposit). Per-deposit spend isolation. DEFAULT. Use case: custodial web wallet.
   AggregatedMultikey = 0,
-  // Spec 2 / H-I-T-C: one view + one spend key; deposits are distinguished by an
+  // Spec 2 / H-I-A-T-C: one view + one spend key; deposits are distinguished by an
   // integer subaddress index T (no per-deposit key, no per-deposit registration).
   // Use case: exchange.
   SingleKeyIndex = 1,
@@ -123,7 +123,7 @@ bool isPqAddressString(const std::string& s);
 // address. On success `out` is fully populated.
 bool parsePqAddress(const std::string& s, PqAddress& out);
 
-// PQ identities reuse the shared CryptoNote::AccountNumber ("H-I-C") format for
+// PQ identities reuse the shared CryptoNote::AccountNumber ("H-I-A-C") format for
 // human-readable account numbers — see include/AccountNumber.h. There is no
 // PQ-specific rendering.
 

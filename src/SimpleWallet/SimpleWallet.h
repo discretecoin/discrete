@@ -139,9 +139,9 @@ namespace CryptoNote
     bool pq_register(const std::vector<std::string> &args = std::vector<std::string>());
     bool pq_register_paid(const std::vector<std::string> &args = std::vector<std::string>());
     bool pq_account(const std::vector<std::string> &args = std::vector<std::string>());
-    // Resolve a recipient string (a raw PQ address OR an H-I-C account number) to
-    // its view + spend public keys. Accepts a raw PQ address, an H-I-C account
-    // number (base account, T=0), or an H-I-T-C deposit subaddress (T = the parsed
+    // Resolve a recipient string (a raw PQ address OR an H-I-A-C account number) to
+    // its view + spend public keys. Accepts a raw PQ address, an H-I-A-C account
+    // number (base account, T=0), or an H-I-A-T-C deposit subaddress (T = the parsed
     // index). `subaddrIndexT` receives that T (0 for the first two). Returns false
     // if no form resolves.
     bool resolvePqRecipient(const std::string& s, CryptoPQ::KemPublicKey& viewPub,

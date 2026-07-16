@@ -792,7 +792,7 @@ bool parseFee(std::string feeString)
 bool parseAddress(std::string address)
 {
     /* Discrete addresses are post-quantum: either a (variable-length) bech32m
-       PQ address, or a human-readable H-I-C / H-I-T-C account number. Both are
+       PQ address, or a human-readable H-I-A-C / H-I-A-T-C account number. Both are
        self-validating offline (bech32m checksum / Luhn check char). The full
        network + on-chain-existence check happens in wallet.transfer()'s recipient
        resolution; this is just a fast pre-check so a typo re-prompts the user. */

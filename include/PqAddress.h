@@ -18,6 +18,7 @@
 #pragma once
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <string>
 
@@ -91,5 +92,21 @@ bool decodePqAddress(const std::string& str, PqAddress& out);
 // its bech32m checksum is valid — this is what stops a mainnet wallet from
 // paying a testnet "tdisc1…" address (and vice versa).
 bool decodePqAddress(const std::string& str, bool testnet, PqAddress& out);
+
+// 20-bit account fingerprint 'A' — the reorg failsafe embedded in a human-readable
+// account number (H-I-A-C, see AccountNumber.h). It binds the short (H,I) pointer
+// to the actual public keys: a resolver recomputes it from the on-chain keys and
+// refuses the number on mismatch. Definition (cross-language, keep byte-exact):
+//
+//   preimage = "DISCRETE-ACCT-FP-v1" || net_byte || spendPub || viewPub
+//   net_byte = 0x00 mainnet, 0x01 testnet
+//   digest   = SHA3-256(preimage)                       (FIPS 202)
+//   fp20     = (digest[0] << 12) | (digest[1] << 4) | (digest[2] >> 4)   (top 20 bits)
+//
+// Keys are passed as raw bytes so the many call-sites (typed arrays, tx_extra
+// arrays, hex-decoded buffers) can all reach it without type juggling.
+uint32_t pqAccountFingerprint(bool testnet,
+                              const uint8_t* spendPub, std::size_t spendLen,
+                              const uint8_t* viewPub, std::size_t viewLen);
 
 }  // namespace CryptoNote

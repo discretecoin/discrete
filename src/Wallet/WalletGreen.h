@@ -83,7 +83,7 @@ public:
   // tracking wallet, insufficient funds, or relay failure. The single PQ spend path
   // shared with WalletLegacy/simplewallet.
   // `sourceAddresses` (empty = spend from any bucket) restricts the spend to inputs
-  // owned by those of the wallet's own addresses — each is a PQ address, an H-I-T-C
+  // owned by those of the wallet's own addresses — each is a PQ address, an H-I-A-T-C
   // account number, or a numeric address index, resolved to a deposit bucket. Under
   // AggregatedMultikey each deposit input is signed with its own derived spend key.
   // `changeAddress` (empty = the primary identity) routes any change to one of OUR
@@ -126,10 +126,13 @@ public:
   // The deposit address for `index` under THIS container's scheme:
   //  - AggregatedMultikey: Bech32m PQ address = (shared view key, deposit spend key
   //    #index). regBlockHeight/regTxIndex are ignored.
-  //  - SingleKeyIndex: the H-I-T-C account number built from the account's on-chain
+  //  - SingleKeyIndex: the H-I-A-T-C account number built from the account's on-chain
   //    registration coords (regBlockHeight=H, regTxIndex=I) and T=index. The caller
   //    resolves (H,I) from the node first.
   std::string pqDepositAddress(uint32_t index, uint32_t regBlockHeight, uint32_t regTxIndex) const;
+  // The 20-bit key fingerprint (account-number field A) for THIS wallet's own
+  // identity, on this network. Returns 0 for a tracking wallet (no spend keys).
+  uint32_t pqAccountFingerprint() const;
   // Confirmed+unconfirmed PQ balance attributed to one deposit index, and the map
   // of all non-empty deposit balances by index (for walletd deposit attribution).
   uint64_t pqDepositBalance(uint32_t index) const;
@@ -308,7 +311,7 @@ protected:
   // scanner attributes incoming deposits. Safe no-op without a PQ consumer.
   void syncPqDepositConfigToState();
   // Resolve (and cache) this wallet's own PQ registration coords (H,I) from the
-  // node, needed to render SingleKeyIndex (H-I-T-C) deposit addresses. Returns
+  // node, needed to render SingleKeyIndex (H-I-A-T-C) deposit addresses. Returns
   // false if not registered / unavailable.
   bool pqRegistrationCoords(uint32_t& height, uint32_t& txIndex) const;
   void addUnconfirmedTransaction(const ITransactionReader& transaction);
@@ -383,7 +386,7 @@ protected:
   // persisted container; makes setPqDepositScheme reject any later change.
   bool m_pqDepositSchemeChosen = false;
   // Cache of this wallet's own PQ registration coords (H,I), resolved from the node
-  // the first time a SingleKeyIndex (H-I-T-C) deposit address must be rendered.
+  // the first time a SingleKeyIndex (H-I-A-T-C) deposit address must be rendered.
   mutable bool m_pqRegResolved = false;
   mutable uint32_t m_pqRegHeight = 0;
   mutable uint32_t m_pqRegTxIndex = 0;

@@ -98,7 +98,7 @@ Wait for a block, then:
 [alice]> account
 ```
 
-This prints Alice's H-I-C account number. (`register_paid` instead spends a fee if
+This prints Alice's H-I-A-C account number. (`register_paid` instead spends a fee if
 Alice already has funds.)
 
 ## 6. Transfer Alice → Bob
@@ -132,7 +132,7 @@ walletd --testnet --container-file web.wallet --container-password pw \
         --daemon-address 127.0.0.1 --daemon-port 19331
 ```
 
-Single-key-index (Spec 2 — exchange, H-I-T-C deposits):
+Single-key-index (Spec 2 — exchange, H-I-A-T-C deposits):
 
 ```
 walletd --testnet -g --container-file ex.wallet --container-password pw \
@@ -161,7 +161,7 @@ moves PQ funds back out.
 
 - [ ] Both nodes run and converge to the same height; an isolated node stays up.
 - [ ] Mined coinbase becomes spendable in Alice's wallet after maturity.
-- [ ] `register` → `account` yields a stable H-I-C number once confirmed.
+- [ ] `register` → `account` yields a stable H-I-A-C number once confirmed.
 - [ ] `transfer` debits sender (amount + fee) and credits recipient; double-spend rejected.
 - [ ] Both walletd modes start; deposit addresses are created and attributed correctly;
       the scheme is immutable across a container reopen.

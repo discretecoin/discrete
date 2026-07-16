@@ -71,7 +71,7 @@ namespace {
 const uint64_t ACCOUNT_CREATE_TIME_ACCURACY = 24 * 60 * 60;
 
 // How many subaddress indices T this single-identity wallet tries when scanning
-// (see initSync). Payments to H-I-T-C addresses with T >= this window are not
+// (see initSync). Payments to H-I-A-T-C addresses with T >= this window are not
 // recognized; raising it costs one SHA3 + AEAD per extra T per foreign output.
 const uint32_t SUBADDRESS_SCAN_WINDOW = 64;
 
@@ -510,7 +510,7 @@ void WalletLegacy::initSync() {
 
   // Subaddress deciphering: the sender bakes the routing index T into the AEAD
   // key, so the scanner must enumerate candidate indices — with no window
-  // configured only T=0 is tried and payments to H-I-T-C variants of this
+  // configured only T=0 is tried and payments to H-I-A-T-C variants of this
   // identity would be invisible. This wallet holds one key pair, so the
   // SingleKeyIndex scheme applies: T attributes, spend authority stays with the
   // primary key. The window is a scan cost/coverage trade-off (one SHA3 + AEAD

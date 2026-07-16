@@ -4,7 +4,7 @@
 //
 // Tests for the PQ account-number registry (spec §11): the LMDB pq_acct_reg
 // table with first-registration-wins + reorg rollback semantics, and the
-// human-readable H-I-C account-number rendering.
+// human-readable H-I-A-C account-number rendering (with the key-fingerprint A).
 
 #include "gtest/gtest.h"
 
@@ -127,54 +127,105 @@ TEST(PqAcctReg, ReorgRollbackAllowsReregister) {
     EXPECT_EQ(ti, 3u);
 }
 
-// --- Account-number (H-I-C) rendering: PQ REUSES CryptoNote::AccountNumber ----
-// The account number is just (blockHeight, txIndex) -> "H-I-C" with a luhnMod36
-// check char. It does not encode CN-vs-PQ; resolving it looks up whatever
-// registration sits at that tx slot. So PQ registrations use the SAME format as
-// classical account numbers — no PQ-specific scheme.
+// --- Account-number (H-I-A-C) rendering: PQ REUSES CryptoNote::AccountNumber ---
+// The number is (blockHeight, txIndex) -> "H-I-A-C", where A is a 4-char Crockford
+// fingerprint of the account's keys (the reorg failsafe) and C is a Crockford Luhn
+// mod-32 check char over H, I and A. The fingerprint VALUE is produced elsewhere
+// (pqAccountFingerprint over the keys); here we exercise the string codec with an
+// arbitrary fingerprint. See docs/wallets/account-numbers.md.
+
+namespace {
+constexpr uint32_t kFp = 0xABCDEu;  // sample 20-bit fingerprint
+}
 
 TEST(PqAccountReuse, RoundTrip) {
     AccountNumber a{1234567, 42};
-    std::string s = a.toString();
+    std::string s = a.toString(kFp);
     AccountNumber b{};
-    ASSERT_TRUE(AccountNumber::fromString(s, b));
+    uint32_t fp = 0;
+    ASSERT_TRUE(AccountNumber::fromString(s, b, fp));
     EXPECT_EQ(b.blockHeight, 1234567u);
     EXPECT_EQ(b.txIndex, 42u);
+    EXPECT_EQ(fp, kFp);
     EXPECT_EQ(s.substr(0, 10), "1234567-42");
+    // A is exactly 4 Crockford chars framed by dashes: "H-I-AAAA-C".
+    EXPECT_EQ(s, std::string("1234567-42-") + AccountNumber::encodeFingerprint(kFp) +
+                     "-" + s.substr(s.size() - 1));
 }
 
-TEST(PqAccountReuse, ChecksumRejectsTypo) {
-    std::string s = AccountNumber{900, 7}.toString();
+TEST(PqAccountReuse, ChecksumRejectsCheckCharTypo) {
+    std::string s = AccountNumber{900, 7}.toString(kFp);
     s[s.size() - 1] = (s[s.size() - 1] == 'A') ? 'B' : 'A';  // corrupt the check char
     AccountNumber b{};
     EXPECT_FALSE(AccountNumber::fromString(s, b));
 }
 
+TEST(PqAccountReuse, ChecksumRejectsFingerprintTypo) {
+    // A is covered by C, so a single-char corruption of A is caught.
+    std::string s = AccountNumber{900, 7}.toString(kFp);
+    size_t aStart = s.find('-', s.find('-') + 1) + 1;  // first char of the A field
+    s[aStart] = (s[aStart] == 'Z') ? 'Y' : 'Z';
+    AccountNumber b{};
+    EXPECT_FALSE(AccountNumber::fromString(s, b));
+}
+
 TEST(PqAccountReuse, ChecksumRejectsWrongHeight) {
-    std::string s = AccountNumber{900, 7}.toString();
+    std::string s = AccountNumber{900, 7}.toString(kFp);
     std::string tampered = "901" + s.substr(s.find('-'));
     AccountNumber b{};
     EXPECT_FALSE(AccountNumber::fromString(tampered, b));
 }
 
-// --- H-I-T-C deposit subaddress (Spec 2 / single-key-index) ------------------
+TEST(PqAccountFingerprint, CodecRoundTripAndTruncation) {
+    for (uint32_t v : {0u, 1u, 31u, 0x12345u, 0xFFFFFu}) {
+        std::string a = AccountNumber::encodeFingerprint(v);
+        EXPECT_EQ(a.size(), 4u);
+        uint32_t out = 0;
+        ASSERT_TRUE(AccountNumber::decodeFingerprint(a, out));
+        EXPECT_EQ(out, v & 0xFFFFFu);
+    }
+    // Values above 20 bits are masked, not overflowed.
+    EXPECT_EQ(AccountNumber::encodeFingerprint(0x1FABCDEu),
+              AccountNumber::encodeFingerprint(0xFABCDEu & 0xFFFFFu));
+}
+
+TEST(PqAccountFingerprint, LenientDecodeOfAmbiguousChars) {
+    // O -> 0, I/L -> 1, case-insensitive: look-alikes decode to the canonical value.
+    uint32_t withZero = 1, withO = 2;
+    ASSERT_TRUE(AccountNumber::decodeFingerprint("0000", withZero));
+    ASSERT_TRUE(AccountNumber::decodeFingerprint("O0o0", withO));
+    EXPECT_EQ(withZero, withO);
+
+    uint32_t withOne = 1, withI = 2, withL = 3;
+    ASSERT_TRUE(AccountNumber::decodeFingerprint("1000", withOne));
+    ASSERT_TRUE(AccountNumber::decodeFingerprint("I000", withI));
+    ASSERT_TRUE(AccountNumber::decodeFingerprint("l000", withL));
+    EXPECT_EQ(withOne, withI);
+    EXPECT_EQ(withOne, withL);
+
+    uint32_t u = 0;
+    EXPECT_FALSE(AccountNumber::decodeFingerprint("U000", u));  // U is not a Crockford symbol
+}
+
+// --- H-I-A-T-C deposit subaddress (Spec 2 / single-key-index) ----------------
 
 TEST(PqDepositAccount, HitcRoundTrip) {
     AccountNumber a{1234567, 42};
-    std::string s = a.toStringWithIndex(9);
-    EXPECT_EQ(s.substr(0, 12), "1234567-42-9");
+    std::string s = a.toStringWithIndex(9, kFp);
+    EXPECT_EQ(s.substr(0, 10), "1234567-42");
 
     AccountNumber b{};
-    uint32_t t = 0;
-    ASSERT_TRUE(AccountNumber::fromStringWithIndex(s, b, t));
+    uint32_t t = 0, fp = 0;
+    ASSERT_TRUE(AccountNumber::fromStringWithIndex(s, b, t, fp));
     EXPECT_EQ(b.blockHeight, 1234567u);
     EXPECT_EQ(b.txIndex, 42u);
     EXPECT_EQ(t, 9u);
+    EXPECT_EQ(fp, kFp);
 }
 
 TEST(PqDepositAccount, HitcDefaultIndexZero) {
     AccountNumber a{900, 7};
-    std::string s = a.toStringWithIndex(0);
+    std::string s = a.toStringWithIndex(0, kFp);
     AccountNumber b{};
     uint32_t t = 123;
     ASSERT_TRUE(AccountNumber::fromStringWithIndex(s, b, t));
@@ -182,7 +233,7 @@ TEST(PqDepositAccount, HitcDefaultIndexZero) {
 }
 
 TEST(PqDepositAccount, HitcCheckCharRejectsTypo) {
-    std::string s = AccountNumber{900, 7}.toStringWithIndex(5);
+    std::string s = AccountNumber{900, 7}.toStringWithIndex(5, kFp);
     s[s.size() - 1] = (s[s.size() - 1] == 'A') ? 'B' : 'A';  // corrupt check char
     AccountNumber b{};
     uint32_t t = 0;
@@ -190,8 +241,8 @@ TEST(PqDepositAccount, HitcCheckCharRejectsTypo) {
 }
 
 TEST(PqDepositAccount, HitcRejectsTamperedIndex) {
-    // Changing T must invalidate the check char (it covers H, I and T).
-    std::string s = AccountNumber{900, 7}.toStringWithIndex(5);  // "900-7-5-C"
+    // Changing T must invalidate the check char (it covers H, I, A and T).
+    std::string s = AccountNumber{900, 7}.toStringWithIndex(5, kFp);  // "900-7-AAAA-5-C"
     std::string tampered = s;
     tampered[s.find_last_of('-') - 1] = '6';  // T 5 -> 6, check char now wrong
     AccountNumber b{};
@@ -200,12 +251,12 @@ TEST(PqDepositAccount, HitcRejectsTamperedIndex) {
 }
 
 TEST(PqDepositAccount, HitcAndHicDoNotAlias) {
-    // The 3-field H-I-C parser must reject a 4-field H-I-T-C string and vice versa.
-    std::string hitc = AccountNumber{900, 7}.toStringWithIndex(5);
+    // The 3-dash H-I-A-C parser must reject a 4-dash H-I-A-T-C string and vice versa.
+    std::string hitc = AccountNumber{900, 7}.toStringWithIndex(5, kFp);
     AccountNumber b{};
-    EXPECT_FALSE(AccountNumber::fromString(hitc, b));  // H-I-C rejects H-I-T-C
+    EXPECT_FALSE(AccountNumber::fromString(hitc, b));  // H-I-A-C rejects H-I-A-T-C
 
-    std::string hic = AccountNumber{900, 7}.toString();
+    std::string hic = AccountNumber{900, 7}.toString(kFp);
     uint32_t t = 0;
     EXPECT_FALSE(AccountNumber::fromStringWithIndex(hic, b, t));  // and the reverse
 }

@@ -842,7 +842,7 @@ void pqBalance(std::shared_ptr<WalletInfo> walletInfo)
               << std::endl;
 }
 
-// Resolve a recipient string (a raw PQ address OR an H-I-C account number) to
+// Resolve a recipient string (a raw PQ address OR an H-I-A-C account number) to
 // its view + spend public keys, querying the node for an account number.
 static bool resolvePqRecipientGreen(CryptoNote::INode &node, bool testnet, const std::string &s,
                                     CryptoPQ::KemPublicKey &viewPub, CryptoPQ::DsaPublicKey &spendPub,
@@ -866,7 +866,7 @@ void pqTransfer(std::shared_ptr<WalletInfo> walletInfo, CryptoNote::INode &node)
     std::getline(std::cin, addrStr);
     CryptoPQ::KemPublicKey destView;
     CryptoPQ::DsaPublicKey destSpend;
-    uint64_t destSubaddrT = 0;  // non-zero only for an H-I-T-C deposit subaddress
+    uint64_t destSubaddrT = 0;  // non-zero only for an H-I-A-T-C deposit subaddress
     if (!resolvePqRecipientGreen(node, wallet.isTestnet(), addrStr, destView, destSpend, destSubaddrT))
     {
         std::cout << WarningMsg("Not a valid address or account number.") << std::endl;
@@ -990,7 +990,7 @@ void pqRegisterPaid(std::shared_ptr<WalletInfo> walletInfo, CryptoNote::INode &n
     {
         CryptoNote::AccountNumber acct{blockHeight, txIndex};
         std::cout << WarningMsg("This identity already has account number: ")
-                  << SuccessMsg(acct.toString()) << std::endl;
+                  << SuccessMsg(acct.toString(wallet.pqAccountFingerprint())) << std::endl;
         return;
     }
 
@@ -1078,5 +1078,13 @@ void pqAccount(std::shared_ptr<WalletInfo> walletInfo, CryptoNote::INode &node)
         return;
     }
     CryptoNote::AccountNumber acct{blockHeight, txIndex};
-    std::cout << SuccessMsg("Your account number: " + acct.toString()) << std::endl;
+    uint32_t fp = wallet.pqAccountFingerprint();
+    std::cout << SuccessMsg("Your account number: " + acct.toString(fp)) << std::endl;
+    std::cout << InformationMsg(
+                     "The '" + CryptoNote::AccountNumber::encodeFingerprint(fp) +
+                     "' part is a fingerprint of your keys: a payer's wallet refuses this number "
+                     "if a chain reorg ever repoints it. Others can pay it after " +
+                     std::to_string(CryptoNote::parameters::CRYPTONOTE_FINALITY_DEPTH) +
+                     " confirmations.")
+              << std::endl;
 }
