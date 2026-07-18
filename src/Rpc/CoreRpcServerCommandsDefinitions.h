@@ -1307,26 +1307,6 @@ struct COMMAND_RPC_GET_STATS_BY_HEIGHTS_RANGE {
   };
 };
 
-struct COMMAND_RPC_RESOLVE_OPEN_ALIAS {
-  struct request {
-    std::string url;
-
-    void serialize(ISerializer& s) {
-      KV_MEMBER(url);
-    }
-  };
-
-  struct response {
-    std::string address;
-    std::string status;
-
-    void serialize(ISerializer& s) {
-      KV_MEMBER(address);
-      KV_MEMBER(status);
-    }
-  };
-};
-
 struct COMMAND_RPC_CHECK_PAYMENT_BY_PAYMENT_ID {
   struct request {
     std::string payment_id;

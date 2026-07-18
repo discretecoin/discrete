@@ -36,7 +36,6 @@
 #include <crypto/random.h>
 #include "BlockchainExplorerData.h"
 #include "Common/Base58.h"
-#include "Common/DnsTools.h"
 #include "Common/Math.h"
 #include "Common/FormatTools.h"
 #include "Common/StringTools.h"
@@ -688,7 +687,6 @@ bool RpcServer::processJsonRpcRequest(const CryptoNote::HttpRequest& request, Cr
       { "checktransactionproof", { makeMemberMethod(&RpcServer::on_check_transaction_proof), true } },
       { "validateaddress", { makeMemberMethod(&RpcServer::on_validate_address), true } },
       { "verifymessage", { makeMemberMethod(&RpcServer::on_verify_message), true } },
-      { "resolveopenalias", { makeMemberMethod(&RpcServer::on_resolve_open_alias), true } },
       { "search", { makeMemberMethod(&RpcServer::on_explorer_search), true } },
       { "getaccountnumber", { makeMemberMethod(&RpcServer::on_get_pq_account), true } },
       { "resolveaccountnumber", { makeMemberMethod(&RpcServer::on_resolve_pq_account), true } },
@@ -2124,27 +2122,6 @@ bool RpcServer::on_verify_message(const COMMAND_RPC_VERIFY_MESSAGE::request& req
   return true;
 }
 
-bool RpcServer::on_resolve_open_alias(const COMMAND_RPC_RESOLVE_OPEN_ALIAS::request& req, COMMAND_RPC_RESOLVE_OPEN_ALIAS::response& res) {
-
-#ifndef __ANDROID__
-  try {
-    res.address = Common::resolveAlias(req.url);
-
-    // The alias must resolve to a PQ address on this network (bech32m HRP check).
-    CryptoNote::PqAddress pq;
-    if (!CryptoNote::decodePqAddress(res.address, m_core.currency().isTestnet(), pq)) {
-      throw JsonRpc::JsonRpcError{ CORE_RPC_ERROR_CODE_INTERNAL_ERROR, "Address \"" + res.address + "\" is invalid" };
-    }
-  }
-  catch (std::exception& e) {
-    throw JsonRpc::JsonRpcError{ CORE_RPC_ERROR_CODE_WRONG_PARAM, "Couldn't resolve alias: " + std::string(e.what()) };
-    return true;
-  }
-#endif
-
-  res.status = CORE_RPC_STATUS_OK;
-  return true;
-}
 
 bool RpcServer::on_get_pq_account(const COMMAND_RPC_GET_PQ_ACCOUNT::request& req,
                                   COMMAND_RPC_GET_PQ_ACCOUNT::response& res) {

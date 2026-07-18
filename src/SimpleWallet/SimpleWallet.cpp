@@ -66,7 +66,6 @@
 #include "Common/StringTools.h"
 #include "Common/Base58.h"
 #include "Common/PathTools.h"
-#include "Common/DnsTools.h"
 #include "Common/UrlTools.h"
 #include "Common/Util.h"
 #include "Common/ColouredMsg.h"
@@ -390,38 +389,6 @@ bool writeToFile(const std::string& filename, const std::string& seed) {
 
   return true;
 }
-
-#ifndef __ANDROID__
-
-bool comfirmPrompt() {
-  std::string answer;
-  do {
-    std::cout << "y/n: ";
-    std::getline(std::cin, answer);
-
-    if (std::cin.fail() || std::cin.eof()) {
-      std::cin.clear();
-
-      break;
-    }
-
-  } while (answer != "y" && answer != "Y" && answer != "n" && answer != "N");
-
-  return answer == "y" || answer == "Y";
-}
-
-bool askAliasesTransfersConfirmation(const std::map<std::string, std::vector<WalletLegacyTransfer>>& aliases, const Currency& currency) {
-  std::cout << "Would you like to send money to the following addresses?" << std::endl;
-
-  for (const auto& kv : aliases) {
-    for (const auto& transfer : kv.second) {
-      std::cout << transfer.address << " " << std::setw(21) << currency.formatAmount(transfer.amount) << "  " << kv.first << std::endl;
-    }
-  }
-
-  return comfirmPrompt();
-}
-#endif
 
 }
 

@@ -39,19 +39,7 @@ bool parseAddress(std::string address);
 
 bool parseFee(std::string feeString);
 
-#ifndef __ANDROID__
-bool getOpenAlias(const std::string& alias, std::string& address);
-
-bool processServerAliasResponse(const std::string& s, std::string& address);
-
-bool askAliasesTransfersConfirmation(const std::string address);
-#endif
-
 std::string getExtraFromPaymentID(std::string paymentID);
-
-#ifndef __ANDROID__
-std::string resolveAlias(const std::string& aliasUrl);
-#endif
 
 Maybe<std::string> getPaymentID(std::string msg);
 

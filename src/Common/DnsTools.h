@@ -24,12 +24,4 @@ namespace Common {
 
 bool fetch_dns_txt(const std::string domain, std::vector<std::string>&records);
 
-#ifndef __ANDROID__
-
-  bool processServerAliasResponse(const std::string& s, std::string& address);
-  std::string resolveAlias(const std::string& aliasUrl);
-  std::vector<std::string> resolveAliases(const std::string& aliasUrl);
-
-#endif
-
 }
