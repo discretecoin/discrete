@@ -5,7 +5,7 @@ Tag: 0.13.0
 Commit: 21b3f8b0fadbb19e2c6a5df0f165c953ead164e1
 
 This is a pruned source-only snapshot. The following directories were removed
-from the upstream tree because they are unused by Karbo (we only need
+from the upstream tree because they are unused by Discrete (we only need
 ML-KEM-768 and ML-DSA-65):
 
   src/kem/{bike,classic_mceliece,frodokem,hqc,kyber,ntruprime}
@@ -22,12 +22,12 @@ To refresh from upstream:
   1. git clone --branch <new-tag> https://github.com/open-quantum-safe/liboqs <tmp>
   2. rm -rf the directories listed above from <tmp>
   3. Replace external/liboqs/ with <tmp>/, preserving this UPSTREAM.md.
-  4. Re-apply the Karbo PQ patches listed below.
+  4. Re-apply the Discrete PQ patches listed below.
   5. Update the Tag and Commit lines above.
 
-## Karbo PQ patches
+## Discrete PQ patches
 
-These are local deltas required by Karbo PQ Phase 1 (transaction version 3).
+These are local deltas required by Discrete PQ Phase 1 (transaction version 1).
 Each is a small, surgical addition — no upstream behaviour is changed.
 
 ### 1. ML-DSA-65 deterministic keygen — `_keypair_derand`

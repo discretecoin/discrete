@@ -27,9 +27,9 @@ namespace Tests {
 namespace {
 
 #ifdef _WIN32
-const char DAEMON_FILENAME[] = "karbowanecd.exe";
+const char DAEMON_FILENAME[] = "discreted.exe";
 #else
-const char DAEMON_FILENAME[] = "karbowanecd";
+const char DAEMON_FILENAME[] = "discreted";
 #endif
 
 const char* BUILD_CONFIGS[] = { "", "Release", "Debug", "RelWithDebInfo", "MinSizeRel" };

@@ -36,8 +36,8 @@ jobs:
         id: build
         run: |
           $build_folder = "build"
-          $krb_ver = "${{ github.ref }}" -replace '^refs/tags/', ''
-          $release_name = "discrete-cli-win64-$krb_ver"
+          $disc_ver = "${{ github.ref }}" -replace '^refs/tags/', ''
+          $release_name = "discrete-cli-win64-$disc_ver"
           mkdir "$build_folder"
           cd "$build_folder"
           if (!(Test-Path "$env:BOOST_ROOT\boost\version.hpp")) {
@@ -73,16 +73,16 @@ jobs:
           echo "sha256=${sha256}" >> $env:GITHUB_OUTPUT
           echo "release_name=${release_name}.zip" >> $env:GITHUB_OUTPUT
           echo "asset_path=${asset_path}" >> $env:GITHUB_OUTPUT
-          echo "krb_ver=${krb_ver}" >> $env:GITHUB_OUTPUT
+          echo "disc_ver=${disc_ver}" >> $env:GITHUB_OUTPUT
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ steps.build.outputs.asset_path }}
-          name: Discrete CLI Suite ${{ steps.build.outputs.krb_ver }}
+          name: Discrete CLI Suite ${{ steps.build.outputs.disc_ver }}
           append_body: true
           body: |
-            [Download for Windows](../../releases/download/${{ steps.build.outputs.krb_ver }}/${{ steps.build.outputs.release_name }}) `SHA256: ${{ steps.build.outputs.sha256 }}`
+            [Download for Windows](../../releases/download/${{ steps.build.outputs.disc_ver }}/${{ steps.build.outputs.release_name }}) `SHA256: ${{ steps.build.outputs.sha256 }}`
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -115,8 +115,8 @@ jobs:
           Boost_LIBRARY_DIR="$BOOST_ROOT/lib"
 
           build_folder="build"
-          krb_ver="${GITHUB_REF#refs/tags/}"
-          release_name="discrete-cli-macos-arm64-$krb_ver"
+          disc_ver="${GITHUB_REF#refs/tags/}"
+          release_name="discrete-cli-macos-arm64-$disc_ver"
 
           brew install openssl@3
           brew link openssl@3 --force
@@ -155,16 +155,16 @@ jobs:
           echo "sha256=$sha256" >> $GITHUB_OUTPUT
           echo "release_name=$release_name.zip" >> $GITHUB_OUTPUT
           echo "asset_path=$build_folder/$release_name.zip" >> $GITHUB_OUTPUT
-          echo "krb_ver=$krb_ver" >> $GITHUB_OUTPUT
+          echo "disc_ver=$disc_ver" >> $GITHUB_OUTPUT
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ steps.build.outputs.asset_path }}
-          name: Discrete CLI Suite ${{ steps.build.outputs.krb_ver }}
+          name: Discrete CLI Suite ${{ steps.build.outputs.disc_ver }}
           append_body: true
           body: |
-            [Download for macOS ARM64](../../releases/download/${{ steps.build.outputs.krb_ver }}/${{ steps.build.outputs.release_name }})  
+            [Download for macOS ARM64](../../releases/download/${{ steps.build.outputs.disc_ver }}/${{ steps.build.outputs.release_name }})  
             `SHA256: ${{ steps.build.outputs.sha256 }}`
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -183,8 +183,8 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y build-essential cmake git libboost-all-dev libssl-dev pkg-config
           build_folder="build/release"
-          krb_ver=$(echo "$GITHUB_REF" | sed 's|refs/tags/||')
-          release_name=discrete-cli-ubuntu24.04-"$krb_ver"
+          disc_ver=$(echo "$GITHUB_REF" | sed 's|refs/tags/||')
+          release_name=discrete-cli-ubuntu24.04-"$disc_ver"
           mkdir -p "$build_folder"
           cd "$build_folder"
           cmake -D ARCH=default -D CMAKE_BUILD_TYPE=Release \
@@ -213,16 +213,16 @@ jobs:
           echo "sha256=${sha256}" >> $GITHUB_OUTPUT
           echo "release_name=${release_name}.tar.gz" >> $GITHUB_OUTPUT
           echo "asset_path=${asset_path}" >> $GITHUB_OUTPUT
-          echo "krb_ver=${krb_ver}" >> $GITHUB_OUTPUT
+          echo "disc_ver=${disc_ver}" >> $GITHUB_OUTPUT
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ steps.build.outputs.asset_path }}
-          name: Discrete CLI Suite ${{ steps.build.outputs.krb_ver }}
+          name: Discrete CLI Suite ${{ steps.build.outputs.disc_ver }}
           append_body: true
           body: |
-            [Download for Ubuntu 24.04](../../releases/download/${{ steps.build.outputs.krb_ver }}/${{ steps.build.outputs.release_name }}) `SHA256: ${{ steps.build.outputs.sha256 }}`
+            [Download for Ubuntu 24.04](../../releases/download/${{ steps.build.outputs.disc_ver }}/${{ steps.build.outputs.release_name }}) `SHA256: ${{ steps.build.outputs.sha256 }}`
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -259,8 +259,8 @@ jobs:
         id: build
         run: |
           build_folder="build/release"
-          krb_ver=$(echo "$GITHUB_REF" | sed 's|refs/tags/||')
-          release_name="discrete-cli-linux-universal-$krb_ver"
+          disc_ver=$(echo "$GITHUB_REF" | sed 's|refs/tags/||')
+          release_name="discrete-cli-linux-universal-$disc_ver"
 
           mkdir -p "$build_folder"
           cd "$build_folder"
@@ -298,7 +298,7 @@ jobs:
           echo "sha256=${sha256}" >> $GITHUB_OUTPUT
           echo "release_name=${release_name}.tar.gz" >> $GITHUB_OUTPUT
           echo "asset_path=${asset_path}" >> $GITHUB_OUTPUT
-          echo "krb_ver=${krb_ver}" >> $GITHUB_OUTPUT
+          echo "disc_ver=${disc_ver}" >> $GITHUB_OUTPUT
 
       - name: Verify static linkage
         run: |
@@ -322,10 +322,10 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ steps.build.outputs.asset_path }}
-          name: Discrete CLI Suite ${{ steps.build.outputs.krb_ver }}
+          name: Discrete CLI Suite ${{ steps.build.outputs.disc_ver }}
           append_body: true
           body: |
-            [Download Universal Binaries for Linux](../../releases/download/${{ steps.build.outputs.krb_ver }}/${{ steps.build.outputs.release_name }}) `SHA256: ${{ steps.build.outputs.sha256 }}`
+            [Download Universal Binaries for Linux](../../releases/download/${{ steps.build.outputs.disc_ver }}/${{ steps.build.outputs.release_name }}) `SHA256: ${{ steps.build.outputs.sha256 }}`
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -449,8 +449,8 @@ jobs:
         id: package
         run: |
           cd $BUILD_DIR/src
-          krb_ver=$(echo "$GITHUB_REF" | sed 's|refs/tags/||')
-          release_name="discrete-cli-android-${ANDROID_ABI}-$krb_ver"
+          disc_ver=$(echo "$GITHUB_REF" | sed 's|refs/tags/||')
+          release_name="discrete-cli-android-${ANDROID_ABI}-$disc_ver"
           mkdir -p "$release_name"
           STRIP=$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip
           for bin in discreted simplewallet greenwallet walletd vanitygen; do
@@ -466,15 +466,15 @@ jobs:
           echo "sha256=${sha256}" >> $GITHUB_OUTPUT
           echo "release_name=${release_name}.zip" >> $GITHUB_OUTPUT
           echo "asset_path=$BUILD_DIR/src/$release_name.zip" >> $GITHUB_OUTPUT
-          echo "krb_ver=${krb_ver}" >> $GITHUB_OUTPUT
+          echo "disc_ver=${disc_ver}" >> $GITHUB_OUTPUT
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ steps.package.outputs.asset_path }}
-          name: Discrete CLI Suite ${{ steps.package.outputs.krb_ver }}
+          name: Discrete CLI Suite ${{ steps.package.outputs.disc_ver }}
           append_body: true
           body: |
-            [Download for Android arm64-v8a](../../releases/download/${{ steps.package.outputs.krb_ver }}/${{ steps.package.outputs.release_name }}) `SHA256: ${{ steps.package.outputs.sha256 }}`
+            [Download for Android arm64-v8a](../../releases/download/${{ steps.package.outputs.disc_ver }}/${{ steps.package.outputs.release_name }}) `SHA256: ${{ steps.package.outputs.sha256 }}`
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
