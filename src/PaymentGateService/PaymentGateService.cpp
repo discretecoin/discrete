@@ -208,7 +208,7 @@ void PaymentGateService::runInProcess(Logging::LoggerRef& log) {
   for (const auto& cp : CryptoNote::CHECKPOINTS) {
     checkpoints.add_checkpoint(cp.height, cp.blockId);
   }
-  checkpoints.load_checkpoints_from_dns();
+  checkpoints.load_checkpoints_from_dns(currency.genesisBlockHash());
   if (!config.gateConfiguration.testnet) {
     core.set_checkpoints(std::move(checkpoints));
   }

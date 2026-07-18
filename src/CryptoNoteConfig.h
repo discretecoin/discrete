@@ -257,24 +257,34 @@ const char     DNS_CHECKPOINTS_HOST[]                        = "checkpoints.disc
 //
 // DNS TXT records served from DNS_CHECKPOINTS_HOST must be in the form
 //   "<height>:<block_hash_hex>:<signature>"
-// where <signature> is produced by signing the string "<height>:<block_hash_hex>"
-// with one of the wallets whose PQ address appears in DNS_CHECKPOINT_SIGNERS. The
-// signature scheme is the post-quantum one wired into simplewallet's
+// where <signature> is produced by signing the GENESIS-BOUND string
+//   "<genesis_block_hash_hex>:<height>:<block_hash_hex>"
+// with one of the wallets whose PQ address appears in DNS_CHECKPOINT_SIGNERS.
+// Prefixing this network's genesis block hash (64 lowercase hex chars) binds
+// every record to exactly one chain: a record signed for a testnet, a staging
+// deployment, or a code fork that trusts the same signer key can never be
+// replayed onto mainnet through the shared DNS host (a wrong replayed pin would
+// otherwise hard-stall syncing nodes at that height). The signature scheme is
+// the post-quantum one wired into simplewallet's
 // `sign_message` command (CryptoNoteFormatUtils::signMessagePq / verifyMessagePq)
 // — ML-DSA-65 over the wallet's long-term spend key, over a domain-separated
 // SHA3-256 digest, Base58-encoded with the CRYPTONOTE_KEYS_SIGNATURE_BASE58_PREFIX
-// tag. Each entry here is a Discrete PQ address (the string `pq_address` prints);
-// the loader extracts its ML-DSA spend public key and verifies against it.
+// tag. Each entry here is a Discrete PQ address (the string `address` prints);
+// the loader extracts its ML-DSA spend public key and verifies against it
+// (Checkpoints::verify_signed_dns_record).
 //
 // Operational workflow for a maintainer (offline ML-DSA signer wallet):
 //   1. simplewallet --generate-new-wallet checkpoint-signer.wallet
-//   2. run `pq_address` and note the printed PQ address; add it to this array in
+//   2. run `address` and note the printed PQ address; add it to this array in
 //      the next release build.
 //   3. encrypt the wallet file and keep it offline; it never needs funds — the
 //      only operation it performs is `sign_message`.
 //   4. to publish a new checkpoint, load the wallet on an offline machine, run
-//      `sign_message` with the argument "<height>:<block_hash_hex>", and copy the
-//      printed signature into the corresponding DNS TXT record.
+//      `sign_message` with the argument
+//      "<genesis_block_hash_hex>:<height>:<block_hash_hex>" (genesis hash as
+//      shown on the explorer's block-0 page), then publish the DNS TXT record
+//      as "<height>:<block_hash_hex>:<signature>" — the genesis prefix is
+//      implied by the network and is NOT repeated in the record itself.
 //
 // Multi-signer / any-of-N semantics: a DNS record is accepted if its signature
 // verifies against ANY PQ address in this list. This lets the project rotate a
@@ -283,9 +293,9 @@ const char     DNS_CHECKPOINTS_HOST[]                        = "checkpoints.disc
 // independent signers without coordinating on a single hot key.
 //
 // Empty signer set: leave just the nullptr sentinel below — DNS checkpoint
-// loading then fail-closes (the loader logs once and skips every record). This
-// is the safe default; Discrete ships with NO signers provisioned, so DNS
-// checkpoints are DISABLED until a PQ signer address is added here.
+// loading then fail-closes (the loader logs once and skips every record).
+// Fail-closed is the guaranteed fallback: if every configured entry is removed
+// or fails to parse, no DNS record is ever trusted.
 //
 // Implementation note: nullptr-terminated C array, not std::array. The
 // previous std::array<const char*, N> form required maintainers to update
@@ -297,7 +307,9 @@ const char     DNS_CHECKPOINTS_HOST[]                        = "checkpoints.disc
 // and works for any count including zero (MSVC rejects zero-element C
 // arrays, but a one-element `{ nullptr }` is well-formed).
 constexpr const char* const DNS_CHECKPOINT_SIGNERS[]         = {
-  nullptr   // sentinel — no PQ signers provisioned yet (DNS checkpoints disabled)
+  // Maintainer checkpoint signer #1 (offline wallet, provisioned 2026-07-17).
+  "disc1q8dch5gp27jhem5x9pcu9yaz22sj5zpgufprdm45f7dsn2nf7j0acxvp4jd8xzwtt8xg9sr9t0qnqhre4lu5f44usv238jd9fgj5kvqcaf5mqkufxph2vlutvwjp2tqugvn363dgnc6v5ul9xxzdd8yppn3k8azh9l7d4gfvp9a20zkguckfn5d5kq85nz7l2l8gmk6xud35jgte0wrgvkxt2cwdv5de7upcqsmhffdmwtx2qcxydpe9fd2gxrvceqwxsls6vnrjtu4wqffgkdr3pu7mvd2gy09d6x3a62e36p4gqf0fced0s7pppu5y59kzcls9thts4v5q88pknv5cpna8hng504h7saj0zzj6lec2v0y9k564t0yvgpf7cfjhdtr9hq5ylfwff3kwzutmtwvqtcar0a3qzq92vsm3gmug3x0f6ckv8kyq7n4c5c7qcka2s9f2kk6e7vug827x2u09v72c2awhmuzqmqngf78kjetxp9l2ptxc9us9vrjmvfp9yyfc9ysvg4kq8s28xmp5pyt4qmfcyz3szewnhtxzjqvjv97mjyune80r6zwkwscldydnccpnkgrtz9e26wwzc7sglk26mve9x4fzjq20xlzkdaq6hxt92rnkeme6vts43f6agugwl7enk5c63g8p3y0lunzahw723w7y0xd5nje5v4eyx9hlz467cvg2eh8rw23qq426hgwd22gqtu45zh6sc3y457us4jt2carn7wtf5zf2cl874txna2rw4ggxtn3nrw5xzqnqnd9c6x5h3ens225g4454sevxkanjqhq99uyu2f3xfujjkn90ex9l0g5nf7f2xzaqcgdnd3n9kmjujvmjhs6vz534e2m5kn068jnm03e6dfpnusmjwjezyvt7qj5xdfkf7kkye4uh253pyqep2d63wwmq23je6ec4vvh3vexv30a7gaxrsa66a9pzgw3esu789x5n2sx55auz0e4q4c8evqp2zd8hze0tyl9msrpsqw0e0w65pyglntxgrqg70u7ztlqzearthgzaaxc3s3rz0ve6rzszhsg2ve0atzp87cwrfdmg398kgh58qqjwyqg8pz3c873py2uu08d9pwyt2qkyhsgsqhvf6rw6r6y3yhhpgkjcgrrh8ffv2d38daahetuwujyskkpg3q32d80y9lmyjvwyvpxywrxzj6dk35gyz950g2wr8q9ndae5xk4h6r39t8a8kzspjw5u32e84ganc9xtfyv75lwk7ur3masax22kqumn0waw502k7zfnpw6pahw98qntfw725v9ag90s7u3e6j92gxy5k4sgg3z8lsa7m7arjx2924dmgd8zq8xzrfnpy4z53n6tvtp92cytw3rqkj62e7jmxavpd52gyz2a4j5xevtgndqdkdjc25l9fhysrgkue2mm739g5wcntvff3n05cnqxp3spkvd4ytkrsrf8rrzecgurpfkxndtxrvvcx0a3zsl70ppx7ufcua5kz2j4de04y7c3ftnpwdu2a6q57m9mklqkgd6k9pndy2xjvg5z87ym0l6p92vk0z9lfxukak6pceyr6v98cdr84px976766fp82769yaqh50y054t0usf7vccqd7pfeerpy2522jpdnvcanjxp2wspex9eqpqvn92p4gf6cjysrjsu567gfl9gnqv7lg3la7ut3cyzmpqmc5z2sgrwp0rqtpw0ls63j7j6zj2try867wey5dympsrsp0xvkfv7c3xjuylkg4mpq9p2nurqwcymxk02yx2efqyy5nv93vqyexwnj3kay988flywaqmk96lnhchy3zq2wxe3xd0wsmdzmypqn07yz5unsl8zh6latvqhuf7mlkn049kpxn55k2n2vejd43kg2asyel50ux088rwjh9u9jrqgwpuewf8qjslr3lprcmlzlnpgxm58cpt0gzjhgm643gxlfhr40nwweyfnx3udqngser7grl6pz4vadgp5evp2fwlyw7t2hmw27uepj2y32pgq5xezysj3rclrym2spcgnzalrjyrtkc2urz653k0smpw7llvzs0zxdqa7z3a3a02x8xwf7us8nqdtt44y6x96hw33ynn9cxasuqpgp56tv28guymhrgng9lulua7t7dumwgqr58jmq7x5afwrqpfes6rknaak22t3w5e54nqe4p3snl205u58lavx0dhv6nrvtq0nqqr7z482myzdl0hgadf2qpswwd3ucn8e4ff5kyge5x9yqhrw9t7tcwzs270esdg6alzk2zxfwssf7msg20kqq938y759llka55agv2l54rrje5ep54llhklspqvexwjwuvy32ypwvm3ghypqmcwrgr08s3rxttjptw5v4a8vr6s3xehj2wru70rvrrnzsh5z93hwx2wramt5a3ddmzznqlurhl8vtjhxgydkqsef2jr6tyj7papzxk38rtxf3s2zvvy3k4t42we8j8kegsdpy0znkhxtggfnevwvk3k385326hyef9q24nkl5n9fge8cgrj82gq9tszy79epqu375ldmkjnyzd4hej5caae37vucs7g9g83k9svny4eepr5zx5p7752dl3qkpae52uzgs05fjpxqcahumsmqprmxxxd3hqw0kftfkxrs7kv8uxd0y65d6wrxz7n2r2rl60s2xn43zn60kjgeydukx628uam3gyum68sulpsw04mtrxnqdjdq5eje32380xsxk0ndsh4tnrx7jaa8e92y57yny0qyq7fsd6mz2wu6keuv5druwjhrs0a0jd4epujscf77q35h3ls8vky030th6knjw2eg4n2gwmvravkl3tj0fr9987enrhurphkxpj34076wzlhn6hj4t2uuspewsmcls0fkj7gcunudv9tscjdx6zuqh4v2d7nd30ujllzln0swt8tx2mgvnu8azerzplwjfslr6yucpg0uw7l6pdl4gt83z5wuptagr2zumay0uwxvtn8384esqpcs2c4xug26ye2e06g3adypq489vc00huhq74s0tkm0gt7v62hjku2fhay3km00tz9pg0rf6m6fkpwuyvh4aalhp49luq5zytxdmp0nx384p94rt623rwjj6ug9jsmd5d932jwtlmfhtf5kkt3y9tr3k7uknhgtghc2zl6jx5l8jzdxhf677sch890xeqfmqsk49hyhxq00cysgzqcpfylen6ynhuf02u3hfcjdyrfsd3c6dxkfls3g7ptrp2g2w00su5m0e4akl8fzltelzqc37qhtf9nmfgs49lypcvqz4svqa2uq0ykhg4wkl0c7zz7gczmxq2plp4p2uxh3n38kr74e26u7rqzhemk2d7rpc9z4pv4u56248ynkm8qyy9nvgklxfwfttkfvqyfkc595ayh9mcwnky2j7gencjpx3exvlk9645gdv5laajh7klk33fstvg6ecf66s6ttgeg08yuedgdqwm8xgnw4karu9jq9z4xn7f59787t2z2w6njyuzuszrz4lht4zkea8988cku25zm2h4hac7zz2gn9g5q29hqywrkjprmhaz50lhvp45sa35r5xky9ayqeamuzhnmcqhq3j267ugcx0y47dwucumpyqx5r5a86wg4vuu3rd209m5mcn2v46uc97qy6wyru4gpcuenu6d47qe2yqt60vecrdgnp264nd0r0qa90rav8vf7u52vxqul0xp3exya6u5vxecxa8w2yjnxrcj4mqa9q2k4ppgakr2ygfx9jvgx6uqcuunwndfdww6jrvtdd93209a4lmcs8t4kcamz6ye8ajdsw82azuyntuem8frn4n89kkn9zcjcny2uz6j8gsz4ms09n745e94a78dctf8kdfr34zszxwqtw4zmjtahtk6xhjfy586h9ky554jnr3mde9av66rvvx08jpq4uz28wkj2sz3zeajfyh8c7j536gt0xatj985k5jz32kr9mhed3q37tzhwa6y2yu8yvy0992hhat6c6xqyg5pzngz6z5pkcrky2plwxugjr9yz6pjpk4aqpaxkgf4gyva82ydy8wm8luz4wq8vl8v54w23h7m5aruvvjzldl75r09xyw90pm3j7jh5r4rjlxkrlz3jah3aqhzzfqxq2cnczutyhc0tgplyzxdf44xvwzvv7ja24xjms8j3qnfmxs9xdl2du74lvfp3zwt8fml7dyu3fp9qfuq5uj4affylwret76jrg85m6n0qw7584a9dkn4guaupxd25gwmvwdhgcldpqg2vrmvjtqzmjprll8h94lnr4pclpv5w9etjxlwk0apzuzmh09wlpkfgwvexlz7nq0lu7x5gnx54gdq9u5dckfhwh6l3u0wuq2h79nvvsc40s2wsds7xkuq8rnvqasluazy6v48s9y8fdf2yj7rd9zazeajqllwrv6ny4pyh675mmhk2rh6m864z5eh44x7g2l3fr2xt2r6kyuq0h8gngsqjsfvz7klht3s97jpn32epafetu9qeqvfeqv492ucyryvcm050v3vwyql96tf2nvts5mlvkg5l7qje2huqk3m7k4t9lk09ndxsgzzwhqhdnkdkzk9h5lst4qcv39y9v5v882c5gu8sqwtlml026ly27vr6rzacgl05srnepu4khgzt5z3x3t0f4rtt6n5kfq8lj66gvwpcz90x4nku5uqxcgwjagsjucze6ly3twpcnccydjg2gl6gv6x2jcj25zytvaj0q8zp7plxdadus5qkrz78y3f7hwpuefhelqy5ls0k88yk8gxckmv6dz0uhulftuvfluhrce4kz8gcrm3zfrmgzg545jsdv43hmq7vp248gxa2j7emz5as7axqd25dpdxr0pzf8k3kxdlfxnc9tzh5tf9gyylxgzv86lrpzt3p64f3dvxwvld6clrraj4fcy0gwcke86urpzzmpa0mmqmn4cgh87nxxxhggvw003fue3gmt5r",
+  nullptr   // sentinel — keeps DNS_CHECKPOINT_SIGNERS_COUNT auto-tracking
 };
 constexpr size_t DNS_CHECKPOINT_SIGNERS_COUNT                =
   (sizeof(DNS_CHECKPOINT_SIGNERS) / sizeof(DNS_CHECKPOINT_SIGNERS[0])) - 1;

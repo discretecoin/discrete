@@ -18,6 +18,10 @@
 #include "Checkpoints/Checkpoints.h"
 #include "Checkpoints/CheckpointsData.h"
 #include "CryptoNoteConfig.h"
+#include "CryptoNoteCore/CryptoNoteFormatUtils.h"
+#include "PqAddress.h"
+#include "crypto_pq/PqDsa.h"
+#include <Common/StringTools.h>
 #include <Logging/LoggerGroup.h>
 
 using namespace CryptoNote;
@@ -146,6 +150,159 @@ TEST(finality_depth, deterministic)
     EXPECT_TRUE(cp.is_finality_violation(100, 80));
     EXPECT_FALSE(cp.is_finality_violation(100, 91));
   }
+}
+
+// ─── Signed DNS checkpoint records ──────────────────────────────────────────
+// Checkpoints::verify_signed_dns_record is the sole gate between a DNS TXT
+// string and add_checkpoint. The signed payload is genesis-bound
+// ("<genesis_hex>:<height>:<hash_hex>"), so these tests pin both the accept
+// path and every reject class, including cross-chain replay.
+
+namespace {
+
+Crypto::Hash patternHash(uint8_t mult, uint8_t add) {
+  Crypto::Hash h{};
+  for (size_t i = 0; i < sizeof(h.data); ++i) {
+    h.data[i] = static_cast<uint8_t>(i * mult + add);
+  }
+  return h;
+}
+
+CryptoPQ::DsaKeypairSeed fixedSeed(uint8_t base) {
+  CryptoPQ::DsaKeypairSeed s{};
+  for (size_t i = 0; i < s.size(); ++i) s[i] = static_cast<uint8_t>(base + i);
+  return s;
+}
+
+// A well-formed record signed by `sk` for `genesis`, plus its parts.
+struct SignedRecord {
+  uint32_t height;
+  std::string hashHex;
+  std::string record;
+};
+
+SignedRecord makeSignedRecord(const CryptoPQ::DsaSecretKey& sk,
+                              const Crypto::Hash& genesis, uint32_t height) {
+  SignedRecord r;
+  r.height = height;
+  r.hashHex = Common::podToHex(patternHash(5, 9));
+  const std::string payload =
+      Common::podToHex(genesis) + ":" + std::to_string(height) + ":" + r.hashHex;
+  r.record = std::to_string(height) + ":" + r.hashHex + ":" + signMessagePq(payload, sk);
+  return r;
+}
+
+}  // namespace
+
+TEST(dns_checkpoints, signed_record_round_trip)
+{
+  auto kp = CryptoPQ::dsa_keygen_from_seed(fixedSeed(0x11));
+  const Crypto::Hash genesis = patternHash(3, 1);
+  const SignedRecord sr = makeSignedRecord(kp.second, genesis, 4321);
+
+  uint32_t height = 0;
+  std::string hashStr, why;
+  EXPECT_EQ(Checkpoints::verify_signed_dns_record(sr.record, {kp.first}, genesis,
+                                                  height, hashStr, why),
+            Checkpoints::DnsRecordStatus::Accepted) << why;
+  EXPECT_EQ(height, 4321u);
+  EXPECT_EQ(hashStr, sr.hashHex);
+}
+
+// Cross-chain replay: the identical record, valid on chain A, must be rejected
+// by a node whose genesis differs — this is the binding the payload prefix buys.
+TEST(dns_checkpoints, record_bound_to_genesis)
+{
+  auto kp = CryptoPQ::dsa_keygen_from_seed(fixedSeed(0x22));
+  const Crypto::Hash genesisA = patternHash(3, 1);
+  const Crypto::Hash genesisB = patternHash(3, 2);
+  const SignedRecord sr = makeSignedRecord(kp.second, genesisA, 777);
+
+  uint32_t height = 0;
+  std::string hashStr, why;
+  EXPECT_EQ(Checkpoints::verify_signed_dns_record(sr.record, {kp.first}, genesisA,
+                                                  height, hashStr, why),
+            Checkpoints::DnsRecordStatus::Accepted) << why;
+  EXPECT_EQ(Checkpoints::verify_signed_dns_record(sr.record, {kp.first}, genesisB,
+                                                  height, hashStr, why),
+            Checkpoints::DnsRecordStatus::BadSignature);
+}
+
+// Any-of-N: a record from signer B passes when B is anywhere in the list; a
+// signer outside the list fails.
+TEST(dns_checkpoints, any_of_n_signers)
+{
+  auto kpA = CryptoPQ::dsa_keygen_from_seed(fixedSeed(0x33));
+  auto kpB = CryptoPQ::dsa_keygen_from_seed(fixedSeed(0x44));
+  auto kpEvil = CryptoPQ::dsa_keygen_from_seed(fixedSeed(0x55));
+  const Crypto::Hash genesis = patternHash(7, 3);
+
+  const SignedRecord byB = makeSignedRecord(kpB.second, genesis, 1000);
+  const SignedRecord byEvil = makeSignedRecord(kpEvil.second, genesis, 1000);
+
+  uint32_t height = 0;
+  std::string hashStr, why;
+  EXPECT_EQ(Checkpoints::verify_signed_dns_record(byB.record, {kpA.first, kpB.first},
+                                                  genesis, height, hashStr, why),
+            Checkpoints::DnsRecordStatus::Accepted) << why;
+  EXPECT_EQ(Checkpoints::verify_signed_dns_record(byEvil.record, {kpA.first, kpB.first},
+                                                  genesis, height, hashStr, why),
+            Checkpoints::DnsRecordStatus::BadSignature);
+}
+
+// Every malformed-record class fails closed, before any signature work.
+TEST(dns_checkpoints, malformed_records_rejected)
+{
+  auto kp = CryptoPQ::dsa_keygen_from_seed(fixedSeed(0x66));
+  const Crypto::Hash genesis = patternHash(9, 5);
+  const std::string hash64 = Common::podToHex(patternHash(5, 9));
+
+  uint32_t height = 0;
+  std::string hashStr, why;
+  const std::vector<CryptoPQ::DsaPublicKey> signers{kp.first};
+
+  // No delimiter at all.
+  EXPECT_EQ(Checkpoints::verify_signed_dns_record("junk", signers, genesis,
+                                                  height, hashStr, why),
+            Checkpoints::DnsRecordStatus::Malformed);
+  // Legacy 2-field unsigned format.
+  EXPECT_EQ(Checkpoints::verify_signed_dns_record("123:" + hash64, signers, genesis,
+                                                  height, hashStr, why),
+            Checkpoints::DnsRecordStatus::Malformed);
+  // Hash of the wrong length.
+  EXPECT_EQ(Checkpoints::verify_signed_dns_record("123:abcdef:sig", signers, genesis,
+                                                  height, hashStr, why),
+            Checkpoints::DnsRecordStatus::Malformed);
+  // Height with trailing garbage.
+  EXPECT_EQ(Checkpoints::verify_signed_dns_record("12x:" + hash64 + ":sig", signers,
+                                                  genesis, height, hashStr, why),
+            Checkpoints::DnsRecordStatus::Malformed);
+  // Non-hex hash of the right length.
+  std::string notHex(64, 'z');
+  EXPECT_EQ(Checkpoints::verify_signed_dns_record("123:" + notHex + ":sig", signers,
+                                                  genesis, height, hashStr, why),
+            Checkpoints::DnsRecordStatus::Malformed);
+  // Well-formed fields but garbage signature text.
+  EXPECT_EQ(Checkpoints::verify_signed_dns_record("123:" + hash64 + ":notasig", signers,
+                                                  genesis, height, hashStr, why),
+            Checkpoints::DnsRecordStatus::BadSignature);
+}
+
+// The signer list shipped in CryptoNoteConfig.h must contain only valid mainnet
+// PQ addresses — a typo here would silently fail-close DNS checkpoints in a
+// release build (the loader logs and drops unparseable entries).
+TEST(dns_checkpoints, provisioned_signer_addresses_decode)
+{
+  for (size_t i = 0; i < CryptoNote::DNS_CHECKPOINT_SIGNERS_COUNT; ++i) {
+    const char* entry = CryptoNote::DNS_CHECKPOINT_SIGNERS[i];
+    ASSERT_NE(entry, nullptr) << "sentinel inside the counted range at index " << i;
+    PqAddress addr;
+    EXPECT_TRUE(decodePqAddress(std::string(entry), /*testnet=*/false, addr))
+        << "DNS_CHECKPOINT_SIGNERS[" << i << "] is not a valid mainnet PQ address";
+  }
+  // The sentinel itself sits one past the counted range.
+  EXPECT_EQ(CryptoNote::DNS_CHECKPOINT_SIGNERS[CryptoNote::DNS_CHECKPOINT_SIGNERS_COUNT],
+            nullptr);
 }
 
 int main(int argc, char** argv) {

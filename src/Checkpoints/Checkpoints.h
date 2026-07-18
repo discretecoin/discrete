@@ -21,9 +21,12 @@
 
 #include <map>
 #include <mutex>
+#include <string>
+#include <vector>
 
 #include <CryptoNoteCore/CryptoNoteBasicImpl.h>
 #include <Logging/LoggerRef.h>
+#include "crypto_pq/PqDsa.h"
 
 namespace CryptoNote
 {
@@ -47,9 +50,27 @@ namespace CryptoNote
       return *this;
     }
 
+    // Outcome of verifying one DNS TXT checkpoint record. Malformed and
+    // BadSignature are kept distinct so operators can tell a broken record
+    // (typo, stale format) from a forged one (attack signal).
+    enum class DnsRecordStatus { Accepted, Malformed, BadSignature };
+
+    // Parse one DNS TXT record "<height>:<block_hash_64hex>:<signature>" and
+    // verify its ML-DSA signature against any of the approved signer spend keys.
+    // The signed payload is genesis-bound — "<genesis_hex>:<height>:<hash_hex>"
+    // — so a record signed for any other deployment (testnet, a fork reusing
+    // this code and signer key) can never be replayed onto this chain via the
+    // shared DNS host. On Accepted, height/hash_str carry the parsed values;
+    // otherwise reject_reason says why. Pure function; no DNS, no logging.
+    static DnsRecordStatus verify_signed_dns_record(
+        const std::string& record,
+        const std::vector<CryptoPQ::DsaPublicKey>& signerSpendPubs,
+        const Crypto::Hash& genesisBlockHash,
+        uint32_t& height, std::string& hash_str, std::string& reject_reason);
+
     bool add_checkpoint(uint32_t height, const std::string& hash_str);
     bool load_checkpoints_from_file(const std::string& fileName);
-    bool load_checkpoints_from_dns();
+    bool load_checkpoints_from_dns(const Crypto::Hash& genesisBlockHash);
     bool is_in_checkpoint_zone(uint32_t height) const;
     bool check_block(uint32_t height, const Crypto::Hash& h) const;
     bool check_block(uint32_t height, const Crypto::Hash& h, bool& is_a_checkpoint) const;
