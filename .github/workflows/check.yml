@@ -10,6 +10,38 @@ on:
   pull_request:
 
 jobs:
+  pow-kat-linux:
+    name: PoW KAT (Linux SIMD)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@master
+        with:
+          fetch-depth: 0
+          ref: ${{ github.ref }}
+
+      - name: Build and run the yespower-discrete PoW KAT (SIMD build)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake git libboost-all-dev libssl-dev pkg-config
+
+          # Consensus differential gate. Standard x86-64 gcc defines __SSE2__, so this
+          # compiles the SIMD yespower-discrete path. The frozen KAT vectors in
+          # test_pq_pow.cpp were generated on the scalar (MSVC/Windows) build; if the
+          # SIMD path yields a different PoW, Linux and Windows miners would reject each
+          # other's blocks and split the chain. This job proves the two paths agree.
+          cmake -S . -B build/powkat \
+            -D ARCH=default -D CMAKE_BUILD_TYPE=Release \
+            -D BUILD_TESTS=ON \
+            -D OQS_BUILD_ONLY_LIB=ON \
+            -D BOOST_IGNORE_SYSTEM_PATHS_DEFAULT=ON \
+            -D BOOST_ROOT=/usr
+
+          # Build ONLY the PoW KAT target (not the full test suite).
+          cmake --build build/powkat --config Release --target PqPowTests -- -j"$(nproc)"
+
+          # Run ONLY the PoW KAT.
+          ctest --test-dir build/powkat -C Release -R PqPowTests --output-on-failure
+
   build-windows:
     name: Windows
     runs-on: windows-2022
