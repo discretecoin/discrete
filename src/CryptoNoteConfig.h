@@ -190,12 +190,24 @@ const uint8_t  DANDELION_STEM_TX_PROPAGATION_PROBABILITY     = 90;
 const size_t   DIFFICULTY_WINDOW                             = 60;
 const size_t   DIFFICULTY_CUT                                = 0;
 const size_t   DIFFICULTY_LAG                                = 0;
-// Mainnet difficulty floor: nextDifficulty never returns below this. Protects a young,
-// low-hashrate chain from cheap reorgs and caps the genesis instamine window. MUST stay
-// comfortably below the honest network hashrate (a floor above it stalls the chain with
-// no recovery, since difficulty can't drop past it): ~MINIMUM_DIFFICULTY / DIFFICULTY_TARGET
-// hashes/sec are required. 0 disables the floor (the absolute minimum is then 1).
-const uint64_t MINIMUM_DIFFICULTY                            = 10000;
+// Mainnet difficulty floor: nextDifficulty never returns below this (applied from
+// block 1 — the early-history fallbacks return this floor, not 1). Genesis is NOT in
+// the difficulty window, so its fixed timestamp never distorts early difficulty.
+//
+// Its PRIMARY job is bounding the maximum block RATE while difficulty is pinned at the
+// floor (the launch window, before LWMA catches up): block time = MINIMUM_DIFFICULTY /
+// hashrate. First-seen finality (CRYPTONOTE_FINALITY_DEPTH) is always on, so if a
+// hashrate burst produces more than CRYPTONOTE_FINALITY_DEPTH blocks faster than the
+// network converges, the halves can diverge past the finality depth and NEITHER can
+// reorg to the other — a permanent split needing manual operator recovery. A high floor
+// keeps the 10-block production time well above propagation, preventing that. At 100000 a
+// ~20-CPU (~16000 H/s) launch burst still yields ~6 s blocks (~62 s for 10 blocks).
+//
+// Trade-off: the floor must stay below the sustained honest hashrate or blocks run slower
+// than target (not a hard stall — it self-heals when hashrate returns, and difficulty
+// can't drop past it): ~MINIMUM_DIFFICULTY / DIFFICULTY_TARGET hashes/sec are required to
+// hold the target (100000 => ~1111 H/s, ~1-2 CPUs). 0 disables the floor (minimum is 1).
+const uint64_t MINIMUM_DIFFICULTY                            = 100000;
 
 const size_t   MAX_BLOCK_SIZE_INITIAL                        = 1000000;
 const uint64_t MAX_BLOCK_SIZE_GROWTH_SPEED_NUMERATOR         = 512 * 1024;
