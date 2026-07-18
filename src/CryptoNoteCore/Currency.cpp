@@ -333,13 +333,22 @@ namespace CryptoNote {
 
     assert(timestamps.size() == cumulativeDifficulties.size());
 
+    // Mainnet: difficulty must never fall below the floor, including the
+    // insufficient-history fallbacks below. Without this, blocks 1 and 2 are
+    // mined at difficulty 1 (a free instamine window): the caller can only
+    // supply a 1-block window at heights 1 and 2, tripping the size<=1 guard.
+    // floorDiff == MINIMUM_DIFFICULTY on mainnet (max(1,...) so a 0 setting
+    // disables the floor to 1), and 1 on testnet so a solo CPU bootstraps.
+    const Difficulty floorDiff =
+      isTestnet() ? 1 : std::max<Difficulty>(1, CryptoNote::parameters::MINIMUM_DIFFICULTY);
+
     /*
       Testnet/mainnet safety guard. Original code assumes there are at least
       two cumulative difficulty entries. Without this, size_t underflow is possible:
       cumulativeDifficulties.size() - 1.
     */
     if (timestamps.size() <= 1 || cumulativeDifficulties.size() <= 1) {
-      return 1;
+      return floorDiff;
     }
 
     const int64_t T = static_cast<int64_t>(m_difficultyTarget);
@@ -355,7 +364,7 @@ namespace CryptoNote {
       std::min<uint64_t>(difficultyBlocksCount4(), available - 1);
 
     if (N == 0) {
-      return 1;
+      return floorDiff;
     }
 
     uint64_t L(0), avg_D, next_D, i, this_timestamp(0), previous_timestamp(0);
@@ -380,7 +389,7 @@ namespace CryptoNote {
     }
 
     if (L == 0) {
-      return 1;
+      return floorDiff;
     }
 
     avg_D = (cumulativeDifficulties[N] - cumulativeDifficulties[0]) / N;
@@ -390,7 +399,7 @@ namespace CryptoNote {
       Original mainnet is unlikely to hit this, but returning difficulty 0 is invalid.
     */
     if (avg_D == 0) {
-      return 1;
+      return floorDiff;
     }
 
     // Prevent round off error for small D and overflow for large D.
@@ -416,11 +425,9 @@ namespace CryptoNote {
     // Mainnet difficulty floor (parameters::MINIMUM_DIFFICULTY; 0 disables it). Keeps a
     // young chain costly to reorg and caps the genesis instamine window; it must stay
     // below the honest network hashrate or the chain stalls (see the config comment).
-    if (!isTestnet() && next_D < CryptoNote::parameters::MINIMUM_DIFFICULTY) {
-      next_D = CryptoNote::parameters::MINIMUM_DIFFICULTY;
-    }
-
-    return std::max<Difficulty>(1, next_D);
+    // floorDiff already encodes this (== MINIMUM_DIFFICULTY on mainnet, 1 on testnet),
+    // so the normal path and every early-history fallback share one floor.
+    return std::max<Difficulty>(floorDiff, next_D);
   }
 
   CurrencyBuilder::CurrencyBuilder(Logging::ILogger& log) : m_currency(log) {
