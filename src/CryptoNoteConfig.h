@@ -169,8 +169,8 @@ const uint64_t FREE_REG_POOL_LIMIT                          = FREE_REG_PER_BLOCK
 //
 // These are consensus constants; changing any of them is a hard fork. DISCRETE_POWER_SIG_LEN
 // is compile-time checked against the liboqs ML-DSA-65 signature length in
-// CryptoNoteCore/CryptoNoteFormatUtils.cpp. DISCRETE_POWER_N/DISCRETE_POWER_R are the revision-D DRAFT
-// parameter set (16 MiB) and MUST be frozen after the §12 benchmark gate.
+// CryptoNoteCore/CryptoNoteFormatUtils.cpp. DISCRETE_POWER_N/DISCRETE_POWER_R are the FROZEN
+// launch parameter set (16 MiB, revision D); changing them post-launch is a hard fork.
 const size_t   DISCRETE_POWER_SIG_LEN                                  = 3309;   // ML-DSA-65 canonical signature length
 const size_t   DISCRETE_POWER_TAPE_LEN                                 = 3312;   // sig || 0x80 || 0x00 || 0x00
 const size_t   DISCRETE_POWER_TAPE_WORDS                               = 414;    // DISCRETE_POWER_TAPE_LEN / 8 little-endian words
