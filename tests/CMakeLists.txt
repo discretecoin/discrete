@@ -121,6 +121,13 @@ if(${CMAKE_SYSTEM_NAME} STREQUAL "Linux" OR APPLE AND NOT ANDROID)
   target_link_libraries(UnitTests -lresolv)
 endif()
 
+# Http/System reach OpenSSL through Boost.Asio's SSL streams; the MSVC branch
+# above already links it, so cover the other toolchains here.
+if(OPENSSL_FOUND AND NOT MSVC)
+  target_link_libraries(NodeRpcProxyTests ${OPENSSL_LIBRARIES})
+  target_link_libraries(IntegrationTests ${OPENSSL_LIBRARIES})
+endif()
+
 if(NOT MSVC)
   set_property(TARGET gtest gtest_main IntegrationTestLibrary IntegrationTests TestGenerator UnitTests SystemTests HashTargetTests APPEND_STRING PROPERTY COMPILE_FLAGS " -Wno-undef -Wno-sign-compare")
 endif()

@@ -16,6 +16,7 @@
 // along with Karbo.  If not, see <http://www.gnu.org/licenses/>.
 
 #include <future>
+#include <thread>
 #include <System/Context.h>
 #include <System/Dispatcher.h>
 #include <System/Event.h>

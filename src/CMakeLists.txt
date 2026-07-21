@@ -85,6 +85,13 @@ add_library(Transfers ${Transfers})
 add_library(Wallet ${Wallet} ${WalletLegacy})
 add_library(PaymentGate ${PaymentGate})
 add_library(JsonRpcServer ${JsonRpcServer})
+# Rpc and Wallet are mutually dependent: the daemon's check_transaction_proof
+# reuses the wallet's proof-transaction view (Wallet/PqTransactionBuilder) and
+# Wallet's RPC server throws JsonRpc::JsonRpcError. Declaring the cycle makes
+# CMake repeat both archives on the link line, which GNU ld needs to resolve
+# them (MSVC resolves regardless of order).
+target_link_libraries(Rpc Wallet)
+target_link_libraries(Wallet Rpc)
 
 if (MSVC)
   add_executable(Daemon ${Daemon} BinaryInfo/daemon.rc)
@@ -104,6 +111,14 @@ if (MINGW)
   target_link_libraries(CryptoNoteCommon dnsapi)
   target_link_libraries(P2P bcrypt)
   target_link_libraries(System ws2_32)
+endif()
+
+# Common/DnsTools.cpp calls ns_initparse/ns_parserr, which live in libresolv on
+# Linux/macOS. Attach it to the library that needs it so every consumer inherits
+# it: a per-executable -lresolv lands before the repeated archives that GNU ld
+# emits for cyclic static libs, and the symbols go unresolved again.
+if (${CMAKE_SYSTEM_NAME} STREQUAL "Linux" OR APPLE AND NOT ANDROID)
+  target_link_libraries(CryptoNoteCommon resolv)
 endif()
 
 # Wallet/Transfers/NodeRpcProxy/Mnemonics are linked for the read-only mining-key

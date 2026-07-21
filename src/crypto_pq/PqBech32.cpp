@@ -3,6 +3,7 @@
 
 #include "PqBech32.h"
 
+#include <cstdint>
 #include <cstring>
 #include <vector>
 

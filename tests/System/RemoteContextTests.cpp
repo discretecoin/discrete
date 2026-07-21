@@ -15,6 +15,8 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with Karbo.  If not, see <http://www.gnu.org/licenses/>.
 
+#include <thread>
+
 #include <System/RemoteContext.h>
 #include <System/Dispatcher.h>
 #include <System/ContextGroup.h>

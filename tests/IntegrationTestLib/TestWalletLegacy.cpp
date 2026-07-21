@@ -17,6 +17,8 @@
 
 #include "TestWalletLegacy.h"
 
+#include <thread>
+
 namespace Tests {
 namespace Common {
 
