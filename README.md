@@ -24,7 +24,7 @@ spoken.
 | Proof-of-work | DiscretePower: SHAKE-256 + ML-DSA-65 + signature-tape yespower-discrete core | FIPS 202 / FIPS 204 |
 
 Each identity has a long-term **ML-DSA-65 spend key** (spend authority) and an
-**ML-KEM-768 view key** (scanning / payment detection); a PQ address publishes
+**ML-KEM-768 view key** (scanning / payment detection); an address publishes
 both. Only the holder of the spend secret can spend — the sender, who runs the
 KEM encapsulation, cannot. See the [PQ ownership and authorization model](https://docs.discrete.cash/#/reference/pq-ownership-model)
 for the complete construction. Mining is **identity-bound**:
@@ -90,11 +90,11 @@ ctest --test-dir build -C Release -R Pq --output-on-failure
 The `Pq*` suites cover the PQ crypto primitives, derivations, wire format,
 validation, scanning, and chain integration.
 
-## PQ wallet quickstart (`simplewallet`)
+## Wallet quickstart (`simplewallet`)
 
-Start a node, then open or generate a wallet with `simplewallet`. The PQ
-identity is derived from the same 25-word mnemonic that backs the wallet — there
-is no second seed to store.
+Start a node, then open or generate a wallet with `simplewallet`. The wallet's
+spend and view keys are derived from a single 25-word mnemonic — there is no
+second seed to store.
 
 Everything is post-quantum by default, so the commands carry no `pq_` prefix.
 
