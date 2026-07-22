@@ -1,13 +1,9 @@
 name: Build Android
 
 on:
-  push:
-    branches:
-      - android
-      - 'android/**'
-  pull_request:
-    branches:
-      - android
+  # Keep the workflow available for manual Android builds, but disable it from CI
+  # until the upstream Android toolchain issue in liboqs is resolved.
+  workflow_dispatch:
 
 jobs:
   build-android:

@@ -127,7 +127,7 @@ bool BuiltinExplorer::on_get_index(const COMMAND_HTTP::request& /*req*/, COMMAND
   size_t white_peerlist_size = m_p2p.getPeerlistManager().get_white_peers_count();
   size_t grey_peerlist_size = m_p2p.getPeerlistManager().get_gray_peers_count();
   size_t alt_blocks_count = m_core.getAlternativeBlocksCount();
-  size_t total_tx_count = m_core.getBlockchainTotalTransactions() - top_block_index + 1;
+  size_t total_tx_count = m_core.getBlockchainTotalTransactions();
   size_t tx_pool_count = m_core.getPoolTransactionsCount();
 
   const std::string body = index_start + (m_core.currency().isTestnet() ? "testnet" : "mainnet") +
@@ -178,7 +178,7 @@ bool BuiltinExplorer::on_get_explorer(const COMMAND_EXPLORER::request& req, COMM
     "\n<p>" + "Height: <b>" + std::to_string(top_block_index) + "</b>" +
     " &bull; " + "Difficulty: <b>" + std::to_string(m_core.getNextBlockDifficulty()) + "</b>" +
     " &bull; " + "Alt. blocks: <b>" + std::to_string(m_core.getAlternativeBlocksCount()) + "</b>" +
-    " &bull; " + "Transactions: <b>" + std::to_string(m_core.getBlockchainTotalTransactions() - top_block_index + 1) + "</b>" +
+    " &bull; " + "Transactions: <b>" + std::to_string(m_core.getBlockchainTotalTransactions()) + "</b>" +
     " &bull; " + "Emission: <b>" + m_core.currency().formatAmount(m_core.getTotalGeneratedAmount()) + "</b>" +
     " &bull; " + "Next reward: <b>" + m_core.currency().formatAmount(m_core.currency().calculateReward(m_core.getTotalGeneratedAmount())) + "</b>" +
     "</p>\n";
