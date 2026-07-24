@@ -93,12 +93,12 @@ jobs:
             ..
           if ($LASTEXITCODE -ne 0) { throw "CMake configure failed with exit code $LASTEXITCODE" }
 
-          cmake --build . --config Release --target Daemon SimpleWallet GreenWallet PaymentGateService AddressGenerator -- /m /v:minimal
+          cmake --build . --config Release --target Daemon SimpleWallet GreenWallet PaymentGateService AdminTools -- /m /v:minimal
           if ($LASTEXITCODE -ne 0) { throw "CMake build failed with exit code $LASTEXITCODE" }
 
           $bin_dir = "src\Release"
           $package_dir = "$release_name"
-          $bins = @("discreted.exe", "simplewallet.exe", "greenwallet.exe", "walletd.exe", "vanitygen.exe")
+          $bins = @("discreted.exe", "simplewallet.exe", "greenwallet.exe", "walletd.exe", "admin-tools.exe")
           New-Item -ItemType Directory -Force -Path "$package_dir" | Out-Null
           foreach ($bin in $bins) {
             $path = Join-Path "$bin_dir" "$bin"
@@ -206,14 +206,14 @@ jobs:
             -DOQS_BUILD_ONLY_LIB=ON \
             -DBoost_DEBUG=ON
 
-          cmake --build . --config Release --target Daemon SimpleWallet GreenWallet PaymentGateService AddressGenerator -- -j$(nproc)
+          cmake --build . --config Release --target Daemon SimpleWallet GreenWallet PaymentGateService AdminTools -- -j$(nproc)
 
       - name: Prepare release
         run: |
           set -e
 
           mkdir -p build/discrete
-          for bin in discreted.exe simplewallet.exe greenwallet.exe walletd.exe vanitygen.exe; do
+          for bin in discreted.exe simplewallet.exe greenwallet.exe walletd.exe admin-tools.exe; do
             f="build/src/$bin"
             if [ ! -f "$f" ]; then
               echo "Expected binary not found: $f"
@@ -346,10 +346,10 @@ jobs:
             -DOQS_BUILD_ONLY_LIB=ON \
             ../..
 
-          cmake --build . --config Release --target Daemon SimpleWallet GreenWallet PaymentGateService AddressGenerator -- -j"$(nproc)"
+          cmake --build . --config Release --target Daemon SimpleWallet GreenWallet PaymentGateService AdminTools -- -j"$(nproc)"
 
           mkdir -p "$release_name"
-          for bin in discreted simplewallet greenwallet walletd vanitygen; do
+          for bin in discreted simplewallet greenwallet walletd admin-tools; do
             f="src/$bin"
             if [[ ! -x "$f" || ! -f "$f" ]]; then
               echo "Expected binary not found: $f"
@@ -425,10 +425,10 @@ jobs:
             -DOQS_BUILD_ONLY_LIB=ON \
             -DCMAKE_EXE_LINKER_FLAGS="-static"
 
-          cmake --build . --config Release --target Daemon SimpleWallet GreenWallet PaymentGateService AddressGenerator -- -j"$(nproc)"
+          cmake --build . --config Release --target Daemon SimpleWallet GreenWallet PaymentGateService AdminTools -- -j"$(nproc)"
 
           mkdir -p "$release_name"
-          for bin in discreted simplewallet greenwallet walletd vanitygen; do
+          for bin in discreted simplewallet greenwallet walletd admin-tools; do
             f="src/$bin"
             if [ ! -x "$f" ] || [ ! -f "$f" ]; then
               echo "Expected binary not found: $f"
@@ -445,7 +445,7 @@ jobs:
         run: |
           FAILED=0
 
-          for bin in discreted simplewallet greenwallet walletd vanitygen; do
+          for bin in discreted simplewallet greenwallet walletd admin-tools; do
             f="build/release/src/$bin"
             echo "=== $f ==="
             file "$f"

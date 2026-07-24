@@ -44,7 +44,7 @@ template <std::size_t N>
 std::array<uint8_t, N> decodeFixedHex(const std::string& hex, const char* what) {
   if (hex.empty()) {
     throw std::runtime_error(std::string("Genesis Treasury Reserve recipient key not provisioned (") +
-                             what + "). Run: vanitygen --treasury-reserve-accounts and rebuild.");
+                             what + "). Run: admin-tools --treasury-reserve-accounts and rebuild.");
   }
   std::array<uint8_t, N> out{};
   size_t sz = 0;

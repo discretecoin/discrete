@@ -131,7 +131,7 @@ jobs:
       - name: Build binaries
         run: |
           cd $BUILD_DIR
-          cmake --build . --config Release --target Daemon SimpleWallet GreenWallet PaymentGateService AddressGenerator -- -j"$(nproc)"
+          cmake --build . --config Release --target Daemon SimpleWallet GreenWallet PaymentGateService AdminTools -- -j"$(nproc)"
 
       - name: Package binaries
         run: |
@@ -139,7 +139,7 @@ jobs:
           package_dir="discrete-$ANDROID_ABI"
           mkdir -p "$package_dir"
           STRIP=$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip
-          for bin in discreted simplewallet greenwallet walletd vanitygen; do
+          for bin in discreted simplewallet greenwallet walletd admin-tools; do
             if [ ! -f "$bin" ]; then
               echo "Expected binary not found: $bin"
               exit 1
