@@ -128,7 +128,10 @@ target_link_libraries(SimpleWallet Wallet Transfers NodeRpcProxy Rpc Http Crypto
 target_link_libraries(GreenWallet Wallet Transfers NodeRpcProxy Rpc Http CryptoNoteCore Logging Serialization Crypto System Checkpoints Mnemonics Common ${Boost_LIBRARIES})
 target_link_libraries(PaymentGateService PaymentGate JsonRpcServer InProcessNode Wallet Transfers NodeRpcProxy Rpc Http P2P CryptoNoteCore Logging Serialization Crypto System Checkpoints
                       CryptoNoteProtocol BlockchainExplorer Common upnpc-static ${Boost_LIBRARIES} ${LMDB_LIBRARY})
-target_link_libraries(AdminTools CryptoNoteCore Logging Serialization Crypto Mnemonics Common System ${Boost_LIBRARIES})
+# Wallet/Transfers/NodeRpcProxy/Rpc/Http are linked for the DNS checkpoint signer:
+# the read-only wallet seed loader (MiningKeyLoader) and the HTTPS checkpoint
+# downloader used by --verify-checkpoint.
+target_link_libraries(AdminTools Wallet Transfers NodeRpcProxy Rpc Http CryptoNoteCore Checkpoints Logging Serialization Crypto Mnemonics Common System ${Boost_LIBRARIES})
 
 if (OPENSSL_FOUND)
     target_link_libraries(Daemon ${OPENSSL_LIBRARIES})

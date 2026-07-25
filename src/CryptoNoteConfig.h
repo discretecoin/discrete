@@ -267,36 +267,61 @@ const char     DNS_CHECKPOINTS_HOST[]                        = "checkpoints.disc
 
 // Approved PQ signer addresses for DNS checkpoint records.
 //
-// DNS TXT records served from DNS_CHECKPOINTS_HOST must be in the form
-//   "<height>:<block_hash_hex>:<signature>"
-// where <signature> is produced by signing the GENESIS-BOUND string
-//   "<genesis_block_hash_hex>:<height>:<block_hash_hex>"
-// with one of the wallets whose PQ address appears in DNS_CHECKPOINT_SIGNERS.
-// Prefixing this network's genesis block hash (64 lowercase hex chars) binds
-// every record to exactly one chain: a record signed for a testnet, a staging
+// WHY THE SIGNATURE IS NOT IN THE TXT RECORD: an ML-DSA-65 signature is 3309
+// bytes and CANNOT fit a 4096-wire-byte DNS TXT record in any printable
+// encoding (base64 = 4412, base58 ~ 4562, base85 ~ 4137, hex = 6618). So the
+// TXT record carries only a small POINTER and the signature travels in an
+// HTTPS-hosted JSON file. This comment block is the normative spec; the
+// implementation lives in src/Checkpoints/DnsCheckpoint.{h,cpp}.
+//
+// TXT record served from DNS_CHECKPOINTS_HOST (~120 bytes):
+//   v=1;alg=sha256;height=<H>;hash=<sha256_hex_of_file>;url=https://discrete.cash/checkpoints/<H>.json
+// `hash` is the SHA-256 of the EXACT bytes of the referenced file — not the
+// checkpoint block hash. A client hashes the downloaded bytes and rejects the
+// file before parsing it if they differ.
+//
+// The referenced JSON file (canonical, compact, fixed field order):
+//   {"version":1,"network":"mainnet","height":<H>,"block_hash":"<64hex>",
+//    "signature_algorithm":"ML-DSA-65","key_id":"<8hex>","signature":"<base58>"}
+//
+// `signature` covers the GENESIS-BOUND, domain-separated payload
+//   "discrete-dns-checkpoint-v1:<genesis_block_hash_hex>:<network>:<height>:<block_hash_hex>"
+// signed with the ML-DSA-65 spend key of a wallet whose PQ address appears
+// below. Binding the genesis hash means a record signed for a testnet, a staging
 // deployment, or a code fork that trusts the same signer key can never be
 // replayed onto mainnet through the shared DNS host (a wrong replayed pin would
-// otherwise hard-stall syncing nodes at that height). The signature scheme is
-// the post-quantum one wired into simplewallet's
-// `sign_message` command (CryptoNoteFormatUtils::signMessagePq / verifyMessagePq)
-// — ML-DSA-65 over the wallet's long-term spend key, over a domain-separated
-// SHA3-256 digest, Base58-encoded with the CRYPTONOTE_KEYS_SIGNATURE_BASE58_PREFIX
-// tag. Each entry here is a Discrete PQ address (the string `address` prints);
-// the loader extracts its ML-DSA spend public key and verifies against it
-// (Checkpoints::verify_signed_dns_record).
+// otherwise hard-stall syncing nodes at that height). The scheme is the same
+// post-quantum one behind simplewallet's `sign_message`
+// (CryptoNoteFormatUtils::signMessagePq / verifyMessagePq): ML-DSA-65 over a
+// domain-separated SHA3-256 digest, Base58-encoded with the
+// CRYPTONOTE_KEYS_SIGNATURE_BASE58_PREFIX tag. Each entry here is a Discrete PQ
+// address; the verifier extracts its ML-DSA spend public key and checks against
+// it (CryptoNote::verifyCheckpointFile, src/Checkpoints/DnsCheckpoint.cpp).
 //
 // Operational workflow for a maintainer (offline ML-DSA signer wallet):
 //   1. simplewallet --generate-new-wallet checkpoint-signer.wallet
-//   2. run `address` and note the printed PQ address; add it to this array in
-//      the next release build.
-//   3. encrypt the wallet file and keep it offline; it never needs funds — the
-//      only operation it performs is `sign_message`.
-//   4. to publish a new checkpoint, load the wallet on an offline machine, run
-//      `sign_message` with the argument
-//      "<genesis_block_hash_hex>:<height>:<block_hash_hex>" (genesis hash as
-//      shown on the explorer's block-0 page), then publish the DNS TXT record
-//      as "<height>:<block_hash_hex>:<signature>" — the genesis prefix is
-//      implied by the network and is NOT repeated in the record itself.
+//   2. `admin-tools --checkpoint-key` (paste the signer mnemonic) prints the PQ
+//      address; add it to this array in the next release build.
+//   3. encrypt the wallet file and keep it offline; it never needs funds.
+//   4. to publish: `admin-tools --sign-checkpoint --height <H> --block-hash <hex>`
+//      writes <H>.json and prints the TXT value. Upload the JSON FIRST, confirm
+//      it is publicly readable (`admin-tools --verify-checkpoint --txt "<record>"`),
+//      and only then update the TXT record — so DNS never points at a missing
+//      file. Old <height>.json files stay published and immutable.
+//
+// PUBLISH THE EXACT BYTES YOU HASHED. ML-DSA-65 signing is randomized (FIPS 204
+// hedged mode), so signing the same height twice yields two different — both
+// valid — files with different SHA-256 digests. Re-running --sign-checkpoint
+// after the TXT record is live invalidates it. To republish, upload the new file
+// AND update the TXT hash together. (Pinned by PqDnsCheckpointTests
+// .ResigningProducesDifferentButValidBytes.)
+//
+// MIGRATION from the previous TXT-only format: records of the old shape
+// "<height>:<block_hash>:<signature>" are ignored by the pointer parser (no
+// `v=`/`url=` fields), and in practice none can exist — a 3309-byte ML-DSA-65
+// signature never fit a TXT record, which is what forced this redesign. Simply
+// replace the TXT value with a pointer record; no client-side grace period or
+// dual-format support is needed.
 //
 // Multi-signer / any-of-N semantics: a DNS record is accepted if its signature
 // verifies against ANY PQ address in this list. This lets the project rotate a

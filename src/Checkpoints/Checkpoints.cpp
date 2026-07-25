@@ -165,6 +165,21 @@ std::vector<uint32_t> Checkpoints::getCheckpointHeights() const {
 }
 
 //---------------------------------------------------------------------------
+// SUPERSEDED FORMAT — pending node wiring.
+//
+// This verifier expects the whole signature inside the TXT record
+// ("<height>:<hash>:<sig>"), which an ML-DSA-65 signature cannot fit: 3309 bytes
+// exceeds the 4096-wire-byte TXT limit in every printable encoding, so no such
+// record can actually be published. The live scheme is the pointer form in
+// src/Checkpoints/DnsCheckpoint.h (small TXT pointer + HTTPS-hosted signed JSON),
+// already implemented and covered by DnsCheckpointTests.
+//
+// TODO(dns-pointer): switch load_checkpoints_from_dns to the DnsCheckpoint +
+// CheckpointDownloader flow once daemon HTTPS egress is signed off. Until then
+// this path stays as-is and simply rejects every record it sees (a pointer record
+// has no third field, so it fails as malformed) — fail-closed, so leaving it
+// wired cannot admit an unverified checkpoint. Publish/verify meanwhile through
+// `admin-tools --sign-checkpoint` / `--verify-checkpoint`.
 Checkpoints::DnsRecordStatus Checkpoints::verify_signed_dns_record(
     const std::string& record,
     const std::vector<CryptoPQ::DsaPublicKey>& signerSpendPubs,
