@@ -29,16 +29,22 @@
 #include <vector>
 #include <iterator>
 #include <chrono>
+#include <condition_variable>
+#include <memory>
+#include <mutex>
 #include <thread>
-#include <future>
+#include <utility>
 
 #include "Checkpoints.h"
+#include "CheckpointDownloader.h"
+#include "DnsCheckpoint.h"
 #include "../CryptoNoteConfig.h"
 #include "Common/StringTools.h"
 #include "Common/DnsTools.h"
 #include "CryptoNoteCore/CryptoNoteBasicImpl.h"
 #include "CryptoNoteCore/CryptoNoteFormatUtils.h"
 #include "PqAddress.h"
+#include "System/Dispatcher.h"
 
 using namespace Logging;
 #undef ERROR
@@ -164,138 +170,44 @@ std::vector<uint32_t> Checkpoints::getCheckpointHeights() const {
   return checkpointHeights;
 }
 
+namespace {
+
+// Overall wall-clock budget for DNS + TLS + download + verify. Neither the DNS
+// resolver nor the TLS/HTTP stack enforces a deadline of its own, so without
+// this a silent web server (one that completes the TCP handshake and then never
+// speaks) would stall node startup indefinitely.
+constexpr std::chrono::seconds kDnsCheckpointDeadline{5};
+
+// The worker runs on a thread that may outlive this call, so it must never touch
+// the Checkpoints object — not even its logger. It reports back through this
+// shared state and the caller does all logging and mutation.
+struct DnsFetchState {
+  std::mutex mutex;
+  std::condition_variable cv;
+  bool done = false;
+  std::vector<std::pair<Logging::Level, std::string>> messages;
+  std::vector<CryptoNote::CheckpointRecord> accepted;
+};
+
+}  // namespace
+
 //---------------------------------------------------------------------------
-// SUPERSEDED FORMAT — pending node wiring.
-//
-// This verifier expects the whole signature inside the TXT record
-// ("<height>:<hash>:<sig>"), which an ML-DSA-65 signature cannot fit: 3309 bytes
-// exceeds the 4096-wire-byte TXT limit in every printable encoding, so no such
-// record can actually be published. The live scheme is the pointer form in
-// src/Checkpoints/DnsCheckpoint.h (small TXT pointer + HTTPS-hosted signed JSON),
-// already implemented and covered by DnsCheckpointTests.
-//
-// TODO(dns-pointer): switch load_checkpoints_from_dns to the DnsCheckpoint +
-// CheckpointDownloader flow once daemon HTTPS egress is signed off. Until then
-// this path stays as-is and simply rejects every record it sees (a pointer record
-// has no third field, so it fails as malformed) — fail-closed, so leaving it
-// wired cannot admit an unverified checkpoint. Publish/verify meanwhile through
-// `admin-tools --sign-checkpoint` / `--verify-checkpoint`.
-Checkpoints::DnsRecordStatus Checkpoints::verify_signed_dns_record(
-    const std::string& record,
-    const std::vector<CryptoPQ::DsaPublicKey>& signerSpendPubs,
-    const Crypto::Hash& genesisBlockHash,
-    uint32_t& height, std::string& hash_str, std::string& reject_reason) {
-  // Required wire format: "<height>:<block_hash_64hex>:<signature>"
-  // The legacy 2-field "<height>:<hash>" format is rejected — it has no
-  // signature and so cannot be trusted to add even an anchor.
-  const size_t del1 = record.find(':');
-  if (del1 == std::string::npos) {
-    reject_reason = "no field delimiter";
-    return DnsRecordStatus::Malformed;
-  }
-  const size_t del2 = record.find(':', del1 + 1);
-  if (del2 == std::string::npos) {
-    reject_reason = "legacy unsigned format, rejected";
-    return DnsRecordStatus::Malformed;
-  }
-
-  const std::string height_str = record.substr(0, del1);
-  hash_str = record.substr(del1 + 1, del2 - del1 - 1);
-  const std::string sig_str = record.substr(del2 + 1);
-
-  if (hash_str.size() != 64) {
-    reject_reason = "hash length " + std::to_string(hash_str.size()) + " != 64";
-    return DnsRecordStatus::Malformed;
-  }
-
-  height = 0;
-  {
-    std::stringstream ss(height_str);
-    char trailing;
-    ss >> height;
-    if (ss.fail() || ss.get(trailing)) {
-      reject_reason = "height not a clean number";
-      return DnsRecordStatus::Malformed;
-    }
-  }
-
-  Crypto::Hash hash{};
-  if (!Common::podFromHex(hash_str, hash)) {
-    reject_reason = "hash not hex";
-    return DnsRecordStatus::Malformed;
-  }
-
-  // Verify the ML-DSA signature against any one of the approved signers. The
-  // signed payload is genesis-bound: "<genesis_hex>:<height>:<hash>". The
-  // maintainer produces it with simplewallet's sign_message (which signs with
-  // the wallet's ML-DSA spend key; see CryptoNoteFormatUtils::signMessagePq),
-  // prefixing this network's genesis block hash so the signature is worthless
-  // on any other chain that trusts the same signer key.
-  const std::string signed_payload =
-      Common::podToHex(genesisBlockHash) + ":" + height_str + ":" + hash_str;
-  for (const auto& spendPub : signerSpendPubs) {
-    if (CryptoNote::verifyMessagePq(signed_payload, spendPub, sig_str)) {
-      return DnsRecordStatus::Accepted;
-    }
-  }
-  reject_reason = "signature did not match any approved signer";
-  return DnsRecordStatus::BadSignature;
-}
-//---------------------------------------------------------------------------
-bool Checkpoints::load_checkpoints_from_dns(const Crypto::Hash& genesisBlockHash)
+bool Checkpoints::load_checkpoints_from_dns(const Crypto::Hash& genesisBlockHash,
+                                            bool testnet)
 {
 #if defined(__ANDROID__)
   return false;
 #else
-  std::string domain(CryptoNote::DNS_CHECKPOINTS_HOST);
-  std::vector<std::string>records;
-  bool res = true;
-  auto start = std::chrono::steady_clock::now();
-  logger(Logging::DEBUGGING) << "Fetching DNS checkpoint records from " << domain;
+  const std::string domain(CryptoNote::DNS_CHECKPOINTS_HOST);
 
-  try {
-    auto future = std::async(std::launch::async, [this, &res, &domain, &records]() {
-      res = Common::fetch_dns_txt(domain, records);
-    });
-
-    std::future_status status;
-
-    status = future.wait_for(std::chrono::milliseconds(200));
-
-    if (status == std::future_status::timeout) {
-      logger(Logging::DEBUGGING) << "Timeout lookup DNS checkpoint records from " << domain;
-      return false;
-    }
-    else if (status == std::future_status::ready) {
-      future.get();
-    }
-  }
-  catch (std::runtime_error& e) {
-    logger(Logging::DEBUGGING) << e.what();
-    return false;
-  }
-
-  auto dur = std::chrono::steady_clock::now() - start;
-  logger(Logging::DEBUGGING) << "DNS query time: " << std::chrono::duration_cast<std::chrono::milliseconds>(dur).count() << " ms";
-
-  // Fail-closed: if no signer addresses are baked into this build, every DNS
-  // record is dropped without trying to verify it. Tampered DNS or an
-  // accidentally-misconfigured release can't sneak past the signature gate
-  // by simply omitting the signature field. The one-shot warning makes the
-  // misconfiguration visible to operators reading the log.
   if (CryptoNote::DNS_CHECKPOINT_SIGNERS_COUNT == 0) {
-    logger(Logging::WARNING) << "DNS checkpoints fetched but no DNS_CHECKPOINT_SIGNERS "
-                                "configured in this build; ignoring " << records.size()
-                             << " record(s). Set DNS_CHECKPOINT_SIGNERS in CryptoNoteConfig.h "
-                                "to enable.";
+    logger(Logging::WARNING) << "No DNS_CHECKPOINT_SIGNERS configured in this build; "
+                                "skipping DNS checkpoint discovery.";
     return true;
   }
 
-  // Pre-parse the approved PQ signer addresses once per DNS fetch. Each signer is
-  // a Discrete PQ address; we keep its ML-DSA-65 spend public key, which
-  // verifyMessagePq checks the record signature against. A mistyped/invalid PQ
-  // address is logged and dropped (it can't open the verifier — decodePqAddress
-  // rejects it — but the diagnostic points at the bad entry).
+  // Parse the approved signers up front: cheap, and a misconfigured build should
+  // say so without doing any network I/O.
   std::vector<CryptoPQ::DsaPublicKey> signerSpendPubs;
   signerSpendPubs.reserve(CryptoNote::DNS_CHECKPOINT_SIGNERS_COUNT);
   for (size_t i = 0; i < CryptoNote::DNS_CHECKPOINT_SIGNERS_COUNT; ++i) {
@@ -309,37 +221,145 @@ bool Checkpoints::load_checkpoints_from_dns(const Crypto::Hash& genesisBlockHash
           << "' is not a valid Discrete PQ address; skipping.";
     }
   }
+
   if (signerSpendPubs.empty()) {
     logger(Logging::WARNING) << "No usable DNS checkpoint signers after parsing; "
-                                "ignoring all DNS records.";
+                                "ignoring DNS checkpoints.";
     return true;
   }
 
-  for (const auto& record : records) {
-    uint32_t height = 0;
-    std::string hash_str;
-    std::string reject_reason;
-    switch (verify_signed_dns_record(record, signerSpendPubs, genesisBlockHash,
-                                     height, hash_str, reject_reason)) {
-      case DnsRecordStatus::Malformed:
-        logger(Logging::WARNING) << "Malformed DNS checkpoint (" << reject_reason
-                                 << "): " << record;
-        continue;
-      case DnsRecordStatus::BadSignature:
-        logger(Logging::ERROR, BRIGHT_RED)
-            << "DNS checkpoint " << reject_reason << "; rejecting record: " << record;
-        continue;
-      case DnsRecordStatus::Accepted:
-        break;
+  const std::string expectedNetwork = testnet ? "testnet" : "mainnet";
+  logger(Logging::INFO) << "Fetching DNS checkpoint pointer from " << domain;
+  const auto start = std::chrono::steady_clock::now();
+
+  auto state = std::make_shared<DnsFetchState>();
+
+  // Detached rather than joined: std::async's future blocks in its destructor,
+  // which would silently defeat the deadline (the previous implementation's
+  // 200 ms DNS timeout did exactly that). The worker co-owns `state`, so
+  // abandoning it here is safe.
+  std::thread([state, domain, signerSpendPubs, genesisBlockHash, expectedNetwork]() {
+    std::vector<std::pair<Logging::Level, std::string>> messages;
+    std::vector<CryptoNote::CheckpointRecord> accepted;
+
+    try {
+      std::vector<std::string> records;
+      if (!Common::fetch_dns_txt(domain, records)) {
+        messages.emplace_back(Logging::WARNING, "DNS checkpoint lookup failed for " + domain);
+      } else if (records.empty()) {
+        messages.emplace_back(Logging::WARNING, "No DNS checkpoint pointer found at " + domain);
+      } else {
+        System::Dispatcher dispatcher;
+        for (const auto& record : records) {
+          CryptoNote::CheckpointPointer pointer;
+          std::string reject;
+          if (!parseCheckpointPointer(record, pointer, reject)) {
+            messages.emplace_back(Logging::WARNING,
+                "Malformed DNS checkpoint pointer (" + reject + "): " + record);
+            continue;
+          }
+
+          messages.emplace_back(Logging::INFO,
+              "Downloading checkpoint " + std::to_string(pointer.height) + " from " + pointer.url);
+
+          std::string fileBytes;
+          if (!downloadCheckpointFile(dispatcher, pointer, fileBytes, reject)) {
+            messages.emplace_back(Logging::WARNING,
+                "Failed to download DNS checkpoint " + std::to_string(pointer.height) + ": " + reject);
+            continue;
+          }
+
+          CryptoNote::CheckpointRecord checkpoint;
+          switch (verifyCheckpointFile(fileBytes, pointer, signerSpendPubs,
+                                       genesisBlockHash, expectedNetwork,
+                                       checkpoint, reject)) {
+            case CryptoNote::CheckpointStatus::Malformed:
+              messages.emplace_back(Logging::WARNING,
+                  "Malformed DNS checkpoint file at height " +
+                  std::to_string(pointer.height) + ": " + reject);
+              continue;
+            case CryptoNote::CheckpointStatus::BadSignature:
+              messages.emplace_back(Logging::ERROR,
+                  "Invalid DNS checkpoint signature at height " +
+                  std::to_string(pointer.height) + ": " + reject);
+              continue;
+            case CryptoNote::CheckpointStatus::Accepted:
+              accepted.push_back(checkpoint);
+              break;
+          }
+        }
+      }
+    }
+    catch (const std::exception& e) {
+      messages.emplace_back(Logging::WARNING,
+          std::string("DNS checkpoint discovery failed: ") + e.what());
+    }
+    catch (...) {
+      messages.emplace_back(Logging::WARNING, "DNS checkpoint discovery failed");
     }
 
-    if (m_points.count(height) != 0) {
-      logger(Logging::DEBUGGING) << "Checkpoint already exists for height: " << height
-                                 << ". Ignoring DNS checkpoint.";
+    {
+      std::lock_guard<std::mutex> guard(state->mutex);
+      state->messages = std::move(messages);
+      state->accepted = std::move(accepted);
+      state->done = true;
+    }
+    state->cv.notify_one();
+  }).detach();
+
+  std::vector<std::pair<Logging::Level, std::string>> messages;
+  std::vector<CryptoNote::CheckpointRecord> accepted;
+  {
+    std::unique_lock<std::mutex> guard(state->mutex);
+    if (!state->cv.wait_for(guard, kDnsCheckpointDeadline, [&] { return state->done; })) {
+      guard.unlock();
+      logger(Logging::WARNING)
+          << "DNS checkpoint discovery timed out after " << kDnsCheckpointDeadline.count()
+          << "s; continuing with the checkpoints already loaded.";
+      return false;
+    }
+    messages = std::move(state->messages);
+    accepted = std::move(state->accepted);
+  }
+
+  const auto dur = std::chrono::steady_clock::now() - start;
+  logger(Logging::DEBUGGING) << "DNS checkpoint discovery took "
+      << std::chrono::duration_cast<std::chrono::milliseconds>(dur).count() << " ms";
+
+  for (const auto& message : messages) {
+    if (message.first == Logging::ERROR) {
+      logger(Logging::ERROR, BRIGHT_RED) << message.second;
+    } else {
+      logger(message.first) << message.second;
+    }
+  }
+
+  for (const auto& checkpoint : accepted) {
+    const auto existing = m_points.find(checkpoint.height);
+    if (existing != m_points.end()) {
+      if (existing->second != checkpoint.blockHash) {
+        logger(Logging::ERROR, BRIGHT_RED)
+            << "DNS checkpoint conflicts with an existing checkpoint at height "
+            << checkpoint.height;
+      } else {
+        logger(Logging::INFO) << "Verified DNS checkpoint already present at height "
+                              << checkpoint.height;
+      }
       continue;
     }
-    add_checkpoint(height, hash_str);
-    logger(Logging::DEBUGGING) << "Added signed DNS checkpoint: " << height << ":" << hash_str;
+
+    if (!add_checkpoint(checkpoint.height, Common::podToHex(checkpoint.blockHash))) {
+      logger(Logging::WARNING) << "Failed to add verified DNS checkpoint at height "
+                               << checkpoint.height;
+      continue;
+    }
+
+    logger(Logging::INFO, GREEN) << "Accepted signed DNS checkpoint at height "
+                                 << checkpoint.height << " (" << checkpoint.keyId << ")";
+  }
+
+  if (accepted.empty()) {
+    logger(Logging::WARNING) << "No DNS checkpoints were verified.";
   }
 
   return true;

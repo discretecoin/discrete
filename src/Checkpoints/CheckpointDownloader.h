@@ -35,11 +35,11 @@ namespace CryptoNote {
 // before trusting anything. Returns false with `err` set on any failure; a
 // failed download never invalidates an already-trusted checkpoint.
 //
-// NOTE: a hard wall-clock timeout is intentionally not enforced at this layer
-// yet — it will be added together with the daemon auto-fetch path, which runs on
-// a System::Dispatcher whose timer can cancel the request. Until then this helper
-// is used by `admin-tools --verify-checkpoint` and tests, where the operator can
-// interrupt.
+// NOTE: this call has no deadline of its own — neither the resolver nor the
+// TLS/HTTP stack enforces one, so a server that completes the TCP handshake and
+// then goes silent blocks here forever. Callers that cannot tolerate that must
+// impose their own bound; Checkpoints::load_checkpoints_from_dns runs the whole
+// discovery on a detached worker under a wall-clock deadline.
 bool downloadCheckpointFile(System::Dispatcher& dispatcher,
                             const CheckpointPointer& ptr,
                             std::string& outBytes,

@@ -89,8 +89,7 @@ target_link_libraries(DenominationsTests gtest ${Boost_LIBRARIES})
 target_link_libraries(PqSenderTests Wallet CryptoNoteCore Serialization System Logging Common Crypto CryptoPq gtest ${Boost_LIBRARIES})
 target_link_libraries(PqFinalityTests Checkpoints CryptoNoteCore Serialization System Logging Common Crypto CryptoPq gtest ${Boost_LIBRARIES})
 target_link_libraries(PqPowTests CryptoNoteCore Serialization System Logging Common Crypto CryptoPq gtest ${Boost_LIBRARIES})
-# DnsCheckpoint hashes files with OpenSSL's SHA-256, so link it on every toolchain.
-target_link_libraries(PqDnsCheckpointTests Checkpoints CryptoNoteCore Serialization System Logging Common Crypto CryptoPq gtest ${Boost_LIBRARIES} ${OPENSSL_LIBRARIES})
+target_link_libraries(PqDnsCheckpointTests Checkpoints CryptoNoteCore Serialization System Logging Common Crypto CryptoPq gtest ${Boost_LIBRARIES})
 
 if(MSVC)
   target_link_libraries(SystemTests ws2_32)

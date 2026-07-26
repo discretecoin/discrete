@@ -48,6 +48,10 @@ source_group("" FILES $${Common} ${Checkpoints} ${Crypto} ${CryptoNoteCore} ${Cr
 add_library(BlockchainExplorer ${BlockchainExplorer})
 add_library(Checkpoints ${Checkpoints})
 add_library(CryptoNoteProtocol ${CryptoNoteProtocol})
+# DNS checkpoint discovery downloads the signed JSON over HTTPS (Http/HttpClient)
+# and hashes it with OpenSSL's SHA-256, so every consumer of Checkpoints inherits
+# those. PUBLIC, so the dozens of downstream targets need no per-target edits.
+target_link_libraries(Checkpoints PUBLIC Http ${OPENSSL_LIBRARIES})
 # Real target is CryptoNoteCommon; `Common` is kept as an alias so the dozens of
 # downstream `target_link_libraries(... Common)` references need no change.
 # The distinct project name avoids a case-insensitive clash with liboqs's

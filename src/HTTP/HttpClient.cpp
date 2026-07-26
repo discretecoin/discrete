@@ -10,7 +10,59 @@
 #include <System/TcpConnector.h>
 #include <System/SslTcpStreambuf.h>
 
+#include <openssl/err.h>
+#include <openssl/ssl.h>
+#include <openssl/x509.h>
+
+#if defined(WIN32)
+#include <windows.h>
+#include <wincrypt.h>
+#endif
+
 namespace CryptoNote {
+
+#if defined(WIN32)
+namespace {
+
+void loadWindowsRootCertificates(boost::asio::ssl::context& context) {
+  HCERTSTORE certStore = CertOpenSystemStoreA(0, "ROOT");
+  if (certStore == nullptr) {
+    throw std::runtime_error("Cannot open the Windows ROOT certificate store");
+  }
+
+  X509_STORE* target = SSL_CTX_get_cert_store(context.native_handle());
+  if (target == nullptr) {
+    CertCloseStore(certStore, 0);
+    throw std::runtime_error("OpenSSL certificate store is unavailable");
+  }
+
+  PCCERT_CONTEXT certContext = nullptr;
+  size_t usable = 0;
+  while ((certContext = CertEnumCertificatesInStore(certStore, certContext)) != nullptr) {
+    const unsigned char* encoded = certContext->pbCertEncoded;
+    X509* cert = d2i_X509(nullptr, &encoded, certContext->cbCertEncoded);
+    if (cert == nullptr) {
+      ERR_clear_error();
+      continue;
+    }
+
+    ++usable;
+    if (X509_STORE_add_cert(target, cert) != 1) {
+      // Duplicate roots are harmless. Clear OpenSSL's per-thread error queue.
+      ERR_clear_error();
+    }
+    X509_free(cert);
+  }
+
+  CertCloseStore(certStore, 0);
+
+  if (usable == 0) {
+    throw std::runtime_error("No usable certificates found in the Windows ROOT store");
+  }
+}
+
+} // namespace
+#endif
 
   ConnectException::ConnectException(const std::string& whatArg) 
     : std::runtime_error(whatArg.c_str()) {
@@ -52,8 +104,12 @@ namespace CryptoNote {
           m_sslContext->load_verify_file(certFile);
         }
         else {
-        // Use system's default CA certificates (for public SSL sites)
+        // OpenSSL does not automatically consume the Windows certificate store.
+#if defined(WIN32)
+          loadWindowsRootCertificates(*m_sslContext);
+#else
           m_sslContext->set_default_verify_paths();
+#endif
         }
       }
       else {
@@ -134,7 +190,9 @@ namespace CryptoNote {
         m_dispatcher,
         m_connection,
         *m_sslContext,
-        false));
+        false,
+        m_address,
+        m_sslVerify));
 
       // Perform SSL handshake
       m_sslStreamBuf->handshake();

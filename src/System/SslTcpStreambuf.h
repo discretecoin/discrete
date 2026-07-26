@@ -5,6 +5,7 @@
 
 #include <iostream>
 #include <memory>
+#include <string>
 #include <boost/asio/ssl.hpp>
 #include <System/TcpConnection.h>
 #include <System/Dispatcher.h>
@@ -16,7 +17,9 @@ namespace System {
     SslTcpStreambuf(Dispatcher& dispatcher,
       TcpConnection& connection,
       boost::asio::ssl::context& context,
-      bool isServer = false);
+      bool isServer = false,
+      const std::string & hostName = "",
+      bool verifyHostName = false);
 
     SslTcpStreambuf(const SslTcpStreambuf&) = delete;
     SslTcpStreambuf& operator=(const SslTcpStreambuf&) = delete;

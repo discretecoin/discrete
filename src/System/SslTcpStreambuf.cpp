@@ -3,6 +3,8 @@
 
 #include "SslTcpStreambuf.h"
 #include <System/InterruptedException.h>
+#include <openssl/ssl.h>
+#include <openssl/x509_vfy.h>
 #include <stdexcept>
 
 namespace System {
@@ -10,7 +12,9 @@ namespace System {
   SslTcpStreambuf::SslTcpStreambuf(Dispatcher& disp,
     TcpConnection& conn,
     boost::asio::ssl::context& context,
-    bool server)
+    bool server,
+    const std::string& hostName,
+    bool verifyHostName)
     : dispatcher(disp)
     , connection(conn)
     , handshakeDone(false)
@@ -18,6 +22,23 @@ namespace System {
   {
     sslStream = std::make_unique<boost::asio::ssl::stream<boost::asio::ip::tcp::socket&>>(
       connection.getSocket(), context);
+
+    if (!server && !hostName.empty()) {
+      SSL* native = sslStream->native_handle();
+
+      if (SSL_set_tlsext_host_name(native, hostName.c_str()) != 1) {
+        throw std::runtime_error("Failed to set TLS SNI hostname");
+      }
+
+      if (verifyHostName) {
+        X509_VERIFY_PARAM* params = SSL_get0_param(native);
+        if (params == nullptr ||
+            X509_VERIFY_PARAM_set1_host(params, hostName.c_str(), 0) != 1) {
+          throw std::runtime_error(
+              "Failed to configure TLS certificate hostname verification");
+        }
+      }
+    }
 
     setg(readBuf, readBuf, readBuf);
     setp(writeBuf, writeBuf + sizeof(writeBuf));
