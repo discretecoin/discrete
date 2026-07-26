@@ -27,7 +27,7 @@
 #include <string>
 #include <vector>
 
-#include "Checkpoints/DnsCheckpoint.h"
+#include "CheckpointsDns/DnsCheckpoint.h"
 #include "Common/StringTools.h"
 #include "CryptoNoteCore/CryptoNoteFormatUtils.h"
 #include "crypto_pq/PqDsa.h"

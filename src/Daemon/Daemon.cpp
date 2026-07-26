@@ -35,6 +35,7 @@
 #include "Common/PasswordContainer.h"
 #include "Common/SecureMemory.h"
 #include "Checkpoints/CheckpointsData.h"
+#include "CheckpointsDns/CheckpointsDnsFetch.h"
 #include "CryptoNoteCore/CryptoNoteTools.h"
 #include "CryptoNoteCore/CryptoNoteFormatUtils.h"
 #include "CryptoNoteCore/Core.h"
@@ -289,7 +290,7 @@ int main(int argc, char* argv[])
       }
 
 #ifndef __ANDROID__
-      checkpoints.load_checkpoints_from_dns(currency.genesisBlockHash(), testnet_mode);
+      CryptoNote::fetchDnsCheckpoints(checkpoints, logManager, currency.genesisBlockHash(), testnet_mode);
 #endif
 
       bool manual_checkpoints = !command_line::get_arg(vm, arg_load_checkpoints).empty();

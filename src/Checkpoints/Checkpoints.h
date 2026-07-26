@@ -53,12 +53,10 @@ namespace CryptoNote
     bool add_checkpoint(uint32_t height, const std::string& hash_str);
     bool load_checkpoints_from_file(const std::string& fileName);
 
-    // Discover checkpoints via the DNS TXT pointer at DNS_CHECKPOINTS_HOST and
-    // the HTTPS-hosted signed JSON it references (see DnsCheckpoint.h). Bounded
-    // by an overall wall-clock deadline so an unreachable or silent DNS/web
-    // server cannot stall node startup. Never throws; a failed lookup simply
-    // leaves the already-loaded checkpoints untouched.
-    bool load_checkpoints_from_dns(const Crypto::Hash& genesisBlockHash, bool testnet);
+    // Looks up an existing checkpoint at `height` without exposing m_points
+    // itself. Used by fetchDnsCheckpoints (CheckpointsDnsFetch.cpp) to detect
+    // an already-loaded checkpoint before calling add_checkpoint.
+    bool tryGetCheckpoint(uint32_t height, Crypto::Hash& outHash) const;
     bool is_in_checkpoint_zone(uint32_t height) const;
     bool check_block(uint32_t height, const Crypto::Hash& h) const;
     bool check_block(uint32_t height, const Crypto::Hash& h, bool& is_a_checkpoint) const;

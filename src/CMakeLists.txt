@@ -7,6 +7,7 @@ include_directories(${LMDB_INCLUDE})
 
 file(GLOB_RECURSE BlockchainExplorer BlockchainExplorer/*)
 file(GLOB_RECURSE Checkpoints Checkpoints/*)
+file(GLOB_RECURSE CheckpointsDns CheckpointsDns/*)
 file(GLOB_RECURSE Common Common/*)
 file(GLOB_RECURSE Crypto crypto/*)
 file(GLOB_RECURSE CryptoPq crypto_pq/*)
@@ -43,15 +44,11 @@ else()
   file(GLOB_RECURSE System System/* Platform/Linux/System/* Platform/Posix/System/*)
 endif()
 
-source_group("" FILES $${Common} ${Checkpoints} ${Crypto} ${CryptoNoteCore} ${CryptoNoteProtocol} ${Daemon} ${GreenWallet} ${Http} ${JsonRpcServer} ${Logging} ${Mnemonics} ${NodeRpcProxy} ${P2p} ${Rpc} ${Serialization} ${SimpleWallet} ${System} ${Transfers} ${Wallet} ${WalletLegacy} ${AdminTools})
+source_group("" FILES $${Common} ${Checkpoints} ${CheckpointsDns} ${Crypto} ${CryptoNoteCore} ${CryptoNoteProtocol} ${Daemon} ${GreenWallet} ${Http} ${JsonRpcServer} ${Logging} ${Mnemonics} ${NodeRpcProxy} ${P2p} ${Rpc} ${Serialization} ${SimpleWallet} ${System} ${Transfers} ${Wallet} ${WalletLegacy} ${AdminTools})
 
 add_library(BlockchainExplorer ${BlockchainExplorer})
 add_library(Checkpoints ${Checkpoints})
 add_library(CryptoNoteProtocol ${CryptoNoteProtocol})
-# DNS checkpoint discovery downloads the signed JSON over HTTPS (Http/HttpClient)
-# and hashes it with OpenSSL's SHA-256, so every consumer of Checkpoints inherits
-# those. PUBLIC, so the dozens of downstream targets need no per-target edits.
-target_link_libraries(Checkpoints PUBLIC Http ${OPENSSL_LIBRARIES})
 # Real target is CryptoNoteCommon; `Common` is kept as an alias so the dozens of
 # downstream `target_link_libraries(... Common)` references need no change.
 # The distinct project name avoids a case-insensitive clash with liboqs's
@@ -85,6 +82,25 @@ add_library(Rpc ${Rpc})
 add_library(P2P ${P2p})
 add_library(Serialization ${Serialization})
 add_library(System ${System})
+# HttpClient drives System's TCP/SSL streams and, through Boost.Asio's SSL
+# wrappers, OpenSSL. Declare that on the library itself rather than relying on
+# every executable to list System/-lssl/-lcrypto in exactly the right spot: GNU
+# ld resolves a static archive only against symbols still undefined when it
+# reaches it, so a hand-ordered link line breaks as soon as a new consumer is
+# added (which is what adding Http to AdminTools did). Target-level deps let
+# CMake order and repeat the archives itself.
+target_link_libraries(Http PUBLIC System ${OPENSSL_LIBRARIES})
+# DNS checkpoint discovery: the TXT pointer parser, the signed-JSON verifier
+# (OpenSSL SHA-256) and the HTTPS downloader (Http + System::Dispatcher +
+# OpenSSL's SSL stack). Deliberately NOT part of the Checkpoints library:
+# CryptoNoteCore links Checkpoints PUBLIC, so anything added there propagates to
+# nearly every target in the project — including all the Pq* unit tests, which
+# would then have to link the whole TLS stack. Only the three executables that
+# actually resolve DNS link this.
+add_library(CheckpointsDns ${CheckpointsDns})
+# OpenSSL is listed explicitly as well as via Http: DnsCheckpoint.cpp calls
+# EVP_Digest directly for the file SHA-256, independently of the TLS client.
+target_link_libraries(CheckpointsDns PUBLIC Checkpoints Http ${OPENSSL_LIBRARIES})
 add_library(Transfers ${Transfers})
 add_library(Wallet ${Wallet} ${WalletLegacy})
 add_library(PaymentGate ${PaymentGate})
@@ -127,15 +143,18 @@ endif()
 
 # Wallet/Transfers/NodeRpcProxy/Mnemonics are linked for the read-only mining-key
 # loader (start_mining reads the encrypted wallet container; see MiningKeyLoader).
-target_link_libraries(Daemon Wallet Transfers NodeRpcProxy Mnemonics Rpc Http P2P CryptoNoteCore Logging Serialization Crypto System Checkpoints CryptoNoteProtocol BlockchainExplorer Common upnpc-static ${Boost_LIBRARIES} ${LMDB_LIBRARY})
+# CheckpointsDns is the DNS-checkpoint HTTPS fetch (discreted calls fetchDnsCheckpoints
+# at startup) — see src/CheckpointsDns/CheckpointsDnsFetch.h for why it is a
+# separate library from Checkpoints.
+target_link_libraries(Daemon Wallet Transfers NodeRpcProxy Mnemonics Rpc Http P2P CryptoNoteCore Logging Serialization Crypto System Checkpoints CheckpointsDns CryptoNoteProtocol BlockchainExplorer Common upnpc-static ${Boost_LIBRARIES} ${LMDB_LIBRARY})
 target_link_libraries(SimpleWallet Wallet Transfers NodeRpcProxy Rpc Http CryptoNoteCore Logging Serialization Crypto System Checkpoints Mnemonics Common ${Boost_LIBRARIES})
 target_link_libraries(GreenWallet Wallet Transfers NodeRpcProxy Rpc Http CryptoNoteCore Logging Serialization Crypto System Checkpoints Mnemonics Common ${Boost_LIBRARIES})
-target_link_libraries(PaymentGateService PaymentGate JsonRpcServer InProcessNode Wallet Transfers NodeRpcProxy Rpc Http P2P CryptoNoteCore Logging Serialization Crypto System Checkpoints
+target_link_libraries(PaymentGateService PaymentGate JsonRpcServer InProcessNode Wallet Transfers NodeRpcProxy Rpc Http P2P CryptoNoteCore Logging Serialization Crypto System Checkpoints CheckpointsDns
                       CryptoNoteProtocol BlockchainExplorer Common upnpc-static ${Boost_LIBRARIES} ${LMDB_LIBRARY})
 # Wallet/Transfers/NodeRpcProxy/Rpc/Http are linked for the DNS checkpoint signer:
 # the read-only wallet seed loader (MiningKeyLoader) and the HTTPS checkpoint
-# downloader used by --verify-checkpoint.
-target_link_libraries(AdminTools Wallet Transfers NodeRpcProxy Rpc Http CryptoNoteCore Checkpoints Logging Serialization Crypto Mnemonics Common System ${Boost_LIBRARIES})
+# downloader used by --verify-checkpoint (CheckpointsDns).
+target_link_libraries(AdminTools Wallet Transfers NodeRpcProxy Rpc Http CryptoNoteCore Checkpoints CheckpointsDns Logging Serialization Crypto Mnemonics Common System ${Boost_LIBRARIES})
 
 if (OPENSSL_FOUND)
     target_link_libraries(Daemon ${OPENSSL_LIBRARIES})

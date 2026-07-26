@@ -30,6 +30,7 @@
 #include "PaymentGate/PaymentServiceJsonRpcServer.h"
 
 #include "Checkpoints/CheckpointsData.h"
+#include "CheckpointsDns/CheckpointsDnsFetch.h"
 #include "CryptoNoteCore/CoreConfig.h"
 #include "CryptoNoteCore/Core.h"
 #include "CryptoNoteProtocol/CryptoNoteProtocolHandler.h"
@@ -208,8 +209,8 @@ void PaymentGateService::runInProcess(Logging::LoggerRef& log) {
   for (const auto& cp : CryptoNote::CHECKPOINTS) {
     checkpoints.add_checkpoint(cp.height, cp.blockId);
   }
-  checkpoints.load_checkpoints_from_dns(currency.genesisBlockHash(),
-                                        config.gateConfiguration.testnet);
+  CryptoNote::fetchDnsCheckpoints(checkpoints, logger, currency.genesisBlockHash(),
+                                  config.gateConfiguration.testnet);
   if (!config.gateConfiguration.testnet) {
     core.set_checkpoints(std::move(checkpoints));
   }

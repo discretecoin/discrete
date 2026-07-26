@@ -89,7 +89,7 @@ target_link_libraries(DenominationsTests gtest ${Boost_LIBRARIES})
 target_link_libraries(PqSenderTests Wallet CryptoNoteCore Serialization System Logging Common Crypto CryptoPq gtest ${Boost_LIBRARIES})
 target_link_libraries(PqFinalityTests Checkpoints CryptoNoteCore Serialization System Logging Common Crypto CryptoPq gtest ${Boost_LIBRARIES})
 target_link_libraries(PqPowTests CryptoNoteCore Serialization System Logging Common Crypto CryptoPq gtest ${Boost_LIBRARIES})
-target_link_libraries(PqDnsCheckpointTests Checkpoints CryptoNoteCore Serialization System Logging Common Crypto CryptoPq gtest ${Boost_LIBRARIES})
+target_link_libraries(PqDnsCheckpointTests CheckpointsDns CryptoNoteCore Serialization System Logging Common Crypto CryptoPq gtest ${Boost_LIBRARIES})
 
 if(MSVC)
   target_link_libraries(SystemTests ws2_32)
