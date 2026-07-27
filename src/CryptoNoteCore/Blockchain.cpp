@@ -1946,6 +1946,17 @@ bool Blockchain::checkTransactionInputs(const Transaction& tx, const Crypto::Has
                                          uint32_t* pmax_used_block_height) {
   // Discrete: only PQ transactions are accepted. Legacy v1 (pre-PQ) txs are rejected.
   if (tx.version == TRANSACTION_VERSION_1) {
+    // First-registration-wins is chain state, so a registration tx that was valid
+    // when it was built (or when it entered the pool) goes stale the moment another
+    // block registers the same account. pushTransaction rejects it and takes the
+    // whole block down with it, so refuse it here instead: this is the check that
+    // runs at pool admission and again when the block template is filled, before a
+    // miner spends any work on it. Paid registrations ride on TX_PQ, free ones on
+    // TX_FREE_REG — both are covered.
+    if ((tx.txType == TX_PQ || tx.txType == TX_FREE_REG) && isPqAccountAlreadyRegistered(tx)) {
+      logger(INFO, BRIGHT_WHITE) << "Account already registered, rejecting tx " << getObjectHash(tx);
+      return false;
+    }
     if (tx.txType == TX_PQ) {
       return checkPqInputs(tx, pmax_used_block_height);
     } else if (tx.txType == TX_FREE_REG) {
@@ -2094,14 +2105,24 @@ bool Blockchain::checkFreeRegInputs(const Transaction& tx, uint32_t* pmax_used_b
   }
 
   // First-registration-wins: reject if the full PQ identity is already registered.
-  const Crypto::Hash accountId = getPqAccountIdentityHash(reg);
-  if (m_db.hasPqAcctReg(accountId)) {
+  // (checkTransactionInputs runs the same check for every registration-carrying tx
+  // type; repeated here so this entry point stands on its own.)
+  if (isPqAccountAlreadyRegistered(tx)) {
     logger(INFO, BRIGHT_WHITE) << "free-reg account already registered, rejected";
     return false;
   }
 
   if (pmax_used_block_height) *pmax_used_block_height = refHeight;
   return true;
+}
+
+bool Blockchain::isPqAccountAlreadyRegistered(const Transaction& tx) {
+  TransactionExtraPqAccountRegistration reg;
+  if (!getPqAccountRegistrationFromExtra(tx.extra, reg)) {
+    return false;
+  }
+  std::lock_guard<decltype(m_blockchain_lock)> lk(m_blockchain_lock);
+  return m_db.hasPqAcctReg(getPqAccountIdentityHash(reg));
 }
 
 bool Blockchain::is_tx_spendheight_unlocked(uint64_t unlock_height) {

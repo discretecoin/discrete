@@ -392,6 +392,9 @@ namespace CryptoNote {
     // TX_FREE_REG chain-context checks: refBlockHash on the main chain within
     // FREE_REG_REF_WINDOW, and first-registration-wins. No height gate (PQ from genesis).
     bool checkFreeRegInputs(const Transaction& tx, uint32_t* pmax_used_block_height);
+    // First-registration-wins: true if the tx carries a PQ account registration
+    // whose identity is already in the on-chain registry.
+    bool isPqAccountAlreadyRegistered(const Transaction& tx);
 
     // Returns by value (deserialized from tx_entries)
     TransactionEntry transactionByIndex(TransactionIndex index);

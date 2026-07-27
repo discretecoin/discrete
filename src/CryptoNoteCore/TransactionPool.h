@@ -198,6 +198,10 @@ namespace CryptoNote {
 
     tx_container_t::iterator removeTransaction(tx_container_t::iterator i);
     bool removeExpiredTransactions();
+    // True if the tx carries a PQ account registration whose identity the chain has
+    // already registered — first-registration-wins, so it can never be mined.
+    bool isAccountAlreadyRegisteredOnChain(const Transaction& tx) const;
+    bool removeStaleAccountRegistrations();
     bool is_transaction_ready_to_go(const Transaction& tx, TransactionCheckInfo& txd) const;
 
     void buildIndices();

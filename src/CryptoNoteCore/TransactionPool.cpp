@@ -489,6 +489,17 @@ bool getPqAccountRegistrationId(const Transaction& tx, Crypto::Hash& accountId) 
         continue;
       }
 
+      // First-registration-wins is chain state: a registration that was valid when
+      // it entered the pool becomes unminable the moment another block registers the
+      // same account, and a block built around it is rejected at push time. Ask the
+      // chain registry directly — this must run ahead of the validated-tx cache
+      // below, which would otherwise keep handing the stale tx to the miner.
+      if (isAccountAlreadyRegisteredOnChain(txd.tx)) {
+        logger(INFO) << "Transaction " << txd.id
+                     << " not included to block template: account already registered";
+        continue;
+      }
+
       TransactionCheckInfo checkInfo(txd);
       bool ready = false;
       if (m_validated_transactions.find(txd.id) != m_validated_transactions.end()) {
@@ -607,7 +618,51 @@ bool getPqAccountRegistrationId(const Transaction& tx, Crypto::Hash& accountId) 
 
   //---------------------------------------------------------------------------------
   void tx_memory_pool::on_idle() {
-    m_txCheckInterval.call([this](){ return removeExpiredTransactions(); });
+    m_txCheckInterval.call([this](){
+      removeExpiredTransactions();
+      removeStaleAccountRegistrations();
+      return true;
+    });
+  }
+
+  //---------------------------------------------------------------------------------
+  bool tx_memory_pool::isAccountAlreadyRegisteredOnChain(const Transaction& tx) const {
+    Crypto::Hash accountId;
+    if (!getPqAccountRegistrationId(tx, accountId)) {
+      return false;
+    }
+    uint32_t registeredHeight = 0;
+    uint32_t registeredTxIndex = 0;
+    return m_core.getPqAccountNumber(accountId, registeredHeight, registeredTxIndex);
+  }
+
+  //---------------------------------------------------------------------------------
+  // Registrations that lost the first-registration-wins race can never become
+  // valid again on this chain, so drop them instead of leaving them to relay and
+  // to be re-checked on every block template until they expire. A reorg that
+  // unregisters the account also unwinds the winning tx back into the pool, so
+  // nothing is lost that the chain itself does not restore.
+  bool tx_memory_pool::removeStaleAccountRegistrations() {
+    bool somethingRemoved = false;
+    {
+      std::lock_guard<std::recursive_mutex> lock(m_transactions_lock);
+
+      for (auto it = m_transactions.begin(); it != m_transactions.end();) {
+        if (isAccountAlreadyRegisteredOnChain(it->tx)) {
+          logger(INFO) << "Tx " << it->id << " removed from tx pool: account already registered";
+          it = removeTransaction(it);
+          somethingRemoved = true;
+        } else {
+          ++it;
+        }
+      }
+    }
+
+    if (somethingRemoved) {
+      m_observerManager.notify(&ITxPoolObserver::txDeletedFromPool);
+    }
+
+    return true;
   }
 
   //---------------------------------------------------------------------------------
