@@ -556,6 +556,17 @@ namespace CryptoNote
     m_stopEvent.wait();
 
     logger(INFO) << "Stopping p2p NodeServer and its " << m_connections.size() << " connections...";
+
+    // ContextGroup only interrupts its direct members. Each connection owns
+    // nested System::Context instances that are not members of that group, so
+    // explicitly interrupt active connections first. This wakes writeHandler,
+    // cancels socket I/O and allows connectionHandler to unwind cleanly.
+    forEachConnection([](P2pConnectionContext& ctx) {
+      if (ctx.context != nullptr) {
+        ctx.interrupt();
+      }
+    });
+
     m_workingContextGroup.interrupt();
     m_workingContextGroup.wait();
 
