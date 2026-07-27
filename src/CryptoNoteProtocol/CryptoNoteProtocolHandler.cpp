@@ -4,6 +4,7 @@
 // Copyright (c) 2018, The Unprll Project
 // Copyright (c) 2018-2019, The TurtleCoin Developers
 // Copyright (c) 2016-2022, The Karbo developers
+// Copyright (c) 2026, The Discrete developers
 //
 // This file is part of Karbo.
 //
@@ -696,7 +697,7 @@ bool CryptoNoteProtocolHandler::select_dandelion_stem() {
   m_p2p->for_each_connection([&](const CryptoNoteConnectionContext& ctx, PeerIdType peer_id) {
     if ((ctx.m_state == CryptoNoteConnectionContext::state_normal || 
          ctx.m_state == CryptoNoteConnectionContext::state_synchronizing) && 
-        !ctx.m_is_income && ctx.version >= P2P_VERSION_4) {
+        !ctx.m_is_income && ctx.version >= P2P_MINIMUM_VERSION) {
       alive_peers.push_back(ctx);
     }
   });
