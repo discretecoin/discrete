@@ -21,10 +21,13 @@ include_directories(${LMDB_INCLUDE})
 # liboqs (Open Quantum Safe) — vendored snapshot of upstream 0.13.0,
 # pruned to only ML-KEM-768 and ML-DSA-65. See external/liboqs/UPSTREAM.md.
 # We disable every algorithm family except ML-KEM and ML-DSA, build static only,
-# and skip OpenSSL / runtime CPU dispatch so the library stays self-contained.
+# and skip OpenSSL while retaining liboqs's runtime CPU dispatch. With a
+# non-distribution x86_64 build, liboqs selects one backend while configuring;
+# a toolchain that supports AVX2 can therefore make every SHA-3 call execute
+# AVX2 instructions on CPUs that do not support them.
 set(OQS_BUILD_ONLY_LIB        ON  CACHE BOOL "" FORCE)
 set(BUILD_SHARED_LIBS         OFF CACHE BOOL "" FORCE)
-set(OQS_DIST_BUILD            OFF CACHE BOOL "" FORCE)
+set(OQS_DIST_BUILD            ON  CACHE BOOL "" FORCE)
 set(OQS_USE_OPENSSL           OFF CACHE BOOL "" FORCE)
 set(OQS_USE_SHA2_OPENSSL      OFF CACHE BOOL "" FORCE)
 set(OQS_USE_SHA3_OPENSSL      OFF CACHE BOOL "" FORCE)
