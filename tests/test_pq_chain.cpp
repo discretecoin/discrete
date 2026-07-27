@@ -141,10 +141,13 @@ bool mineBlockWithTxs(CryptoNote::Core& core, const CryptoNote::Currency& curren
   return bvc.m_added_to_main_chain && !bvc.m_verification_failed;
 }
 
-// Build a TX_FREE_REG with trivial PoW (nonce=0 passes any UINT64_MAX target).
+// Build a TX_FREE_REG with trivial PoW (any nonce passes a UINT64_MAX target).
 // Different `seed` values produce different viewPub/spendPub so registrations
-// are distinct and do not trigger the first-reg-wins duplicate check.
-CryptoNote::Transaction makeFastFreeRegTx(const Crypto::Hash& refBlockHash, uint8_t seed) {
+// are distinct and do not trigger the first-reg-wins duplicate check. Holding the
+// seed and varying `nonce` gives the opposite: two distinct transactions that
+// claim the same account, i.e. competitors for the same registration.
+CryptoNote::Transaction makeFastFreeRegTx(const Crypto::Hash& refBlockHash, uint8_t seed,
+                                          uint64_t nonce = 0) {
   using namespace CryptoNote;
   Transaction tx;
   tx.version = TRANSACTION_VERSION_1;
@@ -159,7 +162,7 @@ CryptoNote::Transaction makeFastFreeRegTx(const Crypto::Hash& refBlockHash, uint
   addPqAccountRegistrationToExtra(tx.extra, vp, sp);
   TransactionExtraPow pow{};
   pow.refBlockHash = refBlockHash;
-  pow.nonce = 0;  // trivially passes with UINT64_MAX powTarget in the test currency
+  pow.nonce = nonce;  // trivially passes with UINT64_MAX powTarget in the test currency
   appendPowTagToExtra(tx.extra, pow);
   return tx;
 }
@@ -616,6 +619,127 @@ bool runFreeRegCap() {
   return ok;
 }
 
+// First-registration-wins vs. the block template: a registration sitting in the
+// pool must not be handed to a miner once another block has claimed the same
+// account. Such a block is rejected at push time, so the whole proof-of-work is
+// wasted. The pool's validated-tx cache makes this a real hazard — the stale tx
+// is never re-validated on the cached path — so the template consults the chain
+// registry directly.
+bool runStaleRegTemplate() {
+  using namespace CryptoNote;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+
+  const Currency currency = CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(11).upgradeHeightV6(12)
+      .freeRegPowTarget(UINT64_MAX)
+      .currency();
+
+  std::filesystem::path dataDir("pq_stale_reg_test_data");
+  std::error_code ec;
+  std::filesystem::remove_all(dataDir, ec);
+  std::filesystem::create_directories(dataDir, ec);
+
+  System::Dispatcher dispatcher;
+  Core core(currency, nullptr, logger, dispatcher);
+  CoreConfig coreConfig; coreConfig.configFolder = dataDir.string();
+  MinerConfig minerConfig;
+  if (!expect(core.init(coreConfig, minerConfig, false), "stale-reg: core.init")) return false;
+
+  test_generator gen(currency);
+  gen.setBlockchain(&core.get_blockchain_storage());
+  AccountBase miner; miner.generate();
+
+  Crypto::Hash genesisHash = core.getBlockIdByHeight(0);
+  Block genesis;
+  if (!expect(core.getBlockByHash(genesisHash, genesis), "stale-reg: load genesis")) {
+    core.deinit(); return false;
+  }
+  std::vector<size_t> emptySizes;
+  gen.addBlock(genesis, 0, 0, emptySizes, 0);
+
+  uint64_t ts = static_cast<uint64_t>(std::time(nullptr)) - 24 * 60 * 60;
+  const uint64_t step = currency.difficultyTarget() * 10;
+  for (int i = 0; i < 13; ++i) {
+    if (!expect(mineBlock(core, currency, gen, miner, ts), "stale-reg: mine " + std::to_string(i + 1))) {
+      core.deinit(); std::filesystem::remove_all(dataDir, ec); return false;
+    }
+    ts += step;
+  }
+
+  bool ok = true;
+  const Crypto::Hash refHash = core.get_tail_id();
+
+  // Two competing registrations of the SAME account (same seed, different PoW
+  // nonce → different tx hashes).
+  Transaction pooled  = makeFastFreeRegTx(refHash, 44, 1);
+  Transaction winner  = makeFastFreeRegTx(refHash, 44, 2);
+
+  auto submit = [&](const Transaction& tx, bool keptByBlock) {
+    Crypto::Hash txHash = getObjectHash(tx);
+    BinaryArray blob = toBinaryArray(tx);
+    tx_verification_context tvc{};
+    core.handleIncomingTransaction(tx, txHash, blob.size(), tvc, keptByBlock,
+                                   core.getCurrentBlockchainHeight());
+    return tvc;
+  };
+
+  tx_verification_context pooledTvc = submit(pooled, false);
+  ok &= expect(pooledTvc.m_added_to_pool && !pooledTvc.m_verification_failed,
+               "stale-reg: registration accepted into the pool");
+
+  // Build a template while it is still valid — this is what seeds the pool's
+  // validated-tx cache with the (soon to be stale) registration.
+  auto buildTemplate = [&](Block& b) {
+    Difficulty diff = 0;
+    uint32_t height = 0;
+    return core.get_block_template_pq(b, miner.pqViewPk(), miner.pqSpendPk(), diff, height,
+                                      BinaryArray());
+  };
+  Block beforeTemplate;
+  ok &= expect(buildTemplate(beforeTemplate), "stale-reg: template built");
+  ok &= expect(beforeTemplate.transactionHashes.size() == 1 &&
+               beforeTemplate.transactionHashes[0] == getObjectHash(pooled),
+               "stale-reg: valid registration is included in the template");
+
+  // The competitor wins the race. keptByBlock admits it alongside the pending
+  // duplicate, exactly as the reorg re-insert path (saveTransactions) does.
+  tx_verification_context winnerTvc = submit(winner, true);
+  ok &= expect(winnerTvc.m_added_to_pool, "stale-reg: competitor admitted (kept by block)");
+  std::list<Transaction> winnerOnly = {winner};
+  ok &= expect(mineBlockWithTxs(core, currency, gen, miner, ts, winnerOnly),
+               "stale-reg: block carrying the competitor accepted");
+  ts += step;
+
+  TransactionExtraPqAccountRegistration reg{};
+  ok &= expect(getPqAccountRegistrationFromExtra(winner.extra, reg), "stale-reg: read registration");
+  uint32_t regHeight = 0, regTxIndex = 0;
+  ok &= expect(core.getPqAccountNumber(getPqAccountIdentityHash(reg), regHeight, regTxIndex),
+               "stale-reg: account is registered on chain");
+
+  // The pooled registration is now unminable. It must not reach the miner.
+  Block afterTemplate;
+  ok &= expect(buildTemplate(afterTemplate), "stale-reg: template rebuilt");
+  ok &= expect(afterTemplate.transactionHashes.empty(),
+               "stale-reg: already-registered registration excluded from the block template");
+
+  // ... and it is dropped from the pool rather than relayed until it expires.
+  core.on_idle();
+  ok &= expect(core.getPoolTransactionsCount() == 0,
+               "stale-reg: already-registered registration purged from the pool");
+
+  // A fresh submission for the same account never gets in at all.
+  Transaction latecomer = makeFastFreeRegTx(core.get_tail_id(), 44, 3);
+  tx_verification_context lateTvc = submit(latecomer, false);
+  ok &= expect(!lateTvc.m_added_to_pool && lateTvc.m_verification_failed,
+               "stale-reg: registration for a registered account rejected at pool admission");
+
+  core.deinit();
+  std::filesystem::remove_all(dataDir, ec);
+  return ok;
+}
+
 // Emission curve sanity check + coinbase maturity boundary.
 // Uses minedMoneyUnlockWindow=3 so the first PQ coinbase (block 6) matures at
 // height 9, while v6 activates at height 6. This lets us confirm a spend is
@@ -966,6 +1090,10 @@ int main() {
   }
   if (!runFreeRegCap()) {
     std::cerr << "[FAIL] PQ free-reg per-block cap test" << std::endl;
+    return 1;
+  }
+  if (!runStaleRegTemplate()) {
+    std::cerr << "[FAIL] PQ stale account-registration block-template test" << std::endl;
     return 1;
   }
   if (!runEmission()) {
