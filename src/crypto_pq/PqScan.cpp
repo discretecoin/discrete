@@ -27,18 +27,18 @@ namespace CryptoPQ {
 
 namespace {
 
-// Recognition steps for one candidate T, given the already-recovered KEM shared
-// secret (kem_decaps is T-independent, so callers trying several T do it once).
-std::optional<PqOwnedOutput> tryOwnedWithT(const KemShared& ss,
-                                           const DsaPublicKey& spendPub,
-                                           const Hash256& inputsHash,
-                                           const PqScanOutput& out,
-                                           uint64_t subaddrIndexT) {
-  // 1. Per-output context (binds inputs_hash, kem_ct, output_index, T).
-  Hash256 oc = outContext(inputsHash, out.kemCt, out.outputIndex, subaddrIndexT);
+// Pure AEAD mechanics under a given, already-computed context: no ownership
+// check. Returns the recovered (rho, T) plaintext on success, nullopt if the
+// tag fails to verify (not ours under this context, or tampered).
+struct DecryptedPayload {
+  Rho rho{};
+  uint64_t subaddrIndexT = 0;
+};
 
-  // 2. Decrypt rho||T. aad = out_context || LE64(amount) — binds the on-chain
-  //    amount, so a tampered amount fails here.
+std::optional<DecryptedPayload> tryDecrypt(const KemShared& ss, const Hash256& oc,
+                                           const PqScanOutput& out) {
+  // aad = out_context || LE64(amount) — binds the on-chain amount, so a
+  // tampered amount fails here.
   Hash256 aeadKey = deriveAeadKey(ss, oc);  // Hash256 == AeadKey
   AeadNonce nonce{};                        // 12 zero bytes
   std::array<uint8_t, 40> aad{};
@@ -51,35 +51,61 @@ std::optional<PqOwnedOutput> tryOwnedWithT(const KemShared& ss,
       aead_decrypt(aeadKey, nonce, aad.data(), aad.size(),
                    out.encPayload.data(), out.encPayload.size());
   if (!maybePt || maybePt->size() != 40) {
-    return std::nullopt;  // not ours, or amount/payload tampered — silent
+    return std::nullopt;  // not ours under this context, or payload tampered
   }
 
-  Rho rho{};
-  std::memcpy(rho.data(), maybePt->data(), 32);
-
-  // Verify the T in the payload matches the T used to derive outContext.
-  // A tampered T would have produced a different key, so this is belt-and-braces.
-  uint64_t recoveredT = 0;
+  DecryptedPayload dp;
+  std::memcpy(dp.rho.data(), maybePt->data(), 32);
   for (int i = 0; i < 8; ++i)
-    recoveredT |= static_cast<uint64_t>((*maybePt)[32 + i]) << (8 * i);
-  if (recoveredT != subaddrIndexT) {
+    dp.subaddrIndexT |= static_cast<uint64_t>((*maybePt)[32 + i]) << (8 * i);
+  return dp;
+}
+
+// Final ownership gate shared by every recognition path: recompute
+// spend_commit with OUR long-term spend public key. A garbage output that
+// decrypts under our key but binds a different spend key is discarded here.
+std::optional<PqOwnedOutput> finishOwned(const DsaPublicKey& spendPub,
+                                         const PqScanOutput& out,
+                                         const DecryptedPayload& dp,
+                                         const Hash256& oc) {
+  if (spendCommit(spendPub, dp.rho) != out.spendCommit) {
     return std::nullopt;
   }
-
-  // 3. Final ownership gate: recompute spend_commit with OUR long-term spend
-  //    public key. A garbage output that decrypts under our key but binds a
-  //    different spend key is discarded here.
-  if (spendCommit(spendPub, rho) != out.spendCommit) {
-    return std::nullopt;
-  }
-
   PqOwnedOutput owned;
   owned.outputIndex = out.outputIndex;
   owned.amount = out.amount;
-  owned.subaddrIndexT = subaddrIndexT;
-  owned.rho = rho;
+  owned.subaddrIndexT = dp.subaddrIndexT;
+  owned.rho = dp.rho;
   owned.outContext = oc;
   return owned;
+}
+
+// Default recognition path: try outContext-v2 (T-independent; T is read back
+// from the decrypted payload, never enumerated), then fall back once to the
+// legacy pre-v2 derivation at T=0 (every output minted before the v2
+// activation used T=0 unconditionally — see PqDerive.h). No enumeration of
+// candidate T values is ever needed here.
+std::optional<PqOwnedOutput> tryOwned(const KemShared& ss, const DsaPublicKey& spendPub,
+                                      const Hash256& inputsHash, const PqScanOutput& out) {
+  Hash256 ocV2 = outContext(inputsHash, out.kemCt, out.outputIndex);
+  if (auto dp = tryDecrypt(ss, ocV2, out)) {
+    if (auto owned = finishOwned(spendPub, out, *dp, ocV2)) {
+      return owned;
+    }
+  }
+
+  Hash256 ocLegacy = legacyOutContextV1(inputsHash, out.kemCt, out.outputIndex, /*T=*/0);
+  if (auto dp = tryDecrypt(ss, ocLegacy, out)) {
+    // Belt-and-braces: the legacy key was derived at T=0, so the payload's T
+    // must also read back as 0 (a mismatch means a tampered/malformed payload).
+    if (dp->subaddrIndexT == 0) {
+      if (auto owned = finishOwned(spendPub, out, *dp, ocLegacy)) {
+        return owned;
+      }
+    }
+  }
+
+  return std::nullopt;
 }
 
 }  // namespace
@@ -88,32 +114,34 @@ std::optional<PqOwnedOutput> scanPqOutputWithSharedSecret(
     const KemShared& sharedSecret,
     const DsaPublicKey& recipientSpendPub,
     const Hash256& inputsHash,
-    const PqScanOutput& out,
-    uint64_t subaddrIndexT) {
-  return tryOwnedWithT(sharedSecret, recipientSpendPub, inputsHash, out, subaddrIndexT);
+    const PqScanOutput& out) {
+  return tryOwned(sharedSecret, recipientSpendPub, inputsHash, out);
 }
 
 std::optional<PqOwnedOutput> scanPqOutput(const PqScanKeys& keys,
                                           const Hash256& inputsHash,
-                                          const PqScanOutput& out,
-                                          uint64_t subaddrIndexT) {
+                                          const PqScanOutput& out) {
   // Recover the shared secret. FIPS 203 decaps never errors; on a non-owned
   // or malformed ciphertext it returns a pseudorandom secret, so the AEAD
-  // tag inside tryOwnedWithT is the real ownership filter.
+  // tag inside tryOwned is the real ownership filter.
   KemShared ss = kem_decaps(keys.viewSk, out.kemCt);
   Tools::SecretLock sharedSecretLock(ss.data(), ss.size());
-  return scanPqOutputWithSharedSecret(ss, keys.spendPub, inputsHash, out, subaddrIndexT);
+  return scanPqOutputWithSharedSecret(ss, keys.spendPub, inputsHash, out);
 }
 
-std::optional<PqOwnedOutput> scanPqOutputTWindow(const PqScanKeys& keys,
-                                                 const Hash256& inputsHash,
-                                                 const PqScanOutput& out,
-                                                 uint64_t maxT) {
+std::optional<PqOwnedOutput> scanPqOutputLegacyTWindow(const PqScanKeys& keys,
+                                                       const Hash256& inputsHash,
+                                                       const PqScanOutput& out,
+                                                       uint64_t maxT) {
   KemShared ss = kem_decaps(keys.viewSk, out.kemCt);
   Tools::SecretLock sharedSecretLock(ss.data(), ss.size());
   for (uint64_t t = 0; t < maxT; ++t) {
-    if (auto owned = scanPqOutputWithSharedSecret(ss, keys.spendPub, inputsHash, out, t)) {
-      return owned;
+    Hash256 oc = legacyOutContextV1(inputsHash, out.kemCt, out.outputIndex, t);
+    auto dp = tryDecrypt(ss, oc, out);
+    if (dp && dp->subaddrIndexT == t) {
+      if (auto owned = finishOwned(keys.spendPub, out, *dp, oc)) {
+        return owned;
+      }
     }
   }
   return std::nullopt;
@@ -121,11 +149,10 @@ std::optional<PqOwnedOutput> scanPqOutputTWindow(const PqScanKeys& keys,
 
 std::vector<PqOwnedOutput> scanPqOutputs(const PqScanKeys& keys,
                                          const Hash256& inputsHash,
-                                         const std::vector<PqScanOutput>& outputs,
-                                         uint64_t subaddrIndexT) {
+                                         const std::vector<PqScanOutput>& outputs) {
   std::vector<PqOwnedOutput> owned;
   for (const auto& o : outputs) {
-    if (auto rec = scanPqOutput(keys, inputsHash, o, subaddrIndexT)) {
+    if (auto rec = scanPqOutput(keys, inputsHash, o)) {
       owned.push_back(*rec);
     }
   }
@@ -142,44 +169,29 @@ std::optional<PqAggregateOwned> scanPqOutputAggregate(
   // commits to (the spec's distinguisher), NOT by the subaddress index. A Spec-1
   // deposit address is a plain PQ address, so the sender uses subaddress T=0.
   //
-  // So: decapsulate once, derive the AEAD key at T=0, decrypt once, then test
-  // spendCommit against each deposit spend key to find the matching deposit.
+  // So: decapsulate once, decrypt once (v2, falling back to legacy T=0), then
+  // test spendCommit against each deposit spend key to find the matching deposit.
   KemShared ss = kem_decaps(viewSk, out.kemCt);
   Tools::SecretLock sharedSecretLock(ss.data(), ss.size());
 
-  const uint64_t T = 0;
-  Hash256 oc = outContext(inputsHash, out.kemCt, out.outputIndex, T);
-  Hash256 aeadKey = deriveAeadKey(ss, oc);
-  AeadNonce nonce{};
-
-  std::array<uint8_t, 40> aad{};
-  std::memcpy(aad.data(), oc.data(), oc.size());
-  for (int j = 0; j < 8; ++j)
-    aad[32 + j] = static_cast<uint8_t>((out.amount >> (8 * j)) & 0xFF);
-
-  auto maybePt = aead_decrypt(aeadKey, nonce, aad.data(), aad.size(),
-                              out.encPayload.data(), out.encPayload.size());
-  if (!maybePt || maybePt->size() != 40) return std::nullopt;
-
-  // The payload's T must be 0 (a tampered T would have broken the AEAD key anyway).
-  uint64_t recoveredT = 0;
-  for (int j = 0; j < 8; ++j)
-    recoveredT |= static_cast<uint64_t>((*maybePt)[32 + j]) << (8 * j);
-  if (recoveredT != T) return std::nullopt;
-
-  Rho rho{};
-  std::memcpy(rho.data(), maybePt->data(), 32);
+  Hash256 oc = outContext(inputsHash, out.kemCt, out.outputIndex);
+  auto dp = tryDecrypt(ss, oc, out);
+  if (!dp) {
+    oc = legacyOutContextV1(inputsHash, out.kemCt, out.outputIndex, /*T=*/0);
+    dp = tryDecrypt(ss, oc, out);
+  }
+  if (!dp || dp->subaddrIndexT != 0) return std::nullopt;
 
   // Route by deposit spend key: the matching deposit is the one whose spendPub
   // reproduces the on-chain spendCommit.
   for (std::size_t i = 0; i < spendPubs.size(); ++i) {
-    if (spendCommit(spendPubs[i], rho) != out.spendCommit) continue;
+    if (spendCommit(spendPubs[i], dp->rho) != out.spendCommit) continue;
 
     PqAggregateOwned res;
     res.record.outputIndex = out.outputIndex;
     res.record.amount = out.amount;
-    res.record.subaddrIndexT = T;
-    res.record.rho = rho;
+    res.record.subaddrIndexT = dp->subaddrIndexT;
+    res.record.rho = dp->rho;
     res.record.outContext = oc;
     res.spendPubIndex = i;
     return res;

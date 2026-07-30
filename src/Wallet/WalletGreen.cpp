@@ -1764,6 +1764,14 @@ void WalletGreen::syncPqDepositConfigToState() {
   }
 }
 
+void WalletGreen::enableLegacyDepositRescan(uint32_t maxT) {
+  throwIfNotInitialized();
+  throwIfStopped();
+  if (m_pqConsumer) {
+    m_pqConsumer->state().setLegacyTWindowRescan(maxT);
+  }
+}
+
 void WalletGreen::buildPqStateBlob() {
   m_pqState.clear();
   if (!m_pqConsumer && !m_pqTrackingKeys) {

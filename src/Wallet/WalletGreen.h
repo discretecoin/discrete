@@ -137,6 +137,14 @@ public:
   // of all non-empty deposit balances by index (for walletd deposit attribution).
   uint64_t pqDepositBalance(uint32_t index) const;
   std::map<uint32_t, uint64_t> pqDepositBalances() const;
+  // MANUAL RECOVERY KNOB (SingleKeyIndex only) — OFF by default (maxT=0), not
+  // persisted, and not needed for ordinary scanning: outContext-v2 reads T
+  // back from the payload directly, without enumerating deposit indices. This
+  // exists only in case an unupgraded/hand-rolled sender ever creates a
+  // legacy (pre-v2) output at a nonzero T, which nothing in consensus
+  // prevents. Pair with a rescan (reset) to actually re-examine history.
+  // Most relevant to walletd, the exchange-facing surface for these deposits.
+  void enableLegacyDepositRescan(uint32_t maxT);
 
   virtual void initialize(const std::string& path, const std::string& password) override;
   virtual void initializeWithViewKey(const std::string& path, const std::string& password, const Crypto::SecretKey& viewSecretKey) override;

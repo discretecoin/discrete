@@ -62,29 +62,69 @@ TEST(PqDerive, InputsHash) {
 }
 
 TEST(PqDerive, OutContext) {
+    // outContext-v2: T is NOT part of the context (see PqDerive.h). Only
+    // inputsHash, kemCt, and outputIndex feed the hash.
     Hash256 ih = inputsHash(fixedInputs());
     KemCiphertext kemCt = pat<1088>(7, 3);
-    // T=0 (default) appended as LE64 after outputIndex.
     EXPECT_EQ(to_hex(outContext(ih, kemCt, 1)),
+              "f565b6181ad5bbdb55fb7594b23355aac1e388324fd9ced017680474a4a87ede");
+}
+
+TEST(PqDerive, OutContextIndexIsolation) {
+    Hash256 ih = inputsHash(fixedInputs());
+    KemCiphertext kemCt = pat<1088>(7, 3);
+    // Two different output indices must produce different outContext hashes
+    // (this is what actually keeps two outputs of the same tx from colliding
+    // now that T is no longer part of the context — see PqDerive.h).
+    Hash256 oc0 = outContext(ih, kemCt, 1);
+    Hash256 oc1 = outContext(ih, kemCt, 2);
+    EXPECT_NE(oc0, oc1);
+}
+
+TEST(PqDerive, LegacyOutContextV1) {
+    // Legacy (pre-v2) formula: T=0 appended as LE64 after outputIndex. Every
+    // output minted before the outContext-v2 activation used this, always at
+    // T=0. This value MUST NOT change — it is a receiver-side fallback for
+    // outputs already on chain.
+    Hash256 ih = inputsHash(fixedInputs());
+    KemCiphertext kemCt = pat<1088>(7, 3);
+    EXPECT_EQ(to_hex(legacyOutContextV1(ih, kemCt, 1, 0)),
               "32cfc3d894c9c87a8d5f7ca9b0dfc69760b39f3c267b7e7cdd41c8f65492fb1b");
 }
 
-TEST(PqDerive, OutContextTIsolation) {
+TEST(PqDerive, LegacyOutContextV1TIsolation) {
     Hash256 ih = inputsHash(fixedInputs());
     KemCiphertext kemCt = pat<1088>(7, 3);
-    // Two different T values must produce different outContext hashes.
-    Hash256 oc0 = outContext(ih, kemCt, 1, 0);
-    Hash256 oc1 = outContext(ih, kemCt, 1, 1);
+    // Two different T values must produce different legacy outContext hashes.
+    Hash256 oc0 = legacyOutContextV1(ih, kemCt, 1, 0);
+    Hash256 oc1 = legacyOutContextV1(ih, kemCt, 1, 1);
     EXPECT_NE(oc0, oc1);
-    // T=0 is also different from the pre-T derivation would be (same key space, new input).
-    Hash256 oc2 = outContext(ih, kemCt, 1, 0xFFFFFFFFFFFFFFFFull);
+    Hash256 oc2 = legacyOutContextV1(ih, kemCt, 1, 0xFFFFFFFFFFFFFFFFull);
     EXPECT_NE(oc0, oc2);
     EXPECT_NE(oc1, oc2);
 }
 
+TEST(PqDerive, OutContextV2DiffersFromLegacy) {
+    // Same (inputsHash, kemCt, outputIndex) — different domain tag must still
+    // produce a different hash, so a v2 context can never collide with a
+    // legacy T=0 context.
+    Hash256 ih = inputsHash(fixedInputs());
+    KemCiphertext kemCt = pat<1088>(7, 3);
+    EXPECT_NE(outContext(ih, kemCt, 1), legacyOutContextV1(ih, kemCt, 1, 0));
+}
+
 TEST(PqDerive, AeadKey) {
     Hash256 ih = inputsHash(fixedInputs());
-    Hash256 oc = outContext(ih, pat<1088>(7, 3), 1);  // T=0 default
+    Hash256 oc = outContext(ih, pat<1088>(7, 3), 1);  // v2
+    KemShared ss = pat<32>(1, 0);
+    EXPECT_EQ(to_hex(deriveAeadKey(ss, oc)),
+              "2bd2b59ab199533add5d1d65b305ebb5409221ef2634259d34af6b43d4f84cf1");
+}
+
+TEST(PqDerive, LegacyAeadKey) {
+    // Cross-check against the published legacy PqDerive KAT (out_context above).
+    Hash256 ih = inputsHash(fixedInputs());
+    Hash256 oc = legacyOutContextV1(ih, pat<1088>(7, 3), 1, 0);
     KemShared ss = pat<32>(1, 0);
     EXPECT_EQ(to_hex(deriveAeadKey(ss, oc)),
               "933dac581886ce415e06756358cf6fc60e6c9f2f8bd9574e25e2af912171f680");

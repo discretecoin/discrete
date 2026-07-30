@@ -63,8 +63,20 @@ Hash256 inputsHash(const std::vector<InputRef>& inputs) noexcept {
 
 Hash256 outContext(const Hash256& inputsHash,
                    const KemCiphertext& kemCt,
-                   uint32_t outputIndex,
-                   uint64_t subaddrIndexT) noexcept {
+                   uint32_t outputIndex) noexcept {
+  std::vector<uint8_t> buf;
+  buf.reserve(sizeof(kDomainOutContextV2) + 32 + kemCt.size() + 4);
+  appendDomain(buf, kDomainOutContextV2);
+  appendBytes(buf, inputsHash.data(), inputsHash.size());
+  appendBytes(buf, kemCt.data(), kemCt.size());
+  appendLe32(buf, outputIndex);
+  return sha3_256(buf.data(), buf.size());
+}
+
+Hash256 legacyOutContextV1(const Hash256& inputsHash,
+                           const KemCiphertext& kemCt,
+                           uint32_t outputIndex,
+                           uint64_t subaddrIndexT) noexcept {
   std::vector<uint8_t> buf;
   buf.reserve(sizeof(kDomainOutContext) + 32 + kemCt.size() + 4 + 8);
   appendDomain(buf, kDomainOutContext);

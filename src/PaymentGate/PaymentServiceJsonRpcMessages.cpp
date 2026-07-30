@@ -231,6 +231,13 @@ void ListPqDepositAddresses::Response::serialize(CryptoNote::ISerializer& serial
   serializer(indices, "indices");
 }
 
+void EnableLegacyDepositRescan::Request::serialize(CryptoNote::ISerializer& serializer) {
+  serializer(maxT, "maxT");
+}
+
+void EnableLegacyDepositRescan::Response::serialize(CryptoNote::ISerializer& /*serializer*/) {
+}
+
 void GetBlockHashes::Request::serialize(CryptoNote::ISerializer& serializer) {
   bool r = serializer(firstBlockIndex, "firstBlockIndex");
   r &= serializer(blockCount, "blockCount");

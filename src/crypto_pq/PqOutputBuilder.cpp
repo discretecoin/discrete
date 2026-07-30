@@ -56,15 +56,17 @@ PqBuiltOutput buildPqOutput(const KemCiphertext& kemCt,
   out.kemCt = kemCt;
   out.rho = rho;
 
-  out.outContext = outContext(inputsHash, kemCt, outputIndex, subaddrIndexT);
+  out.outContext = outContext(inputsHash, kemCt, outputIndex);
 
   Hash256 aeadKey = deriveAeadKey(ss, out.outContext);
   AeadNonce nonce{};  // 12 zero bytes — safe, aead key is unique per output
   std::array<uint8_t, 40> aad = makeAad(out.outContext, amount);
 
-  // Plaintext: rho (32 bytes) || LE64(T) (8 bytes) = 40 bytes.
-  // T is also bound into outContext (via the key), so a tampered T
-  // in the payload cannot be re-encrypted to pass the AEAD tag check.
+  // Plaintext: rho (32 bytes) || LE64(T) (8 bytes) = 40 bytes. Unlike v1, T is
+  // NOT bound into outContext (via the key) anymore — it travels only here,
+  // inside the AEAD-protected payload, so a tampered T still breaks the tag
+  // (the whole 40-byte plaintext is authenticated) but the receiver no longer
+  // needs to know T in advance to decrypt.
   std::array<uint8_t, 40> plaintext{};
   std::memcpy(plaintext.data(), rho.data(), 32);
   for (int i = 0; i < 8; ++i)
@@ -95,16 +97,18 @@ PqBuiltOutput buildPqOutput(const KemPublicKey& recipientViewPub,
       inputsHash, outputIndex, amount, rho, subaddrIndexT);
 
   // Sender self-check is exactly the receiver scan predicate after shared-secret
-  // recovery: out_context/T, amount-bound AEAD, rho, and spend commitment.
+  // recovery: out_context, amount-bound AEAD, rho, and spend commitment. T is no
+  // longer an input to that predicate (it's read back from the payload), so
+  // confirm it round-tripped to the value we actually encoded.
   PqScanOutput scan;
   scan.outputIndex = outputIndex;
   scan.amount = amount;
   scan.kemCt = output.kemCt;
   scan.encPayload = output.encPayload;
   scan.spendCommit = output.spendCommit;
-  if (!scanPqOutputWithSharedSecret(
-          encapsulation.second, recipientSpendPub, inputsHash, scan,
-          subaddrIndexT)) {
+  auto selfCheck = scanPqOutputWithSharedSecret(
+      encapsulation.second, recipientSpendPub, inputsHash, scan);
+  if (!selfCheck || selfCheck->subaddrIndexT != subaddrIndexT) {
     throw std::runtime_error("buildPqOutput: sender self-check failed");
   }
   return output;

@@ -185,18 +185,24 @@ bool WalletLedger::processTransaction(const TransactionPrefix& tx, const Crypto:
     uint32_t depositIndex = PQ_PRIMARY_DEPOSIT;
 
     if (m_depositScheme == PqDepositScheme::SingleKeyIndex) {
-      // One key pair; deposits are distinguished by the subaddress index T.
-      // T=0 is the wallet's own address (and deposit #0); try every reserved T.
-      // scanPqOutputTWindow decapsulates once; each T trial is a cheap SHA3+AEAD.
-      uint32_t maxT = std::max(m_depositCount, 1u);
-      owned = CryptoPQ::scanPqOutputTWindow(m_scanKeys, ih, so, maxT);
+      // One key pair; deposits are distinguished by the subaddress index T,
+      // which outContext-v2 reads directly out of the decrypted payload — no
+      // enumeration over issued deposit indices needed (see PqScan.h). T=0 is
+      // the wallet's own primary address (and deposit #0).
+      owned = CryptoPQ::scanPqOutput(m_scanKeys, ih, so);
+      if (!owned && m_legacyTWindowMaxT > 0) {
+        // Manual recovery fallback only (off by default): in case an
+        // unupgraded sender ever created a legacy nonzero-T output that the
+        // fast path above can't see (legacy fallback there only tries T=0).
+        owned = CryptoPQ::scanPqOutputLegacyTWindow(m_scanKeys, ih, so, m_legacyTWindowMaxT);
+      }
       if (owned) {
         depositIndex = static_cast<uint32_t>(owned->subaddrIndexT);
       }
     } else {
       // AggregatedMultikey: the wallet's own primary address (T=0), then the
       // shared-view-key deposit family routed by deposit spend key.
-      owned = CryptoPQ::scanPqOutput(m_scanKeys, ih, so, 0);
+      owned = CryptoPQ::scanPqOutput(m_scanKeys, ih, so);
       if (!owned && m_depositCount > 0) {
         ensureDepositKeys(m_depositCount);
         auto agg = m_depositSpendPubs.empty()

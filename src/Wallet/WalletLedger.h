@@ -103,6 +103,19 @@ public:
   // deposit count grows.
   void setDepositConfig(PqDepositScheme scheme, uint32_t depositCount);
 
+  // MANUAL RECOVERY KNOB — OFF by default (maxT=0), and normal scanning never
+  // pays for it. outContext-v2 makes SingleKeyIndex scanning O(1) regardless
+  // of how many deposit indices were issued, but consensus never validated
+  // the old per-output context either, so nothing stops an unupgraded or
+  // hand-rolled sender from still creating a legacy (pre-v2) output at a
+  // nonzero T. Setting maxT > 0 makes processTransaction additionally brute-
+  // force the legacy derivation across T in [0, maxT) whenever the fast path
+  // misses, so an operator who suspects a deposit was sent by an old client
+  // can turn this on and trigger a rescan to find it. Most relevant to
+  // walletd, the exchange-facing surface that issues these addresses.
+  void setLegacyTWindowRescan(uint32_t maxT) { m_legacyTWindowMaxT = maxT; }
+  uint32_t legacyTWindowRescanMaxT() const { return m_legacyTWindowMaxT; }
+
   // Total of unspent owned outputs (all deposits + primary; confirmed + pending).
   uint64_t balance() const;
 
@@ -183,6 +196,7 @@ private:
 
   PqDepositScheme m_depositScheme = PqDepositScheme::AggregatedMultikey;
   uint32_t        m_depositCount = 0;
+  uint32_t        m_legacyTWindowMaxT = 0;  // manual recovery knob; see setLegacyTWindowRescan
   // Cached deposit spend pubs (AggregatedMultikey); index == deposit index.
   std::vector<CryptoPQ::DsaPublicKey> m_depositSpendPubs;
 
