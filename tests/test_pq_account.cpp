@@ -127,6 +127,32 @@ TEST(PqAcctReg, ReorgRollbackAllowsReregister) {
     EXPECT_EQ(ti, 3u);
 }
 
+TEST(PqAcctReg, CountTracksCanonicalEntries) {
+    TempDb t;
+
+    Crypto::Hash a = hashPat(3, 1);
+    Crypto::Hash b = hashPat(5, 2);
+
+    uint64_t count = 99;
+    ASSERT_TRUE(t.db.getPqAccountRegistrationsCount(count));
+    EXPECT_EQ(count, 0u);
+
+    t.db.beginWriteTxn();
+    ASSERT_TRUE(t.db.putPqAcctReg(a, 100, 1));
+    ASSERT_TRUE(t.db.putPqAcctReg(b, 101, 2));
+    t.db.commitTxn();
+
+    ASSERT_TRUE(t.db.getPqAccountRegistrationsCount(count));
+    EXPECT_EQ(count, 2u);
+
+    t.db.beginWriteTxn();
+    ASSERT_TRUE(t.db.removePqAcctReg(a));
+    t.db.commitTxn();
+
+    ASSERT_TRUE(t.db.getPqAccountRegistrationsCount(count));
+    EXPECT_EQ(count, 1u);
+}
+
 // --- Account-number (H-I-A-C) rendering: PQ REUSES CryptoNote::AccountNumber ---
 // The number is (blockHeight, txIndex) -> "H-I-A-C", where A is a 4-char Crockford
 // fingerprint of the account's keys (the reorg failsafe) and C is a Crockford Luhn
