@@ -160,6 +160,7 @@ public:
   bool getPqAcctReg(const Crypto::Hash& accountId, uint32_t& height,
                     uint32_t& txIndex) const;
   bool removePqAcctReg(const Crypto::Hash& accountId);
+  bool getPqAccountRegistrationsCount(uint64_t& count) const;
 
   // ── tx_indices ────────────────────────────────────────────────────────────
   bool putTxIndex(const Crypto::Hash& txHash, uint32_t block, uint16_t txSlot);
@@ -185,20 +186,6 @@ public:
   bool putGeneratedTxCount(uint32_t height, uint64_t count);
   bool getGeneratedTxCount(uint32_t height, uint64_t& count) const;
   bool removeGeneratedTxCount(uint32_t height);
-
-  // ── account_registrations ───────────────────────────────────────────────
-  // Key: uint64_t packed as blockHeight << 32 | txIndex (native byte order)
-  // Value: 64 bytes — spend pubkey (32) || view pubkey (32)
-  bool putAccountRegistration(uint32_t blockHeight, uint32_t txIndex,
-                              const uint8_t* spendKey, const uint8_t* viewKey);
-  bool getAccountRegistration(uint32_t blockHeight, uint32_t txIndex,
-                              uint8_t* spendKey, uint8_t* viewKey) const;
-  bool removeAccountRegistration(uint32_t blockHeight, uint32_t txIndex);
-
-  // Reverse lookup: find the first (canonical) registration matching given spend+view keys.
-  bool findAccountRegistrationByKeys(const uint8_t* spendKey, const uint8_t* viewKey,
-                                     uint32_t& blockHeight, uint32_t& txIndex) const;
-  bool getCanonicalAccountRegistrationsCount(uint64_t& count) const;
 
   // ── Resize when map is full ───────────────────────────────────────────────
   // Call this when no write txn is active, then re-begin the txn.
@@ -250,7 +237,6 @@ private:
   MDB_dbi m_dbiPaymentIdIdx;
   MDB_dbi m_dbiTimestampIdx;
   MDB_dbi m_dbiGenTxIdx;
-  MDB_dbi m_dbiAccountRegistrations;
 
   // RAII guard for read transactions.  If a write txn is active the guard
   // borrows it (no cleanup); otherwise it opens a temporary read-only txn

@@ -740,6 +740,100 @@ bool runStaleRegTemplate() {
   return ok;
 }
 
+// registered_account_numbers_count (RPC getinfo field) is served by
+// Core::getCanonicalAccountRegistrationsCount(), which is a thin pass-through to
+// Blockchain::getCanonicalAccountRegistrationsCount() -> pq_acct_reg's mdb_stat
+// count. This drives that exact call path through a live Core: the count must
+// reflect a freshly mined registration immediately, and must drop immediately
+// (no cache lag) when the block carrying it is rolled back — the same
+// popTransaction() path a real reorg takes.
+bool runAccountRegCountRollback() {
+  using namespace CryptoNote;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+
+  const Currency currency = CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(11).upgradeHeightV6(12)
+      .freeRegPowTarget(UINT64_MAX)
+      .currency();
+
+  std::filesystem::path dataDir("pq_acctreg_count_test_data");
+  std::error_code ec;
+  std::filesystem::remove_all(dataDir, ec);
+  std::filesystem::create_directories(dataDir, ec);
+
+  System::Dispatcher dispatcher;
+  Core core(currency, nullptr, logger, dispatcher);
+  CoreConfig coreConfig; coreConfig.configFolder = dataDir.string();
+  MinerConfig minerConfig;
+  if (!expect(core.init(coreConfig, minerConfig, false), "acctreg-count: core.init")) return false;
+
+  test_generator gen(currency);
+  gen.setBlockchain(&core.get_blockchain_storage());
+  AccountBase miner; miner.generate();
+
+  Crypto::Hash genesisHash = core.getBlockIdByHeight(0);
+  Block genesis;
+  if (!expect(core.getBlockByHash(genesisHash, genesis), "acctreg-count: load genesis")) {
+    core.deinit(); return false;
+  }
+  std::vector<size_t> emptySizes;
+  gen.addBlock(genesis, 0, 0, emptySizes, 0);
+
+  uint64_t ts = static_cast<uint64_t>(std::time(nullptr)) - 24 * 60 * 60;
+  const uint64_t step = currency.difficultyTarget() * 10;
+  for (int i = 0; i < 13; ++i) {
+    if (!expect(mineBlock(core, currency, gen, miner, ts), "acctreg-count: mine " + std::to_string(i + 1))) {
+      core.deinit(); std::filesystem::remove_all(dataDir, ec); return false;
+    }
+    ts += step;
+  }
+
+  bool ok = true;
+  uint64_t count = 999;
+  ok &= expect(core.getCanonicalAccountRegistrationsCount(count),
+               "acctreg-count: initial count query (getinfo path)");
+  ok &= expect(count == 0, "acctreg-count: no registrations before any tx");
+
+  const uint32_t heightBeforeReg = core.getCurrentBlockchainHeight();
+  const Crypto::Hash refHash = core.get_tail_id();
+
+  Transaction reg = makeFastFreeRegTx(refHash, 77);
+  Crypto::Hash txHash = getObjectHash(reg);
+  BinaryArray blob = toBinaryArray(reg);
+  tx_verification_context tvc{};
+  core.handleIncomingTransaction(reg, txHash, blob.size(), tvc, false,
+                                 core.getCurrentBlockchainHeight());
+  ok &= expect(tvc.m_added_to_pool && !tvc.m_verification_failed,
+               "acctreg-count: registration accepted into pool");
+
+  std::list<Transaction> regTxs = {reg};
+  ok &= expect(mineBlockWithTxs(core, currency, gen, miner, ts, regTxs),
+               "acctreg-count: block carrying registration accepted");
+  ts += step;
+
+  ok &= expect(core.getCanonicalAccountRegistrationsCount(count),
+               "acctreg-count: count query after registration (getinfo path)");
+  ok &= expect(count == 1,
+               "acctreg-count: registered_account_numbers_count reflects the new registration");
+
+  // Reorg rollback: pop the block carrying the registration via the same
+  // popTransaction() path a real reorg takes. The count must drop immediately.
+  core.get_blockchain_storage().rollbackBlockchainTo(heightBeforeReg - 1);
+  ok &= expect(core.getCurrentBlockchainHeight() == heightBeforeReg,
+               "acctreg-count: chain rolled back to height before the registration block");
+
+  ok &= expect(core.getCanonicalAccountRegistrationsCount(count),
+               "acctreg-count: count query after rollback (getinfo path)");
+  ok &= expect(count == 0,
+               "acctreg-count: count decreases immediately after reorg rollback");
+
+  core.deinit();
+  std::filesystem::remove_all(dataDir, ec);
+  return ok;
+}
+
 // Emission curve sanity check + coinbase maturity boundary.
 // Uses minedMoneyUnlockWindow=3 so the first PQ coinbase (block 6) matures at
 // height 9, while v6 activates at height 6. This lets us confirm a spend is
@@ -1094,6 +1188,10 @@ int main() {
   }
   if (!runStaleRegTemplate()) {
     std::cerr << "[FAIL] PQ stale account-registration block-template test" << std::endl;
+    return 1;
+  }
+  if (!runAccountRegCountRollback()) {
+    std::cerr << "[FAIL] PQ registered_account_numbers_count rollback test" << std::endl;
     return 1;
   }
   if (!runEmission()) {

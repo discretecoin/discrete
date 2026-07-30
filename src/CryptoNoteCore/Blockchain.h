@@ -19,7 +19,6 @@
 #pragma once
 
 #include <atomic>
-#include <chrono>
 #include <unordered_map>
 #include <parallel_hashmap/phmap.h>
 
@@ -257,8 +256,6 @@ namespace CryptoNote {
                            Difficulty currentDiffic, Crypto::Hash& proofOfWork);
 
   private:
-    void invalidateAccountRegistrationsCountCache();
-
     struct TransactionEntry {
       Transaction tx;
       std::vector<uint32_t> m_global_output_indexes;
@@ -325,10 +322,6 @@ namespace CryptoNote {
     UpgradeDetector m_upgradeDetectorV6;
     UpgradeDetector m_upgradeDetectorV7;
     UpgradeDetector m_upgradeDetectorV8;
-
-    uint64_t m_cachedCanonicalAccountRegistrationsCount = 0;
-    std::chrono::steady_clock::time_point m_accountRegistrationsCountCacheTime;
-    static constexpr uint64_t ACCOUNT_REGISTRATIONS_COUNT_CACHE_SECONDS = 60 * 60;
 
     // ── Batch-commit state (Monero-style) ──────────────────────────────────
     // Blocks written into the currently-open batch write txn (0 = no open txn).
