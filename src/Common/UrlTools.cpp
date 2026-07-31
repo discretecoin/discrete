@@ -17,10 +17,11 @@
 // along with Karbo. If not, see <http://www.gnu.org/licenses/>.
 
 
+#include <cstring>
 #include <stdint.h>
 #include <stdio.h>
+#include <regex>
 #include <string>
-#include <boost/regex.hpp>
 #include "CryptoNoteConfig.h"
 
 
@@ -38,9 +39,9 @@ bool parseUrlAddress(const std::string& url, std::string& host, uint16_t& port, 
   port = 0;
   ssl = false;
 
-  boost::regex uri_exp("^(https://|http://|)(([a-z|A-Z|0-9]|[a-z|A-Z|0-9]-[a-z|A-Z|0-9]|[a-z|A-Z|0-9]-[a-z|A-Z|0-9]\\.|[a-z|A-Z|0-9]\\.)+)(:[0-9]{1,5}|)(/([\\w|-]+/)+|/|)$");
-  boost::cmatch reg_res;
-  if (boost::regex_match(url.c_str(), reg_res, uri_exp)) {
+  std::regex uri_exp("^(https://|http://|)(([a-z|A-Z|0-9]|[a-z|A-Z|0-9]-[a-z|A-Z|0-9]|[a-z|A-Z|0-9]-[a-z|A-Z|0-9]\\.|[a-z|A-Z|0-9]\\.)+)(:[0-9]{1,5}|)(/([\\w|-]+/)+|/|)$");
+  std::cmatch reg_res;
+  if (std::regex_match(url.c_str(), reg_res, uri_exp)) {
     if (reg_res.length(4) > 0) {
       int port_src = 0;
       if (sscanf(reg_res.str(4).c_str() + 1, "%d", &port_src) == 1) {
