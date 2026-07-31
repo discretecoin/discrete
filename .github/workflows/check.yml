@@ -129,7 +129,6 @@ jobs:
   build-mingw:
     name: MinGW
     runs-on: windows-2022
-    if: false
 
     defaults:
       run:
