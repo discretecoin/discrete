@@ -1243,6 +1243,26 @@ bool WalletGreen::pqResolveAddressBucket(const std::string& address, uint32_t& d
     depositIndex = PQ_PRIMARY_DEPOSIT;
     return true;
   }
+  // SingleKeyIndex: every deposit shares this wallet's own spend key, and T
+  // travels in the string itself, so it resolves entirely locally — no node
+  // call, no dependence on how many deposit indices this container has
+  // locally reserved. The 20-bit fingerprint match is what proves the string
+  // names OUR account (same trust level as the existing reorg failsafe); a
+  // fingerprint mismatch or bad checksum falls through to "not ours".  This
+  // keeps the balance/index RPC surface consistent with scanning: outContext-v2
+  // already finds funds at any T without enumerating issued indices, so this
+  // is what makes that guarantee actually hold for callers that address a
+  // deposit by its H-I-A-T-C string rather than an already-known local index.
+  if (m_pqDepositScheme == PqDepositScheme::SingleKeyIndex) {
+    CryptoNote::AccountNumber parsed{};
+    uint32_t subaddrIndex = 0;
+    uint32_t fingerprint = 0;
+    if (CryptoNote::AccountNumber::fromStringWithIndex(address, parsed, subaddrIndex, fingerprint) &&
+        fingerprint == pqAccountFingerprint()) {
+      depositIndex = subaddrIndex;
+      return true;
+    }
+  }
   for (uint32_t i = 0; i < m_pqDepositCount; ++i) {
     if (address == getAddress(static_cast<size_t>(i) + 1)) {
       depositIndex = i;
