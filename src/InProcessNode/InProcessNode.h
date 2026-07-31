@@ -177,7 +177,7 @@ private:
 
   boost::asio::io_service ioService;
   std::unique_ptr<std::thread> workerThread;
-  std::unique_ptr<boost::asio::io_service::work> work;
+  std::unique_ptr<boost::asio::executor_work_guard<boost::asio::io_service::executor_type>> work;
 
   BlockchainExplorerDataBuilder blockchainExplorerDataBuilder;
 
