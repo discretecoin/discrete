@@ -69,6 +69,7 @@ PaymentServiceJsonRpcServer::PaymentServiceJsonRpcServer(System::Dispatcher* sys
   handlers.emplace("getDepositScheme", jsonHandler<GetPqDepositScheme::Request, GetPqDepositScheme::Response>(std::bind(&PaymentServiceJsonRpcServer::handleGetPqDepositScheme, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("createDepositAddress", jsonHandler<CreatePqDepositAddress::Request, CreatePqDepositAddress::Response>(std::bind(&PaymentServiceJsonRpcServer::handleCreatePqDepositAddress, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("listDepositAddresses", jsonHandler<ListPqDepositAddresses::Request, ListPqDepositAddresses::Response>(std::bind(&PaymentServiceJsonRpcServer::handleListPqDepositAddresses, this, std::placeholders::_1, std::placeholders::_2)));
+  handlers.emplace("enableLegacyDepositRescan", jsonHandler<EnableLegacyDepositRescan::Request, EnableLegacyDepositRescan::Response>(std::bind(&PaymentServiceJsonRpcServer::handleEnableLegacyDepositRescan, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("validateAddress", jsonHandler<ValidateAddress::Request, ValidateAddress::Response>(std::bind(&PaymentServiceJsonRpcServer::handleValidateAddress, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("signMessage", jsonHandler<SignMessage::Request, SignMessage::Response>(std::bind(&PaymentServiceJsonRpcServer::handleSignMessage, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("verifyMessage", jsonHandler<VerifyMessage::Request, VerifyMessage::Response>(std::bind(&PaymentServiceJsonRpcServer::handleVerifyMessage, this, std::placeholders::_1, std::placeholders::_2)));
@@ -300,6 +301,10 @@ std::error_code PaymentServiceJsonRpcServer::handleGetPqDepositScheme(const GetP
 
 std::error_code PaymentServiceJsonRpcServer::handleCreatePqDepositAddress(const CreatePqDepositAddress::Request& request, CreatePqDepositAddress::Response& response) {
   return service.createPqDepositAddress(response.address, response.index);
+}
+
+std::error_code PaymentServiceJsonRpcServer::handleEnableLegacyDepositRescan(const EnableLegacyDepositRescan::Request& request, EnableLegacyDepositRescan::Response& response) {
+  return service.enableLegacyDepositRescan(request.maxT);
 }
 
 std::error_code PaymentServiceJsonRpcServer::handleListPqDepositAddresses(const ListPqDepositAddresses::Request& request, ListPqDepositAddresses::Response& response) {

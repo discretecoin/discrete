@@ -13,6 +13,7 @@
 #include "crypto_pq/PqOutputBuilder.h"
 #include "crypto_pq/PqSeed.h"
 #include "crypto_pq/PqDerive.h"
+#include "crypto_pq/PqAead.h"
 
 #include <array>
 #include <cstdint>
@@ -67,36 +68,117 @@ TEST(PqScan, RecognizesOwnOutput) {
 
     PqScanOutput o = buildScanOutput(view.first, spend.first, ih, 4, 7777, /*T=*/0);
 
-    auto owned = scanPqOutput(scanKeysFor(m), ih, o, /*T=*/0);
+    auto owned = scanPqOutput(scanKeysFor(m), ih, o);
     ASSERT_TRUE(owned.has_value());
     EXPECT_EQ(owned->outputIndex, 4u);
     EXPECT_EQ(owned->amount, 7777u);
     EXPECT_EQ(owned->subaddrIndexT, 0u);
-    EXPECT_EQ(owned->outContext, outContext(ih, o.kemCt, 4, 0));
+    EXPECT_EQ(owned->outContext, outContext(ih, o.kemCt, 4));
     // The recovered rho must reconstruct the on-chain spend_commit.
     EXPECT_EQ(spendCommit(spend.first, owned->rho), o.spendCommit);
 }
 
-TEST(PqScan, TRoundTrip) {
-    // Build with T=7, scan with T=7 -> recognized; scan with T=0 or T=1 -> silent.
+TEST(PqScan, RecognizesAnyTInOneShotNoEnumeration) {
+    // outContext-v2: T is read back from the decrypted payload, not guessed.
+    // A single scanPqOutput call (no T parameter at all) must recognize an
+    // output built at any T, including a large, non-sequential value — this
+    // is the whole point of the fix (see PqDerive.h / PqScan.h).
     SeedMaster m = pat<32>(2, 7);
     auto view = deriveViewKeys(m);
     auto spend = deriveSpendKeys(m);
     Hash256 ih = inputsHash(fixedInputs());
-    const uint64_t T = 7;
 
-    PqScanOutput o = buildScanOutput(view.first, spend.first, ih, 2, 9999, T);
+    PqScanOutput o7 = buildScanOutput(view.first, spend.first, ih, 2, 9999, /*T=*/7);
+    auto owned7 = scanPqOutput(scanKeysFor(m), ih, o7);
+    ASSERT_TRUE(owned7.has_value());
+    EXPECT_EQ(owned7->subaddrIndexT, 7u);
+    EXPECT_EQ(owned7->amount, 9999u);
 
-    auto owned = scanPqOutput(scanKeysFor(m), ih, o, T);
+    const uint64_t bigT = 0xA1B2C3D4E5F60708ull;
+    PqScanOutput oBig = buildScanOutput(view.first, spend.first, ih, 3, 1234, bigT);
+    auto ownedBig = scanPqOutput(scanKeysFor(m), ih, oBig);
+    ASSERT_TRUE(ownedBig.has_value());
+    EXPECT_EQ(ownedBig->subaddrIndexT, bigT);
+
+    // A different wallet's keys must not recognize either output.
+    SeedMaster mOther = pat<32>(9, 5);
+    EXPECT_FALSE(scanPqOutput(scanKeysFor(mOther), ih, o7).has_value());
+    EXPECT_FALSE(scanPqOutput(scanKeysFor(mOther), ih, oBig).has_value());
+}
+
+TEST(PqScan, LegacyTZeroOutputStillRecognized) {
+    // Fast-path fallback: an output built under the legacy (pre-v2) derivation
+    // at T=0 — the way every output was minted before the v2 activation —
+    // must still be recognized by the default scan path.
+    SeedMaster m = pat<32>(2, 7);
+    auto view = deriveViewKeys(m);
+    auto spend = deriveSpendKeys(m);
+    Hash256 ih = inputsHash(fixedInputs());
+
+    auto encapsulation = kem_encaps(view.first);
+    Rho rho = pat<32>(3, 9);
+    Hash256 legacyOc = legacyOutContextV1(ih, encapsulation.first, 1, /*T=*/0);
+    Hash256 aeadKey = deriveAeadKey(encapsulation.second, legacyOc);
+    AeadNonce nonce{};
+    std::array<uint8_t, 40> aad{};
+    std::memcpy(aad.data(), legacyOc.data(), 32);
+    const uint64_t amount = 555;
+    for (int i = 0; i < 8; ++i) aad[32 + i] = static_cast<uint8_t>((amount >> (8 * i)) & 0xFF);
+    std::array<uint8_t, 40> plaintext{};
+    std::memcpy(plaintext.data(), rho.data(), 32);  // T=0 -> trailing 8 bytes stay zero
+
+    PqScanOutput o;
+    o.outputIndex = 1;
+    o.amount = amount;
+    o.kemCt = encapsulation.first;
+    o.encPayload = aead_encrypt(aeadKey, nonce, aad.data(), aad.size(), plaintext.data(), plaintext.size());
+    o.spendCommit = spendCommit(spend.first, rho);
+
+    auto owned = scanPqOutput(scanKeysFor(m), ih, o);
     ASSERT_TRUE(owned.has_value());
-    EXPECT_EQ(owned->subaddrIndexT, T);
-    EXPECT_EQ(owned->amount, 9999u);
+    EXPECT_EQ(owned->subaddrIndexT, 0u);
+    EXPECT_EQ(owned->amount, amount);
+    EXPECT_EQ(spendCommit(spend.first, owned->rho), o.spendCommit);
+}
 
-    // Wrong T values must not recognize the output.
-    EXPECT_FALSE(scanPqOutput(scanKeysFor(m), ih, o, 0).has_value());
-    EXPECT_FALSE(scanPqOutput(scanKeysFor(m), ih, o, 1).has_value());
-    EXPECT_FALSE(scanPqOutput(scanKeysFor(m), ih, o, 6).has_value());
-    EXPECT_FALSE(scanPqOutput(scanKeysFor(m), ih, o, 8).has_value());
+TEST(PqScan, LegacyTWindowManualFallbackFindsNonzeroT) {
+    // The manual recovery primitive (opt-in only, never called by the default
+    // scan path): brute-forces the legacy derivation across a T window. Exists
+    // in case an unupgraded sender ever created a legacy nonzero-T output.
+    SeedMaster m = pat<32>(2, 7);
+    auto view = deriveViewKeys(m);
+    auto spend = deriveSpendKeys(m);
+    Hash256 ih = inputsHash(fixedInputs());
+
+    auto encapsulation = kem_encaps(view.first);
+    Rho rho = pat<32>(4, 2);
+    const uint64_t legacyT = 5;
+    Hash256 legacyOc = legacyOutContextV1(ih, encapsulation.first, 1, legacyT);
+    Hash256 aeadKey = deriveAeadKey(encapsulation.second, legacyOc);
+    AeadNonce nonce{};
+    std::array<uint8_t, 40> aad{};
+    std::memcpy(aad.data(), legacyOc.data(), 32);
+    const uint64_t amount = 42;
+    for (int i = 0; i < 8; ++i) aad[32 + i] = static_cast<uint8_t>((amount >> (8 * i)) & 0xFF);
+    std::array<uint8_t, 40> plaintext{};
+    std::memcpy(plaintext.data(), rho.data(), 32);
+    for (int i = 0; i < 8; ++i)
+        plaintext[32 + i] = static_cast<uint8_t>((legacyT >> (8 * i)) & 0xFF);
+
+    PqScanOutput o;
+    o.outputIndex = 1;
+    o.amount = amount;
+    o.kemCt = encapsulation.first;
+    o.encPayload = aead_encrypt(aeadKey, nonce, aad.data(), aad.size(), plaintext.data(), plaintext.size());
+    o.spendCommit = spendCommit(spend.first, rho);
+
+    // The default fast path (v2 + legacy-T0) must NOT find it.
+    EXPECT_FALSE(scanPqOutput(scanKeysFor(m), ih, o).has_value());
+
+    // The manual legacy T-window fallback does.
+    auto owned = scanPqOutputLegacyTWindow(scanKeysFor(m), ih, o, /*maxT=*/8);
+    ASSERT_TRUE(owned.has_value());
+    EXPECT_EQ(owned->subaddrIndexT, legacyT);
 }
 
 TEST(PqScan, IgnoresOthersOutput) {

@@ -43,7 +43,19 @@ namespace CryptoPQ {
 // --- Domain-separation tags (spec §6 / §8) -------------------------------
 // Bytes hashed are the string contents WITHOUT a trailing NUL.
 constexpr char kDomainInputsHash[]  = "discrete-pq-inputs-hash-v1";
+// LEGACY: the original outContext formula folded LE64(T) into the hash used
+// to derive the AEAD key, so a receiver had to enumerate candidate T values
+// to decrypt (see PqScan's old scanPqOutputTWindow). Every output minted
+// before the outContext-v2 activation used this domain, always at T=0 (no
+// nonzero-T deposit was ever issued under it). Retained ONLY so those
+// pre-activation outputs stay scannable/spendable — see legacyOutContextV1
+// below. MUST NOT be used by new senders.
 constexpr char kDomainOutContext[]  = "discrete-pq-out-context-v1";
+// CURRENT: outContext no longer depends on T. T travels only inside the
+// AEAD-encrypted payload (rho || T) and is read back after a single decrypt,
+// so scanning never needs to enumerate candidate T values — any T (sequential
+// or random) costs exactly one AEAD attempt, the same as T=0.
+constexpr char kDomainOutContextV2[] = "discrete-pq-out-context-v2";
 constexpr char kDomainAeadKey[]     = "discrete-pq-aead-key-v1";
 constexpr char kDomainSpendCommit[] = "discrete-pq-spend-commit-v1";
 constexpr char kDomainNullifier[]   = "discrete-pq-nullifier-v1";
@@ -123,12 +135,22 @@ struct UnsignedTx {
 //    Canonical input order; never re-sorted.
 Hash256 inputsHash(const std::vector<InputRef>& inputs) noexcept;
 
-// 2. outContext = SHA3-256(domain || inputsHash || kemCt || LE32(outputIndex) || LE64(T)).
-//    T = subaddress index; default 0 for single-address wallets.
+// 2. outContext = SHA3-256(domain-v2 || inputsHash || kemCt || LE32(outputIndex)).
+//    T is NOT part of the context — it lives only in the encrypted payload
+//    (see deriveAeadKey below). This is what every new output must use.
 Hash256 outContext(const Hash256& inputsHash,
                    const KemCiphertext& kemCt,
-                   uint32_t outputIndex,
-                   uint64_t subaddrIndexT = 0) noexcept;
+                   uint32_t outputIndex) noexcept;
+
+// 2legacy. legacyOutContextV1 = SHA3-256(domain-v1 || inputsHash || kemCt ||
+//    LE32(outputIndex) || LE64(T)). The original (pre-v2) formula. Retained
+//    ONLY as a receiver-side fallback so outputs minted before the v2
+//    activation (all of them at T=0) remain scannable. Never call this to
+//    build a new output.
+Hash256 legacyOutContextV1(const Hash256& inputsHash,
+                           const KemCiphertext& kemCt,
+                           uint32_t outputIndex,
+                           uint64_t subaddrIndexT) noexcept;
 
 // 3. aeadKey = HKDF-SHA3-256(IKM=ss, salt=0, info=domain || outContext, L=32).
 //    Encrypts/decrypts the per-output rho delivered to the recipient.

@@ -62,17 +62,17 @@ TEST(PqOutputBuilder, DeterministicKat) {
     PqBuiltOutput o = buildPqOutput(kemCt, ss, spendPub, ih, /*outputIndex=*/1,
                                     /*amount=*/1000000, rho, /*T=*/0);
 
-    // Cross-check against the published PqDerive KATs (same fixed inputs, T=0):
+    // Cross-check against the published PqDerive v2 KATs.
     EXPECT_EQ(to_hex(o.outContext),
-              "32cfc3d894c9c87a8d5f7ca9b0dfc69760b39f3c267b7e7cdd41c8f65492fb1b");
+              "f565b6181ad5bbdb55fb7594b23355aac1e388324fd9ced017680474a4a87ede");
     EXPECT_EQ(to_hex(o.spendCommit),
               "0efa5a91ce3a6df44730c7d0cbebbc3d3896264f6826991914bac993684a151a");
 
     // encPayload is 56 bytes (40 ct + 16 tag); pinned KAT.
     ASSERT_EQ(o.encPayload.size(), 56u);
     EXPECT_EQ(to_hex(o.encPayload),
-              "f11845aad534497826243aa9391ea7a015c921c66cb702d340afa42dc16ee68"
-              "3f6846fb6bdb5733919f342bd0983a429d40c6b54bfe7c998");
+              "e896788b3fbf1103b5be0bb4536172ac13f70e1c3e77387d0f0fe7ed7166c7b"
+              "18ae91bad50f569d5fe5643833c4b33bf8c84cfb664d0f90c");
 }
 
 TEST(PqOutputBuilder, DeterministicReproducible) {
@@ -105,7 +105,7 @@ TEST(PqOutputBuilder, RecipientCanRecoverAndVerify) {
 
     // Recipient side:
     KemShared ss2 = kem_decaps(view.second, o.kemCt);
-    Hash256 oc2 = outContext(ih, o.kemCt, idx, T);
+    Hash256 oc2 = outContext(ih, o.kemCt, idx);
     EXPECT_EQ(oc2, o.outContext);
     Hash256 aeadKey2 = deriveAeadKey(ss2, oc2);
 
@@ -134,29 +134,30 @@ TEST(PqOutputBuilder, RecipientCanRecoverAndVerify) {
     EXPECT_EQ(spendCommit(spend.first, rhoArr), o.spendCommit);
 }
 
-// Two different T values for the same (inputsHash, kemCt, outputIndex) produce
-// different output keys and both round-trip through build->decrypt->verify.
-TEST(PqOutputBuilder, TValuesProduceDifferentKeysAndBothRoundTrip) {
-    KemCiphertext kemCt = pat<1088>(7, 3);
-    KemShared     ss    = pat<32>(1, 0);
+// outContext-v2 depends on (inputsHash, kemCt, outputIndex) only — NOT T (see
+// PqDerive.h). Two different kemCt values (as every real send produces, since
+// ML-KEM encapsulation is randomized) still give different keys and both
+// round-trip; that is where output uniqueness actually comes from now.
+TEST(PqOutputBuilder, DifferentKemCtProducesDifferentKeysAndBothRoundTrip) {
+    KemCiphertext kemCt0 = pat<1088>(7, 3);
+    KemCiphertext kemCt1 = pat<1088>(2, 9);
+    KemShared     ss0    = pat<32>(1, 0);
+    KemShared     ss1    = pat<32>(6, 4);
     DsaPublicKey  spendPub = pat<1952>(5, 1);
     Hash256       ih    = inputsHash(fixedInputs());
     Rho           rho   = pat<32>(3, 9);
     const uint64_t amount = 5000;
 
-    PqBuiltOutput o0 = buildPqOutput(kemCt, ss, spendPub, ih, 0, amount, rho, /*T=*/0);
-    PqBuiltOutput o1 = buildPqOutput(kemCt, ss, spendPub, ih, 0, amount, rho, /*T=*/1);
+    PqBuiltOutput o0 = buildPqOutput(kemCt0, ss0, spendPub, ih, 0, amount, rho, /*T=*/0);
+    PqBuiltOutput o1 = buildPqOutput(kemCt1, ss1, spendPub, ih, 0, amount, rho, /*T=*/1);
 
-    // Different T -> different outContext -> different AEAD key -> different ciphertext.
     EXPECT_NE(o0.outContext, o1.outContext);
     EXPECT_NE(o0.encPayload, o1.encPayload);
-
     // spendCommit is T-independent (only rho + spendPub).
     EXPECT_EQ(o0.spendCommit, o1.spendCommit);
 
-    // Both decrypt correctly with their respective T.
-    AeadNonce nonce{};
-    auto decryptWith = [&](const PqBuiltOutput& o, uint64_t T) {
+    auto decryptWith = [&](const PqBuiltOutput& o, const KemShared& ss, uint64_t T) {
+        AeadNonce nonce{};
         Hash256 aeadKey = deriveAeadKey(ss, o.outContext);
         std::array<uint8_t, 40> aad{};
         std::memcpy(aad.data(), o.outContext.data(), 32);
@@ -172,21 +173,49 @@ TEST(PqOutputBuilder, TValuesProduceDifferentKeysAndBothRoundTrip) {
             recovT |= static_cast<uint64_t>((*pt)[32 + i]) << (8 * i);
         EXPECT_EQ(recovT, T);
     };
-    decryptWith(o0, 0);
-    decryptWith(o1, 1);
+    decryptWith(o0, ss0, 0);
+    decryptWith(o1, ss1, 1);
+}
 
-    // Cross-decryption must fail (wrong outContext -> wrong key -> AEAD tag fail).
-    {
-        Hash256 aeadKeyForO1 = deriveAeadKey(ss, o1.outContext);
-        std::array<uint8_t, 40> aad{};
-        std::memcpy(aad.data(), o1.outContext.data(), 32);
-        for (int i = 0; i < 8; ++i)
-            aad[32 + i] = static_cast<uint8_t>((amount >> (8 * i)) & 0xFF);
-        // Try to decrypt o0's payload with T=1's key.
-        auto bad = aead_decrypt(aeadKeyForO1, nonce, aad.data(), aad.size(),
-                                o0.encPayload.data(), o0.encPayload.size());
-        EXPECT_FALSE(bad.has_value());
-    }
+// outContext-v2 is T-independent: the SAME (kemCt, outputIndex) yields the
+// SAME context regardless of T, so T changes only the AEAD plaintext (and
+// therefore the ciphertext) — never the key. Both still round-trip and each
+// reports its own recovered T.
+TEST(PqOutputBuilder, SameContextDifferentTChangesOnlyPayload) {
+    KemCiphertext kemCt = pat<1088>(7, 3);
+    KemShared     ss    = pat<32>(1, 0);
+    DsaPublicKey  spendPub = pat<1952>(5, 1);
+    Hash256       ih    = inputsHash(fixedInputs());
+    Rho           rho   = pat<32>(3, 9);
+    const uint64_t amount = 5000;
+
+    PqBuiltOutput o0 = buildPqOutput(kemCt, ss, spendPub, ih, 0, amount, rho, /*T=*/0);
+    PqBuiltOutput o1 = buildPqOutput(kemCt, ss, spendPub, ih, 0, amount, rho, /*T=*/1);
+
+    EXPECT_EQ(o0.outContext, o1.outContext);  // v2: context does not depend on T
+    EXPECT_NE(o0.encPayload, o1.encPayload);  // different plaintext -> different ciphertext
+    EXPECT_EQ(o0.spendCommit, o1.spendCommit);
+
+    AeadNonce nonce{};
+    Hash256 aeadKey = deriveAeadKey(ss, o0.outContext);
+    std::array<uint8_t, 40> aad{};
+    std::memcpy(aad.data(), o0.outContext.data(), 32);
+    for (int i = 0; i < 8; ++i)
+        aad[32 + i] = static_cast<uint8_t>((amount >> (8 * i)) & 0xFF);
+
+    auto pt0 = aead_decrypt(aeadKey, nonce, aad.data(), aad.size(),
+                            o0.encPayload.data(), o0.encPayload.size());
+    auto pt1 = aead_decrypt(aeadKey, nonce, aad.data(), aad.size(),
+                            o1.encPayload.data(), o1.encPayload.size());
+    ASSERT_TRUE(pt0.has_value());
+    ASSERT_TRUE(pt1.has_value());
+    auto recoverT = [](const std::vector<uint8_t>& pt) {
+        uint64_t t = 0;
+        for (int i = 0; i < 8; ++i) t |= static_cast<uint64_t>(pt[32 + i]) << (8 * i);
+        return t;
+    };
+    EXPECT_EQ(recoverT(*pt0), 0u);
+    EXPECT_EQ(recoverT(*pt1), 1u);
 }
 
 // A tampered on-chain amount makes the recipient's AEAD decrypt fail.
@@ -230,8 +259,9 @@ TEST(PqOutputBuilder, StandardEncapsulationPathFullScans) {
     candidate.encPayload = first.encPayload;
     candidate.spendCommit = first.spendCommit;
     const auto shared = kem_decaps(view.second, first.kemCt);
-    EXPECT_TRUE(scanPqOutputWithSharedSecret(
-        shared, spend.first, ih, candidate, 9).has_value());
+    auto owned = scanPqOutputWithSharedSecret(shared, spend.first, ih, candidate);
+    ASSERT_TRUE(owned.has_value());
+    EXPECT_EQ(owned->subaddrIndexT, 9u);
 }
 
 int main(int argc, char** argv) {

@@ -64,9 +64,13 @@ TEST(PqDomains, DeriveDomainStrings) {
     EXPECT_STREQ(kDomainInputsHash,  "discrete-pq-inputs-hash-v1");
     EXPECT_EQ(std::strlen(kDomainInputsHash), 26u);
 
-    // kDomainOutContext — used in outContext()
+    // kDomainOutContext — LEGACY, used only by legacyOutContextV1() now
     EXPECT_STREQ(kDomainOutContext,  "discrete-pq-out-context-v1");
     EXPECT_EQ(std::strlen(kDomainOutContext), 26u);
+
+    // kDomainOutContextV2 — used in outContext(); current, T-independent
+    EXPECT_STREQ(kDomainOutContextV2, "discrete-pq-out-context-v2");
+    EXPECT_EQ(std::strlen(kDomainOutContextV2), 26u);
 
     // kDomainAeadKey — used in deriveAeadKey()
     EXPECT_STREQ(kDomainAeadKey,     "discrete-pq-aead-key-v1");
@@ -137,7 +141,7 @@ TEST(PqDomains, ReservedCtMaskNotReused) {
     EXPECT_EQ(std::strlen(kReservedCtMask), 22u);
 
     const char* phase1[] = {
-        kDomainInputsHash, kDomainOutContext, kDomainAeadKey,
+        kDomainInputsHash, kDomainOutContext, kDomainOutContextV2, kDomainAeadKey,
         kDomainSpendCommit, kDomainNullifier, kDomainTxSign,
         kDomainCoinbaseRho, kDomainViewRoot, kDomainSpendRoot,
         FREE_REG_POW_DOMAIN, DISCRETE_POWER_HEADER_DOMAIN,
@@ -161,7 +165,7 @@ TEST(PqDomains, ReservedShieldedSerialNotReused) {
     EXPECT_EQ(std::strlen(kReservedShieldedSerial), 21u);
 
     const char* phase12[] = {
-        kDomainInputsHash, kDomainOutContext, kDomainAeadKey,
+        kDomainInputsHash, kDomainOutContext, kDomainOutContextV2, kDomainAeadKey,
         kDomainSpendCommit, kDomainNullifier, kDomainTxSign,
         kDomainCoinbaseRho, kDomainViewRoot, kDomainSpendRoot,
         kDomainDepositSpendRoot, FREE_REG_POW_DOMAIN,

@@ -77,33 +77,37 @@ std::optional<PqOwnedOutput> scanPqOutputWithSharedSecret(
     const KemShared& sharedSecret,
     const DsaPublicKey& recipientSpendPub,
     const Hash256& inputsHash,
-    const PqScanOutput& out,
-    uint64_t subaddrIndexT = 0);
+    const PqScanOutput& out);
 
-// Try to recognize ONE output for the given subaddress index T (default 0 for
-// single-address wallets). Returns the owned record on success, nullopt
+// Try to recognize ONE output. Tries outContext-v2 first (T is read back from
+// the decrypted payload, not enumerated), then falls back once to the legacy
+// pre-v2 derivation at T=0 (every output minted before the v2 activation used
+// T=0 unconditionally). Returns the owned record on success, nullopt
 // otherwise (not ours, OR tampered — indistinguishable by design).
 std::optional<PqOwnedOutput> scanPqOutput(const PqScanKeys& keys,
                                           const Hash256& inputsHash,
-                                          const PqScanOutput& out,
-                                          uint64_t subaddrIndexT = 0);
+                                          const PqScanOutput& out);
 
-// Scan every output of one transaction for the given T.
+// Scan every output of one transaction.
 std::vector<PqOwnedOutput> scanPqOutputs(const PqScanKeys& keys,
                                          const Hash256& inputsHash,
-                                         const std::vector<PqScanOutput>& outputs,
-                                         uint64_t subaddrIndexT = 0);
+                                         const std::vector<PqScanOutput>& outputs);
 
-// Try to recognize ONE output for any subaddress index T in [0, maxT).
-// T is bound into the AEAD key derivation, so the receiver has to enumerate
-// candidate indices; this decapsulates ONCE and each T trial costs only a
-// SHA3 (outContext) + one AEAD attempt. Returns the owned record with
-// subaddrIndexT = the matching T, or nullopt. Same garbage-output discipline
-// as scanPqOutput.
-std::optional<PqOwnedOutput> scanPqOutputTWindow(const PqScanKeys& keys,
-                                                 const Hash256& inputsHash,
-                                                 const PqScanOutput& out,
-                                                 uint64_t maxT);
+// MANUAL RECOVERY FALLBACK ONLY — not used by the default scan path above and
+// not called automatically. Brute-forces the LEGACY (pre-outContext-v2)
+// derivation across candidate T values in [0, maxT), the way every receiver
+// had to before the v2 fix. Consensus never validated outContext, so nothing
+// stops an unupgraded or hand-rolled sender from still creating a legacy
+// nonzero-T output after the v2 activation (none has ever been observed on
+// Discrete's chain, but it costs little to keep the recovery path available).
+// Operators — walletd, most likely, since it is the exchange-facing surface
+// that issues SingleKeyIndex deposit addresses — can invoke this explicitly
+// (paired with a rescan) if a deposit is ever suspected missing. Decapsulates
+// once; each T trial costs one SHA3 + one AEAD attempt.
+std::optional<PqOwnedOutput> scanPqOutputLegacyTWindow(const PqScanKeys& keys,
+                                                       const Hash256& inputsHash,
+                                                       const PqScanOutput& out,
+                                                       uint64_t maxT);
 
 // --- Aggregated scanning (exchange / service wallets) ----------------------
 // A service issues many deposit addresses sharing ONE ML-KEM view key but with

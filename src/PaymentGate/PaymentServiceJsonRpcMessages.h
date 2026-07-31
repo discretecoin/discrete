@@ -355,6 +355,27 @@ struct ListPqDepositAddresses {
   };
 };
 
+// MANUAL RECOVERY KNOB (SingleKeyIndex only) — OFF by default. outContext-v2
+// scanning is O(1) per output regardless of how many deposit indices were
+// issued, but consensus never validated the old per-output context either,
+// so nothing stops an unupgraded or hand-rolled sender from still creating a
+// legacy (pre-v2) output at a nonzero T (none has ever been observed on
+// Discrete's chain). maxT=0 disables; maxT>0 additionally brute-forces the
+// legacy derivation across T in [0, maxT) whenever the fast path misses.
+// This call only flips the runtime flag — pair it with `reset` (a scanHeight
+// rescan) to actually re-examine history for a suspected legacy deposit.
+struct EnableLegacyDepositRescan {
+  struct Request {
+    uint32_t maxT = 0;
+
+    void serialize(CryptoNote::ISerializer& serializer);
+  };
+
+  struct Response {
+    void serialize(CryptoNote::ISerializer& serializer);
+  };
+};
+
 struct GetBlockHashes {
   struct Request {
     uint32_t firstBlockIndex;

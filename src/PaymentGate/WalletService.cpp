@@ -1376,6 +1376,24 @@ std::error_code WalletService::getPqDepositScheme(std::string& scheme, uint32_t&
   return std::error_code();
 }
 
+std::error_code WalletService::enableLegacyDepositRescan(uint32_t maxT) {
+  try {
+    System::EventLock lk(readyEvent);
+    auto* gw = dynamic_cast<CryptoNote::WalletGreen*>(&wallet);
+    if (gw == nullptr) {
+      return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
+    }
+    gw->enableLegacyDepositRescan(maxT);
+  } catch (std::system_error& x) {
+    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while enabling legacy deposit rescan: " << x.what();
+    return x.code();
+  } catch (std::exception& e) {
+    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while enabling legacy deposit rescan: " << e.what();
+    return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
+  }
+  return std::error_code();
+}
+
 std::error_code WalletService::createPqDepositAddress(std::string& address, uint32_t& index) {
   try {
     System::EventLock lk(readyEvent);
