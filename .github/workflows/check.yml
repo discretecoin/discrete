@@ -199,7 +199,7 @@ jobs:
             -DBOOST_ROOT=/mingw64 \
             -DBoost_INCLUDE_DIR=/mingw64/include \
             -DBoost_LIBRARY_DIR=/mingw64/lib \
-            -DBoost_USE_STATIC_LIBS=ON \
+            -DBoost_USE_STATIC_LIBS=OFF \
             -DBoost_USE_STATIC_RUNTIME=OFF \
             -DBoost_USE_MULTITHREADED=ON \
             -DOQS_BUILD_ONLY_LIB=ON \
