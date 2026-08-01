@@ -34,11 +34,21 @@ struct CheckpointData {
 // re-validation (yespower + per-input ML-DSA verification) during initial sync. 
 // That fast-sync skip is intended.
 //
-// Add Discrete checkpoints here only once genuine Discrete block IDs exist
-// AND the block ID commits to the block signature (witness commitment), so that an
-// in-zone block carrying a garbage signature cannot share a pinned ID. Keep this
-// list empty until then; enforced by the checkpoints.list_is_empty test.
+// Both preconditions for pinning Discrete checkpoints are now met: genuine
+// Discrete block IDs exist, and the block ID is a witness commitment
+// (discretePowerBlockId over the hashing blob AND b.signature), so an in-zone
+// block carrying a garbage signature cannot share a pinned ID.
+//
+// Every entry MUST be a mainnet block ID read from a node synced past it and
+// confirmed against a second independent node — a wrong ID hard-stalls every
+// node that ships it, and heights below it stay in-zone with the validation
+// skip applied but no pin. Heights must be strictly ascending. Pin only heights
+// far deeper than CRYPTONOTE_FINALITY_DEPTH, and note that --rollback-to-height
+// refuses to roll back into the checkpoint zone. Well-formedness is enforced by
+// the checkpoints.list_is_well_formed test; correctness of the ID is not
+// machine-checkable here.
 const std::initializer_list<CheckpointData> CHECKPOINTS = {
+  { 5500, "b2ef2ae4d5c1cd5ab3c9fa59f3f4abe60311d06a3dee67590028b33c44dabdaf" }
 };
 
 }

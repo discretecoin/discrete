@@ -120,24 +120,73 @@ TEST(finality_depth, checkpoint_zone_exempt)
   EXPECT_TRUE (cp.is_alternative_block_allowed(1100, 1095));
 }
 
-// Discrete must ship with NO hardcoded checkpoints yet. Inside the checkpoint
-// zone the main-chain admission path legitimately skips the expensive per-block
-// re-validation (yespower + per-input ML-DSA verification) because a pinned block
-// ID transitively commits, through the prevHash chain and tx Merkle roots, to the
-// whole history below it — that is the standard fast-sync optimization and is
-// wanted. The inherited Karbo list is invalid DATA, not a broken mechanism: its
-// entries pin another chain's block IDs, so they (a) hard-stall Discrete at the
-// first entry, height 3,436 (no Discrete block ID ever matches a Karbo hash), and
-// (b) leave heights below it in-zone with the validation skip applied but no pin.
-// Real Discrete checkpoints may be added once genuine block IDs exist AND the
-// block ID commits to the block signature (witness commitment) so an in-zone
-// garbage-signature block cannot share a pinned ID; update this guard then.
-TEST(checkpoints, list_is_empty)
+// Inside the checkpoint zone the main-chain admission path legitimately skips the
+// expensive per-block re-validation (yespower + per-input ML-DSA verification)
+// because a pinned block ID transitively commits, through the prevHash chain and
+// tx Merkle roots, to the whole history below it — that is the standard fast-sync
+// optimization and is wanted. It is only sound because the Discrete block ID is a
+// witness commitment that also covers b.signature, so an in-zone block carrying a
+// garbage signature cannot share a pinned ID.
+//
+// A malformed entry is far worse than no entry: a bad ID hard-stalls every node
+// that ships it, and leaves the heights below it in-zone with the validation skip
+// applied but no pin (that is exactly how the inherited Karbo list failed — it
+// pinned another chain's IDs and stalled Discrete at height 3,436). This guard
+// pins the shape of the list; that an ID is the real mainnet block at that height
+// is not machine-checkable here and must be confirmed against two synced nodes.
+TEST(checkpoints, list_is_well_formed)
 {
-  EXPECT_EQ(CryptoNote::CHECKPOINTS.size(), 0u)
-      << "CHECKPOINTS must be empty until genuine Discrete block IDs exist and the "
-         "block ID commits to the signature; inherited Karbo entries stall the chain "
-         "at height 3,436 and skip validation on unpinned in-zone heights";
+  uint32_t previousHeight = 0;
+  bool first = true;
+  for (const auto& cp : CryptoNote::CHECKPOINTS) {
+    EXPECT_NE(cp.height, 0u) << "genesis must not be pinned as a checkpoint";
+    if (!first) {
+      EXPECT_GT(cp.height, previousHeight)
+          << "checkpoint heights must be strictly ascending, got " << cp.height
+          << " after " << previousHeight;
+    }
+    previousHeight = cp.height;
+    first = false;
+
+    ASSERT_NE(cp.blockId, nullptr) << "checkpoint at height " << cp.height << " has a null ID";
+    const std::string id(cp.blockId);
+    EXPECT_EQ(id.size(), 64u)
+        << "checkpoint at height " << cp.height << " must be a 64-char hex block ID";
+    for (char c : id) {
+      EXPECT_TRUE((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))
+          << "checkpoint at height " << cp.height << " must be lowercase hex, got '" << c << "'";
+    }
+
+    Crypto::Hash parsed;
+    EXPECT_TRUE(Common::podFromHex(id, parsed))
+        << "checkpoint at height " << cp.height << " does not parse as a block ID";
+    EXPECT_NE(parsed, CryptoNote::NULL_HASH)
+        << "checkpoint at height " << cp.height << " is the null hash";
+
+    // A checkpoint shallower than the finality depth would pin a block that the
+    // first-seen finality rule can still legitimately reorg away.
+    EXPECT_GT(cp.height, D)
+        << "checkpoint at height " << cp.height << " is within the finality depth " << D;
+  }
+}
+
+// The list must actually load into a Checkpoints instance the way Daemon.cpp and
+// PaymentGateService.cpp load it — a duplicate height or unparseable ID is
+// dropped there with only a warning, so assert every entry is accepted.
+TEST(checkpoints, list_loads_into_checkpoints)
+{
+  Logging::LoggerGroup logger;
+  Checkpoints cp(logger);
+  for (const auto& entry : CryptoNote::CHECKPOINTS) {
+    EXPECT_TRUE(cp.add_checkpoint(entry.height, entry.blockId))
+        << "checkpoint at height " << entry.height << " was rejected by add_checkpoint";
+  }
+  for (const auto& entry : CryptoNote::CHECKPOINTS) {
+    EXPECT_TRUE(cp.is_in_checkpoint_zone(entry.height));
+    Crypto::Hash expected;
+    ASSERT_TRUE(Common::podFromHex(std::string(entry.blockId), expected));
+    EXPECT_TRUE(cp.check_block(entry.height, expected));
+  }
 }
 
 // The decision is deterministic and a pure function of its arguments — repeated
