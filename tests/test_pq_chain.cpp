@@ -740,6 +740,64 @@ bool runStaleRegTemplate() {
   return ok;
 }
 
+// Mining policy must not create a template whose timestamp predates its direct
+// parent. This is deliberately not a consensus rule: received blocks continue
+// to use the existing future-time and median-time-past validation.
+bool runTimestampTemplateHardening() {
+  using namespace CryptoNote;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+
+  const Currency currency = CurrencyBuilder(logger)
+      .testnet(true)
+      .currency();
+
+  std::filesystem::path dataDir("pq_timestamp_template_test_data");
+  std::error_code ec;
+  std::filesystem::remove_all(dataDir, ec);
+  std::filesystem::create_directories(dataDir, ec);
+
+  System::Dispatcher dispatcher;
+  Core core(currency, nullptr, logger, dispatcher);
+  CoreConfig coreConfig; coreConfig.configFolder = dataDir.string();
+  MinerConfig minerConfig;
+  if (!expect(core.init(coreConfig, minerConfig, false), "timestamp-template: core.init")) {
+    return false;
+  }
+
+  test_generator gen(currency);
+  gen.setBlockchain(&core.get_blockchain_storage());
+  AccountBase miner; miner.generate();
+
+  Crypto::Hash genesisHash = core.getBlockIdByHeight(0);
+  Block genesis;
+  if (!expect(core.getBlockByHash(genesisHash, genesis), "timestamp-template: load genesis")) {
+    core.deinit(); std::filesystem::remove_all(dataDir, ec); return false;
+  }
+  std::vector<size_t> emptySizes;
+  gen.addBlock(genesis, 0, 0, emptySizes, 0);
+
+  const uint64_t parentTimestamp = static_cast<uint64_t>(std::time(nullptr)) + 120;
+  if (!expect(mineBlock(core, currency, gen, miner, parentTimestamp),
+              "timestamp-template: mine future-dated parent")) {
+    core.deinit(); std::filesystem::remove_all(dataDir, ec); return false;
+  }
+
+  Block blockTemplate;
+  Difficulty difficulty = 0;
+  uint32_t height = 0;
+  bool ok = expect(core.get_block_template_pq(blockTemplate, miner.pqViewPk(), miner.pqSpendPk(),
+                                               difficulty, height, BinaryArray()),
+                   "timestamp-template: build child template");
+  ok &= expect(blockTemplate.previousBlockHash == core.get_tail_id(),
+               "timestamp-template: template extends the current parent");
+  ok &= expect(blockTemplate.timestamp >= parentTimestamp,
+               "timestamp-template: child timestamp does not predate parent");
+
+  core.deinit();
+  std::filesystem::remove_all(dataDir, ec);
+  return ok;
+}
+
 // registered_account_numbers_count (RPC getinfo field) is served by
 // Core::getCanonicalAccountRegistrationsCount(), which is a thin pass-through to
 // Blockchain::getCanonicalAccountRegistrationsCount() -> pq_acct_reg's mdb_stat
@@ -1188,6 +1246,10 @@ int main() {
   }
   if (!runStaleRegTemplate()) {
     std::cerr << "[FAIL] PQ stale account-registration block-template test" << std::endl;
+    return 1;
+  }
+  if (!runTimestampTemplateHardening()) {
+    std::cerr << "[FAIL] PQ timestamp-template hardening test" << std::endl;
     return 1;
   }
   if (!runAccountRegCountRollback()) {

@@ -18,6 +18,7 @@
 
 #include "Core.h"
 
+#include <algorithm>
 #include <ctime>
 #include <sstream>
 #include <unordered_set>
@@ -489,7 +490,11 @@ bool Core::get_block_template_pq(Block& b, const CryptoPQ::KemPublicKey& /*viewP
     b.majorVersion = BLOCK_MAJOR_VERSION_1;
     b.minorVersion = BLOCK_MINOR_VERSION_0;
     b.previousBlockHash = get_tail_id();
-    b.timestamp = time(nullptr);
+    const uint64_t localTimestamp = static_cast<uint64_t>(time(nullptr));
+    const uint64_t parentTimestamp = height > 0
+      ? m_blockchain.getBlockTimestamp(height - 1)
+      : 0;
+    b.timestamp = std::max(localTimestamp, parentTimestamp);
     diffic = m_blockchain.getDifficultyForNextBlock(b.previousBlockHash);
     if (!diffic) {
       logger(ERROR, BRIGHT_RED) << "difficulty overhead.";
