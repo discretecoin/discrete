@@ -495,12 +495,6 @@ bool Core::get_block_template_pq(Block& b, const CryptoPQ::KemPublicKey& /*viewP
       ? m_blockchain.getBlockTimestamp(height - 1)
       : 0;
     b.timestamp = std::max(localTimestamp, parentTimestamp);
-    if (parentTimestamp > localTimestamp) {
-      logger(WARNING, BRIGHT_YELLOW)
-        << "Local clock trails the parent block timestamp by "
-        << parentTimestamp - localTimestamp
-        << " seconds; clamping the mining template to the parent timestamp";
-    }
     diffic = m_blockchain.getDifficultyForNextBlock(b.previousBlockHash);
     if (!diffic) {
       logger(ERROR, BRIGHT_RED) << "difficulty overhead.";
