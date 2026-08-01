@@ -508,7 +508,14 @@ set(Boost_NO_BOOST_CMAKE ON)
 set(Boost_USE_STATIC_LIBS ON)
 set(Boost_USE_STATIC_RUNTIME ON)
 
-find_package(Boost REQUIRED COMPONENTS coroutine context system filesystem thread date_time chrono regex serialization program_options atomic)
+# "system" is intentionally omitted: Boost.System has been header-only since
+# Boost 1.69, and as of Boost 1.90 (Ubuntu 26.04) the compiled library/dev
+# package no longer exists at all, so requiring it as a component fails
+# find_package outright.
+# "regex" is also omitted: the single boost::regex use (Common/UrlTools.cpp)
+# was ported to std::regex, and MSYS2's mingw-w64 boost-libs package (used by
+# the MinGW build) doesn't ship a compiled Boost.Regex at all.
+find_package(Boost REQUIRED COMPONENTS coroutine context filesystem thread date_time chrono serialization program_options atomic)
 message(STATUS "Boost Found: ${Boost_INCLUDE_DIRS}")
 include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
 
