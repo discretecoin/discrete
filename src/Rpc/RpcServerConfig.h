@@ -20,7 +20,17 @@
 
 #include <boost/program_options.hpp>
 
+#include <string>
+
 namespace CryptoNote {
+
+// Shutdown is deliberately unauthenticated, so it is limited to an
+// unrestricted IPv4 loopback listener and a non-browser JSON POST.
+bool isStopDaemonRpcAllowed(bool restricted, const std::string& bindIp) noexcept;
+bool isStopDaemonHttpRequestAllowed(
+  const std::string& method,
+  const std::string& contentType,
+  bool hasOrigin) noexcept;
 
 class RpcServerConfig {
 

@@ -315,7 +315,27 @@ size_t RpcServer::getRpcConnectionsCount() {
 }
 
 void RpcServer::processRequest(const CryptoNote::HttpRequest& request, CryptoNote::HttpResponse& response) {
-  logger(Logging::TRACE) << "Incoming RPC request to endpoint " << request.getUrl();
+  const std::string url = request.getUrl();
+  logger(Logging::TRACE) << "Incoming RPC request to endpoint " << url;
+
+  if (url == "/stop_daemon") {
+    // Shutdown intentionally has no credentials. Keep it out of browser request
+    // paths while preserving the JSON POST used by local CLI clients.
+    const auto& headers = request.getHeaders();
+    const auto contentTypeHeader = headers.find("content-type");
+    const auto originHeader = headers.find("origin");
+    const std::string contentType = contentTypeHeader == headers.end() ? "" : contentTypeHeader->second;
+
+    if (!isStopDaemonHttpRequestAllowed(
+      request.getMethod(),
+      contentType,
+      originHeader != headers.end())) {
+      response.setStatus(CryptoNote::HttpResponse::STATUS_404);
+      response.setBody("Not found");
+      response.addHeader("Content-Type", "text/html");
+      return;
+    }
+  }
 
   // CORS must be attached before dispatch so preflight and error responses are
   // readable by browser-based clients such as the block explorer.
@@ -332,7 +352,6 @@ void RpcServer::processRequest(const CryptoNote::HttpRequest& request, CryptoNot
   }
 
   try {
-    const std::string url = request.getUrl();
     auto it = s_handlers.find(url);
 
     if (it == s_handlers.end()) {
@@ -1578,18 +1597,13 @@ bool RpcServer::on_stop_mining(const COMMAND_RPC_STOP_MINING::request& req, COMM
 }
 
 bool RpcServer::on_stop_daemon(const COMMAND_RPC_STOP_DAEMON::request& req, COMMAND_RPC_STOP_DAEMON::response& res) {
-  if (m_restricted_rpc) {
+  if (!isStopDaemonRpcAllowed(m_restricted_rpc, m_config.getBindIP())) {
     res.status = "Method disabled";
     return false;
   }
 
-  if (m_core.currency().isTestnet()) {
-    m_p2p.sendStopSignal();
-    res.status = CORE_RPC_STATUS_OK;
-  } else {
-    res.status = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
-    return false;
-  }
+  m_p2p.sendStopSignal();
+  res.status = CORE_RPC_STATUS_OK;
   return true;
 }
 
