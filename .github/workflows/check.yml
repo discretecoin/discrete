@@ -72,6 +72,29 @@ jobs:
           toolset: msvc
           link: static
 
+      # install-boost's static libs are named e.g. libboost_thread-vc143-mt-x64-1_86.lib
+      # (and -mt-gd- for debug) with no ABI tag for the static-runtime link. CMake's
+      # legacy FindBoost.cmake (which this project uses everywhere, via
+      # Boost_NO_BOOST_CMAKE) always searches for the "-s"/"-sgd"-tagged names when
+      # Boost_USE_STATIC_LIBS/Boost_USE_STATIC_RUNTIME are ON, e.g.
+      # libboost_thread-vc143-mt-s-x64-1_86.lib, and finds nothing without them. Add
+      # copies under the tagged names FindBoost expects rather than fight the
+      # project's existing module-mode Boost lookup, which every other platform relies on.
+      - name: Alias Boost static libs for FindBoost's ABI tag
+        shell: powershell
+        run: |
+          $libDir = "${{ steps.install-boost.outputs.BOOST_ROOT }}\lib"
+          Get-ChildItem "$libDir\*.lib" | ForEach-Object {
+            if ($_.Name -match '-mt-gd-') {
+              $newName = $_.Name -replace '-mt-gd-', '-mt-sgd-'
+            } elseif ($_.Name -match '-mt-') {
+              $newName = $_.Name -replace '-mt-', '-mt-s-'
+            } else {
+              return
+            }
+            Copy-Item $_.FullName (Join-Path $libDir $newName) -Force
+          }
+
       - name: Build
         shell: powershell
         id: build
@@ -96,7 +119,6 @@ jobs:
             -DBoost_ROOT="$BoostRoot" `
             -DBoost_INCLUDE_DIR="$BoostRoot\include" `
             -DBoost_LIBRARY_DIR="$BoostRoot\lib" `
-            -DBoost_DEBUG=ON `
             -DOQS_BUILD_ONLY_LIB=ON `
             ..
           if ($LASTEXITCODE -ne 0) { throw "CMake configure failed with exit code $LASTEXITCODE" }
