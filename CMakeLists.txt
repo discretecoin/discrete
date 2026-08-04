@@ -519,10 +519,19 @@ set(DISCRETE_BOOST_COMPONENTS coroutine context filesystem thread date_time chro
 # fails to locate components on newer Boost (hit this for real on Ubuntu
 # 26.04's Boost 1.90 and MSYS2's Boost 1.91). It also correctly distinguishes
 # the static-runtime vs dynamic-runtime library variant per Boost_USE_STATIC_RUNTIME,
-# which some prebuilt Boost distributions only ship one of. Fall back to the
-# legacy module for toolchains whose Boost distribution doesn't ship a config
-# package, or where the caller hasn't pointed CMAKE_PREFIX_PATH/Boost_DIR at it.
-find_package(Boost QUIET CONFIG COMPONENTS ${DISCRETE_BOOST_COMPONENTS})
+# which some prebuilt Boost distributions only ship one of (verified: this
+# fixes a real Windows link failure against Boost's own upstream-built
+# packages). Fall back to the legacy module for toolchains whose Boost
+# distribution doesn't ship a config package, where the caller hasn't pointed
+# CMAKE_PREFIX_PATH/Boost_DIR at it, or where the config package is present but
+# unreliable: Ubuntu 24.04's apt Boost advertises a working config but its
+# static program_options is missing symbols at link time
+# (undefined reference to validation_error::get_template) — DISCRETE_BOOST_PREFER_MODULE
+# lets a builder opt out of the config-mode attempt entirely for cases like that.
+option(DISCRETE_BOOST_PREFER_MODULE "Skip Boost's CMake config package and use the legacy FindBoost.cmake module directly" OFF)
+if(NOT DISCRETE_BOOST_PREFER_MODULE)
+  find_package(Boost QUIET CONFIG COMPONENTS ${DISCRETE_BOOST_COMPONENTS})
+endif()
 if(Boost_FOUND)
   # BoostConfig.cmake itself populates the legacy Boost_LIBRARIES list (with
   # Boost::<component> imported targets) and Boost_INCLUDE_DIRS for
@@ -530,7 +539,7 @@ if(Boost_FOUND)
   # below keeps working unchanged regardless of which mode found Boost.
   message(STATUS "Using Boost's CMake config package (Boost ${Boost_VERSION})")
 else()
-  message(STATUS "Boost CMake config package not found; falling back to legacy FindBoost.cmake module")
+  message(STATUS "Using legacy FindBoost.cmake module")
   set(Boost_NO_BOOST_CMAKE ON)
   find_package(Boost REQUIRED MODULE COMPONENTS ${DISCRETE_BOOST_COMPONENTS})
 endif()

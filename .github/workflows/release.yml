@@ -221,12 +221,17 @@ jobs:
           release_name=discrete-cli-ubuntu24.04-"$disc_ver"
           mkdir -p "$build_folder"
           cd "$build_folder"
+          # DISCRETE_BOOST_PREFER_MODULE: apt's Boost CMake config package silently
+          # mislinks static boost_program_options (undefined references / missing
+          # vtables at link time), even though it's found successfully — the legacy
+          # FindBoost.cmake module links correctly here.
           cmake -D ARCH=default -D CMAKE_BUILD_TYPE=Release \
             -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON \
             -DCMAKE_CXX_FLAGS_RELEASE="-O3 -DNDEBUG" \
             -D CMAKE_POSITION_INDEPENDENT_CODE:BOOL=true \
             -D BOOST_IGNORE_SYSTEM_PATHS_DEFAULT=ON \
             -D BOOST_ROOT=/usr \
+            -D DISCRETE_BOOST_PREFER_MODULE=ON \
             -DOQS_BUILD_ONLY_LIB=ON \
             ../..
           cmake --build . --config Release --target Daemon SimpleWallet GreenWallet PaymentGateService AdminTools -- -j"$(nproc)"
@@ -283,12 +288,17 @@ jobs:
           release_name=discrete-cli-ubuntu26.04-"$disc_ver"
           mkdir -p "$build_folder"
           cd "$build_folder"
+          # DISCRETE_BOOST_PREFER_MODULE: apt's Boost CMake config package silently
+          # mislinks static boost_program_options (undefined references / missing
+          # vtables at link time), even though it's found successfully — the legacy
+          # FindBoost.cmake module links correctly here.
           cmake -D ARCH=default -D CMAKE_BUILD_TYPE=Release \
             -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON \
             -DCMAKE_CXX_FLAGS_RELEASE="-O3 -DNDEBUG" \
             -D CMAKE_POSITION_INDEPENDENT_CODE:BOOL=true \
             -D BOOST_IGNORE_SYSTEM_PATHS_DEFAULT=ON \
             -D BOOST_ROOT=/usr \
+            -D DISCRETE_BOOST_PREFER_MODULE=ON \
             -DOQS_BUILD_ONLY_LIB=ON \
             ../..
           cmake --build . --config Release --target Daemon SimpleWallet GreenWallet PaymentGateService AdminTools -- -j"$(nproc)"
@@ -365,11 +375,16 @@ jobs:
           export CXXFLAGS="-O3 -static -static-libstdc++ -static-libgcc"
           export LDFLAGS="-static"
 
+          # DISCRETE_BOOST_PREFER_MODULE: Alpine's boost-dev CMake config package
+          # silently mislinks static boost_program_options at link time (confirmed:
+          # the whole component ends up unlinked) even though it's found
+          # successfully — the legacy FindBoost.cmake module links correctly here.
           cmake ../.. \
             -DCMAKE_BUILD_TYPE=Release \
             -DSTATIC=ON \
             -DBUILD_SHARED_LIBS=OFF \
             -DBoost_USE_STATIC_LIBS=ON \
+            -DDISCRETE_BOOST_PREFER_MODULE=ON \
             -DOPENSSL_USE_STATIC_LIBS=ON \
             -DOQS_BUILD_ONLY_LIB=ON \
             -DCMAKE_EXE_LINKER_FLAGS="-static"
