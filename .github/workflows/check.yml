@@ -96,6 +96,7 @@ jobs:
             -DBoost_ROOT="$BoostRoot" `
             -DBoost_INCLUDE_DIR="$BoostRoot\include" `
             -DBoost_LIBRARY_DIR="$BoostRoot\lib" `
+            -DBoost_DEBUG=ON `
             -DOQS_BUILD_ONLY_LIB=ON `
             ..
           if ($LASTEXITCODE -ne 0) { throw "CMake configure failed with exit code $LASTEXITCODE" }
