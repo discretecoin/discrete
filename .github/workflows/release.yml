@@ -18,22 +18,42 @@ jobs:
       - name: Add msbuild to PATH
         uses: microsoft/setup-msbuild@v1.1
 
-      # Was a hand-rolled curl download of a SourceForge-hosted installer exe.
-      # SourceForge's boost-binaries mirrors are slow/inconsistent (observed
-      # ~500 KB/s to a randomly assigned mirror, well over a minute for the
-      # ~210 MB installer) and are a single external host outside GitHub's own
-      # infra, with no retry or checksum verification here. install-boost pulls
-      # from GitHub Releases (github.com/MarkusJx/prebuilt-boost) instead, is
-      # already used successfully by the macOS job below, and layers its own
-      # actions/cache on top so repeat runs skip the download entirely.
-      - name: Install Boost
-        uses: MarkusJx/install-boost@v2
-        id: install-boost
+      - name: Install curl
+        run: |
+          choco install curl -y
+
+      # Tried MarkusJx/install-boost (GitHub Releases, not SourceForge) first, since
+      # it already works for the macOS job below. It doesn't work here: its Windows
+      # static-lib packages are compiled against the dynamic CRT (/MD) only, but this
+      # project links fully static (/MT, CMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+      # below) — every Daemon.vcxproj link failed LNK2038 'MD_DynamicRelease' vs
+      # 'MT_StaticRelease'. That's a real packaging gap, not a version or lookup
+      # issue, so falling back to the known-compatible SourceForge installer.
+      #
+      # What actually made the old approach fragile wasn't the installer itself, it
+      # was fetching it fresh on every run. actions/cache keys on the exact version,
+      # so after the first successful run SourceForge is never touched again unless
+      # the cache entry is evicted (~7 days unused) or BOOST_VERSION changes — the
+      # common case becomes a cache hit with zero network dependency. curl's retry
+      # flags cover the remaining cache-miss path, where a single flaky mirror
+      # attempt would otherwise fail the whole job.
+      - name: Cache Boost installer
+        id: boost-installer-cache
+        uses: actions/cache@v4
         with:
-          boost_version: 1.86.0
-          platform_version: 2022
-          toolset: msvc
-          link: static
+          path: ${{ runner.temp }}\boost-installer.exe
+          key: boost-installer-1.86.0-msvc-14.3-64-v1
+
+      - name: Download Boost installer
+        if: steps.boost-installer-cache.outputs.cache-hit != 'true'
+        run: |
+          $Url = "https://sourceforge.net/projects/boost/files/boost-binaries/1.86.0/boost_1_86_0-msvc-14.3-64.exe"
+          $OutputPath = "${{ runner.temp }}\boost-installer.exe"
+          curl -L --retry 5 --retry-all-errors --retry-delay 15 --max-time 900 $Url -o $OutputPath
+
+      - name: Install Boost 1.86
+        run: |
+          Start-Process -Wait -FilePath "${{ runner.temp }}\boost-installer.exe" "/SILENT","/SP-","/SUPPRESSMSGBOXES","/DIR=C:\thirdparties\boost-1.86.0"
 
       - name: Build
         shell: powershell
@@ -43,11 +63,11 @@ jobs:
           $disc_ver = "${{ github.ref }}" -replace '^refs/tags/', ''
           $release_name = "discrete-cli-win64-$disc_ver"
 
-          $BoostRoot = "${{ steps.install-boost.outputs.BOOST_ROOT }}"
+          $BoostRoot = "C:\thirdparties\boost-1.86.0"
 
           mkdir "$build_folder"
           cd "$build_folder"
-          if (!(Test-Path "$BoostRoot\include\boost\version.hpp")) {
+          if (!(Test-Path "$BoostRoot\boost\version.hpp")) {
             throw "Boost headers not found under $BoostRoot"
           }
 
@@ -55,8 +75,6 @@ jobs:
             -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded `
             -DBOOST_ROOT="$BoostRoot" `
             -DBoost_ROOT="$BoostRoot" `
-            -DBoost_INCLUDE_DIR="$BoostRoot\include" `
-            -DBoost_LIBRARY_DIR="$BoostRoot\lib" `
             -DOQS_BUILD_ONLY_LIB=ON `
             ..
           if ($LASTEXITCODE -ne 0) { throw "CMake configure failed with exit code $LASTEXITCODE" }
