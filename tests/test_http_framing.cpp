@@ -14,7 +14,10 @@
 #include "gtest/gtest.h"
 
 #include "Http/HttpParser.h"
+#include "Http/HttpRequest.h"
 #include "Http/HttpResponse.h"
+
+#include "CryptoNoteConfig.h"
 
 #include <sstream>
 #include <string>
@@ -93,6 +96,25 @@ TEST(HttpFraming, ClientParsesBodylessResponseWithoutBlocking) {
   auto header = parsed.getHeaders().find("content-length");
   ASSERT_NE(header, parsed.getHeaders().end());
   EXPECT_EQ(header->second, "0");
+}
+
+// A Content-Length above the sane maximum must be rejected before the parser
+// trusts it enough to allocate — otherwise a peer can force a large
+// allocation merely by claiming one, without ever sending a matching body.
+TEST(HttpFraming, OversizedContentLengthRejectedBeforeAllocating) {
+  std::stringstream stream;
+  stream << "POST / HTTP/1.1\r\nContent-Length: "
+         << (static_cast<unsigned long long>(CryptoNote::P2P_DEFAULT_PACKET_MAX_SIZE) + 1)
+         << "\r\n\r\n";
+
+  HttpParser parser;
+  HttpRequest request;
+  try {
+    parser.receiveRequest(stream, request);
+    FAIL() << "expected receiveRequest to reject an oversized Content-Length";
+  } catch (const std::runtime_error& e) {
+    EXPECT_STREQ(e.what(), "HTTP body too large");
+  }
 }
 
 TEST(HttpFraming, BadRequestStatusIsReportable) {

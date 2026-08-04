@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <stdexcept>
 
+#include "CryptoNoteConfig.h"
+
 namespace CryptoNote {
 
 HttpParser::HttpParser() {
@@ -140,6 +142,18 @@ void HttpParser::receiveHeaders(std::istream& stream, HttpRequest::Headers& head
 }
 
 void HttpParser::receiveBody(std::istream& stream, std::string& body, size_t bodyLength) {
+  // Bound the allocation before trusting a peer-supplied Content-Length:
+  // resize() would otherwise commit memory for whatever size a client (or,
+  // via receiveResponse, a malicious daemon) claims, before a single body
+  // byte is read. Reused from the P2P layer, which polices the same class of
+  // untrusted length-prefixed payload (see NetNode.cpp); it comfortably
+  // covers the largest legitimate body — a hex-encoded sendrawtransaction —
+  // while still being far below an actual allocation an attacker should be
+  // able to force.
+  if (bodyLength > P2P_DEFAULT_PACKET_MAX_SIZE) {
+    throw std::runtime_error("HTTP body too large");
+  }
+
   body.resize(bodyLength);
   stream.read(&body[0], bodyLength);
 
