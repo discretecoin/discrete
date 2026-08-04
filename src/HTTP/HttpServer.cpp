@@ -5,11 +5,14 @@
 
 #include "HttpServer.h"
 #include "HttpParser.h"
+#include <stdexcept>
 #include <boost/scope_exit.hpp>
 #include <Common/base64.hpp>
 #include <Common/StringTools.h>
+#include <System/ContextGroup.h>
 #include <System/InterruptedException.h>
 #include <System/TcpStream.h>
+#include <System/Timer.h>
 #include <System/Ipv4Address.h>
 #include <System/SslTcpStreambuf.h>
 
@@ -175,6 +178,25 @@ void HttpServer::acceptLoop() {
       return;  // Exit before doing anything else
     }
 
+    // Refuse the connection once the ceiling is reached, but keep accepting so
+    // the listener recovers as soon as slots free up.
+    if (m_connections.size() >= MAX_CONNECTIONS) {
+      if (!m_connectionLimitReported) {
+        m_connectionLimitReported = true;
+        logger(WARNING) << "Refusing connections: limit of " << MAX_CONNECTIONS
+                        << " concurrent connections reached";
+      }
+
+      workingContextGroup.spawn(std::bind(&HttpServer::acceptLoop, this));
+      return;  // closes the socket with this scope
+    }
+
+    if (m_connectionLimitReported) {
+      m_connectionLimitReported = false;
+      logger(INFO) << "Accepting connections again, "
+                   << m_connections.size() << " of " << MAX_CONNECTIONS << " in use";
+    }
+
     // Register connection
     m_connections.insert(&connection);
     BOOST_SCOPE_EXIT_ALL(this, &connection) {
@@ -192,6 +214,51 @@ void HttpServer::acceptLoop() {
   } catch (const std::exception& e) {
     logger(ERROR) << "Accept loop error: " << e.what();
   }
+}
+
+HttpServer::ReadOutcome HttpServer::readWithWatchdog(System::TcpConnection& connection,
+                                                    std::chrono::nanoseconds timeout,
+                                                    const std::function<void()>& read) {
+  // Declared before the context group so the group — and with it the sleeping
+  // watchdog — is torn down first.
+  System::Timer timer(m_dispatcher);
+  System::ContextGroup watchdog(m_dispatcher);
+  bool expired = false;
+
+  watchdog.spawn([&] {
+    try {
+      timer.sleep(timeout);
+      expired = true;
+      // Drop the socket, which is the same lever stop() uses to unblock a
+      // pending read. Interrupting the reading context is not enough: the SSL
+      // streambuf waits in a plain dispatch loop that ignores interruption,
+      // whereas a closed socket fails the read on both transports.
+      boost::system::error_code ec;
+      connection.getSocket().shutdown(boost::asio::ip::tcp::socket::shutdown_both, ec);
+      connection.getSocket().close(ec);
+    } catch (const System::InterruptedException&) {
+      // Read finished in time; the watchdog was cancelled.
+    } catch (const std::exception& e) {
+      logger(DEBUGGING) << "Read watchdog error: " << e.what();
+    }
+  });
+
+  bool failed = false;
+  try {
+    read();
+  } catch (const std::exception&) {
+    failed = true;
+  }
+
+  // Cancel the watchdog and let it finish before its verdict is read.
+  watchdog.interrupt();
+  watchdog.wait();
+
+  if (expired) {
+    return ReadOutcome::TimedOut;
+  }
+
+  return failed ? ReadOutcome::Failed : ReadOutcome::Completed;
 }
 
 void HttpServer::connectionWorker(System::TcpConnection& connection) {
@@ -241,6 +308,23 @@ void HttpServer::connectionWorker(System::TcpConnection& connection) {
     HttpParser parser;
 
     for (;;) {
+      // Wait for the next request to start. This is where a keep-alive
+      // connection rests between requests and where a freshly accepted one
+      // waits for its first byte, so it is charged the idle budget.
+      ReadOutcome outcome = readWithWatchdog(connection, IDLE_TIMEOUT, [&stream] {
+        if (stream.peek() == std::iostream::traits_type::eof()) {
+          throw std::runtime_error("connection closed by peer");
+        }
+      });
+
+      if (outcome != ReadOutcome::Completed) {
+        if (outcome == ReadOutcome::TimedOut) {
+          logger(DEBUGGING) << "Idle timeout for " << addr.first.toDottedDecimal()
+            << ":" << addr.second;
+        }
+        break;
+      }
+
       HttpRequest req;
       HttpResponse resp;
 
@@ -248,11 +332,14 @@ void HttpServer::connectionWorker(System::TcpConnection& connection) {
       resp.addHeader("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
       resp.addHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
 
-      try {
+      outcome = readWithWatchdog(connection, REQUEST_TIMEOUT, [&parser, &stream, &req] {
         parser.receiveRequest(stream, req);
-      }
-      catch (const std::exception& e) {
-        logger(DEBUGGING) << "Failed to parse request: " << e.what();
+      });
+
+      if (outcome != ReadOutcome::Completed) {
+        logger(DEBUGGING) << (outcome == ReadOutcome::TimedOut
+          ? "Timed out receiving request from " : "Failed to parse request from ")
+          << addr.first.toDottedDecimal() << ":" << addr.second;
         break;
       }
 
@@ -268,8 +355,8 @@ void HttpServer::connectionWorker(System::TcpConnection& connection) {
       stream << resp;
       stream.flush();
 
-      if (stream.peek() == std::iostream::traits_type::eof()) {
-        break;
+      if (!stream) {
+        break;  // peer vanished mid-response
       }
     }
 

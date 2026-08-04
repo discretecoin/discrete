@@ -6,6 +6,8 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
+#include <cstddef>
 #include <functional>
 #include <string>
 #include <unordered_set>
@@ -47,10 +49,35 @@ protected:
   virtual void processRequest(const HttpRequest& request, HttpResponse& response);
 
 private:
+  // How long a connection may occupy a dispatcher context without making
+  // progress. Reads are the only place the server waits on a client, so both
+  // budgets are enforced there: IDLE_TIMEOUT covers waiting for a request to
+  // begin (a client that connects and then says nothing), REQUEST_TIMEOUT
+  // covers receiving one once it has started (a client that dribbles bytes).
+  // The idle budget is deliberately far above any in-tree poll interval —
+  // NodeRpcProxy polls every 5s — so keep-alive clients are never dropped
+  // mid-conversation.
+  static constexpr std::chrono::seconds IDLE_TIMEOUT{120};
+  static constexpr std::chrono::seconds REQUEST_TIMEOUT{30};
+
+  // Ceiling on concurrent connections. The timeouts above bound how long any
+  // one connection lives without progress; this bounds how many can exist at
+  // once, which is what actually caps the resources a peer can tie up.
+  static constexpr size_t MAX_CONNECTIONS = 256;
+
+  enum class ReadOutcome {
+    Completed,
+    TimedOut,
+    Failed
+  };
+
   void acceptLoop();
   void connectionWorker(System::TcpConnection& connection);
+  ReadOutcome readWithWatchdog(System::TcpConnection& connection,
+                               std::chrono::nanoseconds timeout,
+                               const std::function<void()>& read);
   bool authenticate(const HttpRequest& request) const;
-  
+
   System::Dispatcher& m_dispatcher;
   System::ContextGroup workingContextGroup;
   Logging::LoggerRef logger;
@@ -67,6 +94,11 @@ private:
   
   // Request handler
   RequestHandler m_requestHandler;
+
+  // Latch so a flood produces one warning per saturation episode rather than
+  // one per refused connection — otherwise the defence becomes its own way to
+  // fill the operator's log.
+  bool m_connectionLimitReported{ false };
 
   std::atomic<bool> m_stopping{ false };
 };
