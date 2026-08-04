@@ -75,11 +75,11 @@ void Configuration::initOptions(po::options_description& desc) {
       ("container-password,p", po::value<std::string>(), "container password")
       ("change-password", po::value<std::string>(), "change container password and exit")
       ("generate-container,g", "generate new container file with one wallet and exit")
-      ("view-key", po::value<std::string>(), "generate a container with this secret key view")
+      ("view-key", po::value<std::string>(), "generate a VIEW-ONLY container from this 'pqview1:' tracking key (exported from the spending wallet). The container scans the account and issues further H-I-A-T-C deposit numbers under the account number that wallet registered, but it cannot spend. Requires --single-key-index; pass --restore-address-count to restate how many deposit indices were already issued.")
       ("spend-key", po::value<std::string>(), "generate a container with this secret spend key")
       ("mnemonic-seed", po::value<std::string>(), "generate a container with this mnemonic seed")
       ("deterministic", "generate a container with deterministic keys. View key is generated from spend key of the first address")
-      ("restore-address-count", po::value<uint32_t>(), "number of HD-derived addresses to create when generating or restoring an HD container (total incl. the primary; deposits are regenerated from the seed)")
+      ("restore-address-count", po::value<uint32_t>(), "number of addresses to create when generating or restoring a container (total incl. the primary; deposits are regenerated from the seed, or re-reserved by index for a --view-key container)")
       ("daemon,d", "run as daemon in Unix or as service in Windows")
 #ifdef _WIN32
       ("register-service", "register service and exit (Windows only)")
@@ -218,6 +218,14 @@ void Configuration::init(const po::variables_map& options) {
     if (!generateNewContainer) {
       throw ConfigurationError("generate-container parameter is required");
     }
+    if (options.count("spend-key") != 0) {
+      throw ConfigurationError("Cannot specify import via both a tracking key and a spend key");
+    }
+    // A view-only container has no master seed, so it can only issue deposits that
+    // are a subaddress index under the account's single key pair.
+    if (pqDepositScheme != CryptoNote::PqDepositScheme::SingleKeyIndex) {
+      throw ConfigurationError("--view-key requires --single-key-index");
+    }
     secretViewKey = options["view-key"].as<std::string>();
   }
 
@@ -238,8 +246,10 @@ void Configuration::init(const po::variables_map& options) {
     mnemonicSeed = options["mnemonic-seed"].as<std::string>();
   }
 
-  if (options.count("restore-address-count") != 0 && (!secretSpendKey.empty() || !secretViewKey.empty())) {
-    throw ConfigurationError("restore-address-count can only be used with HD generated containers or mnemonic restores");
+  // A view-only container is exactly the case that NEEDS the count restated: the
+  // tracking credential carries no record of how many deposit indices were issued.
+  if (options.count("restore-address-count") != 0 && !secretSpendKey.empty()) {
+    throw ConfigurationError("restore-address-count can only be used with HD generated containers, mnemonic restores or tracking-key containers");
   }
 
   if (options.count("address") != 0) {

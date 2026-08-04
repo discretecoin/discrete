@@ -838,6 +838,128 @@ TEST(PqWalletIntegration, TrackingWalletCannotSpend) {
   boost::filesystem::remove(trackPath);
 }
 
+// The exchange deposit surface: the spending wallet registers the account number ONCE and
+// exports a tracking credential; the view-only container then issues further H-I-A-T-C
+// sub-numbers under that same account number. Everything a sub-number is made of is
+// public — the fingerprint A hashes the two PUBLIC keys, T is an integer, and (H, I) come
+// from a node lookup keyed by those public keys — so the view-only wallet must render
+// byte-identical numbers, and must still scan deposits received at those T.
+TEST(PqWalletIntegration, TrackingWalletIssuesSingleKeyIndexSubNumbers) {
+  System::Dispatcher dispatcher;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(1000000).upgradeHeightV6(1000000)
+      .currency();
+  TestBlockchainGenerator generator(currency);
+  INodeTrivialRefreshStub node(generator);
+
+  // The registration coords (H, I) the spending wallet already obtained on-chain.
+  const uint32_t regH = 4242, regI = 3;
+
+  CryptoNote::PqTrackingKeys tk;
+  Crypto::SecretKey seed;
+  uint32_t fullFingerprint = 0;
+  std::vector<std::string> fullNumbers;
+  const std::string fullPath = "pq_ski_full.wallet";
+  {
+    boost::filesystem::remove(fullPath);
+    CryptoNote::WalletGreen full(dispatcher, currency, node, logger);
+    full.initialize(fullPath, "pass");
+    full.createAddress();
+    full.setPqDepositScheme(CryptoNote::PqDepositScheme::SingleKeyIndex);
+    ASSERT_TRUE(full.getPqTrackingKeys(tk));
+    seed = full.getAddressSpendKey(0).secretKey;
+    fullFingerprint = full.pqAccountFingerprint();
+    for (uint32_t t = 0; t < 4; ++t) {
+      fullNumbers.push_back(full.pqDepositAddress(t, regH, regI));
+      ASSERT_FALSE(fullNumbers.back().empty());
+    }
+    full.shutdown();
+    boost::filesystem::remove(fullPath);
+  }
+
+  const std::string trackPath = "pq_ski_tracking.wallet";
+  boost::filesystem::remove(trackPath);
+  CryptoNote::WalletGreen tracking(dispatcher, currency, node, logger);
+  tracking.initializeWithPqTrackingKey(trackPath, "pass", tk);
+  tracking.setPqDepositScheme(CryptoNote::PqDepositScheme::SingleKeyIndex);
+
+  // No spend authority whatsoever...
+  ASSERT_EQ(tracking.getAddressSpendKey(0).secretKey, CryptoNote::NULL_SECRET_KEY);
+  // ...yet the public account identity is fully reconstructible: same fingerprint A, and
+  // the key pair walletd needs to resolve (H, I) against the node.
+  EXPECT_EQ(tracking.pqAccountFingerprint(), fullFingerprint);
+  std::string viewHex, spendHex;
+  EXPECT_TRUE(tracking.getPqRegistrationKeysHex(viewHex, spendHex));
+
+  // Issuing sub-numbers works view-only and matches the spending wallet exactly.
+  for (uint32_t t = 0; t < 4; ++t) {
+    ASSERT_EQ(tracking.reservePqDepositIndex(), t);
+    EXPECT_EQ(tracking.pqDepositAddress(t, regH, regI), fullNumbers[t]);
+  }
+  EXPECT_EQ(tracking.getPqDepositCount(), 4u);
+
+  // A deposit paid to one of those sub-numbers is still scanned and attributed to it.
+  CryptoNote::PqWalletKeys mine = pqKeysFromWalletSeed(seed);
+  Crypto::SecretKey otherSecret;
+  for (std::size_t i = 0; i < sizeof(otherSecret.data); ++i)
+    otherSecret.data[i] = static_cast<uint8_t>(i * 13 + 2);
+  CryptoNote::PqWalletKeys them = CryptoNote::derivePqWalletKeys(otherSecret);
+
+  CryptoNote::Transaction pqTx = makePqPayTo(them, mine, 1000000, 700000, 0x71, /*T*/ 2);
+  generator.setTxFee(CryptoNote::getObjectHash(pqTx), 1000000 - 700000);
+  generator.addTxToBlockchain(pqTx);
+  node.updateObservers();
+  pumpUntil(dispatcher, tracking, [&tracking]() { return tracking.getActualBalance() == 700000u; });
+
+  EXPECT_EQ(tracking.getActualBalance(), 700000u);
+  EXPECT_EQ(tracking.pqDepositBalance(2), 700000u);
+
+  tracking.shutdown();
+  boost::filesystem::remove(trackPath);
+}
+
+// AggregatedMultikey is the one deposit scheme a view-only wallet genuinely cannot serve:
+// each deposit gets its own ML-DSA spend key derived from the master seed, which a
+// tracking credential does not carry. That refusal must survive the SingleKeyIndex fix.
+TEST(PqWalletIntegration, TrackingWalletRefusesAggregatedMultikeyDeposits) {
+  System::Dispatcher dispatcher;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(1000000).upgradeHeightV6(1000000)
+      .currency();
+  TestBlockchainGenerator generator(currency);
+  INodeTrivialRefreshStub node(generator);
+
+  CryptoNote::PqTrackingKeys tk;
+  const std::string fullPath = "pq_agg_full.wallet";
+  {
+    boost::filesystem::remove(fullPath);
+    CryptoNote::WalletGreen full(dispatcher, currency, node, logger);
+    full.initialize(fullPath, "pass");
+    full.createAddress();
+    ASSERT_TRUE(full.getPqTrackingKeys(tk));
+    full.shutdown();
+    boost::filesystem::remove(fullPath);
+  }
+
+  const std::string trackPath = "pq_agg_tracking.wallet";
+  boost::filesystem::remove(trackPath);
+  CryptoNote::WalletGreen tracking(dispatcher, currency, node, logger);
+  tracking.initializeWithPqTrackingKey(trackPath, "pass", tk);
+  tracking.setPqDepositScheme(CryptoNote::PqDepositScheme::AggregatedMultikey);
+
+  EXPECT_THROW(tracking.reservePqDepositIndex(), std::exception);
+  EXPECT_TRUE(tracking.pqDepositAddress(0, 0, 0).empty());
+
+  tracking.shutdown();
+  boost::filesystem::remove(trackPath);
+}
+
 // A spend-locked output (per-output unlockHeight — the same mechanism coinbase maturity
 // uses) is counted in the balance but NOT spendable until the chain reaches its unlock
 // height; once it does, it becomes spendable.

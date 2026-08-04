@@ -152,6 +152,7 @@ public:
   virtual void initializeWithViewKey(const std::string& path, const std::string& password, const Crypto::SecretKey& viewSecretKey, const uint32_t scanHeight) override;
   void initializeWithPqTrackingKey(const std::string& path, const std::string& password, const PqTrackingKeys& pqTrackingKeys);
   void initializeWithPqTrackingKey(const std::string& path, const std::string& password, const PqTrackingKeys& pqTrackingKeys, const uint64_t& creationTimestamp);
+  void initializeWithPqTrackingKey(const std::string& path, const std::string& password, const PqTrackingKeys& pqTrackingKeys, const uint32_t scanHeight);
   virtual void load(const std::string& path, const std::string& password, std::string& extra) override;
   virtual void load(const std::string& path, const std::string& password) override;
   virtual void shutdown() override;

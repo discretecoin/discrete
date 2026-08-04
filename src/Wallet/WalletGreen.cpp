@@ -205,6 +205,14 @@ void WalletGreen::initializeWithPqTrackingKey(const std::string& path, const std
 
 void WalletGreen::initializeWithPqTrackingKey(const std::string& path, const std::string& password,
                                               const PqTrackingKeys& pqTrackingKeys,
+                                              const uint32_t scanHeight) {
+  // Same semantics as importing a spend key at a scan height: the height is turned
+  // into the creation timestamp the synchronizer starts from.
+  initializeWithPqTrackingKey(path, password, pqTrackingKeys, scanHeightToTimestamp(scanHeight));
+}
+
+void WalletGreen::initializeWithPqTrackingKey(const std::string& path, const std::string& password,
+                                              const PqTrackingKeys& pqTrackingKeys,
                                               const uint64_t& creationTimestamp) {
   initContainer(path, password);
   m_pqTrackingKeys.reset(new PqTrackingKeys(pqTrackingKeys));
@@ -1999,14 +2007,13 @@ bool WalletGreen::getPqTrackingKeys(PqTrackingKeys& keys) const {
 bool WalletGreen::getPqRegistrationKeysHex(std::string& viewHex, std::string& spendHex) const {
   throwIfNotInitialized();
   throwIfStopped();
-  if (getAddressCount() == 0) {
+  // A registration is looked up by the account's PUBLIC key pair, so a tracking
+  // wallet can resolve its own registration coords (H, I) just as well as a
+  // spending one — it just cannot create the registration in the first place.
+  PqTrackingKeys keys;
+  if (!getPqTrackingKeys(keys)) {
     return false;
   }
-  CryptoPQ::SeedMaster seed = primarySeedMaster();
-  if (seed == CryptoPQ::SeedMaster{}) {
-    return false;
-  }
-  PqWalletKeys keys = derivePqWalletKeys(seed);
   viewHex = Common::toHex(keys.viewPub.data(), keys.viewPub.size());
   spendHex = Common::toHex(keys.spendPub.data(), keys.spendPub.size());
   return true;
@@ -2331,7 +2338,16 @@ void WalletGreen::setPqDepositScheme(PqDepositScheme scheme) {
 uint32_t WalletGreen::reservePqDepositIndex() {
   throwIfNotInitialized();
   throwIfStopped();
-  if (getAddressCount() == 0 || getAddressSpendKey(0).secretKey == NULL_SECRET_KEY) {
+  if (getAddressCount() == 0) {
+    throw std::runtime_error("wallet has no addresses");
+  }
+  // A tracking (view-only) wallet holds no master seed. AggregatedMultikey mints a
+  // fresh ML-DSA spend key per deposit, which only the seed can derive, so that
+  // scheme stays spend-wallet only. SingleKeyIndex deposits are just a subaddress
+  // index T under the ONE key pair the tracking credential already carries: the
+  // reservation is a counter bump plus a scanner re-point, no secret involved.
+  if (getAddressSpendKey(0).secretKey == NULL_SECRET_KEY &&
+      m_pqDepositScheme != PqDepositScheme::SingleKeyIndex) {
     throw std::runtime_error("tracking wallet cannot create deposit addresses");
   }
   if (m_pqDepositCount == std::numeric_limits<uint32_t>::max()) {
@@ -2352,24 +2368,30 @@ std::string WalletGreen::pqDepositAddress(uint32_t index, uint32_t regBlockHeigh
   if (getAddressCount() == 0) {
     return std::string();
   }
-  CryptoPQ::SeedMaster seed = primarySeedMaster();
-  if (seed == CryptoPQ::SeedMaster{}) {
-    return std::string();  // tracking wallet: cannot derive deposit spend keys
-  }
-  PqWalletKeys base = derivePqWalletKeys(seed);
-
   if (m_pqDepositScheme == PqDepositScheme::SingleKeyIndex) {
     // Spec 2: one keypair; the deposit identity is the H-I-A-T-C account number.
+    // Every ingredient is public — the fingerprint over (spendPub, viewPub) and the
+    // registration coords — so this renders identically in a tracking wallet.
+    PqTrackingKeys keys;
+    if (!getPqTrackingKeys(keys)) {
+      return std::string();
+    }
     const uint32_t fingerprint = CryptoNote::pqAccountFingerprint(
         m_currency.isTestnet(),
-        base.spendPub.data(), base.spendPub.size(),
-        base.viewPub.data(), base.viewPub.size());
+        keys.spendPub.data(), keys.spendPub.size(),
+        keys.viewPub.data(), keys.viewPub.size());
     return CryptoNote::AccountNumber{regBlockHeight, regTxIndex}
         .toStringWithIndex(index, fingerprint);
   }
 
   // Spec 1: shared view key + a per-deposit ML-DSA spend key. The address carries
-  // the deposit spend key so each deposit has its own spend authority.
+  // the deposit spend key so each deposit has its own spend authority — that key
+  // comes off the master seed, so this branch needs a spending wallet.
+  CryptoPQ::SeedMaster seed = primarySeedMaster();
+  if (seed == CryptoPQ::SeedMaster{}) {
+    return std::string();  // tracking wallet: cannot derive deposit spend keys
+  }
+  PqWalletKeys base = derivePqWalletKeys(seed);
   auto depositSpend = CryptoPQ::deriveDepositSpendKeys(base.seedMaster, index);
   PqAddress addr = makePqAddress(CryptoNote::parameters::CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX,
                                  base.viewPub, depositSpend.first);
@@ -2379,17 +2401,16 @@ std::string WalletGreen::pqDepositAddress(uint32_t index, uint32_t regBlockHeigh
 uint32_t WalletGreen::pqAccountFingerprint() const {
   throwIfNotInitialized();
   throwIfStopped();
-  if (getAddressCount() == 0) {
+  // The fingerprint is a hash over the two PUBLIC keys, both of which a tracking
+  // credential carries, so an audit-only wallet computes the same A as the
+  // spending wallet it was exported from.
+  PqTrackingKeys keys;
+  if (!getPqTrackingKeys(keys)) {
     return 0;
   }
-  CryptoPQ::SeedMaster seed = primarySeedMaster();
-  if (seed == CryptoPQ::SeedMaster{}) {
-    return 0;  // tracking wallet: no spend authority, no own identity to fingerprint
-  }
-  PqWalletKeys base = derivePqWalletKeys(seed);
   return CryptoNote::pqAccountFingerprint(m_currency.isTestnet(),
-                                          base.spendPub.data(), base.spendPub.size(),
-                                          base.viewPub.data(), base.viewPub.size());
+                                          keys.spendPub.data(), keys.spendPub.size(),
+                                          keys.viewPub.data(), keys.viewPub.size());
 }
 
 PqSendOutput WalletGreen::pqChangeTemplate(uint32_t depositIndex) const {

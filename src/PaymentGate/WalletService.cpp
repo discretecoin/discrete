@@ -45,6 +45,7 @@
 #include "PaymentServiceJsonRpcMessages.h"
 
 #include "Wallet/WalletGreen.h"
+#include "Wallet/PqWallet.h"
 #include "Wallet/PqRecipient.h"
 #include "Wallet/PqSender.h"
 #include "AccountNumber.h"
@@ -378,6 +379,60 @@ void generateNewWallet(const CryptoNote::Currency& currency, const WalletConfigu
     return conf.scanHeight != 0 ? wallet->createAddress(conf.scanHeight) : wallet->createAddress();
   };
 
+  // View-only (tracking) container: the operator supplies a `pqview1:` credential
+  // exported from the spending wallet. Such a container scans the account and issues
+  // further H-I-A-T-C deposit numbers under the account number that wallet already
+  // registered, but it carries no spend authority — nothing here can sign.
+  if (!conf.secretViewKey.empty()) {
+    auto* greenWallet = dynamic_cast<CryptoNote::WalletGreen*>(wallet);
+    if (greenWallet == nullptr) {
+      log(Logging::ERROR, Logging::BRIGHT_RED) << "View-only containers require the PQ wallet backend";
+      return;
+    }
+
+    CryptoNote::PqTrackingKeys trackingKeys;
+    if (!CryptoNote::decodePqTrackingKey(conf.secretViewKey, trackingKeys)) {
+      log(Logging::ERROR, Logging::BRIGHT_RED) << "Invalid tracking key: expected a "
+        << CryptoNote::kPqTrackingKeyPrefix << " credential exported from the spending wallet";
+      return;
+    }
+
+    // AggregatedMultikey mints a fresh spend key per deposit off the master seed,
+    // which a tracking credential does not carry; only SingleKeyIndex deposits
+    // (subaddress index T under the one key pair) are derivable view-only.
+    if (depositScheme != CryptoNote::PqDepositScheme::SingleKeyIndex) {
+      log(Logging::ERROR, Logging::BRIGHT_RED)
+        << "A view-only container requires --single-key-index: aggregated-multikey deposits "
+           "need the master seed to derive their per-deposit spend keys";
+      return;
+    }
+
+    log(Logging::INFO, Logging::BRIGHT_WHITE) << "Generating view-only container from tracking key";
+    if (conf.scanHeight != 0) {
+      greenWallet->initializeWithPqTrackingKey(conf.walletFile, conf.walletPassword, trackingKeys, conf.scanHeight);
+    } else {
+      greenWallet->initializeWithPqTrackingKey(conf.walletFile, conf.walletPassword, trackingKeys);
+    }
+
+    greenWallet->setPqDepositScheme(depositScheme);
+    // Re-reserve the deposit indices this account already handed out. The count is
+    // not recoverable from the credential (it lives only in the wallet file), so the
+    // operator restates it; without it the scanner would not attribute deposits at
+    // those T, and the next createDepositAddress would reissue T from scratch.
+    for (uint32_t i = 1; i < conf.restoreAddressCount; ++i) {
+      greenWallet->reservePqDepositIndex();
+    }
+    if (conf.restoreAddressCount > 1) {
+      log(Logging::INFO, Logging::BRIGHT_WHITE)
+        << "Restored " << (conf.restoreAddressCount - 1) << " deposit index(es)";
+    }
+
+    wallet->save(CryptoNote::WalletSaveLevel::SAVE_ALL);
+    log(Logging::INFO, Logging::BRIGHT_WHITE) << "View-only container is saved. Address: "
+                                              << wallet->getAddress(0);
+    return;
+  }
+
   if (conf.secretSpendKey.empty() && conf.mnemonicSeed.empty())
   {
     log(Logging::INFO, Logging::BRIGHT_WHITE) << "Generating new wallet";
@@ -401,8 +456,8 @@ void generateNewWallet(const CryptoNote::Currency& currency, const WalletConfigu
     log(Logging::INFO, Logging::BRIGHT_WHITE) << "Imported wallet from mnemonic. Address: " << address;
   }
   else {
-    // Import from a raw 32-byte secret = the master seed. Any view key argument is
-    // ignored (there is no classical view key).
+    // Import from a raw 32-byte secret = the master seed. (There is no classical
+    // view key; --view-key carries the PQ tracking credential, handled above.)
     log(Logging::INFO, Logging::BRIGHT_WHITE) << "Importing wallet from key";
     Crypto::Hash seed_hash;
     size_t size;
