@@ -54,11 +54,15 @@ private:
   // budgets are enforced there: IDLE_TIMEOUT covers waiting for a request to
   // begin (a client that connects and then says nothing), REQUEST_TIMEOUT
   // covers receiving one once it has started (a client that dribbles bytes).
-  // The idle budget is deliberately far above any in-tree poll interval —
-  // NodeRpcProxy polls every 5s — so keep-alive clients are never dropped
-  // mid-conversation.
+  //
+  // Both are sized so no legitimate client can trip them. The idle budget sits
+  // far above any in-tree poll interval — NodeRpcProxy polls every 5s — so
+  // keep-alive clients are never dropped mid-conversation. The request budget
+  // is a total, not an inactivity timer, so it has to cover the largest real
+  // request: a hex-encoded sendrawtransaction consolidating many inputs, sent
+  // over a slow uplink.
   static constexpr std::chrono::seconds IDLE_TIMEOUT{120};
-  static constexpr std::chrono::seconds REQUEST_TIMEOUT{30};
+  static constexpr std::chrono::seconds REQUEST_TIMEOUT{60};
 
   // Ceiling on concurrent connections. The timeouts above bound how long any
   // one connection lives without progress; this bounds how many can exist at
