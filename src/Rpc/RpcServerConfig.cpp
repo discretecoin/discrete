@@ -21,11 +21,37 @@
 #include "RpcServerConfig.h"
 #include "Common/CommandLine.h"
 #include "CryptoNoteConfig.h"
+#include "System/Ipv4Address.h"
 #include "android.h"
 
 namespace CryptoNote {
 
   namespace {
+    bool isJsonContentType(const std::string& contentType) noexcept {
+      const size_t parameterSeparator = contentType.find(';');
+      const size_t mediaTypeEnd = parameterSeparator == std::string::npos ? contentType.size() : parameterSeparator;
+      const size_t first = contentType.find_first_not_of(" \t", 0);
+
+      if (first == std::string::npos || first >= mediaTypeEnd) {
+        return false;
+      }
+
+      const size_t last = contentType.find_last_not_of(" \t", mediaTypeEnd - 1);
+      static const std::string jsonMediaType = "application/json";
+      if (last == std::string::npos || last - first + 1 != jsonMediaType.size()) {
+        return false;
+      }
+
+      for (size_t i = 0; i < jsonMediaType.size(); ++i) {
+        const char value = contentType[first + i];
+        const char lower = value >= 'A' && value <= 'Z' ? value - 'A' + 'a' : value;
+        if (lower != jsonMediaType[i]) {
+          return false;
+        }
+      }
+
+      return true;
+    }
 
     const std::string DEFAULT_RPC_IP = "127.0.0.1";
     const uint16_t DEFAULT_RPC_PORT = RPC_DEFAULT_PORT;
@@ -44,6 +70,25 @@ namespace CryptoNote {
     const command_line::arg_descriptor<bool>        arg_restricted_rpc  = { "restricted-rpc", "Restrict RPC to view only commands to prevent abuse", false };
     const command_line::arg_descriptor<std::string> arg_enable_cors     = { "enable-cors", "Adds header 'Access-Control-Allow-Origin' to the daemon's RPC responses. Uses the value as domain. Use * for all", "" };
     const command_line::arg_descriptor<std::string> arg_set_contact     = { "contact", "Sets node admin contact", "" };
+  }
+
+  bool isStopDaemonRpcAllowed(bool restricted, const std::string& bindIp) noexcept {
+    if (restricted) {
+      return false;
+    }
+
+    try {
+      return System::Ipv4Address(bindIp).isLoopback();
+    } catch (...) {
+      return false;
+    }
+  }
+
+  bool isStopDaemonHttpRequestAllowed(
+    const std::string& method,
+    const std::string& contentType,
+    bool hasOrigin) noexcept {
+    return method == "POST" && !hasOrigin && isJsonContentType(contentType);
   }
 
 
