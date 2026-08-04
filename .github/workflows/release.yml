@@ -71,8 +71,15 @@ jobs:
             throw "Boost headers not found under $BoostRoot"
           }
 
+          # CMAKE_PREFIX_PATH points at the installer's per-version CMake config
+          # (lib64-msvc-14.3\cmake\Boost-1.86.0\BoostConfig.cmake), so CMakeLists.txt's
+          # find_package(Boost CONFIG ...) succeeds and correctly selects the
+          # static-runtime (-s-tagged) library variant. BOOST_ROOT/Boost_ROOT stay as a
+          # fallback for the legacy FindBoost.cmake module, in case config-mode lookup
+          # ever fails on this runner.
           cmake -G "Visual Studio 17 2022" -A x64 `
             -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded `
+            -DCMAKE_PREFIX_PATH="$BoostRoot\lib64-msvc-14.3\cmake" `
             -DBOOST_ROOT="$BoostRoot" `
             -DBoost_ROOT="$BoostRoot" `
             -DOQS_BUILD_ONLY_LIB=ON `

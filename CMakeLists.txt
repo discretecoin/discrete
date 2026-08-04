@@ -2,11 +2,6 @@ cmake_minimum_required(VERSION 3.8)
 if(POLICY CMP0074)
   cmake_policy(SET CMP0074 NEW)
 endif()
-if(POLICY CMP0167)
-  # Keep FindBoost behavior for CI/package-manager installs until the project
-  # migrates to Boost's CMake config packages.
-  cmake_policy(SET CMP0167 OLD)
-endif()
 if(POLICY CMP0148)
   # Bundled gtest still uses FindPythonInterp/FindPythonLibs.
   cmake_policy(SET CMP0148 OLD)
@@ -504,7 +499,6 @@ if(STATIC AND MINGW)
 endif() 
 
 # Link static BOOST libraries everywhere
-set(Boost_NO_BOOST_CMAKE ON)
 set(Boost_USE_STATIC_LIBS ON)
 set(Boost_USE_STATIC_RUNTIME ON)
 
@@ -515,7 +509,32 @@ set(Boost_USE_STATIC_RUNTIME ON)
 # "regex" is also omitted: the single boost::regex use (Common/UrlTools.cpp)
 # was ported to std::regex, and MSYS2's mingw-w64 boost-libs package (used by
 # the MinGW build) doesn't ship a compiled Boost.Regex at all.
-find_package(Boost REQUIRED COMPONENTS coroutine context filesystem thread date_time chrono serialization program_options atomic)
+set(DISCRETE_BOOST_COMPONENTS coroutine context filesystem thread date_time chrono serialization program_options atomic)
+
+# Prefer Boost's own CMake package config (BoostConfig.cmake, shipped by Boost
+# 1.70+ when built with CMake support): it has correct per-component
+# dependency data for whatever Boost version is actually installed, unlike
+# CMake's bundled FindBoost.cmake module, which only knows about versions
+# current as of that CMake release and increasingly mis-resolves or outright
+# fails to locate components on newer Boost (hit this for real on Ubuntu
+# 26.04's Boost 1.90 and MSYS2's Boost 1.91). It also correctly distinguishes
+# the static-runtime vs dynamic-runtime library variant per Boost_USE_STATIC_RUNTIME,
+# which some prebuilt Boost distributions only ship one of. Fall back to the
+# legacy module for toolchains whose Boost distribution doesn't ship a config
+# package, or where the caller hasn't pointed CMAKE_PREFIX_PATH/Boost_DIR at it.
+find_package(Boost QUIET CONFIG COMPONENTS ${DISCRETE_BOOST_COMPONENTS})
+if(Boost_FOUND)
+  # BoostConfig.cmake itself populates the legacy Boost_LIBRARIES list (with
+  # Boost::<component> imported targets) and Boost_INCLUDE_DIRS for
+  # compatibility, so every target_link_libraries(... ${Boost_LIBRARIES}) call
+  # below keeps working unchanged regardless of which mode found Boost.
+  message(STATUS "Using Boost's CMake config package (Boost ${Boost_VERSION})")
+else()
+  message(STATUS "Boost CMake config package not found; falling back to legacy FindBoost.cmake module")
+  set(Boost_NO_BOOST_CMAKE ON)
+  find_package(Boost REQUIRED MODULE COMPONENTS ${DISCRETE_BOOST_COMPONENTS})
+endif()
+
 message(STATUS "Boost Found: ${Boost_INCLUDE_DIRS}")
 include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
 
