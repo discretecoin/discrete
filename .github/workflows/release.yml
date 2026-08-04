@@ -9,8 +9,6 @@ jobs:
   build-windows:
     name: Windows
     runs-on: windows-2022
-    env:
-      BOOST_ROOT: C:\thirdparties\boost-1.86.0
     steps:
       - uses: actions/checkout@master
         with:
@@ -20,16 +18,22 @@ jobs:
       - name: Add msbuild to PATH
         uses: microsoft/setup-msbuild@v1.1
 
-      - name: Install curl
-        run: |
-          choco install curl -y
-
-      - name: Download and Install Boost 1.86
-        run: |
-          $Url = "https://sourceforge.net/projects/boost/files/boost-binaries/1.86.0/boost_1_86_0-msvc-14.3-64.exe"
-          $OutputPath = "C:\\Users\\runneradmin\\AppData\\Local\\Temp\\boost-installer.exe"
-          curl -L $Url -o $OutputPath
-          Start-Process -Wait -FilePath $OutputPath "/SILENT","/SP-","/SUPPRESSMSGBOXES","/DIR=C:\\thirdparties\\boost-1.86.0"
+      # Was a hand-rolled curl download of a SourceForge-hosted installer exe.
+      # SourceForge's boost-binaries mirrors are slow/inconsistent (observed
+      # ~500 KB/s to a randomly assigned mirror, well over a minute for the
+      # ~210 MB installer) and are a single external host outside GitHub's own
+      # infra, with no retry or checksum verification here. install-boost pulls
+      # from GitHub Releases (github.com/MarkusJx/prebuilt-boost) instead, is
+      # already used successfully by the macOS job below, and layers its own
+      # actions/cache on top so repeat runs skip the download entirely.
+      - name: Install Boost
+        uses: MarkusJx/install-boost@v2
+        id: install-boost
+        with:
+          boost_version: 1.91.0
+          platform_version: 2022
+          toolset: msvc
+          link: static
 
       - name: Build
         shell: powershell
@@ -38,16 +42,21 @@ jobs:
           $build_folder = "build"
           $disc_ver = "${{ github.ref }}" -replace '^refs/tags/', ''
           $release_name = "discrete-cli-win64-$disc_ver"
+
+          $BoostRoot = "${{ steps.install-boost.outputs.BOOST_ROOT }}"
+
           mkdir "$build_folder"
           cd "$build_folder"
-          if (!(Test-Path "$env:BOOST_ROOT\boost\version.hpp")) {
-            throw "Boost headers not found under $env:BOOST_ROOT"
+          if (!(Test-Path "$BoostRoot\include\boost\version.hpp")) {
+            throw "Boost headers not found under $BoostRoot"
           }
 
           cmake -G "Visual Studio 17 2022" -A x64 `
             -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded `
-            -DBOOST_ROOT="$env:BOOST_ROOT" `
-            -DBoost_ROOT="$env:BOOST_ROOT" `
+            -DBOOST_ROOT="$BoostRoot" `
+            -DBoost_ROOT="$BoostRoot" `
+            -DBoost_INCLUDE_DIR="$BoostRoot\include" `
+            -DBoost_LIBRARY_DIR="$BoostRoot\lib" `
             -DOQS_BUILD_ONLY_LIB=ON `
             ..
           if ($LASTEXITCODE -ne 0) { throw "CMake configure failed with exit code $LASTEXITCODE" }
@@ -99,7 +108,7 @@ jobs:
         uses: MarkusJx/install-boost@v2
         id: install-boost
         with:
-          boost_version: 1.86.0
+          boost_version: 1.91.0
           platform: macos
           platform_version: 15
           toolset: clang
