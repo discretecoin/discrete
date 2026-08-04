@@ -1,0 +1,111 @@
+// Copyright (c) 2026, The Discrete developers
+//
+// This file is part of Discrete.
+//
+// Regression tests for HTTP response framing.
+//
+// The RPC keep-alive loop writes a response and then blocks reading the next
+// request on the same connection. If a response carries neither Content-Length
+// nor Transfer-Encoding, an HTTP/1.1 client must read until the connection
+// closes — which that loop never does — so both sides wait until the client
+// times out. Every response must therefore be self-delimiting, including the
+// ones whose body was never set (an RPC handler bailing out early).
+
+#include "gtest/gtest.h"
+
+#include "Http/HttpParser.h"
+#include "Http/HttpResponse.h"
+
+#include <sstream>
+#include <string>
+
+using namespace CryptoNote;
+
+namespace {
+
+std::string serialize(const HttpResponse& response) {
+  std::stringstream stream;
+  stream << response;
+  return stream.str();
+}
+
+size_t countOccurrences(const std::string& haystack, const std::string& needle) {
+  size_t count = 0;
+  for (size_t pos = haystack.find(needle); pos != std::string::npos;
+       pos = haystack.find(needle, pos + needle.size())) {
+    ++count;
+  }
+  return count;
+}
+
+}
+
+// A response left untouched by its handler still has to be framed, otherwise
+// the client hangs waiting for a close that the keep-alive loop never performs.
+TEST(HttpFraming, BodylessResponseCarriesZeroContentLength) {
+  HttpResponse response;
+  response.addHeader("Access-Control-Allow-Origin", "*");
+
+  const std::string wire = serialize(response);
+
+  EXPECT_NE(wire.find("\r\nContent-Length: 0\r\n"), std::string::npos);
+  EXPECT_EQ(countOccurrences(wire, "Content-Length"), 1u);
+}
+
+TEST(HttpFraming, ContentLengthMatchesBodySize) {
+  HttpResponse response;
+  response.setBody("{\"status\":\"OK\"}");
+
+  const std::string wire = serialize(response);
+
+  EXPECT_NE(wire.find("\r\nContent-Length: 15\r\n"), std::string::npos);
+  EXPECT_EQ(countOccurrences(wire, "Content-Length"), 1u);
+}
+
+// A handler may set the header by hand under any casing; the serializer owns
+// the authoritative value and must not emit a second, contradictory one.
+TEST(HttpFraming, ManualContentLengthHeaderIsNotDuplicated) {
+  HttpResponse response;
+  response.addHeader("content-length", "9999");
+  response.setBody("hello");
+
+  const std::string wire = serialize(response);
+
+  EXPECT_EQ(countOccurrences(wire, "ontent-length"), 0u);
+  EXPECT_EQ(countOccurrences(wire, "Content-Length"), 1u);
+  EXPECT_NE(wire.find("\r\nContent-Length: 5\r\n"), std::string::npos);
+}
+
+// End-to-end proof that a client can finish reading the bodyless response
+// without relying on the connection being closed.
+TEST(HttpFraming, ClientParsesBodylessResponseWithoutBlocking) {
+  HttpResponse response;
+  response.setStatus(HttpResponse::STATUS_400);
+
+  std::stringstream stream(serialize(response));
+  HttpParser parser;
+  HttpResponse parsed;
+  parser.receiveResponse(stream, parsed);
+
+  EXPECT_EQ(parsed.getStatus(), HttpResponse::STATUS_400);
+  EXPECT_TRUE(parsed.getBody().empty());
+
+  auto header = parsed.getHeaders().find("content-length");
+  ASSERT_NE(header, parsed.getHeaders().end());
+  EXPECT_EQ(header->second, "0");
+}
+
+TEST(HttpFraming, BadRequestStatusIsReportable) {
+  HttpResponse response;
+  response.setStatus(HttpResponse::STATUS_400);
+  response.setBody("Failed to parse request body as JSON");
+
+  const std::string wire = serialize(response);
+
+  EXPECT_EQ(wire.find("HTTP/1.1 400 Bad Request\r\n"), 0u);
+}
+
+int main(int argc, char** argv) {
+  ::testing::InitGoogleTest(&argc, argv);
+  return RUN_ALL_TESTS();
+}

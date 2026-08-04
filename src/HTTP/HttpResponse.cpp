@@ -39,6 +39,8 @@ std::string HttpResponse::statusToString(HTTP_STATUS status) {
   switch (status) {
     case STATUS_200:
       return "OK";
+    case STATUS_400:
+      return "Bad Request";
     case STATUS_401:
       return "Unauthorized";
     case STATUS_404:
