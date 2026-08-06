@@ -927,6 +927,65 @@ TEST(PqWalletIntegration, TrackingContainerFromPastScanHeightKeepsIdentity) {
   boost::filesystem::remove(trackPath);
 }
 
+// walletd's --generate-container is a one-shot "write the container and exit". It has
+// no reason to sync, and starting the synchronizer anyway means teardown must join a
+// worker that can be parked in a node call with no timeout — which is what kept the
+// process alive after the container was already on disk. Offline mode must suppress
+// the start on EVERY path that reaches it, including the internal save/shutdown/load
+// reset a past scan height triggers, and must leave nothing to join.
+TEST(PqWalletIntegration, OfflineModeNeverStartsSynchronization) {
+  System::Dispatcher dispatcher;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(1000000).upgradeHeightV6(1000000)
+      .currency();
+  TestBlockchainGenerator generator(currency);
+  INodeTrivialRefreshStub node(generator);
+
+  CryptoNote::PqTrackingKeys tk;
+  const std::string genPath = "pq_offline_gen.wallet";
+  {
+    boost::filesystem::remove(genPath);
+    CryptoNote::WalletGreen gen(dispatcher, currency, node, logger);
+    gen.setOfflineMode(true);
+    gen.initialize(genPath, "pass");
+    gen.createAddress();
+    ASSERT_TRUE(gen.getPqTrackingKeys(tk));
+    gen.save(CryptoNote::WalletSaveLevel::SAVE_ALL);   // save() would otherwise restart it
+    EXPECT_FALSE(gen.synchronizationStarted());
+    gen.shutdown();
+  }
+
+  // The same for a view-only container generated at a past scan height, whose old
+  // creation timestamp forces the reset path (save -> shutdown -> load), and whose
+  // load() would otherwise start synchronization on the way back.
+  const std::string trackPath = "pq_offline_track.wallet";
+  {
+    boost::filesystem::remove(trackPath);
+    CryptoNote::WalletGreen tracking(dispatcher, currency, node, logger);
+    tracking.setOfflineMode(true);
+    const uint64_t pastTimestamp = 1000000;
+    ASSERT_NO_THROW(tracking.initializeWithPqTrackingKey(trackPath, "pass", tk, pastTimestamp));
+    tracking.save(CryptoNote::WalletSaveLevel::SAVE_ALL);
+    EXPECT_FALSE(tracking.synchronizationStarted());
+    tracking.shutdown();
+  }
+
+  // Offline mode describes the PROCESS, not the container: an ordinary open of the
+  // container written above synchronizes as usual.
+  {
+    CryptoNote::WalletGreen reopened(dispatcher, currency, node, logger);
+    ASSERT_NO_THROW(reopened.load(genPath, "pass"));
+    EXPECT_TRUE(reopened.synchronizationStarted());
+    reopened.shutdown();
+  }
+
+  boost::filesystem::remove(genPath);
+  boost::filesystem::remove(trackPath);
+}
+
 // The exchange deposit surface: the spending wallet registers the account number ONCE and
 // exports a tracking credential; the view-only container then issues further H-I-A-T-C
 // sub-numbers under that same account number. Everything a sub-number is made of is

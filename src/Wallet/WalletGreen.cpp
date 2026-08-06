@@ -2537,6 +2537,10 @@ void WalletGreen::startBlockchainSynchronizer() {
   if (m_walletsContainer.empty() || m_blockchainSynchronizerStarted) {
     return;
   }
+  if (m_offlineMode) {
+    m_logger(DEBUGGING) << "Offline mode: not starting BlockchainSynchronizer";
+    return;
+  }
   // A key record alone is not enough to scan with. The PQ consumer is the only
   // consumer this wallet ever registers, so starting without it just reaches
   // BlockchainSynchronizer::start()'s "no consumers" guard — which describes the

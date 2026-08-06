@@ -116,6 +116,18 @@ public:
   // The scheme is chosen ONCE at container creation and persisted; it cannot be
   // changed for an existing container. setPqDepositScheme throws if the container
   // already has deposit state (i.e. is not freshly created).
+  // Offline (one-shot) mode: never start background synchronization. Set it before
+  // touching the container in a lifecycle that only WRITES one — generating or
+  // re-keying it — and exits. Such a run has nothing to sync, and starting the
+  // synchronizer anyway means teardown must join a worker that may be parked in an
+  // unbounded node call, which is what kept `--generate-container` alive instead of
+  // exiting. Not persisted; it describes the process, not the container.
+  void setOfflineMode(bool offline) { m_offlineMode = offline; }
+  bool offlineMode() const { return m_offlineMode; }
+  // Whether background synchronization is currently running (there is a worker
+  // thread that shutdown() has to join).
+  bool synchronizationStarted() const { return m_blockchainSynchronizerStarted; }
+
   PqDepositScheme getPqDepositScheme() const { return m_pqDepositScheme; }
   // The lowest deposit index this container's scheme may ever issue.
   //  - AggregatedMultikey: 0. Deposit #i carries its OWN spend key,
@@ -394,6 +406,9 @@ protected:
   ContainerStorage m_containerStorage;
 
   bool m_blockchainSynchronizerStarted;
+  // See setOfflineMode(). Deliberately NOT cleared by doShutdown(): a one-shot
+  // lifecycle keeps it across the internal save/shutdown/load reset.
+  bool m_offlineMode = false;
   BlockchainSynchronizer m_blockchainSynchronizer;
   // PQ output scanning consumer (created lazily for the primary address when a
   // spend secret or PQ tracking credential is present). It is the sole consumer

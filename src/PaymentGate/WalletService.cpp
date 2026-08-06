@@ -363,8 +363,26 @@ std::vector<CryptoNote::WalletOrder> convertWalletRpcOrdersToWalletOrders(const 
 void generateNewWallet(const CryptoNote::Currency& currency, const WalletConfiguration& conf, Logging::ILogger& logger, System::Dispatcher& dispatcher, CryptoNote::INode& node, CryptoNote::PqDepositScheme depositScheme) {
   Logging::LoggerRef log(logger, "generateNewWallet");
 
-  CryptoNote::IWallet* wallet = new CryptoNote::WalletGreen(dispatcher, currency, node, logger);
+  CryptoNote::WalletGreen* wallet = new CryptoNote::WalletGreen(dispatcher, currency, node, logger);
   std::unique_ptr<CryptoNote::IWallet> walletGuard(wallet);
+
+  // --generate-container is documented as "generate ... and exit". Writing a
+  // container needs no chain data, so keep the synchronizer out of this process
+  // entirely: once started it can only be stopped by joining a worker that may be
+  // blocked in a node call with no timeout, which left generation running long
+  // after the container was on disk.
+  wallet->setOfflineMode(true);
+
+  // Close the container deliberately at the end of a successful generation rather
+  // than leaving it to ~WalletGreen, so a teardown failure is reported instead of
+  // silently swallowed by the destructor.
+  auto finish = [&log](CryptoNote::WalletGreen& w) {
+    try {
+      w.shutdown();
+    } catch (const std::exception& e) {
+      log(Logging::ERROR, Logging::BRIGHT_RED) << "Failed to close the generated container: " << e.what();
+    }
+  };
 
   std::string address;
 
@@ -384,11 +402,7 @@ void generateNewWallet(const CryptoNote::Currency& currency, const WalletConfigu
   // further H-I-A-T-C deposit numbers under the account number that wallet already
   // registered, but it carries no spend authority — nothing here can sign.
   if (!conf.secretViewKey.empty()) {
-    auto* greenWallet = dynamic_cast<CryptoNote::WalletGreen*>(wallet);
-    if (greenWallet == nullptr) {
-      log(Logging::ERROR, Logging::BRIGHT_RED) << "View-only containers require the PQ wallet backend";
-      return;
-    }
+    CryptoNote::WalletGreen* greenWallet = wallet;
 
     CryptoNote::PqTrackingKeys trackingKeys;
     if (!CryptoNote::decodePqTrackingKey(conf.secretViewKey, trackingKeys)) {
@@ -430,6 +444,7 @@ void generateNewWallet(const CryptoNote::Currency& currency, const WalletConfigu
     wallet->save(CryptoNote::WalletSaveLevel::SAVE_ALL);
     log(Logging::INFO, Logging::BRIGHT_WHITE) << "View-only container is saved. Address: "
                                               << wallet->getAddress(0);
+    finish(*wallet);
     return;
   }
 
@@ -475,7 +490,8 @@ void generateNewWallet(const CryptoNote::Currency& currency, const WalletConfigu
   // It lives in the PQ state blob, which is only serialized at SAVE_ALL, so a
   // freshly generated container is saved at SAVE_ALL (its tx/transfer collections
   // are empty, so this is just the keys + the deposit scheme).
-  if (auto* greenWallet = dynamic_cast<CryptoNote::WalletGreen*>(wallet)) {
+  {
+    CryptoNote::WalletGreen* greenWallet = wallet;
     if (greenWallet->pqEnabled()) {
       greenWallet->setPqDepositScheme(depositScheme);
       log(Logging::INFO, Logging::BRIGHT_WHITE) << "Deposit scheme: "
@@ -499,19 +515,29 @@ void generateNewWallet(const CryptoNote::Currency& currency, const WalletConfigu
 
   wallet->save(CryptoNote::WalletSaveLevel::SAVE_ALL);
   log(Logging::INFO, Logging::BRIGHT_WHITE) << "Wallet is saved";
+  finish(*wallet);
 }
 
 void changePassword(const CryptoNote::Currency& currency, const WalletConfiguration& conf, Logging::ILogger& logger, System::Dispatcher& dispatcher, CryptoNote::INode& node, const std::string newPassword) {
   Logging::LoggerRef log(logger, "changePassword");
   log(Logging::INFO, Logging::BRIGHT_WHITE) << "Changing wallet password...";
 
-  CryptoNote::IWallet* wallet = new CryptoNote::WalletGreen(dispatcher, currency, node, logger);
+  CryptoNote::WalletGreen* wallet = new CryptoNote::WalletGreen(dispatcher, currency, node, logger);
   std::unique_ptr<CryptoNote::IWallet> walletGuard(wallet);
+
+  // Same one-shot lifecycle as generation: re-key the container and exit, with no
+  // background synchronization to tear down.
+  wallet->setOfflineMode(true);
 
   wallet->start();
   wallet->load(conf.walletFile, conf.walletPassword);
   wallet->changePassword(conf.walletPassword, newPassword);
   wallet->save();
+  try {
+    wallet->shutdown();
+  } catch (const std::exception& e) {
+    log(Logging::ERROR, Logging::BRIGHT_RED) << "Failed to close the container: " << e.what();
+  }
 }
 
 WalletService::WalletService(const CryptoNote::Currency& currency, System::Dispatcher& sys, CryptoNote::INode& node,
