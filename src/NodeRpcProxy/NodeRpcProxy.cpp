@@ -164,6 +164,25 @@ bool NodeRpcProxy::shutdown() {
 
   m_dispatcher->remoteSpawn([this]() {
     m_stop = true;
+
+    // m_stop above only unblocks contexts that cooperatively poll it (e.g. the
+    // pullTimer loop). A context blocked inside a synchronous node call
+    // (queryBlocks, getPoolSymmetricDifference, ...) is sitting in
+    // HttpClient::request(), which doesn't check m_stop at all, so without
+    // this, shutdown() waited on m_workerThread.join() below for as long as
+    // that call took to resolve on its own -- unbounded if the daemon never
+    // responds. TcpConnection's read/write already registers an interrupt
+    // procedure that closes the socket, so interrupting the whole group
+    // cancels that call immediately (throwing InterruptedException out of
+    // it) instead of waiting on it.
+    //
+    // Must run here, inside the dispatcher's own thread via remoteSpawn, not
+    // called directly from shutdown()'s caller thread: ContextGroup::interrupt()
+    // walks and mutates the dispatcher's own context list, which isn't
+    // synchronized for cross-thread access the way remoteSpawn itself is.
+    assert(m_context_group != nullptr);
+    m_context_group->interrupt();
+
     // Run all spawned contexts
     m_dispatcher->yield();
   });
@@ -973,6 +992,16 @@ void NodeRpcProxy::scheduleRequest(std::function<std::error_code()>&& procedure,
 
 template <typename Request, typename Response>
 std::error_code NodeRpcProxy::binaryCommand(const std::string& comm, const Request& req, Response& res) {
+  // updateNodeStatus()'s pull loop calls this directly, bypassing the m_stop
+  // check the public queryBlocks()/getPoolSymmetricDifference() Wrapper already
+  // has. Without this, a call interrupted by shutdown() would just be followed
+  // by the loop's next call opening a fresh connection to the same
+  // unresponsive daemon and blocking again, with nothing left to interrupt it
+  // a second time.
+  if (m_stop) {
+    return make_error_code(error::NETWORK_ERROR);
+  }
+
   std::error_code ec;
   try {
     EventLock eventLock(*m_httpEvent);
@@ -988,6 +1017,11 @@ std::error_code NodeRpcProxy::binaryCommand(const std::string& comm, const Reque
 
 template <typename Request, typename Response>
 std::error_code NodeRpcProxy::jsonCommand(const std::string& comm, const Request& req, Response& res) {
+  // See binaryCommand() above for why this guard is needed.
+  if (m_stop) {
+    return make_error_code(error::NETWORK_ERROR);
+  }
+
   std::error_code ec;
   try {
     EventLock eventLock(*m_httpEvent);
@@ -1004,6 +1038,11 @@ std::error_code NodeRpcProxy::jsonCommand(const std::string& comm, const Request
 
 template <typename Request, typename Response>
 std::error_code NodeRpcProxy::jsonRpcCommand(const std::string& method, const Request& req, Response& res) {
+  // See binaryCommand() above for why this guard is needed.
+  if (m_stop) {
+    return make_error_code(error::NETWORK_ERROR);
+  }
+
   // These are all idempotent read queries. The HttpClient keeps the socket alive
   // between calls, so if the daemon was restarted the first request on the now-dead
   // socket throws and the client disconnects; retrying once reconnects and recovers
@@ -1030,7 +1069,13 @@ std::error_code NodeRpcProxy::jsonRpcCommand(const std::string& method, const Re
       return make_error_code(error::CONNECT_ERROR);
     }
     catch (const std::exception&) {
-      if (attempt == 0) {
+      // A shutdown-triggered InterruptedException (see shutdown()'s
+      // contextGroup interrupt) lands here too, since it derives from
+      // std::exception. Retrying it would reconnect and block again with
+      // nothing left to interrupt it a second time, silently trading a fast,
+      // deliberate cancellation for an unbounded wait -- so don't retry once
+      // shutdown is in progress.
+      if (attempt == 0 && !m_stop) {
         continue;  // stale/dropped connection: reconnect and retry once
       }
       return make_error_code(error::NETWORK_ERROR);

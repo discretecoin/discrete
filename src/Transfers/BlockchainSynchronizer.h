@@ -89,6 +89,34 @@ private:
     Crypto::Hash lastKnownBlock;
   };
 
+  // Heap-owned state for one in-flight node request. The completion callback
+  // captures a shared_ptr to one of these (not a reference to a stack promise
+  // and response), so it stays valid to write into even if
+  // waitForFutureOrStop() below gives up waiting on stop() before the node
+  // ever calls back — the alternative, a bare timeout on a stack-allocated
+  // promise/response, is a use-after-free the moment a late callback fires.
+  struct QueryBlocksState {
+    std::promise<std::error_code> promise;
+    GetBlocksResponse response;
+  };
+
+  struct GetPoolState {
+    std::promise<std::error_code> promise;
+    GetPoolResponse response;
+  };
+
+  enum class WaitOutcome {
+    ready,
+    stopped
+  };
+
+  // Polls `future` instead of blocking on it unconditionally, so a stop()
+  // request can abandon the wait even if the underlying INode never invokes
+  // its callback (or takes arbitrarily long to). Only this wait is bounded;
+  // the request itself is left to complete or not on its own -- see
+  // QueryBlocksState/GetPoolState above for why that's safe.
+  WaitOutcome waitForFutureOrStop(std::future<std::error_code>& future);
+
   enum class State { //prioritized finite states
     idle = 0,           //DO
     poolSync = 1,       //NOT

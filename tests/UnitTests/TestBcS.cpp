@@ -415,6 +415,48 @@ TEST_F(BcSTest, stopIsWaiting) {
   EXPECT_EQ(flag, true);
 }
 
+// Regression tests for issue #11's shutdown hang: stop() must not block on
+// future.get() forever when the node never invokes a pending callback at
+// all. The request state (promise + response buffers) is heap-owned so it's
+// still safe for the node to write into after the wait is abandoned -- only
+// waitForFutureOrStop()'s *wait* is bounded, not the underlying request.
+TEST_F(BcSTest, stopReturnsQuicklyWhenQueryBlocksNeverCallsBack) {
+  addConsumers();
+
+  m_node.queryBlocksFunctor = [](const std::vector<Hash>&, uint64_t, std::vector<BlockShortEntry>&,
+                                  uint32_t&, const INode::Callback&) -> bool {
+    return false; // black hole: query started but its callback never fires
+  };
+
+  m_sync.start();
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+  auto start = std::chrono::steady_clock::now();
+  m_sync.stop();
+  auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start);
+
+  EXPECT_LT(elapsed.count(), 2000);
+}
+
+TEST_F(BcSTest, stopReturnsQuicklyWhenPoolRequestNeverCallsBack) {
+  addConsumers();
+
+  m_node.getPoolSymmetricDifferenceFunctor = [](const std::vector<Hash>&, Hash, bool&,
+                                                 std::vector<std::unique_ptr<ITransactionReader>>&,
+                                                 std::vector<Hash>&, const INode::Callback&) -> bool {
+    return false; // black hole: query started but its callback never fires
+  };
+
+  m_sync.start();
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+  auto start = std::chrono::steady_clock::now();
+  m_sync.stop();
+  auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start);
+
+  EXPECT_LT(elapsed.count(), 2000);
+}
+
 TEST_F(BcSTest, syncCompletedError) {
   ConsumerStub c(m_currency.genesisBlockHash());
   m_sync.addConsumer(&c);
