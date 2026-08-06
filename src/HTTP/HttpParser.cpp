@@ -154,10 +154,28 @@ void HttpParser::receiveBody(std::istream& stream, std::string& body, size_t bod
     throw std::runtime_error("HTTP body too large");
   }
 
-  body.resize(bodyLength);
-  stream.read(&body[0], bodyLength);
+  // Grow with the bytes that actually arrive instead of committing the whole
+  // claimed length up front. The cap above bounds a single body; reading
+  // incrementally is what bounds the sum across connections, since a peer that
+  // announces a large Content-Length and then sends nothing now holds only
+  // what it sent. The buffer stays small deliberately — this runs on a
+  // dispatcher context stack, not a thread stack.
+  char buffer[8192];
+  body.clear();
 
-  if (!stream || stream.gcount() != static_cast<std::streamsize>(bodyLength)) {
+  while (body.size() < bodyLength) {
+    const size_t wanted = std::min(sizeof(buffer), bodyLength - body.size());
+    stream.read(buffer, wanted);
+
+    const std::streamsize received = stream.gcount();
+    if (received <= 0) {
+      break;
+    }
+
+    body.append(buffer, static_cast<size_t>(received));
+  }
+
+  if (body.size() != bodyLength) {
     throw std::runtime_error("Failed to read complete HTTP body");
   }
 }

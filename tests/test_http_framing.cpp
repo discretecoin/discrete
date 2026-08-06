@@ -106,6 +106,40 @@ TEST(HttpFraming, ClientParsesBodylessResponseWithoutBlocking) {
   EXPECT_EQ(header->second, "0");
 }
 
+// A body is read in chunks, so it must reassemble correctly across chunk
+// boundaries — the case a single read() could never get wrong.
+TEST(HttpFraming, BodySpanningManyChunksIsReassembled) {
+  const std::string payload(200000, 'x');
+
+  std::stringstream stream;
+  stream << "POST / HTTP/1.1\r\nContent-Length: " << payload.size() << "\r\n\r\n" << payload;
+
+  HttpParser parser;
+  HttpRequest request;
+  parser.receiveRequest(stream, request);
+
+  EXPECT_EQ(request.getBody().size(), payload.size());
+  EXPECT_EQ(request.getBody(), payload);
+}
+
+// A peer that announces a body and then sends less than it promised must fail
+// rather than being handed a short body as if it were complete. This is also
+// the shape of the cheap attack the chunked read defends against: the memory
+// held now tracks what was actually sent, not what was claimed.
+TEST(HttpFraming, TruncatedBodyIsRejected) {
+  std::stringstream stream;
+  stream << "POST / HTTP/1.1\r\nContent-Length: 100000\r\n\r\n" << std::string(64, 'y');
+
+  HttpParser parser;
+  HttpRequest request;
+  try {
+    parser.receiveRequest(stream, request);
+    FAIL() << "expected receiveRequest to reject a truncated body";
+  } catch (const std::runtime_error& e) {
+    EXPECT_STREQ(e.what(), "Failed to read complete HTTP body");
+  }
+}
+
 // A Content-Length above the sane maximum must be rejected before the parser
 // trusts it enough to allocate — otherwise a peer can force a large
 // allocation merely by claiming one, without ever sending a matching body.
