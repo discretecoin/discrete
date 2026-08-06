@@ -13,12 +13,20 @@
 
 #include "gtest/gtest.h"
 
+#include "Http/HttpClient.h"
 #include "Http/HttpParser.h"
 #include "Http/HttpRequest.h"
 #include "Http/HttpResponse.h"
 
 #include "CryptoNoteConfig.h"
 
+#include <System/ContextGroup.h>
+#include <System/Dispatcher.h>
+#include <System/Ipv4Address.h>
+#include <System/TcpListener.h>
+#include <System/Timer.h>
+
+#include <chrono>
 #include <sstream>
 #include <string>
 
@@ -115,6 +123,60 @@ TEST(HttpFraming, OversizedContentLengthRejectedBeforeAllocating) {
   } catch (const std::runtime_error& e) {
     EXPECT_STREQ(e.what(), "HTTP body too large");
   }
+}
+
+// HttpClient::request() previously had no read/write timeout at all: a
+// stalled or unresponsive daemon connection wedged it forever, which in turn
+// wedged BlockchainSynchronizer::stop()'s worker-thread join -- observed as
+// walletd needing SIGKILL to exit (issue #11). This proves request() gives up
+// within its configured budget instead of hanging.
+TEST(HttpClientTimeout, RequestTimesOutAgainstAnUnresponsivePeer) {
+  const uint16_t port = 18765;
+
+  System::Dispatcher dispatcher;
+  System::TcpListener listener(dispatcher, System::Ipv4Address("127.0.0.1"), port);
+  System::ContextGroup contextGroup(dispatcher);
+
+  contextGroup.spawn([&] {
+    // Accept the connection but never write a response or close it --
+    // simulates a stalled/unresponsive daemon. Held open comfortably longer
+    // than the client's configured timeout below.
+    auto connection = listener.accept();
+    System::Timer(dispatcher).sleep(std::chrono::milliseconds(500));
+  });
+
+  bool threw = false;
+  std::string message;
+  std::chrono::steady_clock::time_point start;
+  std::chrono::steady_clock::time_point finish;
+
+  contextGroup.spawn([&] {
+    CryptoNote::HttpClient client(dispatcher, "127.0.0.1", port);
+    client.setRequestTimeout(std::chrono::milliseconds(150));
+
+    CryptoNote::HttpRequest request;
+    request.setMethod("GET");
+    request.setUrl("/");
+    CryptoNote::HttpResponse response;
+
+    start = std::chrono::steady_clock::now();
+    try {
+      client.request(request, response);
+    } catch (const std::exception& e) {
+      threw = true;
+      message = e.what();
+    }
+    finish = std::chrono::steady_clock::now();
+  });
+
+  contextGroup.wait();
+
+  ASSERT_TRUE(threw);
+  EXPECT_NE(message.find("timed out"), std::string::npos) << "message: " << message;
+
+  auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(finish - start);
+  EXPECT_GE(elapsed.count(), 150);
+  EXPECT_LT(elapsed.count(), 2000);
 }
 
 TEST(HttpFraming, BadRequestStatusIsReportable) {
