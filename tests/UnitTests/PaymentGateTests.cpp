@@ -335,22 +335,33 @@ TEST_F(PaymentGateTest, IndexModeRegistersAndIssuesHITC) {
   EXPECT_EQ(base.blockHeight, H);
   EXPECT_EQ(base.txIndex, I);
 
-  // Issue an H-I-A-T-C deposit under the SAME (H, I); T = 0.
+  // Issue an H-I-A-T-C deposit under the SAME (H, I). The FIRST deposit is T=1, never
+  // T=0: T=0 is the base account itself, so H-I-A-0-C and the H-I-A-C above would name
+  // the same on-chain output and neither could be attributed.
   std::string depositAddr;
   uint32_t depIdx = 99;
   ASSERT_FALSE(service->createPqDepositAddress(depositAddr, depIdx));
-  EXPECT_EQ(depIdx, 0u);
+  EXPECT_EQ(depIdx, 1u);
   CryptoNote::AccountNumber acct;
   uint32_t t = 99;
   ASSERT_TRUE(CryptoNote::AccountNumber::fromStringWithIndex(depositAddr, acct, t));
   EXPECT_EQ(acct.blockHeight, H);
   EXPECT_EQ(acct.txIndex, I);
-  EXPECT_EQ(t, 0u);
+  EXPECT_EQ(t, 1u);
 
   // The wallet recognizes its own H-I-A-T-C deposit as ours.
   bool ours = false;
   ASSERT_FALSE(service->hasAddress(depositAddr, ours));
   EXPECT_TRUE(ours);
+
+  // ...and it lists exactly that one, under its real index.
+  std::vector<std::string> depositAddrs;
+  std::vector<uint32_t> depositIndices;
+  ASSERT_FALSE(service->listPqDepositAddresses(depositAddrs, depositIndices));
+  ASSERT_EQ(depositAddrs.size(), 1u);
+  EXPECT_EQ(depositAddrs[0], depositAddr);
+  ASSERT_EQ(depositIndices.size(), 1u);
+  EXPECT_EQ(depositIndices[0], 1u);
 }
 
 // Message signing (ML-DSA over the single spend identity), the mnemonic (the master

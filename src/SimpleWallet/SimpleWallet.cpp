@@ -323,8 +323,11 @@ void printSubaddressAmounts(LoggerRef& logger, const std::string& rowColor,
     return;
   }
   for (const auto& bucket : legacy->getTransactionSubaddressAmounts(transactionId)) {
-    if (bucket.first == 0 || bucket.first == CryptoNote::PQ_PRIMARY_DEPOSIT || bucket.second <= 0) {
-      continue;  // primary-address amounts are already the row's total
+    // PQ_PRIMARY_DEPOSIT is the primary address, whose amount is already the row's
+    // total. Bucket 0 is NOT primary — under AggregatedMultikey it is a real deposit
+    // with its own spend key, and under SingleKeyIndex the scanner never produces it.
+    if (bucket.first == CryptoNote::PQ_PRIMARY_DEPOSIT || bucket.second <= 0) {
+      continue;
     }
     logger(INFO, rowColor) << "received to subaddress " << bucket.first << ": "
                            << currency.formatAmount(bucket.second);

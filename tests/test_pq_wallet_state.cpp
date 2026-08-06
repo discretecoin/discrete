@@ -550,6 +550,75 @@ TEST(WalletLedger, SingleKeyIndexAttributesDepositByT) {
     EXPECT_EQ(st.spendableInputs().size(), 1u);
 }
 
+// T=0 is the primary address, not deposit #0. A plain Bech32m PQ address and a base
+// H-I-A-C account number both send at T=0, so an output there can never be pinned to
+// a deposit; SingleKeyIndex issuance starts at T=1 to keep that unambiguous.
+TEST(WalletLedger, SingleKeyIndexTZeroIsPrimaryNotDepositZero) {
+    PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
+    PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
+
+    WalletLedger st(me);
+    st.setDepositConfig(PqDepositScheme::SingleKeyIndex, 3);
+
+    // An ordinary payment to the wallet's own primary address: same key pair, T=0.
+    Funded f = payToPub(them, me.viewPub, me.spendPub, 1000000, 900000, 0xB8, 0);
+    ASSERT_TRUE(st.processTransaction(f.tx, f.txid, 100));
+    EXPECT_EQ(st.balance(), 900000u);
+    ASSERT_EQ(st.outputs().size(), 1u);
+    EXPECT_EQ(st.outputs()[0].depositIndex, PQ_PRIMARY_DEPOSIT);
+    EXPECT_EQ(st.depositBalance(0), 0u);          // deposit #0 does not exist here
+    EXPECT_TRUE(st.depositBalances().empty());    // attributed to no deposit at all
+    EXPECT_EQ(st.spendableInputs().size(), 1u);   // still the wallet's money
+
+    auto byBucket = st.transfersByDeposit(f.txid);
+    ASSERT_EQ(byBucket.size(), 1u);
+    EXPECT_EQ(byBucket.begin()->first, PQ_PRIMARY_DEPOSIT);
+}
+
+// <=v0.9.6 (state blob v7) recorded SingleKeyIndex T=0 receipts in deposit bucket 0.
+// Those are primary-address receipts; loading such a blob must move them off the
+// deposit bucket, and must NOT touch AggregatedMultikey, where deposit 0 is real.
+TEST(WalletLedger, LegacyBucketZeroMigratesToPrimaryOnlyForSingleKeyIndex) {
+    PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
+    PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
+
+    // Produce a blob holding one output in bucket 0, then stamp it as v7. The v7 and
+    // v8 layouts are byte-identical — v8 only changes what bucket 0 MEANS — so the
+    // version byte is the whole difference.
+    auto dep0 = CryptoPQ::deriveDepositSpendKeys(me.seedMaster, 0);
+    Funded f = payToPub(them, me.viewPub, dep0.first, 1000000, 500000, 0xB9, 0);
+    WalletLedger legacy(me);
+    legacy.setDepositConfig(PqDepositScheme::AggregatedMultikey, 1);
+    ASSERT_TRUE(legacy.processTransaction(f.tx, f.txid, 100));
+    ASSERT_EQ(legacy.outputs()[0].depositIndex, 0u);
+
+    std::stringstream saved;
+    legacy.save(saved);
+    std::string blob = saved.str();
+    ASSERT_FALSE(blob.empty());
+    blob[0] = 7;  // pretend it was written by v0.9.6
+
+    {
+        WalletLedger migrated(me);
+        std::stringstream in(blob);
+        migrated.load(in);
+        // Scheme arrives only after load (WalletGreen parses it from a later section).
+        migrated.setDepositConfig(PqDepositScheme::SingleKeyIndex, 1);
+        ASSERT_EQ(migrated.outputs().size(), 1u);
+        EXPECT_EQ(migrated.outputs()[0].depositIndex, PQ_PRIMARY_DEPOSIT);
+        EXPECT_EQ(migrated.depositBalance(0), 0u);
+    }
+    {
+        WalletLedger kept(me);
+        std::stringstream in(blob);
+        kept.load(in);
+        kept.setDepositConfig(PqDepositScheme::AggregatedMultikey, 1);
+        ASSERT_EQ(kept.outputs().size(), 1u);
+        EXPECT_EQ(kept.outputs()[0].depositIndex, 0u);  // a genuine deposit key
+        EXPECT_EQ(kept.depositBalance(0), 500000u);
+    }
+}
+
 TEST(WalletLedger, DepositIndexSurvivesSaveLoad) {
     PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
     PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));

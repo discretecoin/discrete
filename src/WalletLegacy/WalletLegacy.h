@@ -131,8 +131,9 @@ public:
                            std::size_t recipientIndex = static_cast<std::size_t>(-1));
 
   // Net amount of one transaction split by subaddress index T (SingleKeyIndex
-  // attribution; both 0 and PQ_PRIMARY_DEPOSIT mean the primary address). Empty
-  // map if the tx is unknown. Display-only: T routes attribution, not funds.
+  // attribution; PQ_PRIMARY_DEPOSIT means the primary address, which is where T=0
+  // lands). Empty map if the tx is unknown. Display-only: T routes attribution,
+  // not funds.
   std::map<uint32_t, int64_t> getTransactionSubaddressAmounts(TransactionId transactionId);
 
   virtual size_t getTransactionCount() override;

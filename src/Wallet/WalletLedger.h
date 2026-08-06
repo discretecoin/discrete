@@ -63,7 +63,9 @@ struct PqWalletOutput {
   Crypto::Hash  spentTxid{};      // the tx that spent it (to undo a dropped/reorged spend)
   // Which deposit this output was attributed to. PQ_PRIMARY_DEPOSIT = the
   // wallet's own primary address. For AggregatedMultikey it is the deposit
-  // spend-key index; for SingleKeyIndex it is the subaddress index T.
+  // spend-key index (0-based; deposit 0 has its own spend key, distinct from
+  // the primary's). For SingleKeyIndex it is the subaddress index T, which
+  // starts at 1 — T=0 is the primary address itself and maps to the sentinel.
   uint32_t      depositIndex = PQ_PRIMARY_DEPOSIT;
 };
 
@@ -197,6 +199,10 @@ private:
   PqDepositScheme m_depositScheme = PqDepositScheme::AggregatedMultikey;
   uint32_t        m_depositCount = 0;
   uint32_t        m_legacyTWindowMaxT = 0;  // manual recovery knob; see setLegacyTWindowRescan
+  // Set by load() for a v<=7 blob, consumed by setDepositConfig(): those blobs
+  // recorded SingleKeyIndex T=0 receipts in deposit bucket 0 instead of
+  // PQ_PRIMARY_DEPOSIT, and the scheme is only known after load() returns.
+  bool            m_needsPrimaryBucketMigration = false;
   // Cached deposit spend pubs (AggregatedMultikey); index == deposit index.
   std::vector<CryptoPQ::DsaPublicKey> m_depositSpendPubs;
 

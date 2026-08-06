@@ -581,8 +581,10 @@ TEST(PqWalletIntegration, RestoreFromSeedNeedsDepositCountToRecoverDepositFunds)
 
 // SingleKeyIndex (H-I-A-T-C) differentiator: every deposit shares the ONE spend key and is
 // distinguished only by the subaddress index T carried in the output. The scanner must
-// attribute each output to the bucket whose T it scans under. (The H-I-A-T-C address
-// string + registration are a separate concern needing node-side account resolution.)
+// attribute each output to the bucket whose T it scans under, and T=0 — which is what a
+// payment to the primary address / base H-I-A-C number produces — must stay OFF the
+// deposit buckets entirely. (The H-I-A-T-C address string + registration are a separate
+// concern needing node-side account resolution.)
 TEST(PqWalletIntegration, SingleKeyIndexAttributesDepositsByT) {
   System::Dispatcher dispatcher;
   Logging::ConsoleLogger logger(Logging::ERROR);
@@ -600,8 +602,10 @@ TEST(PqWalletIntegration, SingleKeyIndexAttributesDepositsByT) {
   wallet.initialize(path, "pass");
   wallet.createAddress();  // primary
   wallet.setPqDepositScheme(CryptoNote::PqDepositScheme::SingleKeyIndex);
-  ASSERT_EQ(wallet.reservePqDepositIndex(), 0u);
+  // Deposits start at T=1: T=0 is the primary address itself.
   ASSERT_EQ(wallet.reservePqDepositIndex(), 1u);
+  ASSERT_EQ(wallet.reservePqDepositIndex(), 2u);
+  EXPECT_EQ(wallet.getPqDepositCount(), 2u);
 
   Crypto::SecretKey spend = wallet.getAddressSpendKey(0).secretKey;
   CryptoNote::PqWalletKeys mine = pqKeysFromWalletSeed(spend);  // the one keypair
@@ -611,19 +615,30 @@ TEST(PqWalletIntegration, SingleKeyIndexAttributesDepositsByT) {
     otherSecret.data[i] = static_cast<uint8_t>(i * 11 + 5);
   CryptoNote::PqWalletKeys them = CryptoNote::derivePqWalletKeys(otherSecret);
 
-  // Two payments to the ONE key but with different T must land in different buckets.
+  // Three payments to the ONE key: T=0 is an ordinary payment to the primary address,
+  // T=1 and T=2 are the two issued deposits. Each must land in its own bucket, and the
+  // primary payment must not be attributable to any deposit.
   CryptoNote::Transaction t0 = makePqPayTo(them, mine, 1000000, 500000, 0x61, /*T*/ 0);
   CryptoNote::Transaction t1 = makePqPayTo(them, mine, 1000000, 300000, 0x62, /*T*/ 1);
+  CryptoNote::Transaction t2 = makePqPayTo(them, mine, 1000000, 200000, 0x63, /*T*/ 2);
   generator.setTxFee(CryptoNote::getObjectHash(t0), 1000000 - 500000);
   generator.setTxFee(CryptoNote::getObjectHash(t1), 1000000 - 300000);
+  generator.setTxFee(CryptoNote::getObjectHash(t2), 1000000 - 200000);
   generator.addTxToBlockchain(t0);
   generator.addTxToBlockchain(t1);
+  generator.addTxToBlockchain(t2);
   node.updateObservers();
-  pumpUntil(dispatcher, wallet, [&wallet]() { return wallet.getActualBalance() == 800000u; });
+  pumpUntil(dispatcher, wallet, [&wallet]() { return wallet.getActualBalance() == 1000000u; });
 
-  EXPECT_EQ(wallet.getActualBalance(), 800000u);
-  EXPECT_EQ(wallet.pqDepositBalance(0), 500000u);  // T=0 output -> bucket 0
-  EXPECT_EQ(wallet.pqDepositBalance(1), 300000u);  // T=1 output -> bucket 1
+  EXPECT_EQ(wallet.getActualBalance(), 1000000u);
+  EXPECT_EQ(wallet.pqDepositBalance(1), 300000u);  // T=1 output -> deposit 1
+  EXPECT_EQ(wallet.pqDepositBalance(2), 200000u);  // T=2 output -> deposit 2
+  // The primary payment is NOT deposit #0 — no deposit owns it.
+  EXPECT_EQ(wallet.pqDepositBalance(0), 0u);
+  EXPECT_EQ(wallet.pqDepositBalance(CryptoNote::PQ_PRIMARY_DEPOSIT), 500000u);
+  auto buckets = wallet.pqDepositBalances();
+  EXPECT_EQ(buckets.size(), 2u);
+  EXPECT_EQ(buckets.count(0), 0u);
 
   wallet.shutdown();
   boost::filesystem::remove(path);
@@ -656,8 +671,8 @@ TEST(PqWalletIntegration, DepositRegistrySurvivesCrashAfterCreateTimeSave) {
     wallet.initialize(path, "pass");
     wallet.createAddress();  // primary (spend wallet: deposits allowed)
     wallet.setPqDepositScheme(CryptoNote::PqDepositScheme::SingleKeyIndex);
-    ASSERT_EQ(wallet.reservePqDepositIndex(), 0u);
     ASSERT_EQ(wallet.reservePqDepositIndex(), 1u);
+    ASSERT_EQ(wallet.reservePqDepositIndex(), 2u);
     wallet.save();      // the single create-time save createPqDepositAddress now performs
     wallet.shutdown();  // no save here: anything not already on disk is lost (== crash)
   }
@@ -665,9 +680,12 @@ TEST(PqWalletIntegration, DepositRegistrySurvivesCrashAfterCreateTimeSave) {
   {
     CryptoNote::WalletGreen reloaded(dispatcher, currency, node, logger);
     ASSERT_NO_THROW(reloaded.load(path, "pass"));
-    // Scheme + count come straight off disk, so the scanner watches T=0..count-1 again.
+    // Scheme + cursor come straight off disk, so the issued deposits keep their numbers
+    // and the next reservation continues past them instead of reissuing T=1.
     EXPECT_EQ(reloaded.getPqDepositScheme(), CryptoNote::PqDepositScheme::SingleKeyIndex);
     EXPECT_EQ(reloaded.getPqDepositCount(), 2u);
+    EXPECT_EQ(reloaded.getPqDepositIndexAt(0), 1u);
+    EXPECT_EQ(reloaded.reservePqDepositIndex(), 3u);
     reloaded.shutdown();
   }
 
@@ -872,7 +890,7 @@ TEST(PqWalletIntegration, TrackingWalletIssuesSingleKeyIndexSubNumbers) {
     ASSERT_TRUE(full.getPqTrackingKeys(tk));
     seed = full.getAddressSpendKey(0).secretKey;
     fullFingerprint = full.pqAccountFingerprint();
-    for (uint32_t t = 0; t < 4; ++t) {
+    for (uint32_t t = 1; t <= 4; ++t) {  // deposits are T>=1; T=0 is the primary address
       fullNumbers.push_back(full.pqDepositAddress(t, regH, regI));
       ASSERT_FALSE(fullNumbers.back().empty());
     }
@@ -895,9 +913,9 @@ TEST(PqWalletIntegration, TrackingWalletIssuesSingleKeyIndexSubNumbers) {
   EXPECT_TRUE(tracking.getPqRegistrationKeysHex(viewHex, spendHex));
 
   // Issuing sub-numbers works view-only and matches the spending wallet exactly.
-  for (uint32_t t = 0; t < 4; ++t) {
+  for (uint32_t t = 1; t <= 4; ++t) {
     ASSERT_EQ(tracking.reservePqDepositIndex(), t);
-    EXPECT_EQ(tracking.pqDepositAddress(t, regH, regI), fullNumbers[t]);
+    EXPECT_EQ(tracking.pqDepositAddress(t, regH, regI), fullNumbers[t - 1]);
   }
   EXPECT_EQ(tracking.getPqDepositCount(), 4u);
 
@@ -1227,10 +1245,11 @@ TEST(PqWalletIntegration, IndexHITCReceiveAndSpendByAddressString) {
   CryptoNote::Transaction regTx = wallet.buildPqFreeRegTransaction(refHash);
   generator.addTxToBlockchain(regTx);
 
-  // Reserve two deposits and address deposit #1 (T=1) by its H-I-A-T-C string.
-  ASSERT_EQ(wallet.reservePqDepositIndex(), 0u);
+  // Reserve two deposits and address the first (T=1) by its H-I-A-T-C string.
+  // SingleKeyIndex issuance starts at 1 — T=0 is the primary address.
   ASSERT_EQ(wallet.reservePqDepositIndex(), 1u);
-  const std::string hitc = wallet.getAddress(2);  // deposit index 1 -> T=1
+  ASSERT_EQ(wallet.reservePqDepositIndex(), 2u);
+  const std::string hitc = wallet.getAddress(1);  // first issued deposit -> T=1
   CryptoNote::AccountNumber acct;
   uint32_t t = 99;
   ASSERT_TRUE(CryptoNote::AccountNumber::fromStringWithIndex(hitc, acct, t));

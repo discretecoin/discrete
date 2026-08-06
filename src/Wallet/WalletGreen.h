@@ -117,11 +117,30 @@ public:
   // changed for an existing container. setPqDepositScheme throws if the container
   // already has deposit state (i.e. is not freshly created).
   PqDepositScheme getPqDepositScheme() const { return m_pqDepositScheme; }
-  uint32_t getPqDepositCount() const { return m_pqDepositCount; }
+  // The lowest deposit index this container's scheme may ever issue.
+  //  - AggregatedMultikey: 0. Deposit #i carries its OWN spend key,
+  //    deriveDepositSpendKeys(seed, i), distinct from the primary's at every i,
+  //    so index 0 is a perfectly good deposit.
+  //  - SingleKeyIndex: 1. Deposits there are only a subaddress index T under the
+  //    one key pair, and T=0 is the primary address itself — a plain Bech32m PQ
+  //    address and a base H-I-A-C account number both send at T=0. Issuing
+  //    H-I-A-0-C would make primary receipts and deposit-0 receipts the same
+  //    on-chain output, attributable to neither.
+  uint32_t getPqFirstDepositIndex() const {
+    return m_pqDepositScheme == PqDepositScheme::SingleKeyIndex ? 1u : 0u;
+  }
+  // How many deposit addresses this container has issued (NOT the next index).
+  uint32_t getPqDepositCount() const {
+    const uint32_t first = getPqFirstDepositIndex();
+    return m_pqNextDepositIndex > first ? m_pqNextDepositIndex - first : 0u;
+  }
+  // The deposit index of the `ordinal`-th issued deposit (ordinal is 0-based, so
+  // this is what getAddress(ordinal + 1) renders).
+  uint32_t getPqDepositIndexAt(uint32_t ordinal) const { return getPqFirstDepositIndex() + ordinal; }
   void setPqDepositScheme(PqDepositScheme scheme);
   // Reserve and return the next deposit index (the Spec-1 deposit-key index, or the
-  // Spec-2 subaddress T). Increments the persisted deposit count. Throws on a
-  // tracking wallet.
+  // Spec-2 subaddress T, which starts at 1). Advances the persisted cursor. Throws
+  // on a tracking wallet.
   uint32_t reservePqDepositIndex();
   // The deposit address for `index` under THIS container's scheme:
   //  - AggregatedMultikey: Bech32m PQ address = (shared view key, deposit spend key
@@ -300,6 +319,12 @@ protected:
   // our buckets, built exactly as a payment to that address would be so the wallet
   // re-scans the change into the same bucket. PQ_PRIMARY_DEPOSIT -> primary identity.
   PqSendOutput pqChangeTemplate(uint32_t depositIndex) const;
+  // The user-facing address string for a ledger bucket (PQ_PRIMARY_DEPOSIT -> the
+  // primary address, else the deposit address). Unlike getAddress() this never
+  // throws on a bucket outside the issued range — SingleKeyIndex scanning finds
+  // funds at any T — and falls back to the primary address when the deposit form
+  // cannot be rendered.
+  std::string pqBucketAddress(uint32_t bucket) const;
   // Build the per-(own-)address WalletTransfer list for a tx from the ledger's
   // per-bucket net (transfersByDeposit): PQ_PRIMARY_DEPOSIT -> primary address, else
   // the deposit address. Falls back to a single primary-address transfer carrying
@@ -319,6 +344,11 @@ protected:
   // Push the current deposit scheme + count into the live WalletLedger so its
   // scanner attributes incoming deposits. Safe no-op without a PQ consumer.
   void syncPqDepositConfigToState();
+  // Lift the issuance cursor to the scheme's first issuable index. Call after the
+  // scheme is chosen or read back: a fresh container starts the cursor at 0, and a
+  // <=v0.9.6 SingleKeyIndex container persisted a plain COUNT whose value 0 or 1
+  // both mean "nothing issuable remains below T=1".
+  void normalizePqDepositCursor();
   // Resolve (and cache) this wallet's own PQ registration coords (H,I) from the
   // node, needed to render SingleKeyIndex (H-I-A-T-C) deposit addresses. Returns
   // false if not registered / unavailable.
@@ -387,10 +417,12 @@ protected:
   // Baselined to the loaded history after restore so a reload does not re-announce
   // past transactions; rows discovered during this session grow past it and fire.
   size_t m_pqNotifiedTxCount = 0;
-  // Deposit-wallet scheme + how many deposit addresses have been issued. Persisted
-  // inside m_pqState (a third framed section); defaults apply to pre-deposit containers.
+  // Deposit-wallet scheme + the next deposit index to hand out. Persisted inside
+  // m_pqState (a third framed section); defaults apply to pre-deposit containers.
+  // The cursor is an INDEX, not a count: the first issuable index depends on the
+  // scheme (see pqFirstDepositIndex), so the issued-deposit count is the difference.
   PqDepositScheme m_pqDepositScheme = PqDepositScheme::AggregatedMultikey;
-  uint32_t m_pqDepositCount = 0;
+  uint32_t m_pqNextDepositIndex = 0;
   // True once the scheme has been chosen (at creation) or read back from a
   // persisted container; makes setPqDepositScheme reject any later change.
   bool m_pqDepositSchemeChosen = false;

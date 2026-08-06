@@ -1518,12 +1518,15 @@ std::error_code WalletService::listPqDepositAddresses(std::vector<std::string>& 
       }
     }
 
+    // The deposit index is not the ordinal: SingleKeyIndex issuance starts at T=1
+    // (T=0 is the primary address). List what was actually issued.
     uint32_t count = gw->getPqDepositCount();
     addresses.reserve(count);
     indices.reserve(count);
-    for (uint32_t i = 0; i < count; ++i) {
-      addresses.push_back(gw->pqDepositAddress(i, regH, regI));
-      indices.push_back(i);
+    for (uint32_t ordinal = 0; ordinal < count; ++ordinal) {
+      const uint32_t index = gw->getPqDepositIndexAt(ordinal);
+      addresses.push_back(gw->pqDepositAddress(index, regH, regI));
+      indices.push_back(index);
     }
   } catch (std::system_error& x) {
     logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while listing deposit addresses: " << x.what();

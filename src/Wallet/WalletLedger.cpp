@@ -52,10 +52,12 @@ void readPod(std::istream& is, T& v) {
 // v4 appended the PqWalletTransaction history. v5 appended PqWalletOutput::spentTxid
 // (the tx that spent each output, so a dropped/rejected spend can be undone).
 // v6 appended PqWalletTransaction::paymentId. v7 appended
-// PqWalletTransaction::coinbase. Older blobs load with the missing fields
-// defaulted (history empty / depositIndex primary / spentTxid zero / paymentId
-// zero / coinbase false) and repopulate on the next rescan.
-constexpr uint8_t kPqStateFormatVersion = 7;
+// PqWalletTransaction::coinbase. v8 changes no bytes: it marks that SingleKeyIndex
+// T=0 outputs are recorded as PQ_PRIMARY_DEPOSIT rather than deposit bucket 0, so a
+// v<=7 blob needs the one-shot remap in setDepositConfig(). Older blobs load with
+// the missing fields defaulted (history empty / depositIndex primary / spentTxid
+// zero / paymentId zero / coinbase false) and repopulate on the next rescan.
+constexpr uint8_t kPqStateFormatVersion = 8;
 
 }  // namespace
 
@@ -87,6 +89,23 @@ void WalletLedger::setDepositConfig(PqDepositScheme scheme, uint32_t depositCoun
   m_depositScheme = scheme;
   m_depositCount = depositCount;
   ensureDepositKeys(depositCount);
+
+  // The scheme is not known while load() runs (WalletGreen parses it from a later
+  // section of the state blob), so a v<=7 blob is migrated here, on the first call
+  // that tells us which scheme it belongs to. Under SingleKeyIndex those blobs
+  // recorded primary-address receipts (T=0) in deposit bucket 0; that bucket no
+  // longer exists there. Under AggregatedMultikey deposit 0 is a real, distinct
+  // spend key, so nothing is remapped.
+  if (m_needsPrimaryBucketMigration) {
+    m_needsPrimaryBucketMigration = false;
+    if (scheme == PqDepositScheme::SingleKeyIndex) {
+      for (auto& o : m_outputs) {
+        if (o.depositIndex == 0) {
+          o.depositIndex = PQ_PRIMARY_DEPOSIT;
+        }
+      }
+    }
+  }
 }
 
 bool WalletLedger::processTransaction(const TransactionPrefix& tx, const Crypto::Hash& txid,
@@ -187,8 +206,7 @@ bool WalletLedger::processTransaction(const TransactionPrefix& tx, const Crypto:
     if (m_depositScheme == PqDepositScheme::SingleKeyIndex) {
       // One key pair; deposits are distinguished by the subaddress index T,
       // which outContext-v2 reads directly out of the decrypted payload — no
-      // enumeration over issued deposit indices needed (see PqScan.h). T=0 is
-      // the wallet's own primary address (and deposit #0).
+      // enumeration over issued deposit indices needed (see PqScan.h).
       owned = CryptoPQ::scanPqOutput(m_scanKeys, ih, so);
       if (!owned && m_legacyTWindowMaxT > 0) {
         // Manual recovery fallback only (off by default): in case an
@@ -197,7 +215,13 @@ bool WalletLedger::processTransaction(const TransactionPrefix& tx, const Crypto:
         owned = CryptoPQ::scanPqOutputLegacyTWindow(m_scanKeys, ih, so, m_legacyTWindowMaxT);
       }
       if (owned) {
-        depositIndex = static_cast<uint32_t>(owned->subaddrIndexT);
+        // T=0 IS the primary address, never a deposit: a plain Bech32m PQ address
+        // and a base H-I-A-C account number both send at T=0, so an output there
+        // is not attributable to any deposit. Deposit issuance starts at T=1
+        // (WalletGreen::pqFirstDepositIndex) precisely so this stays unambiguous.
+        depositIndex = owned->subaddrIndexT == 0
+            ? PQ_PRIMARY_DEPOSIT
+            : static_cast<uint32_t>(owned->subaddrIndexT);
       }
     } else {
       // AggregatedMultikey: the wallet's own primary address (T=0), then the
@@ -648,16 +672,17 @@ void WalletLedger::load(std::istream& is) {
   m_history.clear();
   m_historyByTxid.clear();
   m_lastScannedHeight = 0;
+  m_needsPrimaryBucketMigration = false;
 
   uint8_t version = 0;
   readPod(is, version);
   // Accept v2 (no depositIndex), v3 (no history), v4 (no spentTxid), v5 (no history
-  // paymentId), v6 (no history coinbase flag), and the current v7. Missing fields
-  // default (depositIndex = PQ_PRIMARY_DEPOSIT, empty history, spentTxid / paymentId
-  // = zero, coinbase = false) and repopulate on rescan. Anything older/unknown ->
-  // start empty.
+  // paymentId), v6 (no history coinbase flag), v7 (T=0 recorded as deposit bucket 0)
+  // and the current v8. Missing fields default (depositIndex = PQ_PRIMARY_DEPOSIT,
+  // empty history, spentTxid / paymentId = zero, coinbase = false) and repopulate on
+  // rescan. Anything older/unknown -> start empty.
   if (!is || (version != 2 && version != 3 && version != 4 && version != 5 &&
-              version != 6 && version != kPqStateFormatVersion)) {
+              version != 6 && version != 7 && version != kPqStateFormatVersion)) {
     m_outputs.clear();
     m_byNullifier.clear();
     m_history.clear();
@@ -665,6 +690,9 @@ void WalletLedger::load(std::istream& is) {
     m_lastScannedHeight = 0;
     return;
   }
+  // v<=7 blobs put SingleKeyIndex T=0 receipts in bucket 0; setDepositConfig()
+  // remaps them once the scheme is known.
+  m_needsPrimaryBucketMigration = version < 8;
   readPod(is, m_lastScannedHeight);
   uint64_t count = 0;
   readPod(is, count);

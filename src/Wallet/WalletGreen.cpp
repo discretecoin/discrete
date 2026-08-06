@@ -783,7 +783,7 @@ size_t WalletGreen::getAddressCount() const {
   if (!m_pqConsumer) {
     return 0;
   }
-  return static_cast<size_t>(1) + m_pqDepositCount;
+  return static_cast<size_t>(1) + getPqDepositCount();
 }
 
 AccountPublicAddress WalletGreen::getAccountPublicAddress(size_t index) const {
@@ -801,15 +801,18 @@ AccountPublicAddress WalletGreen::getAccountPublicAddress(size_t index) const {
 }
 
 std::string WalletGreen::getAddress(size_t index) const {
-  // PQ-native: index 0 is the wallet's own PQ address; index i>0 is deposit i-1.
+  // PQ-native: index 0 is the wallet's own PQ address; index i>0 is the (i-1)-th
+  // ISSUED deposit, whose deposit index is offset by the scheme's first issuable
+  // one (1 under SingleKeyIndex, where T=0 is the primary address).
   if (index == 0) {
     return getPqAddress();
   }
-  uint32_t depositIndex = static_cast<uint32_t>(index - 1);
-  if (depositIndex >= m_pqDepositCount) {
+  uint32_t ordinal = static_cast<uint32_t>(index - 1);
+  if (ordinal >= getPqDepositCount()) {
     m_logger(ERROR, BRIGHT_RED) << "Failed to get address: invalid address index " << index;
     throw std::system_error(make_error_code(std::errc::invalid_argument));
   }
+  const uint32_t depositIndex = getPqDepositIndexAt(ordinal);
   uint32_t regH = 0, regI = 0;
   if (m_pqDepositScheme == PqDepositScheme::SingleKeyIndex && !pqRegistrationCoords(regH, regI)) {
     // H-I-A-T-C needs the account's on-chain coords; surface that it isn't ready.
@@ -1271,13 +1274,32 @@ bool WalletGreen::pqResolveAddressBucket(const std::string& address, uint32_t& d
       return true;
     }
   }
-  for (uint32_t i = 0; i < m_pqDepositCount; ++i) {
-    if (address == getAddress(static_cast<size_t>(i) + 1)) {
-      depositIndex = i;
+  const uint32_t issued = getPqDepositCount();
+  for (uint32_t ordinal = 0; ordinal < issued; ++ordinal) {
+    if (address == getAddress(static_cast<size_t>(ordinal) + 1)) {
+      depositIndex = getPqDepositIndexAt(ordinal);
       return true;
     }
   }
   return false;
+}
+
+std::string WalletGreen::pqBucketAddress(uint32_t bucket) const {
+  if (bucket == PQ_PRIMARY_DEPOSIT) {
+    return getPqAddress();
+  }
+  // Deliberately NOT getAddress(): that bounds the index to the deposits THIS
+  // container issued, but SingleKeyIndex scanning recognizes funds at any T
+  // (outContext-v2 reads T out of the payload), so a bucket outside the issued
+  // range is normal for a restored or second container. A history row must still
+  // render an address; fall back to the primary identity when the deposit form
+  // cannot be built (e.g. the account is not registered yet).
+  uint32_t regH = 0, regI = 0;
+  if (m_pqDepositScheme == PqDepositScheme::SingleKeyIndex && !pqRegistrationCoords(regH, regI)) {
+    return getPqAddress();
+  }
+  std::string address = pqDepositAddress(bucket, regH, regI);
+  return address.empty() ? getPqAddress() : address;
 }
 
 std::vector<WalletTransfer> WalletGreen::pqTransfersForTx(const Crypto::Hash& txid, int64_t fallbackNet) const {
@@ -1286,10 +1308,8 @@ std::vector<WalletTransfer> WalletGreen::pqTransfersForTx(const Crypto::Hash& tx
     // One transfer per OUR address the tx touched (primary + any deposits). External
     // counterparties aren't recoverable from owned-output scanning, by PQ design.
     for (const auto& kv : m_pqConsumer->state().transfersByDeposit(txid)) {
-      std::string address = kv.first == PQ_PRIMARY_DEPOSIT
-                                ? getPqAddress()
-                                : getAddress(static_cast<size_t>(kv.first) + 1);
-      transfers.push_back(WalletTransfer{WalletTransferType::USUAL, std::move(address), kv.second});
+      transfers.push_back(
+          WalletTransfer{WalletTransferType::USUAL, pqBucketAddress(kv.first), kv.second});
     }
   }
   if (transfers.empty()) {
@@ -1754,7 +1774,7 @@ void WalletGreen::initPqConsumer(const CryptoPQ::SeedMaster& seedMaster,
                  << ", sync timestamp " << syncStart.timestamp
                  << ", deposit scheme "
                  << (m_pqDepositScheme == PqDepositScheme::SingleKeyIndex ? "single-key-index" : "aggregated-multikey")
-                 << ", deposits " << m_pqDepositCount;
+                 << ", deposits " << getPqDepositCount();
 }
 
 void WalletGreen::initPqConsumer(const PqTrackingKeys& pqTrackingKeys,
@@ -1770,7 +1790,7 @@ void WalletGreen::initPqConsumer(const PqTrackingKeys& pqTrackingKeys,
                  << ", sync timestamp " << syncStart.timestamp
                  << ", deposit scheme "
                  << (m_pqDepositScheme == PqDepositScheme::SingleKeyIndex ? "single-key-index" : "aggregated-multikey")
-                 << ", deposits " << m_pqDepositCount;
+                 << ", deposits " << getPqDepositCount();
 }
 
 void WalletGreen::initPqConsumerForPrimary() {
@@ -1788,7 +1808,10 @@ void WalletGreen::initPqConsumerForPrimary() {
 
 void WalletGreen::syncPqDepositConfigToState() {
   if (m_pqConsumer) {
-    m_pqConsumer->state().setDepositConfig(m_pqDepositScheme, m_pqDepositCount);
+    // The ledger's count is the number of AggregatedMultikey deposit spend keys to
+    // derive, i.e. indices [0, next). SingleKeyIndex ignores it (T comes out of the
+    // decrypted payload), so passing the cursor is correct for both.
+    m_pqConsumer->state().setDepositConfig(m_pqDepositScheme, m_pqNextDepositIndex);
   }
 }
 
@@ -1832,11 +1855,13 @@ void WalletGreen::buildPqStateBlob() {
   writeSection(consumerBlob);
   writeSection(stateBlob);
 
-  // Deposit metadata: [u8 scheme][LE32 depositCount].
+  // Deposit metadata: [u8 scheme][LE32 next deposit index]. <=v0.9.6 wrote a plain
+  // count here; the two agree for AggregatedMultikey (first index 0), and the
+  // SingleKeyIndex reinterpretation is handled on load.
   std::string depositBlob;
   depositBlob.push_back(static_cast<char>(static_cast<uint8_t>(m_pqDepositScheme)));
   for (int i = 0; i < 4; ++i) {
-    depositBlob.push_back(static_cast<char>((m_pqDepositCount >> (8 * i)) & 0xFF));
+    depositBlob.push_back(static_cast<char>((m_pqNextDepositIndex >> (8 * i)) & 0xFF));
   }
   writeSection(depositBlob);
   writeSection(m_pqTrackingKeys ? encodePqTrackingKey(*m_pqTrackingKeys) : std::string());
@@ -1913,12 +1938,25 @@ void WalletGreen::restorePqStateBlob() {
     // Deposit metadata (third section; absent on pre-deposit containers).
     if (depositBlob.size() >= 5) {
       m_pqDepositScheme = static_cast<PqDepositScheme>(static_cast<uint8_t>(depositBlob[0]));
-      uint32_t count = 0;
+      uint32_t cursor = 0;
       for (int i = 0; i < 4; ++i) {
-        count |= static_cast<uint32_t>(static_cast<uint8_t>(depositBlob[1 + i])) << (8 * i);
+        cursor |= static_cast<uint32_t>(static_cast<uint8_t>(depositBlob[1 + i])) << (8 * i);
       }
-      m_pqDepositCount = count;
+      m_pqNextDepositIndex = cursor;
       m_pqDepositSchemeChosen = true;  // an existing container's scheme is fixed
+      // <=v0.9.6 stored a COUNT and issued SingleKeyIndex deposits from T=0. Read as
+      // a cursor the value keeps every deposit at T>=1 on its original number and
+      // simply drops the legacy T=0 one, which is the only honest outcome: an output
+      // at T=0 is what a payment to the primary address / base H-I-A-C number also
+      // produces, so it can never be attributed to a deposit.
+      if (m_pqDepositScheme == PqDepositScheme::SingleKeyIndex && cursor >= 1) {
+        m_logger(WARNING, BRIGHT_YELLOW)
+            << "This container issued deposit number T=0 under v0.9.6 or earlier. T=0 is the "
+               "primary address, so funds received there are indistinguishable from ordinary "
+               "payments to this account and are now reported against the primary address, not "
+               "a deposit. Re-issue that depositor a new number; deposits T>=1 are unaffected.";
+      }
+      normalizePqDepositCursor();
     }
   } catch (const std::exception& e) {
     m_logger(WARNING) << "Failed to restore PQ state (" << e.what() << "); will rescan.";
@@ -2332,7 +2370,12 @@ void WalletGreen::setPqDepositScheme(PqDepositScheme scheme) {
   }
   m_pqDepositScheme = scheme;
   m_pqDepositSchemeChosen = true;
+  normalizePqDepositCursor();
   syncPqDepositConfigToState();
+}
+
+void WalletGreen::normalizePqDepositCursor() {
+  m_pqNextDepositIndex = std::max(m_pqNextDepositIndex, getPqFirstDepositIndex());
 }
 
 uint32_t WalletGreen::reservePqDepositIndex() {
@@ -2350,13 +2393,14 @@ uint32_t WalletGreen::reservePqDepositIndex() {
       m_pqDepositScheme != PqDepositScheme::SingleKeyIndex) {
     throw std::runtime_error("tracking wallet cannot create deposit addresses");
   }
-  if (m_pqDepositCount == std::numeric_limits<uint32_t>::max()) {
-    throw std::runtime_error("deposit index space exhausted");
-  }
   // The first call chooses the default scheme implicitly if it was never set, so
   // the persisted metadata records the scheme even for default (aggregated) wallets.
   m_pqDepositSchemeChosen = true;
-  uint32_t reserved = m_pqDepositCount++;
+  normalizePqDepositCursor();
+  if (m_pqNextDepositIndex == std::numeric_limits<uint32_t>::max()) {
+    throw std::runtime_error("deposit index space exhausted");
+  }
+  uint32_t reserved = m_pqNextDepositIndex++;
   syncPqDepositConfigToState();  // the scanner must now watch the new deposit key
   return reserved;
 }
