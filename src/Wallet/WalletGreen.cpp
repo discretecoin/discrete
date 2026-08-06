@@ -1799,11 +1799,12 @@ void WalletGreen::initPqConsumer(const CryptoPQ::SeedMaster& seedMaster,
   m_blockchainSynchronizer.addConsumer(m_pqConsumer.get());
   m_pqConsumer->addObserver(this);  // m_blockchain (block list) is fed from here
   syncPqDepositConfigToState();
+  // Deposit scheme/count are deliberately NOT logged here: on the load path this
+  // runs before the deposit metadata has been read back, so anything printed would
+  // be the default, not the container's. restorePqStateBlob() reports them once the
+  // real values are in hand.
   m_logger(INFO) << "PQ ledger initialized: mode full, sync height " << syncStart.height
-                 << ", sync timestamp " << syncStart.timestamp
-                 << ", deposit scheme "
-                 << (m_pqDepositScheme == PqDepositScheme::SingleKeyIndex ? "single-key-index" : "aggregated-multikey")
-                 << ", deposits " << getPqDepositCount();
+                 << ", sync timestamp " << syncStart.timestamp;
 }
 
 void WalletGreen::initPqConsumer(const PqTrackingKeys& pqTrackingKeys,
@@ -1816,10 +1817,7 @@ void WalletGreen::initPqConsumer(const PqTrackingKeys& pqTrackingKeys,
   m_pqConsumer->addObserver(this);  // m_blockchain (block list) is fed from here
   syncPqDepositConfigToState();
   m_logger(INFO) << "PQ ledger initialized: mode tracking, sync height " << syncStart.height
-                 << ", sync timestamp " << syncStart.timestamp
-                 << ", deposit scheme "
-                 << (m_pqDepositScheme == PqDepositScheme::SingleKeyIndex ? "single-key-index" : "aggregated-multikey")
-                 << ", deposits " << getPqDepositCount();
+                 << ", sync timestamp " << syncStart.timestamp;
 }
 
 void WalletGreen::initPqConsumerForPrimary() {
@@ -1851,6 +1849,11 @@ void WalletGreen::enableLegacyDepositRescan(uint32_t maxT) {
     m_pqConsumer->state().setLegacyTWindowRescan(maxT);
   }
 }
+
+// Deposit-metadata format version, written as a trailing byte. Absent (a 5-byte
+// section) means <=v0.9.6, whose LE32 was a deposit COUNT rather than the next
+// index to issue. See buildPqStateBlob().
+static constexpr uint8_t kPqDepositMetaVersion = 2;
 
 void WalletGreen::buildPqStateBlob() {
   m_pqState.clear();
@@ -1884,14 +1887,18 @@ void WalletGreen::buildPqStateBlob() {
   writeSection(consumerBlob);
   writeSection(stateBlob);
 
-  // Deposit metadata: [u8 scheme][LE32 next deposit index]. <=v0.9.6 wrote a plain
-  // count here; the two agree for AggregatedMultikey (first index 0), and the
-  // SingleKeyIndex reinterpretation is handled on load.
+  // Deposit metadata: [u8 scheme][LE32 next deposit index][u8 version].
+  //
+  // <=v0.9.6 wrote only the first 5 bytes and the LE32 was a COUNT, not a cursor.
+  // For SingleKeyIndex the two are not interchangeable — cursor 1 means "nothing
+  // issued yet", count 1 means "T=0 was issued" — and the value alone cannot tell
+  // them apart. The trailing version byte does: its presence marks cursor semantics.
   std::string depositBlob;
   depositBlob.push_back(static_cast<char>(static_cast<uint8_t>(m_pqDepositScheme)));
   for (int i = 0; i < 4; ++i) {
     depositBlob.push_back(static_cast<char>((m_pqNextDepositIndex >> (8 * i)) & 0xFF));
   }
+  depositBlob.push_back(static_cast<char>(kPqDepositMetaVersion));
   writeSection(depositBlob);
   writeSection(m_pqTrackingKeys ? encodePqTrackingKey(*m_pqTrackingKeys) : std::string());
   std::string sentPayments;
@@ -1967,18 +1974,21 @@ void WalletGreen::restorePqStateBlob() {
     // Deposit metadata (third section; absent on pre-deposit containers).
     if (depositBlob.size() >= 5) {
       m_pqDepositScheme = static_cast<PqDepositScheme>(static_cast<uint8_t>(depositBlob[0]));
-      uint32_t cursor = 0;
+      uint32_t value = 0;
       for (int i = 0; i < 4; ++i) {
-        cursor |= static_cast<uint32_t>(static_cast<uint8_t>(depositBlob[1 + i])) << (8 * i);
+        value |= static_cast<uint32_t>(static_cast<uint8_t>(depositBlob[1 + i])) << (8 * i);
       }
-      m_pqNextDepositIndex = cursor;
+      m_pqNextDepositIndex = value;
       m_pqDepositSchemeChosen = true;  // an existing container's scheme is fixed
-      // <=v0.9.6 stored a COUNT and issued SingleKeyIndex deposits from T=0. Read as
-      // a cursor the value keeps every deposit at T>=1 on its original number and
-      // simply drops the legacy T=0 one, which is the only honest outcome: an output
-      // at T=0 is what a payment to the primary address / base H-I-A-C number also
-      // produces, so it can never be attributed to a deposit.
-      if (m_pqDepositScheme == PqDepositScheme::SingleKeyIndex && cursor >= 1) {
+
+      // No version byte => <=v0.9.6, where the value was a COUNT and SingleKeyIndex
+      // deposits were issued from T=0. Reading that count as a cursor keeps every
+      // deposit at T>=1 on its original number and simply drops the legacy T=0 one,
+      // which is the only honest outcome: an output at T=0 is what a payment to the
+      // primary address / base H-I-A-C number also produces, so it can never be
+      // attributed to a deposit.
+      const bool legacyCount = depositBlob.size() < 6;
+      if (legacyCount && m_pqDepositScheme == PqDepositScheme::SingleKeyIndex && value >= 1) {
         m_logger(WARNING, BRIGHT_YELLOW)
             << "This container issued deposit number T=0 under v0.9.6 or earlier. T=0 is the "
                "primary address, so funds received there are indistinguishable from ordinary "
@@ -1998,6 +2008,11 @@ void WalletGreen::restorePqStateBlob() {
   // re-announced. Rows discovered during this session's sync fire TRANSACTION_CREATED.
   m_pqNotifiedTxCount = m_pqConsumer ? m_pqConsumer->state().historyCount() : 0;
   if (m_pqConsumer) {
+    m_logger(INFO) << "PQ deposit scheme "
+                   << (m_pqDepositScheme == PqDepositScheme::SingleKeyIndex ? "single-key-index"
+                                                                            : "aggregated-multikey")
+                   << ", deposits issued " << getPqDepositCount()
+                   << ", next index " << m_pqNextDepositIndex;
     m_logger(INFO) << "PQ ledger restored: height " << m_pqConsumer->state().lastScannedHeight()
                    << ", owned outputs " << m_pqConsumer->state().ownedCount()
                    << ", unspent " << m_pqConsumer->state().unspentCount()

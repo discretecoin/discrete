@@ -692,6 +692,47 @@ TEST(PqWalletIntegration, DepositRegistrySurvivesCrashAfterCreateTimeSave) {
   boost::filesystem::remove(path);
 }
 
+// A SingleKeyIndex container that has issued NOTHING still persists cursor 1 (the
+// first issuable T), which is byte-identical to what <=v0.9.6 wrote after issuing
+// deposit T=0. The two must not be confused — one has no deposits, the other has an
+// unattributable one — so a fresh container must round-trip as "zero deposits issued"
+// and must keep handing out T=1 next.
+TEST(PqWalletIntegration, SingleKeyIndexContainerWithNoDepositsRoundTrips) {
+  System::Dispatcher dispatcher;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(1000000).upgradeHeightV6(1000000)
+      .currency();
+  TestBlockchainGenerator generator(currency);
+  INodeTrivialRefreshStub node(generator);
+
+  const std::string path = "pq_ski_nodeposits.wallet";
+  boost::filesystem::remove(path);
+  {
+    CryptoNote::WalletGreen wallet(dispatcher, currency, node, logger);
+    wallet.initialize(path, "pass");
+    wallet.createAddress();
+    wallet.setPqDepositScheme(CryptoNote::PqDepositScheme::SingleKeyIndex);
+    EXPECT_EQ(wallet.getPqDepositCount(), 0u);
+    EXPECT_EQ(wallet.getAddressCount(), 1u);  // primary only
+    wallet.save(CryptoNote::WalletSaveLevel::SAVE_ALL);
+    wallet.shutdown();
+  }
+  {
+    CryptoNote::WalletGreen reloaded(dispatcher, currency, node, logger);
+    ASSERT_NO_THROW(reloaded.load(path, "pass"));
+    EXPECT_EQ(reloaded.getPqDepositScheme(), CryptoNote::PqDepositScheme::SingleKeyIndex);
+    EXPECT_EQ(reloaded.getPqDepositCount(), 0u);   // NOT "one deposit at T=0"
+    EXPECT_EQ(reloaded.getAddressCount(), 1u);
+    EXPECT_EQ(reloaded.reservePqDepositIndex(), 1u);
+    reloaded.shutdown();
+  }
+
+  boost::filesystem::remove(path);
+}
+
 // A failed relay must roll the spend back: inputs are reserved before relay (so a
 // second send can't reuse them), and on relay failure the reservation is undone and the
 // balance fully restored — no funds stranded.
