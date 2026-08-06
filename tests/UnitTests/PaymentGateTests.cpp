@@ -400,10 +400,67 @@ TEST_F(PaymentGateTest, MessageSigningMnemonicAndViewKeyShape) {
   ASSERT_FALSE(service->getSpendkeys(primary, spendPub, spendSec));
   EXPECT_EQ(Common::podToHex(fromWords), spendSec);
 
-  // PQ wallets have no classical view key (the audit credential is the PQ tracking key).
+  // PQ wallets have no classical view key. getViewKey must SAY so rather than
+  // succeeding with 32 zero bytes, which read as a usable credential.
   std::string viewKey;
-  ASSERT_FALSE(service->getViewKey(viewKey));
-  EXPECT_EQ(viewKey, std::string(64, '0'));
+  EXPECT_TRUE(service->getViewKey(viewKey));
+  EXPECT_TRUE(viewKey.empty());
+}
+
+// Provisioning a view-only container must not require handing over spend authority.
+// getTrackingKey is the credential for it: a decodable `pqview1:` value that names the
+// same public identity as the full wallet, and that is NOT the master seed.
+TEST_F(PaymentGateTest, TrackingKeyExportIsAuditOnly) {
+  auto cfg = createWalletConfiguration();
+  generateWallet(cfg);
+
+  std::string primary, trackingKey, spendSec, mnemonic;
+  {
+    // Scoped: createWalletService replaces the fixture's wallet, so this service must
+    // be gone before the view-only one below is created.
+    auto service = createWalletService(cfg);
+
+    std::vector<std::string> addrs;
+    ASSERT_FALSE(service->getAddresses(addrs));
+    ASSERT_FALSE(addrs.empty());
+    primary = addrs[0];
+
+    ASSERT_FALSE(service->getTrackingKey(trackingKey));
+    std::string spendPub;
+    ASSERT_FALSE(service->getSpendkeys(primary, spendPub, spendSec));
+    ASSERT_FALSE(service->getMnemonicSeed("", mnemonic));
+  }
+  ASSERT_FALSE(trackingKey.empty());
+  ASSERT_FALSE(spendSec.empty());
+  ASSERT_FALSE(mnemonic.empty());
+
+  // It is a real tracking credential, and it decodes.
+  EXPECT_EQ(trackingKey.rfind(CryptoNote::kPqTrackingKeyPrefix, 0), 0u);
+  CryptoNote::PqTrackingKeys decoded;
+  ASSERT_TRUE(CryptoNote::decodePqTrackingKey(trackingKey, decoded));
+
+  // It is NOT spend authority: neither the master seed nor its mnemonic is in it.
+  EXPECT_EQ(trackingKey.find(spendSec), std::string::npos);
+  EXPECT_EQ(trackingKey.find(mnemonic), std::string::npos);
+
+  // It does name the same account: a view-only container provisioned from it renders
+  // the same primary address as the wallet it came from.
+  auto viewCfg = createWalletConfiguration("pgwalleg_view.bin");
+  viewCfg.secretViewKey = trackingKey;
+  unlink(viewCfg.walletFile.c_str());
+  generateNewWallet(currency, viewCfg, logger, dispatcher, nodeStub,
+                    CryptoNote::PqDepositScheme::SingleKeyIndex);
+
+  auto viewService = createWalletService(viewCfg);
+  std::vector<std::string> viewAddrs;
+  ASSERT_FALSE(viewService->getAddresses(viewAddrs));
+  ASSERT_EQ(viewAddrs.size(), 1u);
+  EXPECT_EQ(viewAddrs[0], primary);
+
+  // ...and it cannot spend: no seed came across.
+  std::string viewSpendPub, viewSpendSec;
+  ASSERT_FALSE(viewService->getSpendkeys(primary, viewSpendPub, viewSpendSec));
+  EXPECT_EQ(viewSpendSec, std::string(64, '0'));
 }
 
 /*

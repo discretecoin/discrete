@@ -80,6 +80,26 @@ struct GetViewKey {
   };
 };
 
+// The container's AUDIT credential: a `pqview1:` tracking key. It grants the ability
+// to recognize this account's incoming and outgoing transactions and to render its
+// H-I-A-T-C deposit numbers — and nothing else. It carries NO spend authority.
+//
+// This is the only correct way to provision a view-only container. getSpendKeys and
+// getMnemonicSeed both return the PQ master seed, which IS spend authority over every
+// deposit; neither is a substitute. (Classical getViewKey does not apply to a PQ
+// container and reports an error there.)
+struct GetTrackingKey {
+  struct Request {
+    void serialize(CryptoNote::ISerializer& serializer);
+  };
+
+  struct Response {
+    std::string trackingKey;
+
+    void serialize(CryptoNote::ISerializer& serializer);
+  };
+};
+
 struct GetMnemonicSeed {
   struct Request {
     std::string address;

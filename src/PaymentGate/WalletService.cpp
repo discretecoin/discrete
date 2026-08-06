@@ -953,10 +953,50 @@ std::error_code WalletService::getBlockHashes(uint32_t firstBlockIndex, uint32_t
 std::error_code WalletService::getViewKey(std::string& viewSecretKey) {
   try {
     System::EventLock lk(readyEvent);
+
+    // A PQ container has no classical view key; WalletGreen returns an all-zero
+    // KeyPair for it. Reporting that as a SUCCESSFUL result invited callers to
+    // provision a view-only container from 32 zero bytes and, when that failed, to
+    // reach for getSpendKeys — which hands over the master seed. Fail here instead,
+    // and name the method that does apply.
+    auto* greenWallet = dynamic_cast<CryptoNote::WalletGreen*>(&wallet);
+    if (greenWallet != nullptr && greenWallet->pqEnabled()) {
+      logger(Logging::WARNING, Logging::BRIGHT_YELLOW)
+          << "getViewKey is not applicable to this container: use getTrackingKey";
+      return make_error_code(CryptoNote::error::WRONG_PARAMETERS);
+    }
+
     CryptoNote::KeyPair viewKey = wallet.getViewKey();
     viewSecretKey = Common::podToHex(viewKey.secretKey);
   } catch (std::system_error& x) {
     logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while getting view key: " << x.what();
+    return x.code();
+  }
+
+  return std::error_code();
+}
+
+std::error_code WalletService::getTrackingKey(std::string& trackingKey) {
+  try {
+    System::EventLock lk(readyEvent);
+
+    auto* greenWallet = dynamic_cast<CryptoNote::WalletGreen*>(&wallet);
+    if (greenWallet == nullptr || !greenWallet->pqEnabled()) {
+      return make_error_code(CryptoNote::error::WRONG_PARAMETERS);
+    }
+
+    CryptoNote::PqTrackingKeys keys;
+    if (!greenWallet->getPqTrackingKeys(keys)) {
+      logger(Logging::WARNING, Logging::BRIGHT_YELLOW)
+          << "Error while getting tracking key: the container has no PQ identity";
+      return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
+    }
+
+    // Deliberately NOT logged, at any level: the credential exposes every payment
+    // this account has ever received.
+    trackingKey = CryptoNote::encodePqTrackingKey(keys);
+  } catch (std::system_error& x) {
+    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while getting tracking key: " << x.what();
     return x.code();
   }
 

@@ -54,6 +54,13 @@ void GetViewKey::Response::serialize(CryptoNote::ISerializer& serializer) {
   serializer(viewSecretKey, "viewSecretKey");
 }
 
+void GetTrackingKey::Request::serialize(CryptoNote::ISerializer& serializer) {
+}
+
+void GetTrackingKey::Response::serialize(CryptoNote::ISerializer& serializer) {
+  serializer(trackingKey, "trackingKey");
+}
+
 void GetMnemonicSeed::Request::serialize(CryptoNote::ISerializer& serializer) {
   if (!serializer(address, "address")) {
     throw RequestSerializationError();

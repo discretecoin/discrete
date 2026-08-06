@@ -95,6 +95,7 @@ private:
   std::error_code handleExportPaymentProof(const ExportPaymentProof::Request& request, ExportPaymentProof::Response& response);
   std::error_code handleImportPaymentProof(const ImportPaymentProof::Request& request, ImportPaymentProof::Response& response);
   std::error_code handleGetViewKey(const GetViewKey::Request& request, GetViewKey::Response& response);
+  std::error_code handleGetTrackingKey(const GetTrackingKey::Request& request, GetTrackingKey::Response& response);
   std::error_code handleGetMnemonicSeed(const GetMnemonicSeed::Request& request, GetMnemonicSeed::Response& response);
   std::error_code handleGetStatus(const GetStatus::Request& request, GetStatus::Response& response);
   std::error_code handleGetAddresses(const GetAddresses::Request& request, GetAddresses::Response& response);
