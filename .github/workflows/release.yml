@@ -22,21 +22,35 @@ jobs:
         run: |
           choco install curl -y
 
-      # Tried MarkusJx/install-boost (GitHub Releases, not SourceForge) first, since
-      # it already works for the macOS job below. It doesn't work here: its Windows
-      # static-lib packages are compiled against the dynamic CRT (/MD) only, but this
-      # project links fully static (/MT, CMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
-      # below) — every Daemon.vcxproj link failed LNK2038 'MD_DynamicRelease' vs
-      # 'MT_StaticRelease'. That's a real packaging gap, not a version or lookup
-      # issue, so falling back to the known-compatible SourceForge installer.
+      # Boost source, in order of what was tried:
+      #  1. MarkusJx/install-boost (GitHub Releases) -- works for the macOS job below,
+      #     but its Windows static-lib package is compiled against the dynamic CRT
+      #     (/MD) only, while this project links fully static (/MT,
+      #     CMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded below) -- every Daemon.vcxproj
+      #     link failed LNK2038 'MD_DynamicRelease' vs 'MT_StaticRelease'. A real
+      #     packaging gap, not a version or lookup issue.
+      #  2. SourceForge's boost-binaries installer -- has the right static-runtime
+      #     variant, but its mirror network is slow and inconsistent (observed
+      #     ~500 KB/s to a randomly assigned mirror; ~9 min for this same ~250 MB
+      #     file, vs. ~8s from the source below) with no integrity check.
+      #  3. This: the same installer format/layout (built by the standard Boost b2
+      #     --prefix installer generation, so it has the same lib64-msvc-14.3\cmake\
+      #     config package and -mt-s- static-runtime libs already verified to work),
+      #     but published as GitHub Release assets by userdocs/boost -- the same
+      #     upstream chocolatey's own boost-msvc-14.3 package redirects to. GitHub's
+      #     release CDN, plus a pinned sha256, is what actually fixes the
+      #     reliability problem; the following actions/cache layer (kept from the
+      #     SourceForge attempt) means that after the first successful run, even
+      #     this fast/reliable download is skipped entirely on a cache hit.
       #
-      # What actually made the old approach fragile wasn't the installer itself, it
-      # was fetching it fresh on every run. actions/cache keys on the exact version,
-      # so after the first successful run SourceForge is never touched again unless
-      # the cache entry is evicted (~7 days unused) or BOOST_VERSION changes — the
-      # common case becomes a cache hit with zero network dependency. curl's retry
-      # flags cover the remaining cache-miss path, where a single flaky mirror
-      # attempt would otherwise fail the whole job.
+      #     Pinned to 1.86.0, not userdocs/boost's newest (1.91.0): locally linking
+      #     Daemon against their 1.91.0 static-runtime build fails with
+      #     LNK2001 unresolved external __std_find_first_of_trivial_pos_2 out of
+      #     libboost_filesystem -- that build was produced by a newer MSVC/STL than
+      #     this toolchain ships, an ABI mismatch, not a config problem. 1.86.0 from
+      #     the same source links cleanly (verified the same way), so it's the
+      #     version pin here; revisit only after confirming a specific newer
+      #     userdocs/boost release actually links against the runner's toolset.
       - name: Cache Boost installer
         id: boost-installer-cache
         uses: actions/cache@v4
@@ -47,9 +61,14 @@ jobs:
       - name: Download Boost installer
         if: steps.boost-installer-cache.outputs.cache-hit != 'true'
         run: |
-          $Url = "https://sourceforge.net/projects/boost/files/boost-binaries/1.86.0/boost_1_86_0-msvc-14.3-64.exe"
+          $Url = "https://github.com/userdocs/boost/releases/download/boost-1.86.0/boost_1_86_0-msvc-14.3-64.exe"
           $OutputPath = "${{ runner.temp }}\boost-installer.exe"
+          $ExpectedSha256 = "E6A8F5966619A87CDA5B63B6CA98E2780C96A672358F94F7DF6487A7838C7EB6"
           curl -L --retry 5 --retry-all-errors --retry-delay 15 --max-time 900 $Url -o $OutputPath
+          $actualSha256 = (Get-FileHash -Path $OutputPath -Algorithm SHA256).Hash
+          if ($actualSha256 -ne $ExpectedSha256) {
+            throw "Boost installer checksum mismatch: expected $ExpectedSha256, got $actualSha256"
+          }
 
       - name: Install Boost 1.86
         run: |
