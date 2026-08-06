@@ -856,6 +856,77 @@ TEST(PqWalletIntegration, TrackingWalletCannotSpend) {
   boost::filesystem::remove(trackPath);
 }
 
+// A view-only container asked to scan from a point in the past (walletd's
+// --view-key --scan-height) hits doCreateAddressList's internal
+// save(SAVE_KEYS_AND_TRANSACTIONS)/shutdown()/load() reset, because its creation
+// timestamp is older than "now". That save level omits the PQ state blob, which is
+// where the tracking credential lives — so the reload came back with a key record
+// and no scanning consumer, and starting the synchronizer failed with "no
+// consumers". The credential is identity, not cache: it must survive the reset, and
+// the container must reopen with the same public identity.
+TEST(PqWalletIntegration, TrackingContainerFromPastScanHeightKeepsIdentity) {
+  System::Dispatcher dispatcher;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(1000000).upgradeHeightV6(1000000)
+      .currency();
+  TestBlockchainGenerator generator(currency);
+  INodeTrivialRefreshStub node(generator);
+
+  CryptoNote::PqTrackingKeys tk;
+  uint32_t fullFingerprint = 0;
+  std::string fullAddress;
+  const std::string fullPath = "pq_scanheight_full.wallet";
+  {
+    boost::filesystem::remove(fullPath);
+    CryptoNote::WalletGreen full(dispatcher, currency, node, logger);
+    full.initialize(fullPath, "pass");
+    full.createAddress();
+    ASSERT_TRUE(full.getPqTrackingKeys(tk));
+    fullFingerprint = full.pqAccountFingerprint();
+    fullAddress = full.getAddress(0);
+    full.shutdown();
+    boost::filesystem::remove(fullPath);
+  }
+
+  // An explicitly old creation timestamp is what a past --scan-height resolves to,
+  // and it is what triggers the reset (a live scan height would depend on the node's
+  // block timestamps).
+  const uint64_t pastTimestamp = 1000000;
+  const std::string trackPath = "pq_scanheight_tracking.wallet";
+  boost::filesystem::remove(trackPath);
+  {
+    CryptoNote::WalletGreen tracking(dispatcher, currency, node, logger);
+    ASSERT_NO_THROW(tracking.initializeWithPqTrackingKey(trackPath, "pass", tk, pastTimestamp));
+    tracking.setPqDepositScheme(CryptoNote::PqDepositScheme::SingleKeyIndex);
+
+    // The credential came through the reset intact: same public identity as the
+    // spending wallet, and a live consumer behind it.
+    CryptoNote::PqTrackingKeys roundTripped;
+    ASSERT_TRUE(tracking.getPqTrackingKeys(roundTripped));
+    EXPECT_EQ(CryptoNote::encodePqTrackingKey(roundTripped), CryptoNote::encodePqTrackingKey(tk));
+    EXPECT_EQ(tracking.pqAccountFingerprint(), fullFingerprint);
+    EXPECT_EQ(tracking.getAddress(0), fullAddress);
+    EXPECT_EQ(tracking.getAddressCount(), 1u);
+
+    tracking.save(CryptoNote::WalletSaveLevel::SAVE_ALL);
+    tracking.shutdown();
+  }
+
+  // ...and it is durable: reopening the container yields the same identity again.
+  {
+    CryptoNote::WalletGreen reopened(dispatcher, currency, node, logger);
+    ASSERT_NO_THROW(reopened.load(trackPath, "pass"));
+    EXPECT_EQ(reopened.pqAccountFingerprint(), fullFingerprint);
+    EXPECT_EQ(reopened.getAddress(0), fullAddress);
+    EXPECT_EQ(reopened.getPqDepositScheme(), CryptoNote::PqDepositScheme::SingleKeyIndex);
+    reopened.shutdown();
+  }
+  boost::filesystem::remove(trackPath);
+}
+
 // The exchange deposit surface: the spending wallet registers the account number ONCE and
 // exports a tracking credential; the view-only container then issues further H-I-A-T-C
 // sub-numbers under that same account number. Everything a sub-number is made of is

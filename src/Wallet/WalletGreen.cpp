@@ -1042,9 +1042,38 @@ std::vector<std::string> WalletGreen::doCreateAddressList(const std::vector<NewA
     auto currentTime = static_cast<uint64_t>(time(nullptr));
     if (minCreationTimestamp + m_currency.blockFutureTimeLimit() < currentTime) {
       m_logger(DEBUGGING) << "Reset is required";
+      // The reset deliberately drops the SCANNED state (that is the whole point: the
+      // new address predates the current sync point, so history must be rescanned),
+      // and SAVE_KEYS_AND_TRANSACTIONS therefore omits the PQ state blob. But that
+      // blob also carries IDENTITY, not just cache: the tracking credential is the
+      // only thing that can rebuild a view-only container's scanning consumer, and
+      // the deposit scheme/cursor decide how deposits are attributed. Losing those
+      // here left the reloaded container with a key record and no consumer, so the
+      // restart failed with "no consumers". Carry them across by hand — shutdown()
+      // clears them, and load() must see the credential BEFORE it recreates the
+      // consumer.
+      std::unique_ptr<PqTrackingKeys> trackingKeys;
+      if (m_pqTrackingKeys) {
+        trackingKeys.reset(new PqTrackingKeys(*m_pqTrackingKeys));
+      }
+      const PqDepositScheme depositScheme = m_pqDepositScheme;
+      const bool depositSchemeChosen = m_pqDepositSchemeChosen;
+      const uint32_t nextDepositIndex = m_pqNextDepositIndex;
+
       save(WalletSaveLevel::SAVE_KEYS_AND_TRANSACTIONS, m_extra);
       shutdown();
+      m_pqTrackingKeys = std::move(trackingKeys);
       load(m_path, m_password);
+
+      // Only reinstate what the reloaded blob did not already carry, so a container
+      // that DID persist its deposit metadata keeps the on-disk truth.
+      if (!m_pqDepositSchemeChosen && depositSchemeChosen) {
+        m_pqDepositScheme = depositScheme;
+        m_pqDepositSchemeChosen = true;
+        m_pqNextDepositIndex = nextDepositIndex;
+        normalizePqDepositCursor();
+        syncPqDepositConfigToState();
+      }
     }
   } catch (const std::exception& e) {
     m_logger(ERROR, BRIGHT_RED) << "Failed to add wallets: " << e.what();
@@ -2505,11 +2534,24 @@ Transaction WalletGreen::buildPqFreeRegTransaction(const Crypto::Hash& refBlockH
 }
 
 void WalletGreen::startBlockchainSynchronizer() {
-  if (!m_walletsContainer.empty() && !m_blockchainSynchronizerStarted) {
-    m_logger(DEBUGGING) << "Starting BlockchainSynchronizer";
-    m_blockchainSynchronizer.start();
-    m_blockchainSynchronizerStarted = true;
+  if (m_walletsContainer.empty() || m_blockchainSynchronizerStarted) {
+    return;
   }
+  // A key record alone is not enough to scan with. The PQ consumer is the only
+  // consumer this wallet ever registers, so starting without it just reaches
+  // BlockchainSynchronizer::start()'s "no consumers" guard — which describes the
+  // symptom, not the cause. A zero-seed record with no tracking credential is a
+  // view-only container whose credential is missing or unreadable; say so.
+  if (!m_pqConsumer) {
+    const char* message =
+        "Cannot start synchronization: the container has no scanning identity. A view-only "
+        "container needs its tracking credential; regenerate it from the spending wallet.";
+    m_logger(ERROR, BRIGHT_RED) << message;
+    throw std::system_error(make_error_code(error::INTERNAL_WALLET_ERROR), message);
+  }
+  m_logger(DEBUGGING) << "Starting BlockchainSynchronizer";
+  m_blockchainSynchronizer.start();
+  m_blockchainSynchronizerStarted = true;
 }
 
 void WalletGreen::stopBlockchainSynchronizer() {
