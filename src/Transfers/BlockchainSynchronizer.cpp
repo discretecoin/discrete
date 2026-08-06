@@ -372,6 +372,7 @@ void BlockchainSynchronizer::start() {
 void BlockchainSynchronizer::stop() {
   m_logger(DEBUGGING, BRIGHT_WHITE) << "Stopping...";
   setFutureState(State::stopped);
+  wakeActiveNodeRequest();
 
   // wait for previous processing to end
   if (workingThread.get() != nullptr && workingThread->joinable()) {
@@ -462,26 +463,25 @@ void BlockchainSynchronizer::startBlockchainSync() {
 
   try {
     if (!req.knownBlocks.empty()) {
-      auto queryBlocksCompleted = std::promise<std::error_code>();
-      auto queryBlocksWaitFuture = queryBlocksCompleted.get_future();
+      auto request = std::make_shared<GetBlocksRequestState>();
 
       m_node.queryBlocks(
         std::move(req.knownBlocks),
         req.syncStart.timestamp,
-        response.newBlocks,
-        response.startHeight,
-        [&queryBlocksCompleted](std::error_code ec) {
-          auto detachedPromise = std::move(queryBlocksCompleted);
-          detachedPromise.set_value(ec);
+        request->response.newBlocks,
+        request->response.startHeight,
+        [request](std::error_code ec) {
+          completeNodeRequest(request, ec);
         });
 
-      std::error_code ec = queryBlocksWaitFuture.get();
+      std::error_code ec = waitForNodeRequest(request);
 
       if (ec) {
         m_logger(ERROR, BRIGHT_RED) << "Failed to query blocks: " << ec << ", " << ec.message();
         setFutureStateIf(State::idle, [this] { return m_futureState != State::stopped; });
         m_observerManager.notify(&IBlockchainSynchronizerObserver::synchronizationCompleted, ec);
       } else {
+        response = std::move(request->response);
         m_logger(DEBUGGING) << "Blocks received, start index " << response.startHeight << ", count " << response.newBlocks.size();
         processBlocks(response);
       }
@@ -743,21 +743,71 @@ void BlockchainSynchronizer::startPoolSync() {
 }
 
 std::error_code BlockchainSynchronizer::getPoolSymmetricDifferenceSync(GetPoolRequest&& request, GetPoolResponse& response) {
-  auto promise = std::promise<std::error_code>();
-  auto future = promise.get_future();
+  auto requestState = std::make_shared<GetPoolRequestState>();
 
   m_node.getPoolSymmetricDifference(
     std::move(request.knownTxIds),
     std::move(request.lastKnownBlock),
-    response.isLastKnownBlockActual,
-    response.newTxs,
-    response.deletedTxIds,
-    [&promise](std::error_code ec) {
-      auto detachedPromise = std::move(promise);
-      detachedPromise.set_value(ec);
+    requestState->response.isLastKnownBlockActual,
+    requestState->response.newTxs,
+    requestState->response.deletedTxIds,
+    [requestState](std::error_code ec) {
+      completeNodeRequest(requestState, ec);
     });
 
-  return future.get();
+  std::error_code result = waitForNodeRequest(requestState);
+  if (!result) {
+    response = std::move(requestState->response);
+  }
+
+  return result;
+}
+
+std::error_code BlockchainSynchronizer::waitForNodeRequest(const std::shared_ptr<NodeRequestState>& request) {
+  {
+    std::lock_guard<std::mutex> lock(m_activeNodeRequestMutex);
+    m_activeNodeRequest = request;
+  }
+
+  std::unique_lock<std::mutex> lock(request->mutex);
+  request->completedCondition.wait(lock, [this, &request] {
+    return request->completed || checkIfShouldStop();
+  });
+
+  const bool completed = request->completed;
+  const std::error_code result = request->result;
+  lock.unlock();
+
+  {
+    std::lock_guard<std::mutex> activeLock(m_activeNodeRequestMutex);
+    if (m_activeNodeRequest == request) {
+      m_activeNodeRequest.reset();
+    }
+  }
+
+  return completed ? result : std::make_error_code(std::errc::operation_canceled);
+}
+
+void BlockchainSynchronizer::wakeActiveNodeRequest() {
+  std::shared_ptr<NodeRequestState> request;
+  {
+    std::lock_guard<std::mutex> lock(m_activeNodeRequestMutex);
+    request = m_activeNodeRequest;
+  }
+
+  if (request) {
+    request->completedCondition.notify_all();
+  }
+}
+
+void BlockchainSynchronizer::completeNodeRequest(const std::shared_ptr<NodeRequestState>& request, std::error_code result) {
+  {
+    std::lock_guard<std::mutex> lock(request->mutex);
+    request->result = result;
+    request->completed = true;
+  }
+
+  request->completedCondition.notify_all();
 }
 
 std::error_code BlockchainSynchronizer::processPoolTxs(GetPoolResponse& response) {

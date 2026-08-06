@@ -30,6 +30,7 @@
 #include <System/Dispatcher.h>
 #include <System/Event.h>
 #include <System/EventLock.h>
+#include <System/InterruptedException.h>
 #include <System/Timer.h>
 #include <CryptoNoteCore/TransactionApi.h>
 #include <Common/FormatTools.h>
@@ -164,6 +165,11 @@ bool NodeRpcProxy::shutdown() {
 
   m_dispatcher->remoteSpawn([this]() {
     m_stop = true;
+    // Cancel every in-flight request before waiting for the worker thread.
+    // TcpConnection's interrupt procedure closes the socket, which wakes a
+    // context blocked while reading a daemon response instead of making
+    // shutdown wait indefinitely.
+    m_context_group->interrupt();
     // Run all spawned contexts
     m_dispatcher->yield();
   });
@@ -980,7 +986,13 @@ std::error_code NodeRpcProxy::binaryCommand(const std::string& comm, const Reque
     JsonRpc::invokeBinaryCommand(*m_httpClient, rpc_url, req, res);
     ec = std::error_code();  // Success
   }
+  catch (const InterruptedException&) {
+    throw;
+  }
   catch (const std::exception&) {
+    if (m_stop) {
+      throw;
+    }
     ec = make_error_code(error::NETWORK_ERROR);
   }
   return ec;
@@ -996,7 +1008,13 @@ std::error_code NodeRpcProxy::jsonCommand(const std::string& comm, const Request
     JsonRpc::invokeJsonCommand(*m_httpClient, rpc_url, req, res, method);
     ec = std::error_code();  // Success
   }
+  catch (const InterruptedException&) {
+    throw;
+  }
   catch (const std::exception&) {
+    if (m_stop) {
+      throw;
+    }
     ec = make_error_code(error::NETWORK_ERROR);
   }
   return ec;
@@ -1016,6 +1034,9 @@ std::error_code NodeRpcProxy::jsonRpcCommand(const std::string& method, const Re
       return std::error_code();  // Success
     }
     catch (const JsonRpc::JsonRpcError& e) {
+      if (m_stop) {
+        throw;
+      }
       // The daemon answered with an application-level error; retrying will not help.
       // Map its code to a specific condition so the user gets an actionable message
       // (e.g. an old daemon that lacks this method) instead of a generic error.
@@ -1027,9 +1048,18 @@ std::error_code NodeRpcProxy::jsonRpcCommand(const std::string& method, const Re
       }
     }
     catch (const ConnectException&) {
+      if (m_stop) {
+        throw;
+      }
       return make_error_code(error::CONNECT_ERROR);
     }
+    catch (const InterruptedException&) {
+      throw;
+    }
     catch (const std::exception&) {
+      if (m_stop) {
+        throw;
+      }
       if (attempt == 0) {
         continue;  // stale/dropped connection: reconnect and retry once
       }

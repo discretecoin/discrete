@@ -65,7 +65,7 @@ public:
 private:
 
   struct GetBlocksResponse {
-    uint32_t startHeight;
+    uint32_t startHeight = 0;
     std::vector<BlockShortEntry> newBlocks;
   };
 
@@ -79,9 +79,24 @@ private:
   };
 
   struct GetPoolResponse {
-    bool isLastKnownBlockActual;
+    bool isLastKnownBlockActual = false;
     std::vector<std::unique_ptr<ITransactionReader>> newTxs;
     std::vector<Crypto::Hash> deletedTxIds;
+  };
+
+  struct NodeRequestState {
+    std::mutex mutex;
+    std::condition_variable completedCondition;
+    bool completed = false;
+    std::error_code result;
+  };
+
+  struct GetBlocksRequestState : NodeRequestState {
+    GetBlocksResponse response;
+  };
+
+  struct GetPoolRequestState : NodeRequestState {
+    GetPoolResponse response;
   };
 
   struct GetPoolRequest {
@@ -122,6 +137,9 @@ private:
   void actualizeFutureState();
   bool checkIfShouldStop() const;
   bool checkIfStopped() const;
+  std::error_code waitForNodeRequest(const std::shared_ptr<NodeRequestState>& request);
+  void wakeActiveNodeRequest();
+  static void completeNodeRequest(const std::shared_ptr<NodeRequestState>& request, std::error_code result);
 
   void workingProcedure();
 
@@ -147,6 +165,8 @@ private:
   mutable std::mutex m_consumersMutex;
   mutable std::mutex m_stateMutex;
   std::condition_variable m_hasWork;
+  std::mutex m_activeNodeRequestMutex;
+  std::shared_ptr<NodeRequestState> m_activeNodeRequest;
 
   bool wasStarted = false;
 };

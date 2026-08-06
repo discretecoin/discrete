@@ -415,6 +415,75 @@ TEST_F(BcSTest, stopIsWaiting) {
   EXPECT_EQ(flag, true);
 }
 
+TEST_F(BcSTest, stopDoesNotWaitForDelayedQueryBlocksCallback) {
+  addConsumers();
+
+  EventWaiter queryStarted;
+  EventWaiter stopCompleted;
+  INode::Callback delayedCallback;
+  m_node.queryBlocksFunctor = [&](const std::vector<Hash>&, uint64_t,
+                                  std::vector<BlockShortEntry>&, uint32_t&,
+                                  const INode::Callback& callback) {
+    delayedCallback = callback;
+    queryStarted.notify();
+    return false;
+  };
+
+  m_sync.start();
+  ASSERT_TRUE(queryStarted.wait_for(std::chrono::seconds(2)));
+
+  std::thread stopper([&] {
+    m_sync.stop();
+    stopCompleted.notify();
+  });
+
+  const bool stoppedPromptly = stopCompleted.wait_for(std::chrono::seconds(1));
+  if (!stoppedPromptly) {
+    delayedCallback(std::make_error_code(std::errc::operation_canceled));
+  }
+  stopper.join();
+
+  EXPECT_TRUE(stoppedPromptly);
+  if (stoppedPromptly) {
+    EXPECT_NO_THROW(delayedCallback(std::make_error_code(std::errc::operation_canceled)));
+  }
+}
+
+TEST_F(BcSTest, stopDoesNotWaitForDelayedPoolCallback) {
+  addConsumers();
+
+  EventWaiter queryStarted;
+  EventWaiter stopCompleted;
+  INode::Callback delayedCallback;
+  m_node.getPoolSymmetricDifferenceFunctor =
+    [&](const std::vector<Hash>&, Hash, bool&,
+        std::vector<std::unique_ptr<ITransactionReader>>&,
+        std::vector<Hash>&, const INode::Callback& callback) {
+      delayedCallback = callback;
+      queryStarted.notify();
+      return false;
+    };
+
+  m_sync.start();
+  ASSERT_TRUE(queryStarted.wait_for(std::chrono::seconds(2)));
+
+  std::thread stopper([&] {
+    m_sync.stop();
+    stopCompleted.notify();
+  });
+
+  const bool stoppedPromptly = stopCompleted.wait_for(std::chrono::seconds(1));
+  if (!stoppedPromptly) {
+    delayedCallback(std::make_error_code(std::errc::operation_canceled));
+  }
+  stopper.join();
+
+  EXPECT_TRUE(stoppedPromptly);
+  if (stoppedPromptly) {
+    EXPECT_NO_THROW(delayedCallback(std::make_error_code(std::errc::operation_canceled)));
+  }
+}
+
 TEST_F(BcSTest, syncCompletedError) {
   ConsumerStub c(m_currency.genesisBlockHash());
   m_sync.addConsumer(&c);
