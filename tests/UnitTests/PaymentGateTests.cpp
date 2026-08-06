@@ -407,6 +407,24 @@ TEST_F(PaymentGateTest, MessageSigningMnemonicAndViewKeyShape) {
   EXPECT_TRUE(viewKey.empty());
 }
 
+// getStatus reads "the last block" as getBlockHashes(blockCount - 1, 1).back(), which
+// is undefined behaviour the moment the container knows no blocks — it killed walletd
+// outright rather than failing the one request. It must answer, with a real hash.
+TEST_F(PaymentGateTest, GetStatusReportsALastBlockHash) {
+  auto cfg = createWalletConfiguration();
+  generateWallet(cfg);
+  auto service = createWalletService(cfg);
+
+  uint32_t blockCount = 0, knownBlockCount = 0, localDaemonBlockCount = 0, peerCount = 0;
+  uint64_t minimalFee = 0;
+  std::string lastBlockHash;
+  ASSERT_FALSE(service->getStatus(blockCount, knownBlockCount, localDaemonBlockCount,
+                                  lastBlockHash, peerCount, minimalFee));
+  EXPECT_GE(blockCount, 1u);
+  EXPECT_EQ(lastBlockHash.size(), 64u);
+  EXPECT_NE(lastBlockHash, std::string(64, '0'));
+}
+
 // Provisioning a view-only container must not require handing over spend authority.
 // getTrackingKey is the credential for it: a decodable `pqview1:` value that names the
 // same public identity as the full wallet, and that is NOT the master seed.

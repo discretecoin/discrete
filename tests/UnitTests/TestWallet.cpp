@@ -1027,6 +1027,50 @@ TEST(PqWalletIntegration, OfflineModeNeverStartsSynchronization) {
   boost::filesystem::remove(trackPath);
 }
 
+// A container that has never completed a sync still has to report a block. Its
+// consumer knows no block hashes, and initBlockchain() used to leave the block list
+// empty in that case — so getBlockCount() returned 0 (its assert is compiled out in
+// Release) and every "last block" lookup computed count - 1, underflowed to
+// 0xFFFFFFFF, and indexed an empty result. walletd's getStatus did exactly that and
+// died with an access violation. The block list must always hold at least genesis.
+TEST(PqWalletIntegration, NeverSyncedContainerStillKnowsGenesis) {
+  System::Dispatcher dispatcher;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(1000000).upgradeHeightV6(1000000)
+      .currency();
+  TestBlockchainGenerator generator(currency);
+  INodeTrivialRefreshStub node(generator);
+
+  const std::string path = "pq_neversynced.wallet";
+  boost::filesystem::remove(path);
+  {
+    // Offline mode is exactly the state a wallet is in when the daemon never answers:
+    // a container with keys whose consumer has never seen a block.
+    CryptoNote::WalletGreen gen(dispatcher, currency, node, logger);
+    gen.setOfflineMode(true);
+    gen.initialize(path, "pass");
+    gen.createAddress();
+    gen.save(CryptoNote::WalletSaveLevel::SAVE_ALL);
+    gen.shutdown();
+  }
+
+  CryptoNote::WalletGreen reopened(dispatcher, currency, node, logger);
+  reopened.setOfflineMode(true);
+  ASSERT_NO_THROW(reopened.load(path, "pass"));
+
+  const uint32_t blockCount = reopened.getBlockCount();
+  ASSERT_GE(blockCount, 1u);  // never 0: "count - 1" must not underflow
+  auto lastHashes = reopened.getBlockHashes(blockCount - 1, 1);
+  ASSERT_FALSE(lastHashes.empty());
+  EXPECT_EQ(lastHashes.back(), currency.genesisBlockHash());
+
+  reopened.shutdown();
+  boost::filesystem::remove(path);
+}
+
 // The exchange deposit surface: the spending wallet registers the account number ONCE and
 // exports a tracking credential; the view-only container then issues further H-I-A-T-C
 // sub-numbers under that same account number. Everything a sub-number is made of is

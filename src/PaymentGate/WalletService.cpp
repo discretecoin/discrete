@@ -1899,8 +1899,22 @@ std::error_code WalletService::getStatus(uint32_t& blockCount, uint32_t& knownBl
     localDaemonBlockCount = node.getLocalBlockCount();
     minimalFee = node.getMinimalFee();
 
-    auto lastHashes = wallet.getBlockHashes(blockCount - 1, 1);
-    lastBlockHash = Common::podToHex(lastHashes.back());
+    // initBlockchain() guarantees at least the genesis hash, so blockCount >= 1 and
+    // the lookup below finds a block. Belt and braces anyway: blockCount - 1 underflows
+    // if that invariant is ever broken again, and back() on the resulting empty vector
+    // is undefined behaviour that took the whole process down rather than failing one
+    // request.
+    lastBlockHash.clear();
+    if (blockCount != 0) {
+      auto lastHashes = wallet.getBlockHashes(blockCount - 1, 1);
+      if (!lastHashes.empty()) {
+        lastBlockHash = Common::podToHex(lastHashes.back());
+      }
+    }
+    if (lastBlockHash.empty()) {
+      logger(Logging::WARNING, Logging::BRIGHT_YELLOW)
+          << "Status requested but the container knows no blocks; reporting an empty last block hash";
+    }
   } catch (std::system_error& x) {
     logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while getting status: " << x.what();
     return x.code();

@@ -2679,14 +2679,25 @@ Crypto::Hash WalletGreen::getBlockHashByIndex(uint32_t blockIndex) const {
 }
 
 void WalletGreen::initBlockchain() {
-  if (!m_pqConsumer) {
-    return;
+  if (m_pqConsumer) {
+    // The PQ consumer owns the wallet's sync cursor; its known block hashes seed the
+    // local block list. Duplicate hashes (e.g. a genesis already pushed by initWithKeys)
+    // are skipped by the container's unique block-hash index.
+    std::vector<Crypto::Hash> blockchain = m_blockchainSynchronizer.getConsumerKnownBlocks(*m_pqConsumer);
+    m_blockchain.insert(m_blockchain.end(), blockchain.begin(), blockchain.end());
   }
-  // The PQ consumer owns the wallet's sync cursor; its known block hashes seed the
-  // local block list. Duplicate hashes (e.g. a genesis already pushed by initWithKeys)
-  // are skipped by the container's unique block-hash index.
-  std::vector<Crypto::Hash> blockchain = m_blockchainSynchronizer.getConsumerKnownBlocks(*m_pqConsumer);
-  m_blockchain.insert(m_blockchain.end(), blockchain.begin(), blockchain.end());
+
+  // The block list must NEVER be empty. A container that has never completed a sync
+  // (no consumer yet, or a consumer that knows no blocks because the daemon was
+  // unreachable) would otherwise leave it so, and getBlockCount() would report 0 —
+  // its assert() is compiled out in Release, so nothing catches it. Every caller that
+  // asks for "the last block" then computes count - 1, underflows to 0xFFFFFFFF, and
+  // reads past the end of an empty result. Genesis is the same seed initContainer()
+  // and the no-records branch of load() use, so this just restores the invariant.
+  if (m_blockchain.empty()) {
+    m_blockchain.push_back(m_currency.genesisBlockHash());
+    m_logger(DEBUGGING) << "No blocks known yet; seeding the block list with the genesis hash";
+  }
 }
 
 bool WalletGreen::isMyAddress(const std::string& addressString) const {
