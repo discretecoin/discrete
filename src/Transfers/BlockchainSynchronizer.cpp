@@ -592,11 +592,26 @@ void BlockchainSynchronizer::processBlocks(GetBlocksResponse& response) {
 BlockchainSynchronizer::UpdateConsumersResult BlockchainSynchronizer::updateConsumers(const BlockchainInterval& interval, const std::vector<CompleteBlock>& blocks) {
   assert(interval.blocks.size() == blocks.size());
 
+  if (interval.blocks.size() > std::numeric_limits<uint32_t>::max() - interval.startHeight) {
+    m_logger(ERROR, BRIGHT_RED)
+      << "Failed to update consumers: node response interval overflows the block-height range";
+    return UpdateConsumersResult::errorOccurred;
+  }
+
   bool smthChanged = false;
   bool hasErrors = false;
 
   uint32_t lastBlockIndex = std::numeric_limits<uint32_t>::max();
   for (auto& kv : m_consumers) {
+    const uint32_t consumerHeight = kv.second->getHeight();
+    if (interval.startHeight > consumerHeight) {
+      m_logger(ERROR, BRIGHT_RED)
+        << "Failed to update consumer: node response starts at height " << interval.startHeight
+        << " beyond consumer height " << consumerHeight << ", consumer " << kv.first;
+      hasErrors = true;
+      continue;
+    }
+
     auto result = kv.second->checkInterval(interval);
 
     if (result.detachRequired) {
@@ -606,8 +621,18 @@ BlockchainSynchronizer::UpdateConsumersResult BlockchainSynchronizer::updateCons
     }
 
     if (result.hasNewBlocks) {
-      uint32_t startOffset = result.newBlockHeight - interval.startHeight;
-      uint32_t blockCount = static_cast<uint32_t>(blocks.size()) - startOffset;
+      const uint64_t intervalEnd = static_cast<uint64_t>(interval.startHeight) + blocks.size();
+      if (result.newBlockHeight < interval.startHeight || result.newBlockHeight >= intervalEnd) {
+        m_logger(ERROR, BRIGHT_RED)
+          << "Failed to update consumer: new block height " << result.newBlockHeight
+          << " is outside response interval [" << interval.startHeight << ", " << intervalEnd
+          << "], consumer " << kv.first;
+        hasErrors = true;
+        continue;
+      }
+
+      const uint32_t startOffset = result.newBlockHeight - interval.startHeight;
+      const uint32_t blockCount = static_cast<uint32_t>(blocks.size() - startOffset);
       // update consumer
       m_logger(DEBUGGING) << "Adding blocks to consumer, consumer " << kv.first << ", start index " << result.newBlockHeight << ", count " << blockCount;
       uint32_t addedCount = kv.first->onNewBlocks(blocks.data() + startOffset, result.newBlockHeight, blockCount);

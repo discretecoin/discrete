@@ -1111,7 +1111,9 @@ TEST_F(BcSTest, checkBlocksRequesting) {
 
   size_t blocksExpected = 20;
 
-  generator.generateEmptyBlocks(blocksExpected - 1); //-1 for genesis
+  const size_t initialBlockCount = generator.getBlockchainCopy().size();
+  ASSERT_LE(initialBlockCount, blocksExpected);
+  generator.generateEmptyBlocks(blocksExpected - initialBlockCount);
   m_node.setGetNewBlocksLimit(3);
 
   size_t blocksRequested = 0;
@@ -1130,6 +1132,48 @@ TEST_F(BcSTest, checkBlocksRequesting) {
   o1.syncFunc = [](std::error_code) {};
 
   EXPECT_EQ(blocksExpected, blocksRequested);
+}
+
+TEST_F(BcSTest, rejectsResponseStartingAfterConsumerHeight) {
+  FunctorialBlockhainConsumerStub c(m_currency.genesisBlockHash());
+  IBlockchainSynchronizerFunctorialObserver observer;
+  EventWaiter completed;
+  std::error_code completionError;
+  bool consumerCalled = false;
+
+  observer.syncFunc = [&](std::error_code ec) {
+    completionError = ec;
+    completed.notify();
+  };
+
+  m_node.queryBlocksFunctor = [&](const std::vector<Hash>&, uint64_t,
+                                  std::vector<BlockShortEntry>& newBlocks,
+                                  uint32_t& startHeight,
+                                  const INode::Callback& callback) -> bool {
+    startHeight = 1; // invalid for a fresh synchronization state at height 0
+    BlockShortEntry entry{};
+    entry.hasBlock = false;
+    entry.blockHash = m_currency.genesisBlockHash();
+    newBlocks.push_back(std::move(entry));
+    callback(std::error_code());
+    return false;
+  };
+
+  c.onNewBlocksFunctor = [&](const CompleteBlock*, uint32_t, size_t) -> bool {
+    consumerCalled = true;
+    return true;
+  };
+
+  m_sync.addObserver(&observer);
+  m_sync.addConsumer(&c);
+  m_sync.start();
+  completed.wait();
+  m_sync.stop();
+  m_sync.removeObserver(&observer);
+  observer.syncFunc = [](std::error_code) {};
+
+  EXPECT_FALSE(consumerCalled);
+  EXPECT_EQ(std::make_error_code(std::errc::invalid_argument), completionError);
 }
 
 TEST_F(BcSTest, checkConsumerHeightReceived) {
@@ -1400,24 +1444,32 @@ TEST_F(BcSTest, checkTxOrder) {
 
   auto last_block = generator.getBlockchain().back();
 
-  BlockShortEntry bse;
-  bse.hasBlock = true;
-  bse.blockHash = get_block_hash(last_block);;
-  bse.block = last_block;
-  bse.txsShortInfo.push_back({tx1hash, tx1});
-  bse.txsShortInfo.push_back({tx2hash, tx2});
-  bse.txsShortInfo.push_back({tx3hash, tx3});
+  std::vector<BlockShortEntry> responseBlocks;
+  auto chain = generator.getBlockchainCopy();
+  responseBlocks.reserve(chain.size());
+  for (size_t i = 0; i < chain.size(); ++i) {
+    BlockShortEntry entry{};
+    entry.hasBlock = true;
+    entry.blockHash = get_block_hash(chain[i]);
+    entry.block = chain[i];
+    if (i + 1 == chain.size()) {
+      entry.txsShortInfo.push_back({tx1hash, tx1});
+      entry.txsShortInfo.push_back({tx2hash, tx2});
+      entry.txsShortInfo.push_back({tx3hash, tx3});
+    }
+    responseBlocks.push_back(std::move(entry));
+  }
 
   std::vector<Hash> expectedTxHashes = { getObjectHash(last_block.baseTransaction), tx1hash, tx2hash, tx3hash };
 
   int requestNumber = 0;
 
-  m_node.queryBlocksFunctor = [&bse, &requestNumber](const std::vector<Hash>& knownBlockIds, uint64_t timestamp, std::vector<BlockShortEntry>& newBlocks, uint32_t& startHeight, const INode::Callback& callback) -> bool {
-    startHeight = 1;
-    newBlocks.push_back(bse);
+  m_node.queryBlocksFunctor = [&responseBlocks, &requestNumber](const std::vector<Hash>& knownBlockIds, uint64_t timestamp, std::vector<BlockShortEntry>& newBlocks, uint32_t& startHeight, const INode::Callback& callback) -> bool {
+    startHeight = 0;
     if (requestNumber > 0) {
       callback(std::make_error_code(std::errc::interrupted));
     } else {
+      newBlocks = responseBlocks;
       callback(std::error_code());
     }
 
