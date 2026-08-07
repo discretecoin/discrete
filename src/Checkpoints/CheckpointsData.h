@@ -48,7 +48,8 @@ struct CheckpointData {
 // the checkpoints.list_is_well_formed test; correctness of the ID is not
 // machine-checkable here.
 const std::initializer_list<CheckpointData> CHECKPOINTS = {
-  { 5500, "b2ef2ae4d5c1cd5ab3c9fa59f3f4abe60311d06a3dee67590028b33c44dabdaf" }
+  { 5500, "b2ef2ae4d5c1cd5ab3c9fa59f3f4abe60311d06a3dee67590028b33c44dabdaf" },
+  { 10000, "b7a29ab0c93238684a53b13f334addb125adefb8ecb17811801236cb49c933dd" }
 };
 
 }
