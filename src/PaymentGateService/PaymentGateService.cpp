@@ -357,10 +357,13 @@ void PaymentGateService::runWalletService(const CryptoNote::Currency& currency, 
     rpcServer.init(rpc_chain_file, rpc_key_file, rpc_run_ssl);
 
     Tools::SignalHandler::install([&] {
-      rpcServer.stop();
-
       if (dispatcher != nullptr) {
-          dispatcher->remoteSpawn([&]() {
+        // SignalHandler invokes POSIX callbacks on its dispatch thread. Move
+        // every Dispatcher/HTTP operation back into this service's own
+        // dispatcher context; HttpServer::stop() walks and interrupts context
+        // lists that are not safe to mutate from an arbitrary OS thread.
+        dispatcher->remoteSpawn([&]() {
+          rpcServer.stop();
           if (stopEvent != nullptr) {
             stopEvent->set();
           }
