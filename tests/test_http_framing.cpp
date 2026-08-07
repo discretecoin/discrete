@@ -13,10 +13,10 @@
 
 #include "gtest/gtest.h"
 
-#include "Http/HttpClient.h"
-#include "Http/HttpParser.h"
-#include "Http/HttpRequest.h"
-#include "Http/HttpResponse.h"
+#include "HTTP/HttpClient.h"
+#include "HTTP/HttpParser.h"
+#include "HTTP/HttpRequest.h"
+#include "HTTP/HttpResponse.h"
 
 #include "CryptoNoteConfig.h"
 
