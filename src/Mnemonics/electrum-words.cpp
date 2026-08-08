@@ -255,29 +255,38 @@ bool words_to_bytes(std::string words, Crypto::SecretKey& dst, std::string &lang
 	std::vector<std::string> seed;
 
 	boost::algorithm::trim(words);
-	boost::split(seed, words, boost::is_any_of(" "), boost::token_compress_on);
+	// Split on any whitespace, not just ' '. A phrase pasted out of a key backup
+	// arrives as a multi-line grid (simplewallet's export_keys runs it through
+	// seedFormater), and folding those newlines into the adjacent word made the
+	// wallet's own backup file unreadable by --mnemonic-seed.
+	boost::split(seed, words, boost::is_space(), boost::token_compress_on);
 
-	// error on non-compliant word list
-	if (seed.size() != seed_length/2 && seed.size() != seed_length && seed.size() != seed_length + 1)
+	// A Discrete master seed is always 32 raw bytes, so the 24-word encoding plus
+	// its checksum word is the only shape bytes_to_words can emit and the only one
+	// accepted here. The two legacy forms are rejected deliberately:
+	//   - 12 words carry just 16 bytes, which the Electrum-compatible path used to
+	//     duplicate into the upper half of the key. On a curve that was a scalar;
+	//     here it is a master seed with 128 bits of entropy, half of it a verbatim
+	//     copy of the other half, accepted with no warning.
+	//   - 24 words carry the whole seed but have no checksum word, so a phrase with
+	//     a dropped or transposed word skips verification entirely and restores a
+	//     valid-looking, different, empty wallet.
+	if (seed.size() != seed_length + 1)
 		return false;
-
-	// If it is seed with a checksum.
-	bool has_checksum = seed.size() == (seed_length + 1);
 
 	std::vector<uint32_t> matched_indices;
 	Language::Base *language;
-	if (!find_seed_language(seed, has_checksum, matched_indices, &language))
+	if (!find_seed_language(seed, true, matched_indices, &language))
 		return false;
 
 	language_name = language->get_language_name();
 	uint32_t word_list_length = static_cast<uint32_t>(language->get_word_list().size());
 
-	if (has_checksum)
-	{
-		if (!checksum_test(seed, language->get_unique_prefix_length()))
-			return false; // Checksum fail
-		seed.pop_back();
-	}
+	// find_seed_language may return a fallback language whose checksum did not
+	// match, so this is a real gate and not a repeat of the check inside it.
+	if (!checksum_test(seed, language->get_unique_prefix_length()))
+		return false; // Checksum fail
+	seed.pop_back();
 
 	for (unsigned int i=0; i < seed.size() / 3; i++)
 	{
@@ -293,14 +302,6 @@ bool words_to_bytes(std::string words, Crypto::SecretKey& dst, std::string &lang
 		if (!(val % word_list_length == w1)) return false;
 
 		memcpy(dst.data + i * 4, &val, 4);  // copy 4 bytes to position
-	}
-
-	std::string wlist_copy = words;
-	if (seed.size() == seed_length/2)
-	{
-		memcpy(dst.data+16, dst.data, 16);  // if electrum 12-word seed, duplicate
-		wlist_copy += ' ';
-		wlist_copy += words;
 	}
 
 	return true;

@@ -54,11 +54,15 @@ namespace ElectrumWords
 const int seed_length = 24;
 const std::string old_language_name = "English";
 /*!
-	* \brief Converts seed words to bytes (secret key).
-	* \param  words           String containing the words separated by spaces.
+	* \brief Converts seed words to bytes (the 32-byte master seed).
+	* \param  words           String containing the words separated by whitespace.
 	* \param  dst             To put the secret key restored from the words.
 	* \param  language_name   Language of the seed as found gets written here.
-	* \return                 false if not a multiple of 3 words, or if word is not in the words list
+	* \return                 false unless the phrase is exactly seed_length + 1 (25)
+	*                         words, all in one language, with a matching checksum
+	*                         word. The legacy 12- and 24-word forms are rejected:
+	*                         12 words yield a half-entropy master seed and neither
+	*                         form carries a checksum. See words_to_bytes().
 	*/
 bool words_to_bytes(std::string words, Crypto::SecretKey& dst,
 	std::string &language_name);

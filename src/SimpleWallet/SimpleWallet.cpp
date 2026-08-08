@@ -185,8 +185,17 @@ void seedLoader(const char *seed_file, std::string& seed) {
       }
     }
     fclose(fd);
-    seed_buffer.resize(seed_buffer.length() - 1);
-    seed_buffer += (char) 0x00;
+    // The loop appends a separator when it *leaves* a word, so there is a trailing
+    // one only if the file ended with whitespace (the usual trailing newline).
+    // Strip it only when it is there: the old code subtracted unconditionally,
+    // which chopped the last character off a file with no trailing newline, and
+    // underflowed to SIZE_MAX on an empty one -- turning an empty mnemonic file
+    // into a bad_alloc. The old `seed_buffer += (char) 0x00` is gone with it; that
+    // is a C-string idiom, and on a std::string it left an embedded NUL glued to
+    // the checksum word, which then failed to match the word list.
+    if (!seed_buffer.empty() && seed_buffer.back() == ' ') {
+      seed_buffer.pop_back();
+    }
     seed = seed_buffer;
   }
 }
