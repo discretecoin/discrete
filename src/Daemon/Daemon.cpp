@@ -404,9 +404,15 @@ int main(int argc, char* argv[])
     }
 
     // Headless solo mining: if a mining wallet was supplied on the command line,
-    // derive its PQ identity (read-only, off the encrypted container) and start
-    // mining+signing to it — the same identity-bound path as the console/RPC
-    // start_mining, but with no interactive console. Useful for testnet bring-up.
+    // derive its PQ identity (read-only, off the encrypted container) and arm the
+    // miner — the same identity-bound path as the console/RPC start_mining, but
+    // with no interactive console. Useful for testnet bring-up.
+    //
+    // --mining-wallet alone only loads and validates the key, so a bad path or
+    // password fails at startup instead of an hour into a run; --start-mining is
+    // what actually mines. Either way the miner is armed, not started: the worker
+    // threads spawn from on_synchronized(), because hashing an unsynchronized
+    // chain only produces work on a stale tip.
     if (!minerConfig.miningWallet.empty()) {
       Tools::PasswordContainer pwd;
       if (!minerConfig.miningPasswordFile.empty()) {
@@ -446,11 +452,21 @@ int main(int argc, char* argv[])
         Tools::SecretLock pqGuard(pqSpendSk.data(), pqSpendSk.size());
         CryptoNote::deriveMinerPqKeys(spendSecret, pqViewPub, pqSpendPub, pqSpendSk);
 
-        size_t threads = minerConfig.miningThreads > 0 ? static_cast<size_t>(minerConfig.miningThreads) : 1;
-        if (!m_core.get_miner().startPq(pqViewPub, pqSpendPub, pqSpendSk, threads)) {
-          logger(ERROR, BRIGHT_RED) << "Failed to start headless mining.";
+        if (!minerConfig.startMining) {
+          // Key validated and scrubbed on scope exit; nothing is retained.
+          logger(INFO, BRIGHT_WHITE)
+            << "Mining wallet loaded and verified, but the miner is idle: pass --start-mining "
+               "to mine at startup, or use the console command 'start_mining "
+            << minerConfig.miningWallet << "'.";
         } else {
-          logger(INFO) << "Headless mining started to the wallet's identity with " << threads << " thread(s).";
+          size_t threads = minerConfig.miningThreads > 0 ? static_cast<size_t>(minerConfig.miningThreads) : 1;
+          if (!m_core.get_miner().startPqWhenSynchronized(pqViewPub, pqSpendPub, pqSpendSk, threads)) {
+            logger(ERROR, BRIGHT_RED) << "Failed to arm headless mining.";
+          } else {
+            logger(INFO, BRIGHT_WHITE)
+              << "Mining armed to the wallet's identity with " << threads
+              << " thread(s); it will begin once the node is synchronized.";
+          }
         }
       }
     }

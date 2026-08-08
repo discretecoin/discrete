@@ -120,10 +120,17 @@ Crypto::SecretKey loadMiningSpendSecret(const std::string& path,
   // is a single source of truth. Pre-v9 (classical) wallets are not supported.
   {
     std::ifstream probe(path, std::ios_base::binary);
+    // Distinguish "no such file" from "empty file" from "bad version byte".
+    // Reporting all three as a version failure sent operators looking for a
+    // format mismatch when the real cause was a path that never existed.
+    if (!probe.is_open()) {
+      throw std::system_error(make_error_code(error::WALLET_NOT_FOUND),
+                              "Cannot open wallet file '" + path + "'");
+    }
     int peeked = probe.peek();
     if (peeked == EOF) {
       throw std::system_error(make_error_code(error::WRONG_VERSION),
-                              "Failed to read wallet version from '" + path + "'");
+                              "Wallet file '" + path + "' is empty");
     }
     uint8_t version = static_cast<uint8_t>(peeked);
     if (version < WalletSerializerV2::MIN_VERSION) {

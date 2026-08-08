@@ -65,7 +65,7 @@ DaemonCommandsHandler::DaemonCommandsHandler(CryptoNote::Core& core, CryptoNote:
   //m_consoleHandler.setHandler("print_bc_outs", std::bind(&DaemonCommandsHandler::print_bc_outs, this, std::placeholders::_1));
   m_consoleHandler.setHandler("print_block", std::bind(&DaemonCommandsHandler::print_block, this, std::placeholders::_1), "Print block, print_block <block_hash> | <block_height>");
   m_consoleHandler.setHandler("print_tx", std::bind(&DaemonCommandsHandler::print_tx, this, std::placeholders::_1), "Print transaction, print_tx <transaction_hash>");
-  m_consoleHandler.setHandler("start_mining", std::bind(&DaemonCommandsHandler::start_mining, this, std::placeholders::_1), "Start mining to your wallet's PQ identity, start_mining <wallet-file> [threads=1] [--mining-password-file <path>]");
+  m_consoleHandler.setHandler("start_mining", std::bind(&DaemonCommandsHandler::start_mining, this, std::placeholders::_1), "Start mining to your wallet's PQ identity, start_mining <wallet-file>|--mining-wallet <path> [threads=1] [--mining-password-file <path>]");
   m_consoleHandler.setHandler("stop_mining", std::bind(&DaemonCommandsHandler::stop_mining, this, std::placeholders::_1), "Stop mining");
   m_consoleHandler.setHandler("print_pool", std::bind(&DaemonCommandsHandler::print_pool, this, std::placeholders::_1), "Print transaction pool (long format)");
   m_consoleHandler.setHandler("print_pool_sh", std::bind(&DaemonCommandsHandler::print_pool_sh, this, std::placeholders::_1), "Print transaction pool (short format)");
@@ -479,25 +479,38 @@ bool DaemonCommandsHandler::start_mining(const std::vector<std::string> &args) {
   std::string passwordFile;
   size_t threads_count = 1;
   std::vector<std::string> positionals;
+  // --mining-wallet/--mining-password-file are also discreted startup options, so
+  // accept the same spellings here: an operator moving a working service command
+  // line into the console should not have to re-learn the argument shape. An
+  // unrecognized --flag is rejected rather than taken as the wallet path, which
+  // used to surface as "Failed to read wallet version from '--mining-wallet'".
   for (size_t i = 0; i < args.size(); ++i) {
-    if (args[i] == "--mining-password-file") {
+    const std::string& arg = args[i];
+    if (arg == "--mining-password-file" || arg == "--mining-wallet") {
       if (i + 1 >= args.size()) {
-        std::cout << "--mining-password-file requires a path argument." << std::endl;
+        std::cout << arg << " requires a path argument." << std::endl;
         return true;
       }
-      passwordFile = args[++i];
+      (arg == "--mining-wallet" ? walletPath : passwordFile) = args[++i];
+    } else if (arg.compare(0, 2, "--") == 0) {
+      std::cout << "Unknown option " << arg << "." << std::endl
+                << "Usage: start_mining <wallet-file>|--mining-wallet <path> [threads=1] [--mining-password-file <path>]" << std::endl;
+      return true;
     } else {
-      positionals.push_back(args[i]);
+      positionals.push_back(arg);
     }
   }
 
-  if (positionals.empty()) {
-    std::cout << "Usage: start_mining <wallet-file> [threads=1] [--mining-password-file <path>]" << std::endl;
-    return true;
+  if (walletPath.empty()) {
+    if (positionals.empty()) {
+      std::cout << "Usage: start_mining <wallet-file>|--mining-wallet <path> [threads=1] [--mining-password-file <path>]" << std::endl;
+      return true;
+    }
+    walletPath = positionals[0];
+    positionals.erase(positionals.begin());
   }
-  walletPath = positionals[0];
-  if (positionals.size() > 1) {
-    bool ok = Common::fromString(positionals[1], threads_count);
+  if (!positionals.empty()) {
+    bool ok = Common::fromString(positionals[0], threads_count);
     threads_count = (ok && 0 < threads_count) ? threads_count : 1;
   }
 
@@ -543,14 +556,28 @@ bool DaemonCommandsHandler::start_mining(const std::vector<std::string> &args) {
     Tools::SecretLock pqGuard(pqSpendSk.data(), pqSpendSk.size());
     CryptoNote::deriveMinerPqKeys(spendSecret, pqViewPub, pqSpendPub, pqSpendSk);
 
-    if (!m_core.get_miner().startPq(pqViewPub, pqSpendPub, pqSpendSk, threads_count)) {
+    // Same rule as the --start-mining startup path: never hash an unsynchronized
+    // chain, because the work can only land on a stale tip. Arm instead, and let
+    // on_synchronized() spawn the threads.
+    const bool synced = protocolQuery.isSynchronized();
+    const bool armed = synced
+      ? m_core.get_miner().startPq(pqViewPub, pqSpendPub, pqSpendSk, threads_count)
+      : m_core.get_miner().startPqWhenSynchronized(pqViewPub, pqSpendPub, pqSpendSk, threads_count);
+    if (!armed) {
       std::cout << "Failed to start mining (already mining?)." << std::endl;
       return true;
     }
+
+    if (synced) {
+      std::cout << "Mining started to the wallet's identity with "
+                << threads_count << " thread(s)." << std::endl;
+    } else {
+      std::cout << "Node is not synchronized yet. Mining is armed with "
+                << threads_count << " thread(s) and will begin automatically once sync completes."
+                << std::endl;
+    }
   }
 
-  std::cout << "Mining started to the wallet's identity with "
-            << threads_count << " thread(s)." << std::endl;
   return true;
 }
 //--------------------------------------------------------------------------------

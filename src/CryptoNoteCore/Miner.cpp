@@ -250,6 +250,29 @@ namespace CryptoNote
     return start(AccountKeys{}, threads_count);
   }
 
+  bool miner::startPqWhenSynchronized(const CryptoPQ::KemPublicKey& viewPub,
+                                      const CryptoPQ::DsaPublicKey& spendPub,
+                                      const CryptoPQ::DsaSecretKey& spendSk,
+                                      size_t threads_count) {
+    if (is_mining()) {
+      logger(ERROR) << "Starting miner but it's already started";
+      return false;
+    }
+
+    m_pq_view_pub  = viewPub;
+    m_pq_spend_pub = spendPub;
+    m_pq_spend_sk  = spendSk;
+    m_pq_keys_set  = true;
+    m_mine_account = AccountKeys{};
+    m_threads_total = static_cast<uint32_t>(threads_count);
+
+    // Arm only. m_stop stays true, so is_mining() is false and no worker thread
+    // exists yet; on_synchronized() sees m_do_mining && !is_mining() and calls
+    // start(), which is the same path a resume-after-desync takes.
+    m_do_mining = true;
+    return true;
+  }
+
   bool miner::start(const AccountKeys& acc, size_t threads_count)
   {
     if (is_mining()) {

@@ -50,6 +50,16 @@ namespace CryptoNote {
                  const CryptoPQ::DsaPublicKey& spendPub,
                  const CryptoPQ::DsaSecretKey& spendSk,
                  size_t threads_count);
+    // Arm the PQ miner without spawning threads: the keys and thread count are
+    // stored and on_synchronized() starts the actual mining once the node has
+    // caught up with the network. Mining an unsynchronized chain only produces
+    // work on a stale tip, so every automatic start goes through here.
+    bool startPqWhenSynchronized(const CryptoPQ::KemPublicKey& viewPub,
+                                 const CryptoPQ::DsaPublicKey& spendPub,
+                                 const CryptoPQ::DsaSecretKey& spendSk,
+                                 size_t threads_count);
+    // True once armed, whether or not the threads are running yet.
+    bool is_mining_requested() const { return m_do_mining; }
     // Legacy ECC start stub (not functional in Discrete — logs error).
     bool start(const AccountKeys& acc, size_t threads_count);
     uint64_t get_speed();

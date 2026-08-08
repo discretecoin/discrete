@@ -35,6 +35,7 @@ public:
   std::string extraMessages;
   std::string miningWallet;        // wallet container whose PQ identity mines+signs headless blocks
   std::string miningPasswordFile;  // file holding the miningWallet password (read out of band)
+  bool startMining = false;        // --start-mining: begin mining at startup (once synchronized)
   uint32_t miningThreads;
   bool printHashrate = false;
   bool logHashrate = false;
