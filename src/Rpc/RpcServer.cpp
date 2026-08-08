@@ -1586,9 +1586,19 @@ bool RpcServer::on_start_mining(const COMMAND_RPC_START_MINING::request& req, CO
     Tools::SecretLock pqGuard(pqSpendSk.data(), pqSpendSk.size());
     deriveMinerPqKeys(spendSecret, pqViewPub, pqSpendPub, pqSpendSk);
 
-    if (!m_core.get_miner().startPq(pqViewPub, pqSpendPub, pqSpendSk, static_cast<size_t>(req.threads_count))) {
+    // Same rule as the daemon console and the --start-mining startup path: an
+    // unsynchronized node arms the miner instead of hashing, because work built
+    // on a stale tip cannot win. on_synchronized() spawns the threads.
+    const bool synced = m_protocolQuery.isSynchronized();
+    const bool armed = synced
+      ? m_core.get_miner().startPq(pqViewPub, pqSpendPub, pqSpendSk, static_cast<size_t>(req.threads_count))
+      : m_core.get_miner().startPqWhenSynchronized(pqViewPub, pqSpendPub, pqSpendSk, static_cast<size_t>(req.threads_count));
+    if (!armed) {
       res.status = "Already mining";
       return true;
+    }
+    if (!synced) {
+      logger(Logging::INFO) << "Node is not synchronized: mining armed and will begin once sync completes.";
     }
   }
 
