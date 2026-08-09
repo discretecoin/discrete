@@ -88,6 +88,7 @@ constexpr char PQ_CACHE_MAGIC[] = {'K', 'P', 'Q', 'C', 'A', 'C', 'H', '1'};
 constexpr int  PQ_CACHE_MAGIC_LEN = 8;
 constexpr char PQ_TRACKING_MAGIC[] = {'K', 'P', 'Q', 'T', 'R', 'K', '1'};
 constexpr int  PQ_TRACKING_MAGIC_LEN = 7;
+constexpr std::size_t PQ_PROTECTED_SPEND_METADATA_MAX_SIZE = 64 * 1024;
 
 // Legacy TransferId packing for payer-side recipient rows. A transaction's transfers
 // occupy [txIndex << PQ_TRANSFER_RECIPIENT_BITS, + recipientIndex]. Packing (rather
@@ -147,11 +148,13 @@ bool deserializePqTrackingKeys(const std::string& blob, CryptoNote::PqTrackingKe
 
 struct PqCacheSections {
   bool framed = false;
+  bool protectedSpendMetadataPresent = false;
   std::string transfersCache;
   std::string consumerState;
   std::string pqState;
   std::string pqTrackingKeys;
   std::string sentPayments;  // payer-side recipient labels (optional fifth section)
+  std::string protectedSpendMetadata;  // persistent opaque metadata (optional sixth section)
 };
 
 bool readPqCacheSections(const std::string& cache, PqCacheSections& sections) {
@@ -167,10 +170,11 @@ bool readPqCacheSections(const std::string& cache, PqCacheSections& sections) {
   }
 
   sections.framed = true;
-  auto readSection = [&stream](std::string& out) -> bool {
+  auto readSection = [&stream, &cache](std::string& out) -> bool {
     uint64_t len = 0;
     stream.read(reinterpret_cast<char*>(&len), sizeof(len));
     if (!stream) return false;
+    if (len > cache.size()) return false;
     out.resize(static_cast<std::size_t>(len));
     if (len) stream.read(&out[0], static_cast<std::streamsize>(len));
     return static_cast<bool>(stream);
@@ -180,7 +184,9 @@ bool readPqCacheSections(const std::string& cache, PqCacheSections& sections) {
   if (!readSection(sections.consumerState)) return true;
   if (!readSection(sections.pqState)) return true;
   if (!readSection(sections.pqTrackingKeys)) return true;  // optional fourth section
-  readSection(sections.sentPayments);                      // optional fifth section
+  if (!readSection(sections.sentPayments)) return true;    // optional fifth section
+  sections.protectedSpendMetadataPresent =
+      readSection(sections.protectedSpendMetadata);        // optional sixth section
   return true;
 }
 
@@ -311,6 +317,7 @@ void WalletLegacy::initAndGenerateNonDeterministic(const std::string& password) 
     m_account.generate();
     m_password = password;
     m_pqTrackingKeys.reset();
+    m_pqProtectedSpendMetadata.clear();
 
     initSync();
   }
@@ -329,6 +336,7 @@ void WalletLegacy::initAndGenerateDeterministic(const std::string& password) {
     m_account.generateDeterministic();
     m_password = password;
     m_pqTrackingKeys.reset();
+    m_pqProtectedSpendMetadata.clear();
 
     initSync();
   }
@@ -437,6 +445,7 @@ void WalletLegacy::initWithKeys(const AccountKeys& accountKeys, const std::strin
     m_account.set_createtime(scanHeightToTimestamp(scanHeight));
     m_password = password;
     m_pqTrackingKeys.reset();
+    m_pqProtectedSpendMetadata.clear();
 
     initSync();
   }
@@ -474,6 +483,7 @@ void WalletLegacy::initWithPqTrackingKeys(const AccountKeys& accountKeys, const 
     m_account.set_createtime(scanHeightToTimestamp(scanHeight));
     m_password = password;
     m_pqTrackingKeys.reset(new PqTrackingKeys(pqTrackingKeys));
+    m_pqProtectedSpendMetadata.clear();
 
     initSync();
   }
@@ -553,12 +563,26 @@ void WalletLegacy::doLoad(std::istream& source) {
     serializer.deserialize(source, m_password, cache);
 
     m_pqTrackingKeys.reset();
+    m_pqProtectedSpendMetadata.clear();
     PqCacheSections pqSections;
-    if (readPqCacheSections(cache, pqSections) && !pqSections.pqTrackingKeys.empty()) {
+    const bool framedPqCache = readPqCacheSections(cache, pqSections);
+    if (framedPqCache && !pqSections.pqTrackingKeys.empty()) {
       PqTrackingKeys trackingKeys;
       if (deserializePqTrackingKeys(pqSections.pqTrackingKeys, trackingKeys)) {
         m_pqTrackingKeys.reset(new PqTrackingKeys(trackingKeys));
       }
+    }
+
+    if (serializer.loadedVersion() >= WalletLegacySerializer::PROTECTED_SPEND_VERSION) {
+      if (!framedPqCache || !m_pqTrackingKeys ||
+          !pqSections.protectedSpendMetadataPresent ||
+          pqSections.protectedSpendMetadata.empty() ||
+          pqSections.protectedSpendMetadata.size() >
+              PQ_PROTECTED_SPEND_METADATA_MAX_SIZE) {
+        throw std::runtime_error(
+            "protected-spend wallet metadata is missing or corrupt");
+      }
+      m_pqProtectedSpendMetadata = pqSections.protectedSpendMetadata;
     }
 
     initSync();
@@ -711,16 +735,21 @@ void WalletLegacy::doSave(std::ostream& destination, bool saveDetailed, bool sav
     m_blockchainSync.stop();
     std::unique_lock<std::mutex> lock(m_cacheMutex);
     
-    WalletLegacySerializer serializer(m_account);
+    const bool protectedSpendMetadata = !m_pqProtectedSpendMetadata.empty();
+    WalletLegacySerializer serializer(
+        m_account,
+        protectedSpendMetadata
+            ? WalletLegacySerializer::PROTECTED_SPEND_VERSION
+            : WalletLegacySerializer::STANDARD_VERSION);
     std::string cache;
 
-    if (saveCache || m_pqTrackingKeys) {
-      // Framed cache: magic || [u64 len || bytes] x5 (transfers, PQ consumer
+    if (saveCache || m_pqTrackingKeys || protectedSpendMetadata) {
+      // Framed cache: magic || [u64 len || bytes] x6 (transfers, PQ consumer
       // cursor, PQ wallet state, PQ tracking credential, payer-side recipient
-      // labels). The classical transfers section is now always empty (kept for
-      // wallet-file byte-compatibility); the fourth (tracking) and fifth (labels)
-      // sections are optional. Readers stop at the last section they understand, so
-      // appending the fifth is backward- and forward-compatible.
+      // labels, opaque protected-spend metadata). The sixth section is written
+      // independently of saveCache so reset and cache-free backups cannot drop
+      // spend recovery. Version 3's compatibility guard prevents old readers
+      // from opening and later stripping this section.
       std::stringstream combined;
       combined.write(PQ_CACHE_MAGIC, PQ_CACHE_MAGIC_LEN);
       auto writeSection = [&combined](const std::string& s) {
@@ -752,6 +781,7 @@ void WalletLegacy::doSave(std::ostream& destination, bool saveDetailed, bool sav
         sentPayments = sp.str();
       }
       writeSection(sentPayments);
+      writeSection(m_pqProtectedSpendMetadata);
       cache = combined.str();
     }
 
@@ -964,6 +994,27 @@ std::string WalletLegacy::getPqAddress() const {
 bool WalletLegacy::pqScannerHasSpendSeed() const {
   std::unique_lock<std::mutex> lock(m_cacheMutex);
   return m_pqConsumer != nullptr && m_pqConsumer->state().hasSeedMaster();
+}
+
+bool WalletLegacy::getPqProtectedSpendMetadata(std::string& metadata) const {
+  std::unique_lock<std::mutex> lock(m_cacheMutex);
+  metadata = m_pqProtectedSpendMetadata;
+  return !metadata.empty();
+}
+
+bool WalletLegacy::setPqProtectedSpendMetadata(const std::string& metadata) {
+  std::unique_lock<std::mutex> lock(m_cacheMutex);
+  if (m_state != INITIALIZED) {
+    return false;
+  }
+  if (!metadata.empty() &&
+      (metadata.size() > PQ_PROTECTED_SPEND_METADATA_MAX_SIZE ||
+       !m_pqTrackingKeys ||
+       m_account.getAccountKeys().spendSecretKey != NULL_SECRET_KEY)) {
+    return false;
+  }
+  m_pqProtectedSpendMetadata = metadata;
+  return true;
 }
 
 PqWalletKeys WalletLegacy::deriveVerifiedSpendKeys(

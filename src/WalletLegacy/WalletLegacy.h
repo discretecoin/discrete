@@ -111,6 +111,11 @@ public:
   uint32_t pqSyncedHeight() const;
   bool pqScannerHasSpendSeed() const;
   bool getPqTrackingKeys(PqTrackingKeys& keys) const;
+  // Opaque front-end metadata for externally protected spend authority. It is
+  // persisted inside the password-encrypted wallet file, survives reset and
+  // cache-free backups, and is never interpreted by the core.
+  bool getPqProtectedSpendMetadata(std::string& metadata) const;
+  bool setPqProtectedSpendMetadata(const std::string& metadata);
   std::string getPqAddress() const;
   // Convert an open full wallet into tracking-only state without restarting.
   // The caller receives the seed exactly once and must persist it safely before
@@ -269,6 +274,7 @@ private:
   // m_pqTrackingKeys instead of a spend secret.
   std::unique_ptr<WalletLedgerConsumer> m_pqConsumer;
   std::unique_ptr<PqTrackingKeys> m_pqTrackingKeys;
+  std::string m_pqProtectedSpendMetadata;
 
   // Payer-side recipient labels captured at send time (the counterparty address is
   // not recoverable from PQ output scanning). Keyed by txid, surfaced through the

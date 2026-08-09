@@ -1351,6 +1351,7 @@ TEST(WalletLegacySmoke, DetachedSeedNeverReturnsToSavedTrackingWallet) {
   CryptoNote::WalletLegacy wallet(currency, node, logger);
   wallet.initAndGenerate("pass");
   EXPECT_FALSE(wallet.pqScannerHasSpendSeed());
+  EXPECT_FALSE(wallet.setPqProtectedSpendMetadata("must-not-enter-a-full-wallet"));
   const std::string address = wallet.getAddress();
 
   CryptoNote::AccountKeys before;
@@ -1378,6 +1379,13 @@ TEST(WalletLegacySmoke, DetachedSeedNeverReturnsToSavedTrackingWallet) {
   wrong[0] ^= 1;
   EXPECT_THROW(wallet.signMessageWithSeed(wrong, message), std::runtime_error);
 
+  const std::string protectedSpendMetadata =
+      R"({"version":2,"algorithm":"test-envelope","keys":["primary","backup"]})";
+  ASSERT_TRUE(wallet.setPqProtectedSpendMetadata(protectedSpendMetadata));
+  std::string storedMetadata;
+  ASSERT_TRUE(wallet.getPqProtectedSpendMetadata(storedMetadata));
+  EXPECT_EQ(storedMetadata, protectedSpendMetadata);
+
   std::stringstream serialized;
   CryptoNote::WalletHelper::SaveWalletResultObserver saveObserver;
   {
@@ -1386,6 +1394,21 @@ TEST(WalletLegacySmoke, DetachedSeedNeverReturnsToSavedTrackingWallet) {
     wallet.save(serialized, true, true);
     ASSERT_FALSE(saved.get());
   }
+  const std::string protectedWalletBytes = serialized.str();
+  ASSERT_FALSE(protectedWalletBytes.empty());
+  EXPECT_EQ(static_cast<unsigned char>(protectedWalletBytes.front()),
+            CryptoNote::WalletLegacySerializer::PROTECTED_SPEND_VERSION);
+
+  // The old v2 reader ignored unknown top-level versions. Re-label the v3 file
+  // as v2 to make the current parser follow that exact legacy path: it must see
+  // the compatibility guard as keys and reject the file instead of opening it.
+  std::string legacyReaderBytes = protectedWalletBytes;
+  legacyReaderBytes[0] =
+      static_cast<char>(CryptoNote::WalletLegacySerializer::STANDARD_VERSION);
+  std::stringstream legacyReaderStream(legacyReaderBytes);
+  CryptoNote::AccountBase legacyReaderAccount;
+  CryptoNote::WalletLegacySerializer legacyReader(legacyReaderAccount);
+  EXPECT_FALSE(legacyReader.deserialize(legacyReaderStream, "pass"));
   wallet.shutdown();
 
   serialized.seekg(0);
@@ -1406,6 +1429,17 @@ TEST(WalletLegacySmoke, DetachedSeedNeverReturnsToSavedTrackingWallet) {
   EXPECT_EQ(reloadedKeys.spendSecretKey, CryptoNote::NULL_SECRET_KEY);
   EXPECT_FALSE(reloaded.getSeed(words));
   EXPECT_NO_THROW(reloaded.signMessageWithSeed(detached, message));
+  storedMetadata.clear();
+  ASSERT_TRUE(reloaded.getPqProtectedSpendMetadata(storedMetadata));
+  EXPECT_EQ(storedMetadata, protectedSpendMetadata);
+
+  // reset() deliberately saves without the normal cache. Protected-spend
+  // recovery metadata is authority, not disposable sync state, and must remain.
+  reloaded.reset();
+  storedMetadata.clear();
+  ASSERT_TRUE(reloaded.getPqProtectedSpendMetadata(storedMetadata));
+  EXPECT_EQ(storedMetadata, protectedSpendMetadata);
+  EXPECT_TRUE(reloaded.isTrackingWallet());
   reloaded.shutdown();
 }
 
