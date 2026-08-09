@@ -54,10 +54,17 @@
 #include "WalletLegacy/WalletLegacySerializer.h"
 #include "WalletLegacy/WalletUtils.h"
 #include "Common/StringTools.h"
+#include "Common/SecureMemory.h"
 #include "CryptoNoteCore/CryptoNoteTools.h"
 #include "CryptoNoteCore/TransactionApi.h"
 #include "CryptoNoteCore/TransactionExtra.h"
 #include "Mnemonics/electrum-words.h"
+
+// Common/SecureMemory.h includes windows.h on Windows; its ERROR macro would
+// otherwise replace Logging::ERROR and the legacy unqualified ERROR enum uses.
+#ifdef ERROR
+#undef ERROR
+#endif
 
 extern "C"
 {
@@ -501,7 +508,13 @@ void WalletLegacy::initSync() {
   const auto& keys = m_account.getAccountKeys();
   if (keys.spendSecretKey != NULL_SECRET_KEY) {
     PqWalletKeys pqKeys = derivePqWalletKeys(keys.spendSecretKey);
-    m_pqConsumer.reset(new WalletLedgerConsumer(pqKeys, syncStart, m_logger.getLogger()));
+    Tools::SecretLock scrub(&pqKeys, sizeof(pqKeys));
+    // WalletLegacy is permanently SingleKeyIndex: its scanner needs viewSk and
+    // spendPub only. Constructing WalletLedger from the full key object would
+    // retain a second copy of seedMaster for AggregatedMultikey deposit-key
+    // derivation, defeating runtime seed detachment.
+    const PqTrackingKeys tracking = pqTrackingKeys(pqKeys);
+    m_pqConsumer.reset(new WalletLedgerConsumer(tracking, syncStart, m_logger.getLogger()));
     m_blockchainSync.addConsumer(m_pqConsumer.get());
   } else if (m_pqTrackingKeys) {
     m_pqConsumer.reset(new WalletLedgerConsumer(*m_pqTrackingKeys, syncStart, m_logger.getLogger()));
@@ -810,7 +823,13 @@ std::string WalletLegacy::sign_message(const std::string &message) {
   if (keys.spendSecretKey == NULL_SECRET_KEY) {
     throw std::runtime_error("tracking wallet cannot sign messages");
   }
-  PqWalletKeys pq = derivePqWalletKeys(keys.spendSecretKey);
+  return signMessageWithSeed(pqSeedMasterFromSpendSecret(keys.spendSecretKey), message);
+}
+
+std::string WalletLegacy::signMessageWithSeed(const CryptoPQ::SeedMaster& seedMaster,
+                                              const std::string& message) {
+  PqWalletKeys pq = deriveVerifiedSpendKeys(seedMaster);
+  Tools::SecretLock scrub(&pq, sizeof(pq));
   return CryptoNote::signMessagePq(message, pq.spendSk);
 }
 
@@ -942,6 +961,43 @@ std::string WalletLegacy::getPqAddress() const {
   return encodePqAddress(addr, pqBech32Hrp(m_currency.isTestnet()));
 }
 
+bool WalletLegacy::pqScannerHasSpendSeed() const {
+  std::unique_lock<std::mutex> lock(m_cacheMutex);
+  return m_pqConsumer != nullptr && m_pqConsumer->state().hasSeedMaster();
+}
+
+PqWalletKeys WalletLegacy::deriveVerifiedSpendKeys(
+    const CryptoPQ::SeedMaster& seedMaster) const {
+  PqTrackingKeys tracking;
+  if (!getPqTrackingKeys(tracking) || !pqTrackingKeysMatchSeed(tracking, seedMaster)) {
+    throw std::runtime_error("unlocked spend seed does not belong to this wallet");
+  }
+  return derivePqWalletKeys(seedMaster);
+}
+
+bool WalletLegacy::detachPqSpendSeed(CryptoPQ::SeedMaster& seedMaster) {
+  std::unique_lock<std::mutex> lock(m_cacheMutex);
+  throwIfNotInitialised();
+
+  AccountKeys keys = m_account.getAccountKeys();
+  if (keys.spendSecretKey == NULL_SECRET_KEY) {
+    return false;
+  }
+
+  PqWalletKeys full = derivePqWalletKeys(keys.spendSecretKey);
+  Tools::SecretLock scrubFull(&full, sizeof(full));
+  seedMaster = full.seedMaster;
+  m_pqTrackingKeys.reset(new PqTrackingKeys(pqTrackingKeys(full)));
+
+  sodium_memzero(keys.spendSecretKey.data, sizeof(keys.spendSecretKey.data));
+  Crypto::cn_fast_hash(keys.spendSecretKey.data, sizeof(keys.spendSecretKey.data),
+                       reinterpret_cast<Crypto::Hash&>(keys.address.spendPublicKey));
+  sodium_memzero(keys.viewSecretKey.data, sizeof(keys.viewSecretKey.data));
+  sodium_memzero(keys.address.viewPublicKey.data, sizeof(keys.address.viewPublicKey.data));
+  m_account.setAccountKeys(keys);
+  return true;
+}
+
 PqSendResult WalletLegacy::sendPqTransfer(const std::vector<PqSendOutput>& recipients,
                                           uint64_t fee, uint64_t unlockHeight,
                                           const std::vector<uint8_t>& extra,
@@ -954,7 +1010,21 @@ PqSendResult WalletLegacy::sendPqTransfer(const std::vector<PqSendOutput>& recip
   if (keys.spendSecretKey == NULL_SECRET_KEY) {
     throw std::runtime_error("tracking wallet cannot spend");
   }
-  PqWalletKeys pq = derivePqWalletKeys(keys.spendSecretKey);
+  return sendPqTransferWithSeed(pqSeedMasterFromSpendSecret(keys.spendSecretKey),
+                                recipients, fee, unlockHeight, extra, recipientAddresses);
+}
+
+PqSendResult WalletLegacy::sendPqTransferWithSeed(
+    const CryptoPQ::SeedMaster& seedMaster,
+    const std::vector<PqSendOutput>& recipients,
+    uint64_t fee, uint64_t unlockHeight,
+    const std::vector<uint8_t>& extra,
+    const std::vector<std::string>& recipientAddresses) {
+  if (!pqEnabled()) {
+    throw std::runtime_error("Spending is unavailable for this wallet");
+  }
+  PqWalletKeys pq = deriveVerifiedSpendKeys(seedMaster);
+  Tools::SecretLock scrub(&pq, sizeof(pq));
 
   PqSendRequest req;
   req.recipients = recipients;
@@ -1050,7 +1120,20 @@ PqSendResult WalletLegacy::preparePqTransfer(const std::vector<PqSendOutput>& re
     throw std::runtime_error("tracking wallet cannot spend");
   }
 
-  PqWalletKeys pq = derivePqWalletKeys(keys.spendSecretKey);
+  return preparePqTransferWithSeed(pqSeedMasterFromSpendSecret(keys.spendSecretKey),
+                                   recipients, fee, unlockHeight, extra);
+}
+
+PqSendResult WalletLegacy::preparePqTransferWithSeed(
+    const CryptoPQ::SeedMaster& seedMaster,
+    const std::vector<PqSendOutput>& recipients,
+    uint64_t fee, uint64_t unlockHeight,
+    const std::vector<uint8_t>& extra) {
+  if (!pqEnabled()) {
+    throw std::runtime_error("Spending is unavailable for this wallet");
+  }
+  PqWalletKeys pq = deriveVerifiedSpendKeys(seedMaster);
+  Tools::SecretLock scrub(&pq, sizeof(pq));
   PqSendRequest req;
   req.recipients = recipients;
   req.explicitFee = fee;
@@ -1321,6 +1404,24 @@ TransactionId WalletLegacy::sendTransaction(const WalletLegacyTransfer& transfer
 }
 
 TransactionId WalletLegacy::sendTransaction(const std::vector<WalletLegacyTransfer>& transfers, uint64_t fee, const std::string& extra, uint64_t ignoredPrivacyWidth, uint64_t unlockHeightstamp) {
+  return sendTransactionImpl(nullptr, transfers, fee, extra,
+                             ignoredPrivacyWidth, unlockHeightstamp);
+}
+
+TransactionId WalletLegacy::sendTransactionWithSeed(
+    const CryptoPQ::SeedMaster& seedMaster,
+    const std::vector<WalletLegacyTransfer>& transfers,
+    uint64_t fee, const std::string& extra,
+    uint64_t ignoredPrivacyWidth, uint64_t unlockHeightstamp) {
+  return sendTransactionImpl(&seedMaster, transfers, fee, extra,
+                             ignoredPrivacyWidth, unlockHeightstamp);
+}
+
+TransactionId WalletLegacy::sendTransactionImpl(
+    const CryptoPQ::SeedMaster* seedMaster,
+    const std::vector<WalletLegacyTransfer>& transfers,
+    uint64_t fee, const std::string& extra,
+    uint64_t ignoredPrivacyWidth, uint64_t unlockHeightstamp) {
   throwIfNotInitialised();
   (void)ignoredPrivacyWidth;
 
@@ -1355,8 +1456,11 @@ TransactionId WalletLegacy::sendTransaction(const std::vector<WalletLegacyTransf
   std::vector<std::string> recipientAddresses;
   recipientAddresses.reserve(transfers.size());
   for (const auto& t : transfers) recipientAddresses.push_back(t.address);
-  PqSendResult result = sendPqTransfer(
-      recipients, fee, unlockHeightstamp, extraBytes, recipientAddresses);  // persists, then relays
+  PqSendResult result = seedMaster
+      ? sendPqTransferWithSeed(*seedMaster, recipients, fee, unlockHeightstamp,
+                               extraBytes, recipientAddresses)
+      : sendPqTransfer(recipients, fee, unlockHeightstamp,
+                       extraBytes, recipientAddresses);  // persists, then relays
   m_logger(INFO) << "sendTransaction: relayed transaction " << Common::podToHex(getObjectHash(result.tx));
 
   // Register the sent tx in the ledger so it has a native id/history row at once.
@@ -1403,6 +1507,26 @@ std::string WalletLegacy::prepareRawTransaction(TransactionId& transactionId,
                                                 uint64_t fee, const std::string& extra,
                                                 uint64_t ignoredPrivacyWidth,
                                                 uint64_t unlockHeightstamp) {
+  return prepareRawTransactionImpl(nullptr, transactionId, transfers, fee, extra,
+                                   ignoredPrivacyWidth, unlockHeightstamp);
+}
+
+std::string WalletLegacy::prepareRawTransactionWithSeed(
+    const CryptoPQ::SeedMaster& seedMaster,
+    TransactionId& transactionId,
+    const std::vector<WalletLegacyTransfer>& transfers,
+    uint64_t fee, const std::string& extra,
+    uint64_t ignoredPrivacyWidth, uint64_t unlockHeightstamp) {
+  return prepareRawTransactionImpl(&seedMaster, transactionId, transfers, fee, extra,
+                                   ignoredPrivacyWidth, unlockHeightstamp);
+}
+
+std::string WalletLegacy::prepareRawTransactionImpl(
+    const CryptoPQ::SeedMaster* seedMaster,
+    TransactionId& transactionId,
+    const std::vector<WalletLegacyTransfer>& transfers,
+    uint64_t fee, const std::string& extra,
+    uint64_t ignoredPrivacyWidth, uint64_t unlockHeightstamp) {
   throwIfNotInitialised();
   (void)ignoredPrivacyWidth;
   transactionId = WALLET_LEGACY_INVALID_TRANSACTION_ID;
@@ -1427,7 +1551,9 @@ std::string WalletLegacy::prepareRawTransaction(TransactionId& transactionId,
   }
 
   const std::vector<uint8_t> extraBytes(extra.begin(), extra.end());
-  PqSendResult result = preparePqTransfer(recipients, fee, unlockHeightstamp, extraBytes);
+  PqSendResult result = seedMaster
+      ? preparePqTransferWithSeed(*seedMaster, recipients, fee, unlockHeightstamp, extraBytes)
+      : preparePqTransfer(recipients, fee, unlockHeightstamp, extraBytes);
   return Common::toHex(toBinaryArray(result.tx));
 }
 

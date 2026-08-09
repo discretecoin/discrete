@@ -93,6 +93,12 @@ PqWalletKeys derivePqWalletKeys(const CryptoPQ::SeedMaster& seedMaster);
 // Strip a full wallet identity down to the view-only audit credential.
 PqTrackingKeys pqTrackingKeys(const PqWalletKeys& keys);
 
+// Constant-time identity check used by protected-spending front-ends before an
+// externally unlocked seed is allowed to sign for an already-open tracking
+// wallet. This proves the seed belongs to exactly that wallet.
+bool pqTrackingKeysMatchSeed(const PqTrackingKeys& tracking,
+                             const CryptoPQ::SeedMaster& seedMaster);
+
 // The wallet's own PQ address for the given network prefix.
 PqAddress pqWalletAddress(const PqWalletKeys& keys, uint64_t networkPrefix);
 PqAddress pqWalletAddress(const PqTrackingKeys& keys, uint64_t networkPrefix);

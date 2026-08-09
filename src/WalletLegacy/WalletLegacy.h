@@ -109,8 +109,24 @@ public:
   uint64_t pqUnlockedBalance() const;
   std::vector<PqSpendInput> pqSpendableInputs() const;
   uint32_t pqSyncedHeight() const;
+  bool pqScannerHasSpendSeed() const;
   bool getPqTrackingKeys(PqTrackingKeys& keys) const;
   std::string getPqAddress() const;
+  // Convert an open full wallet into tracking-only state without restarting.
+  // The caller receives the seed exactly once and must persist it safely before
+  // saving the converted wallet. The existing PQ cache/history is preserved.
+  bool detachPqSpendSeed(CryptoPQ::SeedMaster& seedMaster);
+  // Verify and use an externally unlocked seed for one operation. The seed is
+  // never copied into m_account and therefore can never enter an autosave.
+  PqSendResult sendPqTransferWithSeed(const CryptoPQ::SeedMaster& seedMaster,
+                                      const std::vector<PqSendOutput>& recipients,
+                                      uint64_t fee = 0, uint64_t unlockHeight = 0,
+                                      const std::vector<uint8_t>& extra = {},
+                                      const std::vector<std::string>& recipientAddresses = {});
+  PqSendResult preparePqTransferWithSeed(const CryptoPQ::SeedMaster& seedMaster,
+                                         const std::vector<PqSendOutput>& recipients,
+                                         uint64_t fee = 0, uint64_t unlockHeight = 0,
+                                         const std::vector<uint8_t>& extra = {});
   // Build (denominate, two-pass fee, sign) and relay a PQ transfer to already-resolved
   // recipients via the common sender — the same deterministic path WalletGreen uses.
   // Throws on a tracking wallet, insufficient funds, or relay failure.
@@ -168,6 +184,20 @@ public:
 
   virtual std::string sign_message(const std::string &message) override;
 
+  TransactionId sendTransactionWithSeed(const CryptoPQ::SeedMaster& seedMaster,
+                                        const std::vector<WalletLegacyTransfer>& transfers,
+                                        uint64_t fee, const std::string& extra = "",
+                                        uint64_t ignoredPrivacyWidth = 0,
+                                        uint64_t unlockHeightstamp = 0);
+  std::string prepareRawTransactionWithSeed(const CryptoPQ::SeedMaster& seedMaster,
+                                            TransactionId& transactionId,
+                                            const std::vector<WalletLegacyTransfer>& transfers,
+                                            uint64_t fee, const std::string& extra = "",
+                                            uint64_t ignoredPrivacyWidth = 0,
+                                            uint64_t unlockHeightstamp = 0);
+  std::string signMessageWithSeed(const CryptoPQ::SeedMaster& seedMaster,
+                                  const std::string& message);
+
   virtual bool isTrackingWallet() override;
 
 private:
@@ -193,6 +223,19 @@ private:
   // Announce PQ ledger history rows discovered since the last call via
   // externalTransactionCreated, so front-ends print incoming/outgoing notifications.
   void notifyExternalTransactions();
+
+  PqWalletKeys deriveVerifiedSpendKeys(const CryptoPQ::SeedMaster& seedMaster) const;
+  TransactionId sendTransactionImpl(const CryptoPQ::SeedMaster* seedMaster,
+                                    const std::vector<WalletLegacyTransfer>& transfers,
+                                    uint64_t fee, const std::string& extra,
+                                    uint64_t ignoredPrivacyWidth,
+                                    uint64_t unlockHeightstamp);
+  std::string prepareRawTransactionImpl(const CryptoPQ::SeedMaster* seedMaster,
+                                        TransactionId& transactionId,
+                                        const std::vector<WalletLegacyTransfer>& transfers,
+                                        uint64_t fee, const std::string& extra,
+                                        uint64_t ignoredPrivacyWidth,
+                                        uint64_t unlockHeightstamp);
 
   std::vector<TransactionId> deleteOutdatedUnconfirmedTransactions();
 

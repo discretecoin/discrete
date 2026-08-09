@@ -19,10 +19,10 @@
 
 #include <algorithm>
 #include <limits>
-#include <map>
 #include <optional>
 #include <unordered_set>
 
+#include "Common/SecureMemory.h"
 #include "Denominations.h"
 #include "CryptoNoteConfig.h"
 #include "CryptoNoteCore/CryptoNoteTools.h"  // toBinaryArray
@@ -213,32 +213,25 @@ PqSendResult buildPqSend(const std::vector<PqSpendInput>& available,
   std::sort(sorted.begin(), sorted.end(),
             [](const PqSpendInput& a, const PqSpendInput& b) { return a.amount > b.amount; });
 
-  // Per-input signing key, by bucket. SingleKeyIndex authorizes everything with the one
-  // key; AggregatedMultikey signs a deposit input with its own derived deposit key.
-  // Cached so a multi-input spend from one deposit derives that key once.
-  std::map<uint32_t, PqInputAuth> authCache;
-  auto authForBucket = [&keys, &req, &authCache](uint32_t depositIndex) -> PqInputAuth {
-    auto it = authCache.find(depositIndex);
-    if (it != authCache.end()) {
-      return it->second;
-    }
-    PqInputAuth a;
-    if (req.scheme == PqDepositScheme::SingleKeyIndex || depositIndex == PQ_PRIMARY_DEPOSIT) {
-      a.spendPub = keys.spendPub;
-      a.spendSk = keys.spendSk;
-    } else {
-      auto kp = CryptoPQ::deriveDepositSpendKeys(keys.seedMaster, depositIndex);
-      a.spendPub = kp.first;
-      a.spendSk = kp.second;
-    }
-    authCache.emplace(depositIndex, a);
-    return a;
-  };
-  auto authForSelection = [&authForBucket](const std::vector<PqSpendInput>& sel) {
+  // Per-input signing key, by bucket. Keep all copies in one contiguous,
+  // page-locked vector and scrub it after the transaction has been signed.
+  // PqInputAuth also scrubs individual temporaries and reallocated elements.
+  auto authForSelection = [&keys, &req](const std::vector<PqSpendInput>& sel) {
     std::vector<PqInputAuth> auth;
     auth.reserve(sel.size());
     for (const auto& si : sel) {
-      auth.push_back(authForBucket(si.depositIndex));
+      auth.emplace_back();
+      PqInputAuth& entry = auth.back();
+      if (req.scheme == PqDepositScheme::SingleKeyIndex ||
+          si.depositIndex == PQ_PRIMARY_DEPOSIT) {
+        entry.spendPub = keys.spendPub;
+        entry.spendSk = keys.spendSk;
+      } else {
+        auto derived = CryptoPQ::deriveDepositSpendKeys(keys.seedMaster, si.depositIndex);
+        Tools::SecretLock scrubDerived(derived.second.data(), derived.second.size());
+        entry.spendPub = derived.first;
+        entry.spendSk = derived.second;
+      }
     }
     return auth;
   };
@@ -294,8 +287,11 @@ PqSendResult buildPqSend(const std::vector<PqSpendInput>& available,
     }
   }
   uint64_t change = sumIn - sent - fee;
+  std::vector<PqInputAuth> inputAuth = authForSelection(selected);
+  Tools::SecretLock scrubAuth(
+      inputAuth.data(), inputAuth.size() * sizeof(PqInputAuth));
   FittingBuild finalBuild = buildFitting(
-      selected, authForSelection(selected), req.recipients, change,
+      selected, inputAuth, req.recipients, change,
       changeTmpl, req.extra);
 
   if (finalBuild.recipientIndexes.size() != finalBuild.transaction.tx.outputs.size() ||
