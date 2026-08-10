@@ -1399,6 +1399,25 @@ TEST(WalletLegacySmoke, DetachedSeedNeverReturnsToSavedTrackingWallet) {
   EXPECT_EQ(static_cast<unsigned char>(protectedWalletBytes.front()),
             CryptoNote::WalletLegacySerializer::PROTECTED_SPEND_VERSION);
 
+  CryptoNote::WalletSnapshotInfo snapshotInfo;
+  std::string snapshotError;
+  std::stringstream snapshotStream(protectedWalletBytes);
+  ASSERT_TRUE(CryptoNote::WalletLegacy::inspectWalletSnapshot(
+      snapshotStream, "pass", snapshotInfo, snapshotError)) << snapshotError;
+  EXPECT_EQ(snapshotInfo.serializationVersion,
+            CryptoNote::WalletLegacySerializer::PROTECTED_SPEND_VERSION);
+  EXPECT_TRUE(snapshotInfo.isTracking);
+  EXPECT_TRUE(snapshotInfo.hasPqTrackingKeys);
+  EXPECT_EQ(CryptoNote::encodePqTrackingKey(snapshotInfo.pqTrackingKeys),
+            CryptoNote::encodePqTrackingKey(
+                CryptoNote::pqTrackingKeys(
+                    CryptoNote::derivePqWalletKeys(detached))));
+  EXPECT_EQ(snapshotInfo.protectedSpendMetadata, protectedSpendMetadata);
+
+  std::stringstream wrongPasswordSnapshot(protectedWalletBytes);
+  EXPECT_FALSE(CryptoNote::WalletLegacy::inspectWalletSnapshot(
+      wrongPasswordSnapshot, "wrong", snapshotInfo, snapshotError));
+
   // The old v2 reader ignored unknown top-level versions. Re-label the v3 file
   // as v2 to make the current parser follow that exact legacy path: it must see
   // the compatibility guard as keys and reject the file instead of opening it.
@@ -1441,6 +1460,47 @@ TEST(WalletLegacySmoke, DetachedSeedNeverReturnsToSavedTrackingWallet) {
   EXPECT_EQ(storedMetadata, protectedSpendMetadata);
   EXPECT_TRUE(reloaded.isTrackingWallet());
   reloaded.shutdown();
+}
+
+TEST(WalletLegacySmoke, FailedProtectedMigrationCanRestoreDetachedSeed) {
+  System::Dispatcher dispatcher;
+  (void)dispatcher;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(1000000).upgradeHeightV6(1000000)
+      .currency();
+  TestBlockchainGenerator generator(currency);
+  INodeTrivialRefreshStub node(generator);
+
+  CryptoNote::WalletLegacy wallet(currency, node, logger);
+  wallet.initAndGenerate("pass");
+  const std::string address = wallet.getAddress();
+
+  CryptoPQ::SeedMaster detached{};
+  ASSERT_TRUE(wallet.detachPqSpendSeed(detached));
+  ASSERT_TRUE(wallet.setPqProtectedSpendMetadata("staged-but-not-committed"));
+  ASSERT_TRUE(wallet.restorePqSpendSeed(detached));
+  EXPECT_FALSE(wallet.isTrackingWallet());
+  EXPECT_EQ(wallet.getAddress(), address);
+
+  std::string metadata;
+  EXPECT_FALSE(wallet.getPqProtectedSpendMetadata(metadata));
+  std::string mnemonic;
+  EXPECT_TRUE(wallet.getSeed(mnemonic));
+  EXPECT_FALSE(mnemonic.empty());
+  EXPECT_NO_THROW(wallet.sign_message("rollback restored spending"));
+
+  CryptoPQ::SeedMaster wrong = detached;
+  wrong[0] ^= 1;
+  CryptoPQ::SeedMaster detachedAgain{};
+  ASSERT_TRUE(wallet.detachPqSpendSeed(detachedAgain));
+  EXPECT_FALSE(wallet.restorePqSpendSeed(wrong));
+  EXPECT_TRUE(wallet.isTrackingWallet());
+  ASSERT_TRUE(wallet.restorePqSpendSeed(detachedAgain));
+  EXPECT_FALSE(wallet.isTrackingWallet());
+  wallet.shutdown();
 }
 
 // DiscreteWallet uses WalletLegacy rather than WalletGreen. Exercise the exact

@@ -32,6 +32,8 @@
 
 #include <list>
 #include <map>
+#include <istream>
+#include <string>
 #include <vector>
 #include <unordered_map>
 #include <memory>
@@ -65,6 +67,14 @@
 namespace CryptoNote {
 
 class SyncStarter;
+
+struct WalletSnapshotInfo {
+  uint32_t serializationVersion = 0;
+  bool isTracking = false;
+  bool hasPqTrackingKeys = false;
+  PqTrackingKeys pqTrackingKeys{};
+  std::string protectedSpendMetadata;
+};
 
 class WalletLegacy :
   public IWalletLegacy,
@@ -116,11 +126,22 @@ public:
   // cache-free backups, and is never interpreted by the core.
   bool getPqProtectedSpendMetadata(std::string& metadata) const;
   bool setPqProtectedSpendMetadata(const std::string& metadata);
+  // Fully decrypt and inspect a saved wallet without modifying the open wallet.
+  // Protected-spend migration uses this to validate the staged tracking file
+  // before it replaces the original full wallet.
+  static bool inspectWalletSnapshot(std::istream& source,
+                                    const std::string& password,
+                                    WalletSnapshotInfo& info,
+                                    std::string& error);
   std::string getPqAddress() const;
   // Convert an open full wallet into tracking-only state without restarting.
   // The caller receives the seed exactly once and must persist it safely before
   // saving the converted wallet. The existing PQ cache/history is preserved.
   bool detachPqSpendSeed(CryptoPQ::SeedMaster& seedMaster);
+  // Roll back an in-memory detachment if the protected file could not be
+  // validated or committed. This never runs after the on-disk full wallet has
+  // been replaced.
+  bool restorePqSpendSeed(const CryptoPQ::SeedMaster& seedMaster);
   // Verify and use an externally unlocked seed for one operation. The seed is
   // never copied into m_account and therefore can never enter an autosave.
   PqSendResult sendPqTransferWithSeed(const CryptoPQ::SeedMaster& seedMaster,

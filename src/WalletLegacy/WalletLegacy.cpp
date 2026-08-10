@@ -1017,6 +1017,58 @@ bool WalletLegacy::setPqProtectedSpendMetadata(const std::string& metadata) {
   return true;
 }
 
+bool WalletLegacy::inspectWalletSnapshot(std::istream& source,
+                                         const std::string& password,
+                                         WalletSnapshotInfo& info,
+                                         std::string& error) {
+  info = WalletSnapshotInfo{};
+  error.clear();
+
+  AccountBase snapshotAccount;
+  struct AccountScrubber {
+    AccountBase& account;
+    ~AccountScrubber() { account.setAccountKeys(AccountKeys{}); }
+  } scrubber{snapshotAccount};
+
+  try {
+    std::string cache;
+    WalletLegacySerializer serializer(snapshotAccount);
+    serializer.deserialize(source, password, cache);
+
+    info.serializationVersion = serializer.loadedVersion();
+    const AccountKeys& accountKeys = snapshotAccount.getAccountKeys();
+    info.isTracking = accountKeys.spendSecretKey == NULL_SECRET_KEY;
+
+    PqCacheSections sections;
+    const bool framed = readPqCacheSections(cache, sections);
+    if (framed && !sections.pqTrackingKeys.empty()) {
+      info.hasPqTrackingKeys =
+          deserializePqTrackingKeys(sections.pqTrackingKeys,
+                                    info.pqTrackingKeys);
+    }
+    if (sections.protectedSpendMetadataPresent) {
+      info.protectedSpendMetadata = sections.protectedSpendMetadata;
+    }
+
+    if (info.serializationVersion >=
+        WalletLegacySerializer::PROTECTED_SPEND_VERSION) {
+      if (!info.isTracking || !framed || !info.hasPqTrackingKeys ||
+          !sections.protectedSpendMetadataPresent ||
+          info.protectedSpendMetadata.empty() ||
+          info.protectedSpendMetadata.size() >
+              PQ_PROTECTED_SPEND_METADATA_MAX_SIZE) {
+        error = "protected-spend wallet metadata is missing or corrupt";
+        return false;
+      }
+    }
+  } catch (const std::exception& e) {
+    error = e.what();
+    return false;
+  }
+
+  return true;
+}
+
 PqWalletKeys WalletLegacy::deriveVerifiedSpendKeys(
     const CryptoPQ::SeedMaster& seedMaster) const {
   PqTrackingKeys tracking;
@@ -1046,6 +1098,35 @@ bool WalletLegacy::detachPqSpendSeed(CryptoPQ::SeedMaster& seedMaster) {
   sodium_memzero(keys.viewSecretKey.data, sizeof(keys.viewSecretKey.data));
   sodium_memzero(keys.address.viewPublicKey.data, sizeof(keys.address.viewPublicKey.data));
   m_account.setAccountKeys(keys);
+  return true;
+}
+
+bool WalletLegacy::restorePqSpendSeed(
+    const CryptoPQ::SeedMaster& seedMaster) {
+  std::unique_lock<std::mutex> lock(m_cacheMutex);
+  throwIfNotInitialised();
+
+  AccountKeys keys = m_account.getAccountKeys();
+  if (keys.spendSecretKey != NULL_SECRET_KEY || !m_pqTrackingKeys ||
+      !pqTrackingKeysMatchSeed(*m_pqTrackingKeys, seedMaster)) {
+    return false;
+  }
+
+  static_assert(sizeof(keys.spendSecretKey.data) ==
+                    CryptoPQ::SeedMaster{}.size(),
+                "wallet spend-secret and PQ seed sizes must match");
+  std::memcpy(keys.spendSecretKey.data, seedMaster.data(), seedMaster.size());
+  Crypto::cn_fast_hash(keys.spendSecretKey.data,
+                       sizeof(keys.spendSecretKey.data),
+                       reinterpret_cast<Crypto::Hash&>(
+                           keys.address.spendPublicKey));
+  keys.address.viewPublicKey = Crypto::PublicKey{};
+  keys.viewSecretKey = Crypto::SecretKey{};
+  m_account.setAccountKeys(keys);
+  sodium_memzero(keys.spendSecretKey.data,
+                 sizeof(keys.spendSecretKey.data));
+  m_pqTrackingKeys.reset();
+  m_pqProtectedSpendMetadata.clear();
   return true;
 }
 
