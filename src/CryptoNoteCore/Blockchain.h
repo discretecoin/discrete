@@ -107,7 +107,8 @@ namespace CryptoNote {
     uint64_t getCoinsInCirculation(uint32_t height);
     bool getPqTransactionFee(const Transaction& tx, uint64_t& fee);
     uint8_t getBlockMajorVersionForHeight(uint32_t height) const;
-    bool addNewBlock(const Block& bl, block_verification_context& bvc);
+    bool addNewBlock(const Block& bl, block_verification_context& bvc,
+                     const PrevalidatedBlockProof* prevalidatedProof = nullptr);
     bool resetAndSetGenesisBlock(const Block& b);
     bool haveBlock(const Crypto::Hash& id);
     size_t getTotalTransactions();
@@ -254,6 +255,10 @@ namespace CryptoNote {
 
     bool checkProofOfWork(Crypto::cn_context& context, const Block& block,
                            Difficulty currentDiffic, Crypto::Hash& proofOfWork);
+    // Pure DiscretePower verification only. This must remain independent of
+    // chain state so callers may execute it concurrently and apply its result
+    // later in canonical order.
+    bool prevalidateBlockProofOfWork(const Block& block, Crypto::Hash& proofOfWork) const;
 
   private:
     struct TransactionEntry {
@@ -340,7 +345,8 @@ namespace CryptoNote {
                                            bool discard_disconnected_chain);
     bool handle_alternative_block(const Block& b, const Crypto::Hash& id,
                                    block_verification_context& bvc,
-                                   bool sendNewAlternativeBlockMessage = true);
+                                   bool sendNewAlternativeBlockMessage = true,
+                                   const PrevalidatedBlockProof* prevalidatedProof = nullptr);
     bool prevalidate_miner_transaction(const Block& b, uint32_t height);
     bool validate_miner_transaction(const Block& b, uint32_t height,
                                      size_t cumulativeBlockSize,
@@ -393,9 +399,11 @@ namespace CryptoNote {
     TransactionEntry transactionByIndex(TransactionIndex index);
 
     bool pushBlock(const Block& blockData, const Crypto::Hash& id,
-                   block_verification_context& bvc);
+                   block_verification_context& bvc,
+                   const PrevalidatedBlockProof* prevalidatedProof = nullptr);
     bool pushBlock(const Block& blockData, const std::vector<Transaction>& transactions,
-                   const Crypto::Hash& blockHash, block_verification_context& bvc);
+                   const Crypto::Hash& blockHash, block_verification_context& bvc,
+                   const PrevalidatedBlockProof* prevalidatedProof = nullptr);
     // Inner: writes a fully-formed BlockEntry to LMDB atomically
     bool pushBlock(BlockEntry& block, const Crypto::Hash& blockHash);
     void popBlock();

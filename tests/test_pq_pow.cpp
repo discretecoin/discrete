@@ -213,6 +213,22 @@ TEST(PqPow, CoreKnownAnswer) {
   }
 }
 
+TEST(PqPow, TlsScratchCanBeReleasedAndReinitialized) {
+  std::array<uint8_t, 64> H{};
+  for (size_t i = 0; i < H.size(); ++i) H[i] = static_cast<uint8_t>(i * 7 + 3);
+  std::array<uint8_t, parameters::DISCRETE_POWER_TAPE_LEN> tape{};
+  for (size_t i = 0; i < tape.size(); ++i) tape[i] = static_cast<uint8_t>(i * 5 + 1);
+
+  const std::array<uint8_t, 32> beforeCleanup = runCore(H, tape);
+  EXPECT_EQ(yespower_discrete_tls_free(), 0);
+  EXPECT_EQ(yespower_discrete_tls_free(), 0) << "TLS cleanup must be idempotent";
+
+  const std::array<uint8_t, 32> afterCleanup = runCore(H, tape);
+  EXPECT_EQ(afterCleanup, beforeCleanup)
+      << "reinitializing TLS scratch must not change the consensus result";
+  EXPECT_EQ(yespower_discrete_tls_free(), 0);
+}
+
 // Frozen (blob, minerSpendPk, signature) → discrete_power_verify must replay the exact H,
 // m, and PoW. The stored signature bytes make this independent of signing mode.
 TEST(PqPow, PipelineKnownAnswerVector) {

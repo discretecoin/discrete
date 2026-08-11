@@ -1200,10 +1200,21 @@ bool runBlockWitnessIsolation() {
   ok &= expect(firstId != secondId,
                "witness: alternate valid signatures have distinct block IDs");
 
+  PrevalidatedBlockProof firstProof{};
+  ok &= expect(core.prevalidateBlockProofOfWork(first, firstProof),
+               "witness: context-free proof prevalidation succeeds");
+  ok &= expect(firstProof.blockHash == firstId,
+               "witness: prevalidated proof is bound to the exact block ID");
+
+  block_verification_context mismatchedBvc{};
+  core.handle_incoming_block_prevalidated(second, firstProof, mismatchedBvc, false, false);
+  ok &= expect(mismatchedBvc.m_verification_failed && !mismatchedBvc.m_added_to_main_chain,
+               "witness: a prevalidated proof cannot be reused for another block");
+
   block_verification_context firstBvc{};
-  core.handle_incoming_block(first, firstBvc, false, false);
+  core.handle_incoming_block_prevalidated(first, firstProof, firstBvc, false, false);
   ok &= expect(firstBvc.m_added_to_main_chain && !firstBvc.m_verification_failed,
-               "witness: first proof accepted on the main chain");
+               "witness: correctly bound prevalidated proof accepted on the main chain");
 
   block_verification_context secondBvc{};
   core.handle_incoming_block(second, secondBvc, false, false);

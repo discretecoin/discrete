@@ -202,7 +202,8 @@ void PaymentGateService::runInProcess(Logging::LoggerRef& log) {
   CryptoNote::Currency currency = currencyBuilder.currency();
   CryptoNote::Core core(currency, NULL, logger, *dispatcher);
 
-  CryptoNote::CryptoNoteProtocolHandler protocol(currency, *dispatcher, core, NULL, logger);
+  CryptoNote::CryptoNoteProtocolHandler protocol(currency, *dispatcher, core, NULL, logger,
+    config.coreConfig.syncPowThreads);
   CryptoNote::NodeServer p2pNode(*dispatcher, protocol, logger);
 
   CryptoNote::Checkpoints checkpoints(logger);

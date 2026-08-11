@@ -19,9 +19,12 @@
 #pragma once
 
 #include <atomic>
+#include <memory>
 #include <mutex>
 
 #include <Common/ObserverManager.h>
+#include <Common/ThreadPool.h>
+#include <System/Event.h>
 
 #include "CryptoNoteCore/ICore.h"
 #include "CryptoNoteCore/OnceInInterval.h"
@@ -123,7 +126,9 @@ namespace CryptoNote
       }
     };
 
-    CryptoNoteProtocolHandler(const Currency& currency, System::Dispatcher& dispatcher, ICore& rcore, IP2pEndpoint* p_net_layout, Logging::ILogger& log);
+    CryptoNoteProtocolHandler(const Currency& currency, System::Dispatcher& dispatcher, ICore& rcore,
+      IP2pEndpoint* p_net_layout, Logging::ILogger& log, size_t powValidationThreads = 0,
+      size_t concurrentMiningThreads = 0);
 
     virtual bool addObserver(ICryptoNoteProtocolObserver* observer) override;
     virtual bool removeObserver(ICryptoNoteProtocolObserver* observer) override;
@@ -178,6 +183,7 @@ namespace CryptoNote
     std::vector<CryptoNoteConnectionContext> get_dandelion_stem_snapshot() const;
     bool get_dandelion_stem_peer(CryptoNoteConnectionContext& peer, const net_connection_id* excludeConnection = nullptr) const;
     int processObjects(CryptoNoteConnectionContext& context, const std::vector<parsed_block_entry>& blocks);
+    void releasePowValidationPool();
     // First-seen finality: when the core refuses a reorg deeper than
     // CRYPTONOTE_FINALITY_DEPTH (bvc.m_finality_fork), emit the operator WARNING
     // enriched with the peer split. Messaging only — the refusal already happened
@@ -196,7 +202,11 @@ namespace CryptoNote
     IP2pEndpoint* m_p2p;
     std::atomic<bool> m_synchronized;
     std::atomic<bool> m_stop;
-    std::recursive_mutex m_sync_lock;
+    // Dispatcher handlers are cooperative coroutines on one OS thread, so a
+    // recursive std::mutex does not serialize them across dispatcher.yield().
+    System::Event m_syncEvent;
+    const size_t m_powValidationThreads;
+    std::unique_ptr<Common::ThreadPool> m_powValidationPool;
 
     mutable std::mutex m_observedHeightMutex;
     uint32_t m_observedHeight;
