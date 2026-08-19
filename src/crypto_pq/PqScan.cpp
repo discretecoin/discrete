@@ -80,11 +80,10 @@ std::optional<PqOwnedOutput> finishOwned(const DsaPublicKey& spendPub,
   return owned;
 }
 
-// Default recognition path: try outContext-v2 (T-independent; T is read back
-// from the decrypted payload, never enumerated), then fall back once to the
-// legacy pre-v2 derivation at T=0 (every output minted before the v2
-// activation used T=0 unconditionally — see PqDerive.h). No enumeration of
-// candidate T values is ever needed here.
+// Fast recognition path: try outContext-v2 (T-independent; T is read back
+// from the decrypted payload), then fall back once to the legacy pre-v2
+// derivation at T=0. Callers that own issued SingleKeyIndex T values use
+// scanPqOutputLegacyTWindow after this O(1) path misses.
 std::optional<PqOwnedOutput> tryOwned(const KemShared& ss, const DsaPublicKey& spendPub,
                                       const Hash256& inputsHash, const PqScanOutput& out) {
   Hash256 ocV2 = outContext(inputsHash, out.kemCt, out.outputIndex);
@@ -105,6 +104,22 @@ std::optional<PqOwnedOutput> tryOwned(const KemShared& ss, const DsaPublicKey& s
     }
   }
 
+  return std::nullopt;
+}
+
+std::optional<PqOwnedOutput> tryOwnedLegacyTWindow(
+    const KemShared& ss, const DsaPublicKey& spendPub,
+    const Hash256& inputsHash, const PqScanOutput& out,
+    uint64_t firstT, uint64_t maxT) {
+  for (uint64_t t = firstT; t < maxT; ++t) {
+    Hash256 oc = legacyOutContextV1(inputsHash, out.kemCt, out.outputIndex, t);
+    auto dp = tryDecrypt(ss, oc, out);
+    if (dp && dp->subaddrIndexT == t) {
+      if (auto owned = finishOwned(spendPub, out, *dp, oc)) {
+        return owned;
+      }
+    }
+  }
   return std::nullopt;
 }
 
@@ -129,22 +144,29 @@ std::optional<PqOwnedOutput> scanPqOutput(const PqScanKeys& keys,
   return scanPqOutputWithSharedSecret(ss, keys.spendPub, inputsHash, out);
 }
 
+std::optional<PqOwnedOutput> scanPqOutputWithLegacyTWindow(
+    const PqScanKeys& keys, const Hash256& inputsHash,
+    const PqScanOutput& out, uint64_t maxT) {
+  // Decapsulate exactly once. The common current-format path returns before any
+  // enumeration; tryOwned also covers the legacy T=0 compatibility case.
+  KemShared ss = kem_decaps(keys.viewSk, out.kemCt);
+  Tools::SecretLock sharedSecretLock(ss.data(), ss.size());
+  if (auto owned = tryOwned(ss, keys.spendPub, inputsHash, out)) {
+    return owned;
+  }
+
+  // T=0 was already attempted by tryOwned, so the bounded compatibility scan
+  // starts at 1 and never repeats either the KEM or the T=0 AEAD work.
+  return tryOwnedLegacyTWindow(ss, keys.spendPub, inputsHash, out, 1, maxT);
+}
+
 std::optional<PqOwnedOutput> scanPqOutputLegacyTWindow(const PqScanKeys& keys,
                                                        const Hash256& inputsHash,
                                                        const PqScanOutput& out,
                                                        uint64_t maxT) {
   KemShared ss = kem_decaps(keys.viewSk, out.kemCt);
   Tools::SecretLock sharedSecretLock(ss.data(), ss.size());
-  for (uint64_t t = 0; t < maxT; ++t) {
-    Hash256 oc = legacyOutContextV1(inputsHash, out.kemCt, out.outputIndex, t);
-    auto dp = tryDecrypt(ss, oc, out);
-    if (dp && dp->subaddrIndexT == t) {
-      if (auto owned = finishOwned(keys.spendPub, out, *dp, oc)) {
-        return owned;
-      }
-    }
-  }
-  return std::nullopt;
+  return tryOwnedLegacyTWindow(ss, keys.spendPub, inputsHash, out, 0, maxT);
 }
 
 std::vector<PqOwnedOutput> scanPqOutputs(const PqScanKeys& keys,

@@ -45,11 +45,10 @@ namespace CryptoPQ {
 constexpr char kDomainInputsHash[]  = "discrete-pq-inputs-hash-v1";
 // LEGACY: the original outContext formula folded LE64(T) into the hash used
 // to derive the AEAD key, so a receiver had to enumerate candidate T values
-// to decrypt (see PqScan's old scanPqOutputTWindow). Every output minted
-// before the outContext-v2 activation used this domain, always at T=0 (no
-// nonzero-T deposit was ever issued under it). Retained ONLY so those
-// pre-activation outputs stay scannable/spendable — see legacyOutContextV1
-// below. MUST NOT be used by new senders.
+// to decrypt (see PqScan's old scanPqOutputTWindow). Released pre-v2 senders
+// used the destination's actual T, including nonzero SingleKeyIndex deposits.
+// Retained ONLY so those outputs stay scannable/spendable — see
+// legacyOutContextV1 below. MUST NOT be used by new senders.
 constexpr char kDomainOutContext[]  = "discrete-pq-out-context-v1";
 // CURRENT: outContext no longer depends on T. T travels only inside the
 // AEAD-encrypted payload (rho || T) and is read back after a single decrypt,
@@ -145,8 +144,7 @@ Hash256 outContext(const Hash256& inputsHash,
 // 2legacy. legacyOutContextV1 = SHA3-256(domain-v1 || inputsHash || kemCt ||
 //    LE32(outputIndex) || LE64(T)). The original (pre-v2) formula. Retained
 //    ONLY as a receiver-side fallback so outputs minted before the v2
-//    activation (all of them at T=0) remain scannable. Never call this to
-//    build a new output.
+//    activation remain scannable. Never call this to build a new output.
 Hash256 legacyOutContextV1(const Hash256& inputsHash,
                            const KemCiphertext& kemCt,
                            uint32_t outputIndex,

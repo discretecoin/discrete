@@ -81,29 +81,30 @@ std::optional<PqOwnedOutput> scanPqOutputWithSharedSecret(
 
 // Try to recognize ONE output. Tries outContext-v2 first (T is read back from
 // the decrypted payload, not enumerated), then falls back once to the legacy
-// pre-v2 derivation at T=0 (every output minted before the v2 activation used
-// T=0 unconditionally). Returns the owned record on success, nullopt
-// otherwise (not ours, OR tampered — indistinguishable by design).
+// pre-v2 derivation at T=0. Returns the owned record on success, nullopt
+// otherwise (not ours, OR a legacy nonzero-T output, OR tampered —
+// indistinguishable by design).
 std::optional<PqOwnedOutput> scanPqOutput(const PqScanKeys& keys,
                                           const Hash256& inputsHash,
                                           const PqScanOutput& out);
+
+// SingleKeyIndex compatibility path. Decapsulates once, tries the normal
+// outContext-v2 / legacy-T0 path first, and only on miss enumerates legacy T in
+// [1, maxT). This keeps current-format recognition O(1) while accepting outputs
+// created by released pre-v2 senders for locally issued nonzero T values.
+std::optional<PqOwnedOutput> scanPqOutputWithLegacyTWindow(
+    const PqScanKeys& keys, const Hash256& inputsHash,
+    const PqScanOutput& out, uint64_t maxT);
 
 // Scan every output of one transaction.
 std::vector<PqOwnedOutput> scanPqOutputs(const PqScanKeys& keys,
                                          const Hash256& inputsHash,
                                          const std::vector<PqScanOutput>& outputs);
 
-// MANUAL RECOVERY FALLBACK ONLY — not used by the default scan path above and
-// not called automatically. Brute-forces the LEGACY (pre-outContext-v2)
-// derivation across candidate T values in [0, maxT), the way every receiver
-// had to before the v2 fix. Consensus never validated outContext, so nothing
-// stops an unupgraded or hand-rolled sender from still creating a legacy
-// nonzero-T output after the v2 activation (none has ever been observed on
-// Discrete's chain, but it costs little to keep the recovery path available).
-// Operators — walletd, most likely, since it is the exchange-facing surface
-// that issues SingleKeyIndex deposit addresses — can invoke this explicitly
-// (paired with a rescan) if a deposit is ever suspected missing. Decapsulates
-// once; each T trial costs one SHA3 + one AEAD attempt.
+// Low-level legacy-only recovery primitive. Brute-forces the pre-outContext-v2
+// derivation across [0, maxT). Normal SingleKeyIndex scanning uses the combined
+// function above so it does not repeat decapsulation or T=0. Each T trial costs
+// one SHA3 + one AEAD attempt.
 std::optional<PqOwnedOutput> scanPqOutputLegacyTWindow(const PqScanKeys& keys,
                                                        const Hash256& inputsHash,
                                                        const PqScanOutput& out,
