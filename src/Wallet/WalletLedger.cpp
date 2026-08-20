@@ -205,15 +205,17 @@ bool WalletLedger::processTransaction(const TransactionPrefix& tx, const Crypto:
 
     if (m_depositScheme == PqDepositScheme::SingleKeyIndex) {
       // One key pair; deposits are distinguished by the subaddress index T,
-      // which outContext-v2 reads directly out of the decrypted payload — no
-      // enumeration over issued deposit indices needed (see PqScan.h).
-      owned = CryptoPQ::scanPqOutput(m_scanKeys, ih, so);
-      if (!owned && m_legacyTWindowMaxT > 0) {
-        // Manual recovery fallback only (off by default): in case an
-        // unupgraded sender ever created a legacy nonzero-T output that the
-        // fast path above can't see (legacy fallback there only tries T=0).
-        owned = CryptoPQ::scanPqOutputLegacyTWindow(m_scanKeys, ih, so, m_legacyTWindowMaxT);
-      }
+      // which outContext-v2 reads directly out of the decrypted payload. Try
+      // that O(1) path first, then enumerate only when it misses so outputs
+      // created by released pre-v2 senders at an issued nonzero T remain
+      // receivable.
+      // m_depositCount is the next issued SingleKeyIndex T, so [0, count)
+      // covers every address this wallet handed out. The manual recovery knob
+      // can still extend that window for an operator-supplied range. The
+      // combined scanner decapsulates once and enumerates only after v2/T=0
+      // misses.
+      const uint32_t maxLegacyT = std::max(m_depositCount, m_legacyTWindowMaxT);
+      owned = CryptoPQ::scanPqOutputWithLegacyTWindow(m_scanKeys, ih, so, maxLegacyT);
       if (owned) {
         // T=0 IS the primary address, never a deposit: a plain Bech32m PQ address
         // and a base H-I-A-C account number both send at T=0, so an output there

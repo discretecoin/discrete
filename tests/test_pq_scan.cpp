@@ -141,10 +141,10 @@ TEST(PqScan, LegacyTZeroOutputStillRecognized) {
     EXPECT_EQ(spendCommit(spend.first, owned->rho), o.spendCommit);
 }
 
-TEST(PqScan, LegacyTWindowManualFallbackFindsNonzeroT) {
-    // The manual recovery primitive (opt-in only, never called by the default
-    // scan path): brute-forces the legacy derivation across a T window. Exists
-    // in case an unupgraded sender ever created a legacy nonzero-T output.
+TEST(PqScan, LegacyTWindowPathsRespectExclusiveBound) {
+    // Released pre-v2 senders used the destination's real T in legacy
+    // outContext. Exercise both the low-level recovery primitive and the
+    // combined current-first compatibility path.
     SeedMaster m = pat<32>(2, 7);
     auto view = deriveViewKeys(m);
     auto spend = deriveSpendKeys(m);
@@ -175,10 +175,21 @@ TEST(PqScan, LegacyTWindowManualFallbackFindsNonzeroT) {
     // The default fast path (v2 + legacy-T0) must NOT find it.
     EXPECT_FALSE(scanPqOutput(scanKeysFor(m), ih, o).has_value());
 
-    // The manual legacy T-window fallback does.
-    auto owned = scanPqOutputLegacyTWindow(scanKeysFor(m), ih, o, /*maxT=*/8);
+    // The exclusive bound must not scan T=5 when maxT is 5.
+    EXPECT_FALSE(scanPqOutputWithLegacyTWindow(
+        scanKeysFor(m), ih, o, /*maxT=*/legacyT).has_value());
+
+    // maxT=6 includes T=5. The combined path tries current/T0 first, then the
+    // bounded legacy range using the same decapsulated shared secret.
+    auto owned = scanPqOutputWithLegacyTWindow(
+        scanKeysFor(m), ih, o, /*maxT=*/legacyT + 1);
     ASSERT_TRUE(owned.has_value());
     EXPECT_EQ(owned->subaddrIndexT, legacyT);
+
+    auto legacyOnly = scanPqOutputLegacyTWindow(
+        scanKeysFor(m), ih, o, /*maxT=*/legacyT + 1);
+    ASSERT_TRUE(legacyOnly.has_value());
+    EXPECT_EQ(legacyOnly->subaddrIndexT, legacyT);
 }
 
 TEST(PqScan, IgnoresOthersOutput) {

@@ -13,6 +13,8 @@
 #include "Wallet/PqWallet.h"
 #include "CryptoNoteCore/Account.h"
 #include "CryptoNoteCore/CryptoNoteTools.h"
+#include "CryptoNoteCore/PqValidation.h"
+#include "crypto_pq/PqAead.h"
 #include "crypto_pq/PqOutputBuilder.h"
 #include "crypto_pq/PqDerive.h"
 #include "crypto_pq/PqSeed.h"
@@ -89,6 +91,51 @@ Funded payToPub(const PqWalletKeys& from, const CryptoPQ::KemPublicKey& toViewPu
 
     Funded f;
     f.tx = buildPqTransaction({in}, {out}, from.spendPub, from.spendSk);
+    f.txid = getObjectHash(f.tx);
+    return f;
+}
+
+// Build the same SingleKeyIndex payment format emitted before outContext-v2:
+// the legacy AEAD key derivation included T in outContext. Released senders
+// through v0.9.4 can still create these outputs for any nonzero deposit T.
+Funded payToPubLegacyV1(const PqWalletKeys& from, const CryptoPQ::KemPublicKey& toViewPub,
+                        const CryptoPQ::DsaPublicKey& toSpendPub, uint64_t inAmount,
+                        uint64_t payAmount, uint8_t seed, uint64_t T) {
+    Funded f = payToPub(from, toViewPub, toSpendPub, inAmount, payAmount, seed, T);
+    CryptoPQ::Hash256 ih = pqTransactionInputsHash(f.tx);
+
+    auto encapsulation = CryptoPQ::kem_encaps(toViewPub);
+    CryptoPQ::Rho rho{};
+    for (std::size_t i = 0; i < rho.size(); ++i) {
+        rho[i] = static_cast<uint8_t>(seed + i);
+    }
+    CryptoPQ::Hash256 oc = CryptoPQ::legacyOutContextV1(ih, encapsulation.first, 0, T);
+    CryptoPQ::Hash256 aeadKey = CryptoPQ::deriveAeadKey(encapsulation.second, oc);
+    CryptoPQ::AeadNonce nonce{};
+    std::array<uint8_t, 40> aad{};
+    std::memcpy(aad.data(), oc.data(), 32);
+    for (int i = 0; i < 8; ++i) {
+        aad[32 + i] = static_cast<uint8_t>((payAmount >> (8 * i)) & 0xFF);
+    }
+    std::array<uint8_t, 40> plaintext{};
+    std::memcpy(plaintext.data(), rho.data(), 32);
+    for (int i = 0; i < 8; ++i) {
+        plaintext[32 + i] = static_cast<uint8_t>((T >> (8 * i)) & 0xFF);
+    }
+
+    PqOutput legacy;
+    legacy.kemCt.assign(encapsulation.first.begin(), encapsulation.first.end());
+    legacy.encPayload = CryptoPQ::aead_encrypt(
+        aeadKey, nonce, aad.data(), aad.size(), plaintext.data(), plaintext.size());
+    CryptoPQ::Hash256 commitment = CryptoPQ::spendCommit(toSpendPub, rho);
+    std::memcpy(legacy.spendCommit.data, commitment.data(), commitment.size());
+    f.tx.outputs[0].target = std::move(legacy);
+
+    // Re-sign because the output is part of the TX_PQ signing digest. This
+    // keeps the legacy fixture wire-valid, not just recognizable by the ledger.
+    CryptoPQ::Hash256 digest = pqSigningDigest(f.tx, inAmount - payAmount);
+    f.tx.pqSignatures[0] = CryptoPQ::dsa_sign(
+        from.spendSk, digest.data(), digest.size());
     f.txid = getObjectHash(f.tx);
     return f;
 }
@@ -548,6 +595,71 @@ TEST(WalletLedger, SingleKeyIndexAttributesDepositByT) {
     EXPECT_EQ(st.outputs()[0].depositIndex, 2u);
     // Single key: every output, deposits included, is spendable by the one key.
     EXPECT_EQ(st.spendableInputs().size(), 1u);
+}
+
+TEST(WalletLedger, SingleKeyIndexAutomaticallyCreditsCurrentV2NonzeroT) {
+    PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
+    PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
+
+    WalletLedger st(me);
+    st.setDepositConfig(PqDepositScheme::SingleKeyIndex, 45);
+
+    Funded f = payToPub(them, me.viewPub, me.spendPub, 1000000, 50000, 0xB3, 44);
+    ASSERT_TRUE(st.processTransaction(f.tx, f.txid, 100));
+    EXPECT_EQ(st.balance(), 50000u);
+    EXPECT_EQ(st.depositBalance(44), 50000u);
+    ASSERT_EQ(st.outputs().size(), 1u);
+    EXPECT_EQ(st.outputs()[0].depositIndex, 44u);
+}
+
+TEST(WalletLedger, SingleKeyIndexAutomaticallyCreditsLegacyNonzeroT) {
+    PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
+    PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
+
+    WalletLedger st(me);
+    // This is the next-index cursor, so [0, 45) includes the issued T=44.
+    st.setDepositConfig(PqDepositScheme::SingleKeyIndex, 45);
+
+    Funded f = payToPubLegacyV1(
+        them, me.viewPub, me.spendPub, 1000000, 50000, 0xB4, 44);
+    ASSERT_TRUE(st.processTransaction(f.tx, f.txid, 100));
+    EXPECT_EQ(st.balance(), 50000u);
+    EXPECT_EQ(st.depositBalance(44), 50000u);
+    ASSERT_EQ(st.outputs().size(), 1u);
+    EXPECT_EQ(st.outputs()[0].depositIndex, 44u);
+}
+
+TEST(WalletLedger, SingleKeyIndexDoesNotCreditLegacyTOutsideIssuedWindow) {
+    PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
+    PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
+
+    WalletLedger st(me);
+    // [0, 45) is issued; T=45 is deliberately just outside the cursor.
+    st.setDepositConfig(PqDepositScheme::SingleKeyIndex, 45);
+
+    Funded f = payToPubLegacyV1(
+        them, me.viewPub, me.spendPub, 1000000, 50000, 0xB5, 45);
+    EXPECT_FALSE(st.processTransaction(f.tx, f.txid, 100));
+    EXPECT_EQ(st.balance(), 0u);
+    EXPECT_EQ(st.depositBalance(45), 0u);
+    EXPECT_TRUE(st.outputs().empty());
+}
+
+TEST(WalletLedger, SingleKeyIndexManualWindowExtendsIssuedRange) {
+    PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
+    PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
+
+    WalletLedger st(me);
+    st.setDepositConfig(PqDepositScheme::SingleKeyIndex, 45);
+    st.setLegacyTWindowRescan(46);
+
+    Funded f = payToPubLegacyV1(
+        them, me.viewPub, me.spendPub, 1000000, 50000, 0xB6, 45);
+    ASSERT_TRUE(st.processTransaction(f.tx, f.txid, 100));
+    EXPECT_EQ(st.balance(), 50000u);
+    EXPECT_EQ(st.depositBalance(45), 50000u);
+    ASSERT_EQ(st.outputs().size(), 1u);
+    EXPECT_EQ(st.outputs()[0].depositIndex, 45u);
 }
 
 // T=0 is the primary address, not deposit #0. A plain Bech32m PQ address and a base
