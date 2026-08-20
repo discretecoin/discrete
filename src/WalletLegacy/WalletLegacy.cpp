@@ -1739,6 +1739,11 @@ std::error_code WalletLegacy::cancelTransaction(size_t transactionId) {
   return make_error_code(CryptoNote::error::TX_CANCEL_IMPOSSIBLE);
 }
 
+void WalletLegacy::synchronizationActivityChanged(bool active) {
+  m_observerManager.notify(
+      &IWalletLegacyObserver::synchronizationActivityChanged, active);
+}
+
 void WalletLegacy::synchronizationProgressUpdated(uint32_t current, uint32_t total) {
   auto deletedTransactions = deleteOutdatedUnconfirmedTransactions();
 

@@ -20,7 +20,9 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <condition_variable>
 #include <fstream>
+#include <mutex>
 #include <numeric>
 #include <sstream>
 #include <system_error>
@@ -1626,6 +1628,66 @@ TEST(WalletLegacySmoke, PqIdentityAndSigning) {
   EXPECT_TRUE(wallet.getSeed(words));
   EXPECT_FALSE(words.empty());
 
+  wallet.shutdown();
+}
+
+TEST(WalletLegacySmoke, ForwardsSynchronizationActivityState) {
+  class ActivityObserver : public CryptoNote::IWalletLegacyObserver {
+  public:
+    void synchronizationActivityChanged(bool active) override {
+      std::lock_guard<std::mutex> lock(mutex);
+      states.push_back(active);
+    }
+
+    void synchronizationCompleted(std::error_code result) override {
+      std::lock_guard<std::mutex> lock(mutex);
+      completionResult = result;
+      completed = true;
+      condition.notify_one();
+    }
+
+    bool waitForCompletion(std::chrono::milliseconds timeout) {
+      std::unique_lock<std::mutex> lock(mutex);
+      return condition.wait_for(lock, timeout, [&]() { return completed; });
+    }
+
+    std::vector<bool> activityStates() const {
+      std::lock_guard<std::mutex> lock(mutex);
+      return states;
+    }
+
+    std::error_code result() const {
+      std::lock_guard<std::mutex> lock(mutex);
+      return completionResult;
+    }
+
+  private:
+    mutable std::mutex mutex;
+    std::condition_variable condition;
+    std::vector<bool> states;
+    std::error_code completionResult;
+    bool completed = false;
+  };
+
+  System::Dispatcher dispatcher;
+  (void)dispatcher;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(1000000).upgradeHeightV6(1000000)
+      .currency();
+  TestBlockchainGenerator generator(currency);
+  INodeTrivialRefreshStub node(generator);
+  CryptoNote::WalletLegacy wallet(currency, node, logger);
+  ActivityObserver observer;
+
+  wallet.addObserver(&observer);
+  wallet.initAndGenerate("pass");
+  ASSERT_TRUE(observer.waitForCompletion(std::chrono::seconds(10)));
+  EXPECT_FALSE(observer.result());
+  EXPECT_EQ((std::vector<bool>{true, false}), observer.activityStates());
+  wallet.removeObserver(&observer);
   wallet.shutdown();
 }
 

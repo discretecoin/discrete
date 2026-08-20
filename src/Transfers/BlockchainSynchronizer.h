@@ -150,6 +150,9 @@ private:
   void actualizeFutureState();
   bool checkIfShouldStop() const;
   bool checkIfStopped() const;
+  void beginSynchronizationActivity();
+  void endSynchronizationActivity();
+  void notifySynchronizationCompleted(std::error_code result);
 
   void workingProcedure();
 
@@ -177,6 +180,9 @@ private:
   std::condition_variable m_hasWork;
 
   bool wasStarted = false;
+  // Accessed only by the synchronizer worker thread. begin/end are idempotent
+  // so phase transitions cannot create a false idle gap.
+  bool m_synchronizationActive = false;
 };
 
 }
