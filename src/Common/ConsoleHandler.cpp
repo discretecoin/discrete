@@ -23,6 +23,7 @@
 #endif
 
 #include <boost/algorithm/string.hpp>
+#include "linenoise.hpp"
 
 using Common::Console::Color;
 
@@ -38,7 +39,9 @@ AsyncConsoleReader::~AsyncConsoleReader() {
   stop();
 }
 
-void AsyncConsoleReader::start() {
+void AsyncConsoleReader::start(bool memoryHistory, const std::string& prompt) {
+  m_memoryHistory = memoryHistory;
+  m_prompt = prompt;
   m_stop = false;
   m_thread = std::thread(std::bind(&AsyncConsoleReader::consoleThread, this));
 }
@@ -47,12 +50,19 @@ bool AsyncConsoleReader::getline(std::string& line) {
   return m_queue.pop(line);
 }
 
+void AsyncConsoleReader::inputConsumed() {
+  std::lock_guard<std::mutex> lock(m_inputMutex);
+  m_inputPending = false;
+  m_inputConsumed.notify_one();
+}
+
 void AsyncConsoleReader::pause() {
   if (m_stop) {
     return;
   }
 
   m_stop = true;
+  m_inputConsumed.notify_all();
 
   if (m_thread.joinable()) {
     m_thread.join();
@@ -62,7 +72,7 @@ void AsyncConsoleReader::pause() {
 }
 
 void AsyncConsoleReader::unpause() {
-  start();
+  start(m_memoryHistory, m_prompt);
 } 
 
 void AsyncConsoleReader::stop() {
@@ -72,6 +82,7 @@ void AsyncConsoleReader::stop() {
   }
 
   m_stop = true;
+  m_inputConsumed.notify_all();
   m_queue.close();
 #ifdef _WIN32
   ::CloseHandle(::GetStdHandle(STD_INPUT_HANDLE));
@@ -90,16 +101,60 @@ bool AsyncConsoleReader::stopped() const {
 
 void AsyncConsoleReader::consoleThread() {
 
-  while (waitInput()) {
+  if (m_memoryHistory) {
+    // History is deliberately process-local. Do not call linenoise's
+    // SaveHistory/LoadHistory APIs: wallet commands may contain sensitive data.
+    linenoise::SetHistoryMaxLen(256);
+  }
+
+  while (!m_stop) {
+    {
+      std::unique_lock<std::mutex> lock(m_inputMutex);
+      m_inputConsumed.wait(lock, [this] { return !m_inputPending || m_stop; });
+      if (m_stop) {
+        break;
+      }
+    }
+
+    // Linenoise must enter raw mode and render the prompt before the first key
+    // arrives. The legacy getline path keeps its interruptible select loop.
+    if (!m_memoryHistory && !waitInput()) {
+      break;
+    }
+
     std::string line;
 
-    if (!std::getline(std::cin, line)) {
+    if (m_memoryHistory) {
+      const bool inputClosed = linenoise::Readline(m_prompt.c_str(), line);
+      if (inputClosed) {
+        // Treat Ctrl-C/Ctrl-D like the wallet's exit command so the command
+        // handler can perform its normal shutdown.
+        line = "exit";
+      } else {
+        std::string historyLine = line;
+        boost::algorithm::trim(historyLine);
+        if (!historyLine.empty()) {
+          linenoise::AddHistory(historyLine.c_str());
+        }
+      }
+    } else if (!std::getline(std::cin, line)) {
       break;
     }
 
+    {
+      std::lock_guard<std::mutex> lock(m_inputMutex);
+      m_inputPending = true;
+    }
     if (!m_queue.push(line)) {
+      std::lock_guard<std::mutex> lock(m_inputMutex);
+      m_inputPending = false;
       break;
     }
+
+    // Do not begin a second terminal read until the command has completed.
+    // This keeps pause and exit safe while linenoise is in raw terminal mode.
+    std::unique_lock<std::mutex> lock(m_inputMutex);
+    m_inputConsumed.wait(lock, [this] { return !m_inputPending || m_stop; });
   }
 }
 
@@ -160,10 +215,12 @@ ConsoleHandler::~ConsoleHandler() {
   stop();
 }
 
-void ConsoleHandler::start(bool startThread, const std::string& prompt, Console::Color promptColor) {
+void ConsoleHandler::start(bool startThread, const std::string& prompt, Console::Color promptColor,
+                           bool memoryHistory) {
   m_prompt = prompt;
   m_promptColor = promptColor;
-  m_consoleReader.start();
+  m_memoryHistory = memoryHistory;
+  m_consoleReader.start(memoryHistory, prompt);
 
   if (startThread) {
     m_thread = std::thread(std::bind(&ConsoleHandler::handlerThread, this));
@@ -283,7 +340,7 @@ void ConsoleHandler::handlerThread() {
 
   while(!m_consoleReader.stopped()) {
     try {
-      if (!m_prompt.empty()) {
+      if (!m_memoryHistory && !m_prompt.empty()) {
         if (m_promptColor != Color::Default) {
           Console::setTextColor(m_promptColor);
         }
@@ -305,7 +362,10 @@ void ConsoleHandler::handlerThread() {
         handleCommand(line);
       }
 
+      m_consoleReader.inputConsumed();
+
     } catch (std::exception&) {
+      m_consoleReader.inputConsumed();
       // ignore errors
     }
   }

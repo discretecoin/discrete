@@ -18,8 +18,10 @@
 #pragma once
 
 #include <atomic>
+#include <condition_variable>
 #include <functional>
 #include <map>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -40,8 +42,9 @@ public:
   AsyncConsoleReader();
   ~AsyncConsoleReader();
 
-  void start();
+  void start(bool memoryHistory = false, const std::string& prompt = "");
   bool getline(std::string& line);
+  void inputConsumed();
   void stop();
   bool stopped() const;
   void pause();
@@ -55,6 +58,11 @@ private:
   std::atomic<bool> m_stop;
   std::thread m_thread;
   BlockingQueue<std::string> m_queue;
+  bool m_memoryHistory = false;
+  std::string m_prompt;
+  std::mutex m_inputMutex;
+  std::condition_variable m_inputConsumed;
+  bool m_inputPending = false;
 };
 
 
@@ -70,7 +78,8 @@ public:
   void requestStop();
   bool runCommand(const std::vector<std::string>& cmdAndArgs);
 
-  void start(bool startThread = true, const std::string& prompt = "", Console::Color promptColor = Console::Color::Default);
+  void start(bool startThread = true, const std::string& prompt = "", Console::Color promptColor = Console::Color::Default,
+             bool memoryHistory = false);
   void stop();
   void wait();
   void pause();
@@ -87,6 +96,7 @@ private:
   std::thread m_thread;
   std::string m_prompt;
   Console::Color m_promptColor = Console::Color::Default;
+  bool m_memoryHistory = false;
   CommandHandlersMap m_handlers;
   AsyncConsoleReader m_consoleReader;
 };
