@@ -30,6 +30,7 @@
 #include "../Common/Math.h"
 #include "../Common/StringTools.h"
 #include "../crypto/crypto.h"
+#include "../crypto/yespower.h"
 #include "../CryptoNoteProtocol/CryptoNoteProtocolDefinitions.h"
 #include "../Logging/LoggerRef.h"
 #include "../Rpc/CoreRpcServerCommandsDefinitions.h"
@@ -703,11 +704,32 @@ bool Core::handle_incoming_block_blob(const BinaryArray& block_blob, block_verif
 }
 
 bool Core::handle_incoming_block(const Block& b, block_verification_context& bvc, bool control_miner, bool relay_block) {
+  return handle_incoming_block_impl(b, nullptr, bvc, control_miner, relay_block);
+}
+
+bool Core::prevalidateBlockProofOfWork(const Block& b, PrevalidatedBlockProof& proof) const {
+  if (!get_block_hash(b, proof.blockHash)) {
+    return false;
+  }
+  return m_blockchain.prevalidateBlockProofOfWork(b, proof.proofOfWork);
+}
+
+void Core::cleanupBlockPowPrevalidationThread() noexcept {
+  (void)yespower_discrete_tls_free();
+}
+
+bool Core::handle_incoming_block_prevalidated(const Block& b, const PrevalidatedBlockProof& proof,
+    block_verification_context& bvc, bool control_miner, bool relay_block) {
+  return handle_incoming_block_impl(b, &proof, bvc, control_miner, relay_block);
+}
+
+bool Core::handle_incoming_block_impl(const Block& b, const PrevalidatedBlockProof* proof,
+    block_verification_context& bvc, bool control_miner, bool relay_block) {
   if (control_miner) {
     pause_mining();
   }
 
-  m_blockchain.addNewBlock(b, bvc);
+  m_blockchain.addNewBlock(b, bvc, proof);
 
   if (control_miner) {
     update_block_template_and_resume_mining();

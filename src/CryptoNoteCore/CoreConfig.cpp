@@ -22,6 +22,15 @@
 
 namespace CryptoNote {
 
+namespace {
+const command_line::arg_descriptor<uint32_t> arg_sync_pow_threads = {
+  "sync-pow-threads",
+  "Parallel DiscretePower verification threads during initial sync (0 = auto; reserves configured headless-mining threads)",
+  0,
+  true
+};
+}
+
 CoreConfig::CoreConfig() {
   configFolder = Tools::getDefaultDataDirectory();
 }
@@ -31,8 +40,12 @@ void CoreConfig::init(const boost::program_options::variables_map& options) {
     configFolder = command_line::get_arg(options, command_line::arg_data_dir);
     configFolderDefaulted = options[command_line::arg_data_dir.name].defaulted();
   }
+  if (options.count(arg_sync_pow_threads.name) != 0) {
+    syncPowThreads = command_line::get_arg(options, arg_sync_pow_threads);
+  }
 }
 
 void CoreConfig::initOptions(boost::program_options::options_description& desc) {
+  command_line::add_arg(desc, arg_sync_pow_threads);
 }
 } //namespace CryptoNote

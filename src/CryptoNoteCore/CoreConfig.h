@@ -17,6 +17,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <string>
 
 #include <boost/program_options.hpp>
@@ -32,6 +33,10 @@ public:
 
   std::string configFolder;
   bool configFolderDefaulted = true;
+  // 0 selects a hardware-based default that reserves configured headless-mining
+  // workers. 1 disables parallel prevalidation while preserving the ordered
+  // validation path for A/B tests.
+  uint32_t syncPowThreads = 0;
 };
 
 } //namespace CryptoNote

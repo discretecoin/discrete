@@ -26,11 +26,13 @@
 #include <ctime>
 #include <future>
 #include <list>
+#include <memory>
 #include <random>
 #include <boost/optional.hpp>
 #include <boost/scope_exit.hpp>
 #include <boost/uuid/uuid_io.hpp>
 #include <System/Dispatcher.h>
+#include <System/EventLock.h>
 
 #include "Common/ShuffleGenerator.h"
 #include "CryptoNoteCore/CryptoNoteBasicImpl.h"
@@ -38,6 +40,7 @@
 #include "CryptoNoteCore/CryptoNoteTools.h"
 #include "CryptoNoteCore/Currency.h"
 #include "CryptoNoteCore/VerificationContext.h"
+#include "CryptoNoteProtocol/SyncPowThreadCount.h"
 #include "P2p/LevinProtocol.h"
 
 #include "crypto/random.h"
@@ -63,21 +66,27 @@ void relay_post_notify(IP2pEndpoint& p2p, typename t_parametr::request& arg, con
 
 }
 
-CryptoNoteProtocolHandler::CryptoNoteProtocolHandler(const Currency& currency, System::Dispatcher& dispatcher, ICore& rcore, IP2pEndpoint* p_net_layout, Logging::ILogger& log) :
+CryptoNoteProtocolHandler::CryptoNoteProtocolHandler(const Currency& currency, System::Dispatcher& dispatcher,
+    ICore& rcore, IP2pEndpoint* p_net_layout, Logging::ILogger& log, size_t powValidationThreads,
+    size_t concurrentMiningThreads) :
+  m_init_select_dandelion_called(false),
+  logger(log, "protocol"),
   m_dispatcher(dispatcher),
-  m_currency(currency),
   m_core(rcore),
+  m_currency(currency),
   m_p2p(p_net_layout),
   m_synchronized(false),
   m_stop(false),
-  m_init_select_dandelion_called(false),
+  m_syncEvent(dispatcher),
+  m_powValidationThreads(rcore.supportsBlockPowPrevalidation()
+    ? resolveSyncPowThreadCount(powValidationThreads, concurrentMiningThreads)
+    : 1),
   m_observedHeight(0),
   m_peersCount(0),
   m_dandelionStemSelectInterval(CryptoNote::parameters::DANDELION_EPOCH),
   m_dandelionStemFluffInterval(CryptoNote::parameters::DANDELION_STEM_EMBARGO),
-  logger(log, "protocol"),
   m_stemPool() {
-  
+  m_syncEvent.set();
   if (!m_p2p) {
     m_p2p = &m_p2p_stub;
   }
@@ -163,6 +172,21 @@ void CryptoNoteProtocolHandler::onConnectionClosed(CryptoNoteConnectionContext& 
 
 void CryptoNoteProtocolHandler::stop() {
   m_stop = true;
+  System::EventLock syncLock(m_syncEvent);
+  releasePowValidationPool();
+}
+
+void CryptoNoteProtocolHandler::releasePowValidationPool() {
+  if (m_powValidationPool) {
+    const size_t workerCount = m_powValidationPool->size();
+    m_powValidationPool.reset();
+    logger(INFO) << "Released initial-sync DiscretePower prevalidation pool ("
+                 << workerCount << " thread(s))";
+  }
+
+  // The Dispatcher thread handles the sequential/single-block fallback and can
+  // therefore own one TLS scratch allocation independently of pool workers.
+  m_core.cleanupBlockPowPrevalidationThread();
 }
 
 bool CryptoNoteProtocolHandler::start_sync(CryptoNoteConnectionContext& context) {
@@ -595,7 +619,7 @@ int CryptoNoteProtocolHandler::handle_response_get_objects(int command, NOTIFY_R
     // of the same work, and one of them doing it for nothing: subsequent
     // connections will wait until the current one's added its blocks, then
     // will add any extra it has, if any
-    std::lock_guard<std::recursive_mutex> lk(m_sync_lock);
+    System::EventLock syncLock(m_syncEvent);
 
     // dismiss what another connection might already have done (likely everything)
     m_core.get_blockchain_top(height, top);
@@ -632,18 +656,96 @@ int CryptoNoteProtocolHandler::handle_response_get_objects(int command, NOTIFY_R
 }
 
 int CryptoNoteProtocolHandler::processObjects(CryptoNoteConnectionContext& context, const std::vector<parsed_block_entry>& blocks) {
-  for (const parsed_block_entry& block_entry : blocks) {
+  struct PowTaskResult {
+    bool attempted = false;
+    bool valid = false;
+    PrevalidatedBlockProof proof{};
+  };
+
+  Common::ThreadPool* powValidationPool = nullptr;
+  if (blocks.size() > 1 && m_powValidationThreads > 1 &&
+      m_core.supportsBlockPowPrevalidation()) {
+    if (!m_powValidationPool) {
+      m_powValidationPool.reset(new Common::ThreadPool(
+        m_powValidationThreads,
+        [this] { m_core.cleanupBlockPowPrevalidationThread(); }));
+      logger(INFO) << "Initial-sync DiscretePower prevalidation pool: "
+                   << m_powValidationPool->size() << " thread(s)";
+    }
+    powValidationPool = m_powValidationPool.get();
+  }
+
+  const bool parallel = powValidationPool != nullptr;
+  std::vector<std::shared_ptr<PowTaskResult>> powResults;
+  std::vector<std::future<void>> futures(blocks.size());
+  Common::FutureDrain futureDrain(futures);
+  powResults.reserve(blocks.size());
+  for (size_t i = 0; i < blocks.size(); ++i) {
+    powResults.emplace_back(std::make_shared<PowTaskResult>());
+  }
+
+  // Keep exactly one task per worker in flight. As soon as the ordered consumer
+  // takes result i, submit the next block. This avoids batch barriers without an
+  // unbounded queue; an invalid peer can waste at most W-1 extra memory-hard
+  // evaluations beyond the first bad block.
+  size_t nextToSubmit = 0;
+  size_t inFlight = 0;
+  auto fillPipeline = [&] {
+    while (parallel && nextToSubmit < blocks.size() && inFlight < powValidationPool->size()) {
+      const size_t index = nextToSubmit++;
+      const Block& sourceBlock = blocks[index].block;
+      const uint32_t declaredHeight = get_block_height(sourceBlock);
+      if (declaredHeight == 0 || m_core.isInCheckpointZone(declaredHeight)) {
+        continue;
+      }
+
+      std::shared_ptr<PowTaskResult> result = powResults[index];
+      result->attempted = true;
+      Block blockCopy = sourceBlock;
+      futures[index] = powValidationPool->submit(
+        [this, block = std::move(blockCopy), result] {
+          result->valid = m_core.prevalidateBlockProofOfWork(block, result->proof);
+        });
+      ++inFlight;
+    }
+  };
+  fillPipeline();
+
+  for (size_t blockIndex = 0; blockIndex < blocks.size(); ++blockIndex) {
+    const parsed_block_entry& block_entry = blocks[blockIndex];
     if (m_stop) {
       break;
     }
 
-    //process transactions
+    PowTaskResult& result = *powResults[blockIndex];
+    if (result.attempted) {
+      try {
+        futures[blockIndex].get();
+      } catch (const std::exception& e) {
+        logger(ERROR) << context << "Parallel block PoW prevalidation failed: " << e.what();
+        m_p2p->drop_connection(context, true);
+        return 1;
+      } catch (...) {
+        logger(ERROR) << context << "Parallel block PoW prevalidation failed with an unknown exception";
+        m_p2p->drop_connection(context, true);
+        return 1;
+      }
+      --inFlight;
+      if (!result.valid) {
+        logger(DEBUGGING) << context << "Block PoW prevalidation failed, dropping connection";
+        m_p2p->drop_connection(context, true);
+        return 1;
+      }
+      fillPipeline();
+    }
+
+    // Process transactions in canonical order. Only the context-free block
+    // proof above is parallel; transaction state and LMDB writes stay ordered.
     for (size_t i = 0; i < block_entry.txs.size(); ++i) {
-      auto transactionBinary = block_entry.txs[i];
+      const BinaryArray& transactionBinary = block_entry.txs[i];
       Crypto::Hash transactionHash = Crypto::cn_fast_hash(transactionBinary.data(), transactionBinary.size());
       logger(DEBUGGING) << "transaction " << transactionHash << " came in processObjects";
 
-      // check if tx hashes match
       if (transactionHash != block_entry.block.transactionHashes[i]) {
         logger(Logging::DEBUGGING) << context << "transaction mismatch on NOTIFY_RESPONSE_GET_OBJECTS, \r\ntx_id = "
           << Common::podToHex(transactionHash) << ", dropping connection";
@@ -661,9 +763,12 @@ int CryptoNoteProtocolHandler::processObjects(CryptoNoteConnectionContext& conte
       }
     }
 
-    // process block
     block_verification_context bvc = boost::value_initialized<block_verification_context>();
-    m_core.handle_incoming_block(block_entry.block, bvc, false, false);
+    if (result.attempted) {
+      m_core.handle_incoming_block_prevalidated(block_entry.block, result.proof, bvc, false, false);
+    } else {
+      m_core.handle_incoming_block(block_entry.block, bvc, false, false);
+    }
 
     if (bvc.m_finality_fork) {
       logFinalityFork(context);
@@ -967,6 +1072,11 @@ bool CryptoNoteProtocolHandler::request_missing_objects(CryptoNoteConnectionCont
 }
 
 bool CryptoNoteProtocolHandler::on_connection_synchronized() {
+  System::EventLock syncLock(m_syncEvent);
+  // Drain/release sync workers and their memory-hard TLS scratch before the
+  // core starts or resumes configured mining threads.
+  releasePowValidationPool();
+
   bool val_expected = false;
   if (m_synchronized.compare_exchange_strong(val_expected, true)) {
     std::cout << ENDL << "**********************************************************************" << ENDL

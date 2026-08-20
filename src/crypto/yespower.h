@@ -137,6 +137,11 @@ extern int yespower_discrete_tls(const uint8_t *src, size_t srclen,
     const yespower_params_t *params, const uint8_t *tape,
     yespower_binary_t *dst);
 
+/* Release the yespower-discrete scratch allocation owned by the calling
+ * thread. Safe to call repeatedly when no yespower-discrete operation is in
+ * flight on that thread. */
+extern int yespower_discrete_tls_free(void);
+
 /* Count of yespower-discrete memory-hard executions on the calling thread, and a
  * reset. Backs the "zero yespower-discrete on early-rejected block" test assertion. */
 extern uint64_t yespower_discrete_call_count(void);

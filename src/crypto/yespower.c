@@ -170,6 +170,8 @@ static DISCRETE_POWER_THREAD_LOCAL uint64_t discrete_power_ctr = 0;
 static DISCRETE_POWER_THREAD_LOCAL uint32_t discrete_power_phase = 0;
 static DISCRETE_POWER_THREAD_LOCAL uint32_t discrete_power_phase_i = 0;
 static DISCRETE_POWER_THREAD_LOCAL uint64_t discrete_power_calls = 0;
+static DISCRETE_POWER_THREAD_LOCAL int discrete_power_tls_initialized = 0;
+static DISCRETE_POWER_THREAD_LOCAL yespower_local_t discrete_power_tls_local;
 
 static void *alloc_region(yespower_region_t *region, size_t size)
 {
@@ -1467,20 +1469,25 @@ int yespower_discrete_tls(const uint8_t *src, size_t srclen,
     const yespower_params_t *params, const uint8_t *tape,
     yespower_binary_t *dst)
 {
-#if defined(_MSC_VER)
-    static __declspec(thread) int initialized = 0;
-    static __declspec(thread) yespower_local_t local;
-#else
-    static __thread int initialized = 0;
-    static __thread yespower_local_t local;
-#endif
-
-    if (!initialized) {
-        init_region(&local);
-        initialized = 1;
+    if (!discrete_power_tls_initialized) {
+        init_region(&discrete_power_tls_local);
+        discrete_power_tls_initialized = 1;
     }
 
-    return yespower_discrete(&local, src, srclen, params, tape, dst);
+    return yespower_discrete(&discrete_power_tls_local, src, srclen, params, tape, dst);
+}
+
+int yespower_discrete_tls_free(void)
+{
+    int result;
+
+    if (!discrete_power_tls_initialized)
+        return 0;
+
+    result = yespower_free_local(&discrete_power_tls_local);
+    if (result == 0)
+        discrete_power_tls_initialized = 0;
+    return result;
 }
 
 /* Test/telemetry hook: count of yespower-discrete memory-hard executions on this

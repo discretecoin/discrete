@@ -60,6 +60,14 @@ struct WalletSyncBlockInfo {
   std::vector<Transaction> transactions;
 };
 
+// Result of the context-free DiscretePower verification performed ahead of
+// ordered chain application. blockHash binds proofOfWork to the exact serialized
+// block, preventing a prevalidated result from being reused for another block.
+struct PrevalidatedBlockProof {
+  Crypto::Hash blockHash{};
+  Crypto::Hash proofOfWork{};
+};
+
 class ICore {
 public:
   virtual ~ICore() {}
@@ -78,6 +86,20 @@ public:
   virtual void update_block_template_and_resume_mining() = 0;
   virtual bool handle_incoming_block_blob(const CryptoNote::BinaryArray& block_blob, CryptoNote::block_verification_context& bvc, bool control_miner, bool relay_block) = 0;
   virtual bool handle_incoming_block(const Block& b, block_verification_context& bvc, bool control_miner, bool relay_block) = 0;
+  virtual bool supportsBlockPowPrevalidation() const { return false; }
+  // Thread-pool contract: this function must remain thread-safe and strictly
+  // state-free. It may depend only on the exact serialized block bytes and must
+  // not read or mutate chain state, LMDB, the mempool, checkpoints, or current
+  // difficulty. Success is prevalidation, not block acceptance; ordered chain
+  // application still performs every context-dependent check.
+  virtual bool prevalidateBlockProofOfWork(const Block&, PrevalidatedBlockProof&) const { return false; }
+  // Release any PoW scratch owned by the calling thread. The default is a no-op
+  // for cores that do not support parallel PoW prevalidation.
+  virtual void cleanupBlockPowPrevalidationThread() noexcept {}
+  virtual bool handle_incoming_block_prevalidated(const Block& b, const PrevalidatedBlockProof&,
+      block_verification_context& bvc, bool control_miner, bool relay_block) {
+    return handle_incoming_block(b, bvc, control_miner, relay_block);
+  }
   virtual bool handle_get_objects(NOTIFY_REQUEST_GET_OBJECTS_request& arg, NOTIFY_RESPONSE_GET_OBJECTS_request& rsp) = 0; //Deprecated. Should be removed with CryptoNoteProtocolHandler.
   virtual void on_synchronized() = 0;
   virtual size_t addChain(const std::vector<const IBlock*>& chain) = 0;

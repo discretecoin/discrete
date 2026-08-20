@@ -873,9 +873,7 @@ uint64_t Blockchain::getCurrentCumulativeBlocksizeLimit() {
 
 // ─── Proof of Work ───────────────────────────────────────────────────────────
 
-bool Blockchain::checkProofOfWork(Crypto::cn_context& context, const Block& block,
-                                   Difficulty currentDiffic, Crypto::Hash& proofOfWork) {
-  (void)context;
+bool Blockchain::prevalidateBlockProofOfWork(const Block& block, Crypto::Hash& proofOfWork) const {
   // DiscretePower (https://docs.discrete.cash/#/consensus/pow §9). Stateless: a pure function
   // of the block. The ML-DSA-65 PoW signature is verified BEFORE the memory-hard
   // yespower-discrete runs, so a garbage block costs only one signature verification
@@ -910,10 +908,17 @@ bool Blockchain::checkProofOfWork(Crypto::cn_context& context, const Block& bloc
     }
     return false;
   }
-  // PoW >= target — the caller logs the difficulty context.
-  if (!check_hash(proofOfWork, currentDiffic))
-    return false;
   return true;
+}
+
+bool Blockchain::checkProofOfWork(Crypto::cn_context& context, const Block& block,
+                                   Difficulty currentDiffic, Crypto::Hash& proofOfWork) {
+  (void)context;
+  if (!prevalidateBlockProofOfWork(block, proofOfWork)) {
+    return false;
+  }
+  // PoW >= target — the caller logs the difficulty context.
+  return check_hash(proofOfWork, currentDiffic);
 }
 
 // ─── Timestamp checks ────────────────────────────────────────────────────────
@@ -1378,7 +1383,8 @@ bool Blockchain::switch_to_alternative_blockchain(const std::list<Crypto::Hash>&
 
 bool Blockchain::handle_alternative_block(const Block& b, const Crypto::Hash& id,
                                            block_verification_context& bvc,
-                                           bool sendNewAlternativeBlockMessage) {
+                                           bool sendNewAlternativeBlockMessage,
+                                           const PrevalidatedBlockProof* prevalidatedProof) {
   std::lock_guard<decltype(m_blockchain_lock)> lk(m_blockchain_lock);
 
   auto block_height = get_block_height(b);
@@ -1501,7 +1507,10 @@ bool Blockchain::handle_alternative_block(const Block& b, const Crypto::Hash& id
     }
 
     Crypto::Hash proof_of_work = NULL_HASH;
-    if (!checkProofOfWork(m_cn_context, bei.bl, current_diff, proof_of_work)) {
+    const bool powValid = prevalidatedProof != nullptr
+      ? (proof_of_work = prevalidatedProof->proofOfWork, check_hash(proof_of_work, current_diff))
+      : checkProofOfWork(m_cn_context, bei.bl, current_diff, proof_of_work);
+    if (!powValid) {
       logger(INFO, BRIGHT_RED) << "Block with id: " << Common::podToHex(id)
         << "\n for alternative chain, has not enough proof of work: " << proof_of_work
         << "\n expected difficulty: " << current_diff;
@@ -2079,10 +2088,17 @@ bool Blockchain::is_tx_spendheight_unlocked(uint64_t unlock_height, uint32_t hei
 
 // ─── addNewBlock / pushBlock / popBlock ──────────────────────────────────────
 
-bool Blockchain::addNewBlock(const Block& bl, block_verification_context& bvc) {
+bool Blockchain::addNewBlock(const Block& bl, block_verification_context& bvc,
+                             const PrevalidatedBlockProof* prevalidatedProof) {
   Crypto::Hash id;
   if (!get_block_hash(bl, id)) {
     logger(ERROR, BRIGHT_RED) << "Failed to get block hash, possible block has invalid format";
+    bvc.m_verification_failed = true;
+    return false;
+  }
+
+  if (prevalidatedProof != nullptr && prevalidatedProof->blockHash != id) {
+    logger(ERROR, BRIGHT_RED) << "Prevalidated PoW block ID mismatch for " << id;
     bvc.m_verification_failed = true;
     return false;
   }
@@ -2110,9 +2126,9 @@ bool Blockchain::addNewBlock(const Block& bl, block_verification_context& bvc) {
         << " as it doesn't refer to chain tail " << Common::podToHex(getTailId())
         << ", its prev. block hash: " << Common::podToHex(bl.previousBlockHash);
       bvc.m_added_to_main_chain = false;
-      add_result = handle_alternative_block(bl, id, bvc);
+      add_result = handle_alternative_block(bl, id, bvc, true, prevalidatedProof);
     } else {
-      add_result = pushBlock(bl, id, bvc);
+      add_result = pushBlock(bl, id, bvc, prevalidatedProof);
       if (add_result) {
         sendMessage(BlockchainMessage(NewBlockMessage(id)));
       }
@@ -2158,13 +2174,14 @@ Blockchain::TransactionEntry Blockchain::transactionByIndex(TransactionIndex idx
 }
 
 bool Blockchain::pushBlock(const Block& blockData, const Crypto::Hash& id,
-                            block_verification_context& bvc) {
+                            block_verification_context& bvc,
+                            const PrevalidatedBlockProof* prevalidatedProof) {
   std::vector<Transaction> transactions;
   if (!loadTransactions(blockData, transactions)) {
     bvc.m_verification_failed = true;
     return false;
   }
-  if (!pushBlock(blockData, transactions, id, bvc)) {
+  if (!pushBlock(blockData, transactions, id, bvc, prevalidatedProof)) {
     saveTransactions(transactions);
     return false;
   }
@@ -2172,7 +2189,8 @@ bool Blockchain::pushBlock(const Block& blockData, const Crypto::Hash& id,
 }
 
 bool Blockchain::pushBlock(const Block& blockData, const std::vector<Transaction>& transactions,
-                            const Crypto::Hash& blockHash, block_verification_context& bvc) {
+                            const Crypto::Hash& blockHash, block_verification_context& bvc,
+                            const PrevalidatedBlockProof* prevalidatedProof) {
   std::lock_guard<decltype(m_blockchain_lock)> lk(m_blockchain_lock);
 
   auto blockProcessingStart = std::chrono::steady_clock::now();
@@ -2247,7 +2265,10 @@ bool Blockchain::pushBlock(const Block& blockData, const std::vector<Transaction
     }
   }
   else {
-    if (!checkProofOfWork(m_cn_context, blockData, currentDifficulty, proof_of_work)) {
+    const bool powValid = prevalidatedProof != nullptr
+      ? (proof_of_work = prevalidatedProof->proofOfWork, check_hash(proof_of_work, currentDifficulty))
+      : checkProofOfWork(m_cn_context, blockData, currentDifficulty, proof_of_work);
+    if (!powValid) {
       logger(INFO, BRIGHT_WHITE) << "Block " << blockHash
         << ", has too weak proof of work: " << proof_of_work
         << ", expected difficulty: " << currentDifficulty;

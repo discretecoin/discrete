@@ -320,7 +320,10 @@ int main(int argc, char* argv[])
       }
     }
 
-    CryptoNote::CryptoNoteProtocolHandler cprotocol(currency, dispatcher, m_core, nullptr, logManager);
+    // Every daemon mining entry point defers worker creation until the node is
+    // synchronized, so initial sync has no concurrent mining threads to reserve.
+    CryptoNote::CryptoNoteProtocolHandler cprotocol(currency, dispatcher, m_core, nullptr,
+      logManager, coreConfig.syncPowThreads);
     CryptoNote::NodeServer p2psrv(dispatcher, cprotocol, logManager);
     CryptoNote::RpcServer rpcServer(rpcConfig, dispatcher, logManager, m_core, p2psrv, cprotocol);
 
@@ -410,9 +413,9 @@ int main(int argc, char* argv[])
     //
     // --mining-wallet alone only loads and validates the key, so a bad path or
     // password fails at startup instead of an hour into a run; --start-mining is
-    // what actually mines. Either way the miner is armed, not started: the worker
-    // threads spawn from on_synchronized(), because hashing an unsynchronized
-    // chain only produces work on a stale tip.
+    // what actually arms the miner. Its worker threads spawn from
+    // on_synchronized(), because hashing an unsynchronized chain only produces
+    // work on a stale tip.
     if (!minerConfig.miningWallet.empty()) {
       Tools::PasswordContainer pwd;
       if (!minerConfig.miningPasswordFile.empty()) {
