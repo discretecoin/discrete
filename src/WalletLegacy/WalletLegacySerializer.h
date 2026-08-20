@@ -34,13 +34,21 @@ namespace CryptoNote {
 
 class WalletLegacySerializer {
 public:
-  explicit WalletLegacySerializer(CryptoNote::AccountBase& account);
+  static constexpr uint32_t STANDARD_VERSION = 2;
+  static constexpr uint32_t PROTECTED_SPEND_VERSION = 3;
+
+  explicit WalletLegacySerializer(
+      CryptoNote::AccountBase& account,
+      uint32_t serializationVersion = STANDARD_VERSION);
 
   void serialize(std::ostream& stream, const std::string& password, bool saveDetailed, const std::string& cache);
   void deserialize(std::istream& stream, const std::string& password, std::string& cache);
   bool deserialize(std::istream& stream, const std::string& password);
+  uint32_t loadedVersion() const { return loadedWalletSerializationVersion; }
 
 private:
+  void saveProtectedSpendCompatibilityGuard(CryptoNote::ISerializer& serializer);
+  void loadProtectedSpendCompatibilityGuard(CryptoNote::ISerializer& serializer);
   void saveKeys(CryptoNote::ISerializer& serializer);
   void loadKeys(CryptoNote::ISerializer& serializer);
 
@@ -49,6 +57,7 @@ private:
 
   CryptoNote::AccountBase& account;
   const uint32_t walletSerializationVersion;
+  uint32_t loadedWalletSerializationVersion;
 };
 
 extern uint32_t WALLET_LEGACY_SERIALIZATION_VERSION;

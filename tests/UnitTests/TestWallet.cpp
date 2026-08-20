@@ -1336,6 +1336,173 @@ TEST(WalletLegacySmoke, PqIdentityAndSigning) {
   wallet.shutdown();
 }
 
+TEST(WalletLegacySmoke, DetachedSeedNeverReturnsToSavedTrackingWallet) {
+  System::Dispatcher dispatcher;
+  (void)dispatcher;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(1000000).upgradeHeightV6(1000000)
+      .currency();
+  TestBlockchainGenerator generator(currency);
+  INodeTrivialRefreshStub node(generator);
+
+  CryptoNote::WalletLegacy wallet(currency, node, logger);
+  wallet.initAndGenerate("pass");
+  EXPECT_FALSE(wallet.pqScannerHasSpendSeed());
+  EXPECT_FALSE(wallet.setPqProtectedSpendMetadata("must-not-enter-a-full-wallet"));
+  const std::string address = wallet.getAddress();
+
+  CryptoNote::AccountKeys before;
+  wallet.getAccountKeys(before);
+  const CryptoPQ::SeedMaster expected = CryptoNote::pqSeedMasterFromSpendSecret(before.spendSecretKey);
+  CryptoPQ::SeedMaster detached{};
+  ASSERT_TRUE(wallet.detachPqSpendSeed(detached));
+  EXPECT_EQ(detached, expected);
+  EXPECT_TRUE(wallet.isTrackingWallet());
+  EXPECT_FALSE(wallet.pqScannerHasSpendSeed());
+
+  CryptoNote::AccountKeys after;
+  wallet.getAccountKeys(after);
+  EXPECT_EQ(after.spendSecretKey, CryptoNote::NULL_SECRET_KEY);
+  std::string words;
+  EXPECT_FALSE(wallet.getSeed(words));
+  EXPECT_THROW(wallet.sign_message("must not sign from resident state"), std::runtime_error);
+
+  const std::string message = "one-operation external seed";
+  const std::string signature = wallet.signMessageWithSeed(detached, message);
+  CryptoNote::PqAddress decoded;
+  ASSERT_TRUE(CryptoNote::decodePqAddress(address, decoded));
+  EXPECT_TRUE(CryptoNote::verifyMessagePq(message, decoded.spendPub, signature));
+  CryptoPQ::SeedMaster wrong = detached;
+  wrong[0] ^= 1;
+  EXPECT_THROW(wallet.signMessageWithSeed(wrong, message), std::runtime_error);
+
+  const std::string protectedSpendMetadata =
+      R"({"version":2,"algorithm":"test-envelope","keys":["primary","backup"]})";
+  ASSERT_TRUE(wallet.setPqProtectedSpendMetadata(protectedSpendMetadata));
+  std::string storedMetadata;
+  ASSERT_TRUE(wallet.getPqProtectedSpendMetadata(storedMetadata));
+  EXPECT_EQ(storedMetadata, protectedSpendMetadata);
+
+  std::stringstream serialized;
+  CryptoNote::WalletHelper::SaveWalletResultObserver saveObserver;
+  {
+    CryptoNote::WalletHelper::IWalletRemoveObserverGuard guard(wallet, saveObserver);
+    std::future<std::error_code> saved = saveObserver.saveResult.get_future();
+    wallet.save(serialized, true, true);
+    ASSERT_FALSE(saved.get());
+  }
+  const std::string protectedWalletBytes = serialized.str();
+  ASSERT_FALSE(protectedWalletBytes.empty());
+  EXPECT_EQ(static_cast<unsigned char>(protectedWalletBytes.front()),
+            CryptoNote::WalletLegacySerializer::PROTECTED_SPEND_VERSION);
+
+  CryptoNote::WalletSnapshotInfo snapshotInfo;
+  std::string snapshotError;
+  std::stringstream snapshotStream(protectedWalletBytes);
+  ASSERT_TRUE(CryptoNote::WalletLegacy::inspectWalletSnapshot(
+      snapshotStream, "pass", snapshotInfo, snapshotError)) << snapshotError;
+  EXPECT_EQ(snapshotInfo.serializationVersion,
+            CryptoNote::WalletLegacySerializer::PROTECTED_SPEND_VERSION);
+  EXPECT_TRUE(snapshotInfo.isTracking);
+  EXPECT_TRUE(snapshotInfo.hasPqTrackingKeys);
+  EXPECT_EQ(CryptoNote::encodePqTrackingKey(snapshotInfo.pqTrackingKeys),
+            CryptoNote::encodePqTrackingKey(
+                CryptoNote::pqTrackingKeys(
+                    CryptoNote::derivePqWalletKeys(detached))));
+  EXPECT_EQ(snapshotInfo.protectedSpendMetadata, protectedSpendMetadata);
+
+  std::stringstream wrongPasswordSnapshot(protectedWalletBytes);
+  EXPECT_FALSE(CryptoNote::WalletLegacy::inspectWalletSnapshot(
+      wrongPasswordSnapshot, "wrong", snapshotInfo, snapshotError));
+
+  // The old v2 reader ignored unknown top-level versions. Re-label the v3 file
+  // as v2 to make the current parser follow that exact legacy path: it must see
+  // the compatibility guard as keys and reject the file instead of opening it.
+  std::string legacyReaderBytes = protectedWalletBytes;
+  legacyReaderBytes[0] =
+      static_cast<char>(CryptoNote::WalletLegacySerializer::STANDARD_VERSION);
+  std::stringstream legacyReaderStream(legacyReaderBytes);
+  CryptoNote::AccountBase legacyReaderAccount;
+  CryptoNote::WalletLegacySerializer legacyReader(legacyReaderAccount);
+  EXPECT_FALSE(legacyReader.deserialize(legacyReaderStream, "pass"));
+  wallet.shutdown();
+
+  serialized.seekg(0);
+  CryptoNote::WalletLegacy reloaded(currency, node, logger);
+  CryptoNote::WalletHelper::InitWalletResultObserver initObserver;
+  {
+    CryptoNote::WalletHelper::IWalletRemoveObserverGuard guard(reloaded, initObserver);
+    std::future<std::error_code> loaded = initObserver.initResult.get_future();
+    reloaded.initAndLoad(serialized, "pass");
+    ASSERT_FALSE(loaded.get());
+  }
+
+  EXPECT_TRUE(reloaded.isTrackingWallet());
+  EXPECT_FALSE(reloaded.pqScannerHasSpendSeed());
+  EXPECT_EQ(reloaded.getAddress(), address);
+  CryptoNote::AccountKeys reloadedKeys;
+  reloaded.getAccountKeys(reloadedKeys);
+  EXPECT_EQ(reloadedKeys.spendSecretKey, CryptoNote::NULL_SECRET_KEY);
+  EXPECT_FALSE(reloaded.getSeed(words));
+  EXPECT_NO_THROW(reloaded.signMessageWithSeed(detached, message));
+  storedMetadata.clear();
+  ASSERT_TRUE(reloaded.getPqProtectedSpendMetadata(storedMetadata));
+  EXPECT_EQ(storedMetadata, protectedSpendMetadata);
+
+  // reset() deliberately saves without the normal cache. Protected-spend
+  // recovery metadata is authority, not disposable sync state, and must remain.
+  reloaded.reset();
+  storedMetadata.clear();
+  ASSERT_TRUE(reloaded.getPqProtectedSpendMetadata(storedMetadata));
+  EXPECT_EQ(storedMetadata, protectedSpendMetadata);
+  EXPECT_TRUE(reloaded.isTrackingWallet());
+  reloaded.shutdown();
+}
+
+TEST(WalletLegacySmoke, FailedProtectedMigrationCanRestoreDetachedSeed) {
+  System::Dispatcher dispatcher;
+  (void)dispatcher;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(1000000).upgradeHeightV6(1000000)
+      .currency();
+  TestBlockchainGenerator generator(currency);
+  INodeTrivialRefreshStub node(generator);
+
+  CryptoNote::WalletLegacy wallet(currency, node, logger);
+  wallet.initAndGenerate("pass");
+  const std::string address = wallet.getAddress();
+
+  CryptoPQ::SeedMaster detached{};
+  ASSERT_TRUE(wallet.detachPqSpendSeed(detached));
+  ASSERT_TRUE(wallet.setPqProtectedSpendMetadata("staged-but-not-committed"));
+  ASSERT_TRUE(wallet.restorePqSpendSeed(detached));
+  EXPECT_FALSE(wallet.isTrackingWallet());
+  EXPECT_EQ(wallet.getAddress(), address);
+
+  std::string metadata;
+  EXPECT_FALSE(wallet.getPqProtectedSpendMetadata(metadata));
+  std::string mnemonic;
+  EXPECT_TRUE(wallet.getSeed(mnemonic));
+  EXPECT_FALSE(mnemonic.empty());
+  EXPECT_NO_THROW(wallet.sign_message("rollback restored spending"));
+
+  CryptoPQ::SeedMaster wrong = detached;
+  wrong[0] ^= 1;
+  CryptoPQ::SeedMaster detachedAgain{};
+  ASSERT_TRUE(wallet.detachPqSpendSeed(detachedAgain));
+  EXPECT_FALSE(wallet.restorePqSpendSeed(wrong));
+  EXPECT_TRUE(wallet.isTrackingWallet());
+  ASSERT_TRUE(wallet.restorePqSpendSeed(detachedAgain));
+  EXPECT_FALSE(wallet.isTrackingWallet());
+  wallet.shutdown();
+}
+
 // DiscreteWallet uses WalletLegacy rather than WalletGreen. Exercise the exact
 // GUI send/history backend and prove that its original recipient label and
 // payment proof survive a full cache-backed wallet save and reload.

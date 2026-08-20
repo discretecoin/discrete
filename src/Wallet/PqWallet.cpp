@@ -21,6 +21,7 @@
 
 #include "Common/StringTools.h"
 #include "crypto/crypto-util.h"
+#include "Common/SecureMemory.h"
 
 namespace CryptoNote {
 
@@ -89,6 +90,15 @@ PqTrackingKeys pqTrackingKeys(const PqWalletKeys& keys) {
   tracking.viewSk = keys.viewSk;
   tracking.spendPub = keys.spendPub;
   return tracking;
+}
+
+bool pqTrackingKeysMatchSeed(const PqTrackingKeys& tracking,
+                             const CryptoPQ::SeedMaster& seedMaster) {
+  PqWalletKeys derived = derivePqWalletKeys(seedMaster);
+  Tools::SecretLock scrub(&derived, sizeof(derived));
+  return sodium_compare(tracking.viewPub.data(), derived.viewPub.data(), derived.viewPub.size()) == 0 &&
+         sodium_compare(tracking.viewSk.data(), derived.viewSk.data(), derived.viewSk.size()) == 0 &&
+         sodium_compare(tracking.spendPub.data(), derived.spendPub.data(), derived.spendPub.size()) == 0;
 }
 
 PqAddress pqWalletAddress(const PqWalletKeys& keys, uint64_t networkPrefix) {

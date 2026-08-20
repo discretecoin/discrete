@@ -27,6 +27,7 @@
 #include "crypto_pq/PqDerive.h"
 #include "crypto_pq/PqHash.h"
 #include "crypto_pq/PqPaymentProof.h"
+#include "crypto/crypto-util.h"
 
 // High-level builders for the PQ transaction family (spec §6/§8, ownership fix
 // in https://docs.discrete.cash/#/reference/pq-ownership-model). These assemble a fully-signed CryptoNote::
@@ -61,6 +62,11 @@ struct PqSpendInput {
 struct PqInputAuth {
   CryptoPQ::DsaPublicKey spendPub{};
   CryptoPQ::DsaSecretKey spendSk{};
+
+  // Sender code necessarily copies per-input signing authority. Scrub every
+  // copy when its container or temporary is destroyed so a completed one-shot
+  // hardware authorization does not leave ML-DSA secret keys in freed memory.
+  ~PqInputAuth() { sodium_memzero(spendSk.data(), spendSk.size()); }
 };
 
 // A recipient of one new PQ output (public address material only).

@@ -25,6 +25,7 @@
 #include "CryptoNoteConfig.h"
 
 #include <cstring>
+#include <new>
 #include <vector>
 
 using namespace CryptoNote;
@@ -69,6 +70,21 @@ PqSpendInput fund(const PqWalletKeys& owner, uint64_t amount, uint8_t txidSeed,
 }
 
 }  // namespace
+
+TEST(PqTxBuilder, InputAuthScrubsSecretOnDestroy) {
+    alignas(PqInputAuth) unsigned char storage[sizeof(PqInputAuth)];
+    auto* auth = new (storage) PqInputAuth;
+    auth->spendSk.fill(0xA5);
+    const std::size_t secretOffset =
+        reinterpret_cast<unsigned char*>(auth->spendSk.data()) - storage;
+    const std::size_t secretSize = auth->spendSk.size();
+
+    auth->~PqInputAuth();
+
+    for (std::size_t i = 0; i < secretSize; ++i) {
+        EXPECT_EQ(storage[secretOffset + i], 0);
+    }
+}
 
 TEST(PqTxBuilder, FundedSpendPassesConsensus) {
     PqWalletKeys sender = derivePqWalletKeys(spendSecret(7, 3));

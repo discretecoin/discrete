@@ -18,6 +18,7 @@
 
 #include "WalletLegacySerializer.h"
 
+#include <cstring>
 #include <stdexcept>
 
 #include "Common/MemoryInputStream.h"
@@ -56,10 +57,16 @@ namespace CryptoNote {
 
 uint32_t WALLET_LEGACY_SERIALIZATION_VERSION = 2;
 
-WalletLegacySerializer::WalletLegacySerializer(CryptoNote::AccountBase& account) :
+WalletLegacySerializer::WalletLegacySerializer(CryptoNote::AccountBase& account,
+                                               uint32_t serializationVersion) :
   account(account),
-  walletSerializationVersion(2)
+  walletSerializationVersion(serializationVersion),
+  loadedWalletSerializationVersion(0)
 {
+  if (walletSerializationVersion < 1 ||
+      walletSerializationVersion > PROTECTED_SPEND_VERSION) {
+    throw std::invalid_argument("unsupported wallet serialization version");
+  }
 }
 
 void WalletLegacySerializer::serialize(std::ostream& stream, const std::string& password, bool saveDetailed, const std::string& cache) {
@@ -69,6 +76,9 @@ void WalletLegacySerializer::serialize(std::ostream& stream, const std::string& 
   std::stringstream plainArchive;
   StdOutputStream plainStream(plainArchive);
   CryptoNote::BinaryOutputStreamSerializer serializer(plainStream);
+  if (walletSerializationVersion >= PROTECTED_SPEND_VERSION) {
+    saveProtectedSpendCompatibilityGuard(serializer);
+  }
   saveKeys(serializer);
 
   // The classical detailed transaction cache is gone on the PQ wallet (history
@@ -110,6 +120,41 @@ void WalletLegacySerializer::saveKeys(CryptoNote::ISerializer& serializer) {
   keys.serialize(serializer, "keys");
 }
 
+void WalletLegacySerializer::saveProtectedSpendCompatibilityGuard(
+    CryptoNote::ISerializer& serializer) {
+  // Version 2 readers do not reject unknown wallet versions. Put a complete,
+  // deliberately invalid KeysStorage record before the real keys so an older
+  // reader deterministically fails its seed-checksum test instead of opening a
+  // v3 wallet and later stripping the embedded protected-spend metadata.
+  CryptoNote::KeysStorage guard{};
+  guard.creationTimestamp = UINT64_C(0x4453574C56334744); // "DSWLV3GD"
+  guard.serialize(serializer, "protected_spend_compatibility_guard");
+}
+
+void WalletLegacySerializer::loadProtectedSpendCompatibilityGuard(
+    CryptoNote::ISerializer& serializer) {
+  CryptoNote::KeysStorage guard{};
+  try {
+    guard.serialize(serializer, "protected_spend_compatibility_guard");
+  } catch (const std::runtime_error&) {
+    throw std::system_error(make_error_code(CryptoNote::error::WRONG_PASSWORD));
+  }
+
+  CryptoNote::KeysStorage expected{};
+  expected.creationTimestamp = UINT64_C(0x4453574C56334744);
+  if (guard.creationTimestamp != expected.creationTimestamp ||
+      std::memcmp(&guard.spendPublicKey, &expected.spendPublicKey,
+                  sizeof(guard.spendPublicKey)) != 0 ||
+      std::memcmp(&guard.spendSecretKey, &expected.spendSecretKey,
+                  sizeof(guard.spendSecretKey)) != 0 ||
+      std::memcmp(&guard.viewPublicKey, &expected.viewPublicKey,
+                  sizeof(guard.viewPublicKey)) != 0 ||
+      std::memcmp(&guard.viewSecretKey, &expected.viewSecretKey,
+                  sizeof(guard.viewSecretKey)) != 0) {
+    throw std::system_error(make_error_code(CryptoNote::error::WRONG_PASSWORD));
+  }
+}
+
 Crypto::chacha8_iv WalletLegacySerializer::encrypt(const std::string& plain, const std::string& password, std::string& cipher) {
   Crypto::chacha8_key key;
   Crypto::cn_context context;
@@ -134,6 +179,10 @@ void WalletLegacySerializer::deserialize(std::istream& stream, const std::string
 
   uint32_t version;
   serializerEncrypted(version, "version");
+  if (version < 1 || version > PROTECTED_SPEND_VERSION) {
+    throw std::runtime_error("unsupported wallet serialization version");
+  }
+  loadedWalletSerializationVersion = version;
   // set serialization version global variable
   CryptoNote::WALLET_LEGACY_SERIALIZATION_VERSION = version;
 
@@ -151,6 +200,9 @@ void WalletLegacySerializer::deserialize(std::istream& stream, const std::string
   MemoryInputStream decryptedStream(plain.data(), plain.size()); 
   CryptoNote::BinaryInputStreamSerializer serializer(decryptedStream);
 
+  if (version >= PROTECTED_SPEND_VERSION) {
+    loadProtectedSpendCompatibilityGuard(serializer);
+  }
   loadKeys(serializer);
 
   // PQ-native: the wallet identity is the 32-byte master seed (spendSecretKey). The
@@ -190,6 +242,10 @@ bool WalletLegacySerializer::deserialize(std::istream& stream, const std::string
 
     uint32_t version;
     serializerEncrypted(version, "version");
+    if (version < 1 || version > PROTECTED_SPEND_VERSION) {
+      return false;
+    }
+    loadedWalletSerializationVersion = version;
     // set serialization version global variable
     CryptoNote::WALLET_LEGACY_SERIALIZATION_VERSION = version;
 
@@ -207,6 +263,9 @@ bool WalletLegacySerializer::deserialize(std::istream& stream, const std::string
     MemoryInputStream decryptedStream(plain.data(), plain.size());
     CryptoNote::BinaryInputStreamSerializer serializer(decryptedStream);
 
+    if (version >= PROTECTED_SPEND_VERSION) {
+      loadProtectedSpendCompatibilityGuard(serializer);
+    }
     CryptoNote::KeysStorage keys;
     try {
       keys.serialize(serializer, "keys");

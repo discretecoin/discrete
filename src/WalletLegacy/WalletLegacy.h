@@ -32,6 +32,8 @@
 
 #include <list>
 #include <map>
+#include <istream>
+#include <string>
 #include <vector>
 #include <unordered_map>
 #include <memory>
@@ -65,6 +67,14 @@
 namespace CryptoNote {
 
 class SyncStarter;
+
+struct WalletSnapshotInfo {
+  uint32_t serializationVersion = 0;
+  bool isTracking = false;
+  bool hasPqTrackingKeys = false;
+  PqTrackingKeys pqTrackingKeys{};
+  std::string protectedSpendMetadata;
+};
 
 class WalletLegacy :
   public IWalletLegacy,
@@ -109,8 +119,40 @@ public:
   uint64_t pqUnlockedBalance() const;
   std::vector<PqSpendInput> pqSpendableInputs() const;
   uint32_t pqSyncedHeight() const;
+  bool pqScannerHasSpendSeed() const;
   bool getPqTrackingKeys(PqTrackingKeys& keys) const;
+  // Opaque front-end metadata for externally protected spend authority. It is
+  // persisted inside the password-encrypted wallet file, survives reset and
+  // cache-free backups, and is never interpreted by the core.
+  bool getPqProtectedSpendMetadata(std::string& metadata) const;
+  bool setPqProtectedSpendMetadata(const std::string& metadata);
+  // Fully decrypt and inspect a saved wallet without modifying the open wallet.
+  // Protected-spend migration uses this to validate the staged tracking file
+  // before it replaces the original full wallet.
+  static bool inspectWalletSnapshot(std::istream& source,
+                                    const std::string& password,
+                                    WalletSnapshotInfo& info,
+                                    std::string& error);
   std::string getPqAddress() const;
+  // Convert an open full wallet into tracking-only state without restarting.
+  // The caller receives the seed exactly once and must persist it safely before
+  // saving the converted wallet. The existing PQ cache/history is preserved.
+  bool detachPqSpendSeed(CryptoPQ::SeedMaster& seedMaster);
+  // Roll back an in-memory detachment if the protected file could not be
+  // validated or committed. This never runs after the on-disk full wallet has
+  // been replaced.
+  bool restorePqSpendSeed(const CryptoPQ::SeedMaster& seedMaster);
+  // Verify and use an externally unlocked seed for one operation. The seed is
+  // never copied into m_account and therefore can never enter an autosave.
+  PqSendResult sendPqTransferWithSeed(const CryptoPQ::SeedMaster& seedMaster,
+                                      const std::vector<PqSendOutput>& recipients,
+                                      uint64_t fee = 0, uint64_t unlockHeight = 0,
+                                      const std::vector<uint8_t>& extra = {},
+                                      const std::vector<std::string>& recipientAddresses = {});
+  PqSendResult preparePqTransferWithSeed(const CryptoPQ::SeedMaster& seedMaster,
+                                         const std::vector<PqSendOutput>& recipients,
+                                         uint64_t fee = 0, uint64_t unlockHeight = 0,
+                                         const std::vector<uint8_t>& extra = {});
   // Build (denominate, two-pass fee, sign) and relay a PQ transfer to already-resolved
   // recipients via the common sender — the same deterministic path WalletGreen uses.
   // Throws on a tracking wallet, insufficient funds, or relay failure.
@@ -168,6 +210,20 @@ public:
 
   virtual std::string sign_message(const std::string &message) override;
 
+  TransactionId sendTransactionWithSeed(const CryptoPQ::SeedMaster& seedMaster,
+                                        const std::vector<WalletLegacyTransfer>& transfers,
+                                        uint64_t fee, const std::string& extra = "",
+                                        uint64_t ignoredPrivacyWidth = 0,
+                                        uint64_t unlockHeightstamp = 0);
+  std::string prepareRawTransactionWithSeed(const CryptoPQ::SeedMaster& seedMaster,
+                                            TransactionId& transactionId,
+                                            const std::vector<WalletLegacyTransfer>& transfers,
+                                            uint64_t fee, const std::string& extra = "",
+                                            uint64_t ignoredPrivacyWidth = 0,
+                                            uint64_t unlockHeightstamp = 0);
+  std::string signMessageWithSeed(const CryptoPQ::SeedMaster& seedMaster,
+                                  const std::string& message);
+
   virtual bool isTrackingWallet() override;
 
 private:
@@ -193,6 +249,19 @@ private:
   // Announce PQ ledger history rows discovered since the last call via
   // externalTransactionCreated, so front-ends print incoming/outgoing notifications.
   void notifyExternalTransactions();
+
+  PqWalletKeys deriveVerifiedSpendKeys(const CryptoPQ::SeedMaster& seedMaster) const;
+  TransactionId sendTransactionImpl(const CryptoPQ::SeedMaster* seedMaster,
+                                    const std::vector<WalletLegacyTransfer>& transfers,
+                                    uint64_t fee, const std::string& extra,
+                                    uint64_t ignoredPrivacyWidth,
+                                    uint64_t unlockHeightstamp);
+  std::string prepareRawTransactionImpl(const CryptoPQ::SeedMaster* seedMaster,
+                                        TransactionId& transactionId,
+                                        const std::vector<WalletLegacyTransfer>& transfers,
+                                        uint64_t fee, const std::string& extra,
+                                        uint64_t ignoredPrivacyWidth,
+                                        uint64_t unlockHeightstamp);
 
   std::vector<TransactionId> deleteOutdatedUnconfirmedTransactions();
 
@@ -226,6 +295,7 @@ private:
   // m_pqTrackingKeys instead of a spend secret.
   std::unique_ptr<WalletLedgerConsumer> m_pqConsumer;
   std::unique_ptr<PqTrackingKeys> m_pqTrackingKeys;
+  std::string m_pqProtectedSpendMetadata;
 
   // Payer-side recipient labels captured at send time (the counterparty address is
   // not recoverable from PQ output scanning). Keyed by txid, surfaced through the

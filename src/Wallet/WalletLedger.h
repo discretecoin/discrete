@@ -89,6 +89,10 @@ public:
   explicit WalletLedger(const PqWalletKeys& keys);
   explicit WalletLedger(const PqTrackingKeys& keys);
 
+  // Security diagnostic: WalletLegacy/SingleKeyIndex scanners must always be
+  // tracking-only so runtime seed detachment cannot leave a hidden copy here.
+  bool hasSeedMaster() const noexcept { return m_hasSeedMaster; }
+
   // Scan one transaction seen at `height` (use UNCONFIRMED_HEIGHT for mempool).
   // Credits owned PQ outputs and marks owned outputs spent when their nullifier
   // appears among the tx's PQ inputs. Returns true if the wallet was affected.

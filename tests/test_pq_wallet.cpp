@@ -62,6 +62,15 @@ TEST(PqWallet, SeedMasterIsTheSpendSecret) {
     EXPECT_EQ(0, std::memcmp(m.data(), s.data, sizeof(s.data)));
 }
 
+TEST(PqWallet, TrackingIdentityAcceptsOnlyItsOwnSeed) {
+    Crypto::SecretKey owner = makeSpendSecret(9, 4);
+    Crypto::SecretKey stranger = makeSpendSecret(9, 5);
+    PqTrackingKeys tracking = pqTrackingKeys(derivePqWalletKeys(owner));
+
+    EXPECT_TRUE(pqTrackingKeysMatchSeed(tracking, pqSeedMasterFromSpendSecret(owner)));
+    EXPECT_FALSE(pqTrackingKeysMatchSeed(tracking, pqSeedMasterFromSpendSecret(stranger)));
+}
+
 TEST(PqWallet, SeedMasterIsCemented) {
     // Pin the wallet-layer recovery derivation. A change here orphans every
     // existing PQ balance on restore, so it must be deliberate. Spend secret =
