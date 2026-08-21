@@ -29,19 +29,114 @@ using Common::Console::Color;
 
 namespace Common {
 
+namespace {
+
+std::string colorizePrompt(const std::string& prompt, Color color) {
+  static const char* ansiColors[] = {
+    "\033[0m",   "\033[0;34m", "\033[0;32m", "\033[0;31m",
+    "\033[0;33m", "\033[0;37m", "\033[0;36m", "\033[0;35m",
+    "\033[1;34m", "\033[1;32m", "\033[1;31m", "\033[1;33m",
+    "\033[1;37m", "\033[1;36m", "\033[1;35m"
+  };
+
+  if (color == Color::Default || color > Color::BrightMagenta) {
+    return prompt;
+  }
+
+  return std::string(ansiColors[static_cast<size_t>(color)]) + prompt + ansiColors[0];
+}
+
+class DefaultConsoleInput : public IConsoleInput {
+public:
+  bool isInteractive() const override {
+    return linenoise::IsInteractive();
+  }
+
+  ConsoleReadResult readInteractive(const std::string& prompt, std::string& line,
+                                    const std::function<bool()>& cancelled) override {
+    switch (linenoise::ReadlineInterruptible(prompt.c_str(), line, cancelled)) {
+      case linenoise::ReadlineResult::Success:
+        return ConsoleReadResult::Success;
+      case linenoise::ReadlineResult::EndOfInput:
+        return ConsoleReadResult::EndOfInput;
+      case linenoise::ReadlineResult::Cancelled:
+        return ConsoleReadResult::Cancelled;
+      case linenoise::ReadlineResult::Error:
+        return ConsoleReadResult::Error;
+      case linenoise::ReadlineResult::Unsupported:
+        return ConsoleReadResult::Unsupported;
+    }
+    return ConsoleReadResult::Unsupported;
+  }
+
+  bool waitInput(const std::function<bool()>& cancelled) override {
+#ifndef _WIN32
+    #if defined(__OpenBSD__) || defined(__ANDROID__)
+      int stdin_fileno = fileno(stdin);
+    #else
+      int stdin_fileno = ::fileno(stdin);
+    #endif
+
+    while (!cancelled()) {
+      fd_set read_set;
+      FD_ZERO(&read_set);
+      FD_SET(stdin_fileno, &read_set);
+
+      struct timeval tv;
+      tv.tv_sec = 0;
+      tv.tv_usec = 100 * 1000;
+
+      int retval = ::select(stdin_fileno + 1, &read_set, NULL, NULL, &tv);
+      if (retval == -1 && errno == EINTR) {
+        continue;
+      }
+      if (retval < 0) {
+        return false;
+      }
+      if (retval > 0) {
+        return true;
+      }
+    }
+#else
+    while (!cancelled()) {
+      DWORD retval = ::WaitForSingleObject(::GetStdHandle(STD_INPUT_HANDLE), 100);
+      switch (retval) {
+        case WAIT_FAILED:
+          return false;
+        case WAIT_OBJECT_0:
+          return true;
+        default:
+          break;
+      }
+    }
+#endif
+    return !cancelled();
+  }
+
+  bool readLegacy(std::string& line) override {
+    return static_cast<bool>(std::getline(std::cin, line));
+  }
+};
+
+} // namespace
+
 /////////////////////////////////////////////////////////////////////////////
 // AsyncConsoleReader
 /////////////////////////////////////////////////////////////////////////////
-AsyncConsoleReader::AsyncConsoleReader() : m_stop(true) {
+AsyncConsoleReader::AsyncConsoleReader(std::shared_ptr<IConsoleInput> input)
+    : m_input(input ? std::move(input) : std::make_shared<DefaultConsoleInput>()), m_stop(true) {
 }
 
 AsyncConsoleReader::~AsyncConsoleReader() {
   stop();
 }
 
-void AsyncConsoleReader::start(bool memoryHistory, const std::string& prompt) {
+void AsyncConsoleReader::start(bool memoryHistory, const std::string& prompt,
+                               Console::Color promptColor) {
   m_memoryHistory = memoryHistory;
   m_prompt = prompt;
+  m_promptColor = promptColor;
+  m_lineEditorEnabled = memoryHistory && m_input->isInteractive();
   m_stop = false;
   m_thread = std::thread(std::bind(&AsyncConsoleReader::consoleThread, this));
 }
@@ -54,6 +149,10 @@ void AsyncConsoleReader::inputConsumed() {
   std::lock_guard<std::mutex> lock(m_inputMutex);
   m_inputPending = false;
   m_inputConsumed.notify_one();
+}
+
+bool AsyncConsoleReader::usesLineEditor() const {
+  return m_lineEditorEnabled;
 }
 
 void AsyncConsoleReader::pause() {
@@ -72,7 +171,7 @@ void AsyncConsoleReader::pause() {
 }
 
 void AsyncConsoleReader::unpause() {
-  start(m_memoryHistory, m_prompt);
+  start(m_memoryHistory, m_prompt, m_promptColor);
 } 
 
 void AsyncConsoleReader::stop() {
@@ -84,9 +183,6 @@ void AsyncConsoleReader::stop() {
   m_stop = true;
   m_inputConsumed.notify_all();
   m_queue.close();
-#ifdef _WIN32
-  ::CloseHandle(::GetStdHandle(STD_INPUT_HANDLE));
-#endif
 
   if (m_thread.joinable()) {
     m_thread.join();
@@ -101,12 +197,13 @@ bool AsyncConsoleReader::stopped() const {
 
 void AsyncConsoleReader::consoleThread() {
 
-  if (m_memoryHistory) {
+  if (m_lineEditorEnabled) {
     // History is deliberately process-local. Do not call linenoise's
     // SaveHistory/LoadHistory APIs: wallet commands may contain sensitive data.
     linenoise::SetHistoryMaxLen(256);
   }
 
+  bool inputEnded = false;
   while (!m_stop) {
     {
       std::unique_lock<std::mutex> lock(m_inputMutex);
@@ -118,15 +215,39 @@ void AsyncConsoleReader::consoleThread() {
 
     // Linenoise must enter raw mode and render the prompt before the first key
     // arrives. The legacy getline path keeps its interruptible select loop.
-    if (!m_memoryHistory && !waitInput()) {
+    if (!m_lineEditorEnabled && !m_input->waitInput([this] { return m_stop.load(); })) {
+      inputEnded = !m_stop;
       break;
     }
 
     std::string line;
 
-    if (m_memoryHistory) {
-      const bool inputClosed = linenoise::Readline(m_prompt.c_str(), line);
-      if (inputClosed) {
+    if (m_lineEditorEnabled) {
+      const std::string prompt = colorizePrompt(m_prompt, m_promptColor);
+      const auto result = m_input->readInteractive(
+          prompt, line, [this] { return m_stop.load(); });
+      if (result == ConsoleReadResult::Cancelled) {
+        break;
+      }
+      if (result == ConsoleReadResult::Error) {
+        inputEnded = !m_stop;
+        break;
+      }
+      if (result == ConsoleReadResult::Unsupported) {
+        m_lineEditorEnabled = false;
+        if (!m_prompt.empty()) {
+          if (m_promptColor != Color::Default) {
+            Console::setTextColor(m_promptColor);
+          }
+          std::cout << m_prompt;
+          std::cout.flush();
+          if (m_promptColor != Color::Default) {
+            Console::setTextColor(Color::Default);
+          }
+        }
+        continue;
+      }
+      if (result == ConsoleReadResult::EndOfInput) {
         // Treat Ctrl-C/Ctrl-D like the wallet's exit command so the command
         // handler can perform its normal shutdown.
         line = "exit";
@@ -137,7 +258,8 @@ void AsyncConsoleReader::consoleThread() {
           linenoise::AddHistory(historyLine.c_str());
         }
       }
-    } else if (!std::getline(std::cin, line)) {
+    } else if (!m_input->readLegacy(line)) {
+      inputEnded = !m_stop;
       break;
     }
 
@@ -156,56 +278,10 @@ void AsyncConsoleReader::consoleThread() {
     std::unique_lock<std::mutex> lock(m_inputMutex);
     m_inputConsumed.wait(lock, [this] { return !m_inputPending || m_stop; });
   }
-}
 
-bool AsyncConsoleReader::waitInput() {
-#ifndef _WIN32
-  #if defined(__OpenBSD__) || defined(__ANDROID__)
-    int stdin_fileno = fileno(stdin);
-  #else
-    int stdin_fileno = ::fileno(stdin);
-  #endif
-
-  while (!m_stop) {
-    fd_set read_set;
-    FD_ZERO(&read_set);
-    FD_SET(stdin_fileno, &read_set);
-
-    struct timeval tv;
-    tv.tv_sec = 0;
-    tv.tv_usec = 100 * 1000;
- 
-    int retval = ::select(stdin_fileno + 1, &read_set, NULL, NULL, &tv);
-
-    if (retval == -1 && errno == EINTR) {
-      continue;
-    }
-
-    if (retval < 0) {
-      return false;
-    }
-
-    if (retval > 0) {
-      return true;
-    }
+  if (inputEnded) {
+    m_queue.close();
   }
-#else
-  while (!m_stop.load(std::memory_order_relaxed))
-  {
-    DWORD retval = ::WaitForSingleObject(::GetStdHandle(STD_INPUT_HANDLE), 100);
-    switch (retval)
-    {
-      case WAIT_FAILED:
-        return false;
-      case WAIT_OBJECT_0:
-        return true;
-      default:
-        break;
-    }
-  }
-#endif
-
-  return !m_stop;
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -219,8 +295,7 @@ void ConsoleHandler::start(bool startThread, const std::string& prompt, Console:
                            bool memoryHistory) {
   m_prompt = prompt;
   m_promptColor = promptColor;
-  m_memoryHistory = memoryHistory;
-  m_consoleReader.start(memoryHistory, prompt);
+  m_consoleReader.start(memoryHistory, prompt, promptColor);
 
   if (startThread) {
     m_thread = std::thread(std::bind(&ConsoleHandler::handlerThread, this));
@@ -340,7 +415,7 @@ void ConsoleHandler::handlerThread() {
 
   while(!m_consoleReader.stopped()) {
     try {
-      if (!m_memoryHistory && !m_prompt.empty()) {
+      if (!m_consoleReader.usesLineEditor() && !m_prompt.empty()) {
         if (m_promptColor != Color::Default) {
           Console::setTextColor(m_promptColor);
         }

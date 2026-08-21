@@ -190,6 +190,7 @@ __inline int c99_snprintf(char *outBuf, size_t size, const char *format, ...)
 namespace linenoise {
 
 typedef std::function<void (const char*, std::vector<std::string>&)> CompletionCallback;
+typedef std::function<bool ()> CancellationCallback;
 
 #ifdef _WIN32
 
@@ -963,15 +964,21 @@ HANDLE hOut;
 HANDLE hIn;
 DWORD consolemodeIn = 0;
 
-inline int win32read(int *c) {
+inline int win32read(int *c, const CancellationCallback& cancelled = CancellationCallback()) {
     DWORD foo;
     INPUT_RECORD b;
     KEY_EVENT_RECORD e;
     BOOL altgr;
 
     while (1) {
-        if (!ReadConsoleInput(hIn, &b, 1, &foo)) return 0;
-        if (!foo) return 0;
+        if (cancelled && cancelled()) return -2;
+
+        DWORD waitResult = WaitForSingleObject(hIn, cancelled ? 100 : INFINITE);
+        if (waitResult == WAIT_TIMEOUT) continue;
+        if (waitResult != WAIT_OBJECT_0) return -3;
+
+        if (!ReadConsoleInput(hIn, &b, 1, &foo)) return -3;
+        if (!foo) return -3;
 
         if (b.EventType == KEY_EVENT && b.Event.KeyEvent.bKeyDown) {
 
@@ -1622,7 +1629,7 @@ inline bool isUnsupportedTerm(void) {
 }
 
 /* Raw mode: 1960 magic shit. */
-inline bool enableRawMode(int fd) {
+inline bool enableRawMode(int fd, bool interruptible = false) {
 #ifndef _WIN32
     struct termios raw;
 
@@ -1652,7 +1659,8 @@ inline bool enableRawMode(int fd) {
     raw.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
     /* control chars - set return condition: min number of bytes and timer.
      * We want read to return every single byte, without timeout. */
-    raw.c_cc[VMIN] = 1; raw.c_cc[VTIME] = 0; /* 1 byte, no timer */
+    raw.c_cc[VMIN] = interruptible ? 0 : 1;
+    raw.c_cc[VTIME] = interruptible ? 1 : 0; /* Poll every 100 ms when cancellable. */
 
     /* put terminal in raw mode after flushing */
     if (tcsetattr(fd,TCSAFLUSH,&raw) < 0) goto fatal;
@@ -2129,7 +2137,8 @@ inline void linenoiseEditDeletePrevWord(struct linenoiseState *l) {
  * when ctrl+d is typed.
  *
  * The function returns the length of the current buffer. */
-inline int linenoiseEdit(int stdin_fd, int stdout_fd, char *buf, int buflen, const char *prompt)
+inline int linenoiseEdit(int stdin_fd, int stdout_fd, char *buf, int buflen, const char *prompt,
+                         const CancellationCallback& cancelled = CancellationCallback())
 {
     struct linenoiseState l;
 
@@ -2156,19 +2165,24 @@ inline int linenoiseEdit(int stdin_fd, int stdout_fd, char *buf, int buflen, con
 
     if (write(l.ofd,prompt, static_cast<int>(l.prompt.length())) == -1) return -1;
     while(1) {
+        if (cancelled && cancelled()) return -2;
+
         int c;
         char cbuf[4];
         int nread;
         char seq[3];
 
 #ifdef _WIN32
-        nread = win32read(&c);
+        nread = win32read(&c, cancelled);
         if (nread == 1) {
             cbuf[0] = c;
         }
 #else
         nread = unicodeReadUTF8Char(l.ifd,cbuf,&c);
 #endif
+        if (nread == -2) return -2;
+        if (nread < 0 && cancelled) return -3;
+        if (nread == 0 && cancelled) continue;
         if (nread <= 0) return (int)l.len;
 
         /* Only autocomplete when the callback is set. It returns < 0 when
@@ -2228,14 +2242,14 @@ inline int linenoiseEdit(int stdin_fd, int stdout_fd, char *buf, int buflen, con
             /* Read the next two bytes representing the escape sequence.
              * Use two calls to handle slow terminals returning the two
              * chars at different times. */
-            if (read(l.ifd,seq,1) == -1) break;
-            if (read(l.ifd,seq+1,1) == -1) break;
+            if (read(l.ifd,seq,1) != 1) break;
+            if (read(l.ifd,seq+1,1) != 1) break;
 
             /* ESC [ sequences. */
             if (seq[0] == '[') {
                 if (seq[1] >= '0' && seq[1] <= '9') {
                     /* Extended escape, read additional byte. */
-                    if (read(l.ifd,seq+2,1) == -1) break;
+                    if (read(l.ifd,seq+2,1) != 1) break;
                     if (seq[2] == '~') {
                         switch(seq[1]) {
                         case '3': /* Delete key. */
@@ -2352,6 +2366,39 @@ inline bool Readline(const char *prompt, std::string& line) {
     } else {
         return linenoiseRaw(prompt, line);
     }
+}
+
+enum class ReadlineResult {
+    Success,
+    EndOfInput,
+    Cancelled,
+    Error,
+    Unsupported
+};
+
+inline bool IsInteractive() {
+    return isatty(STDIN_FILENO) && isatty(STDOUT_FILENO) && !isUnsupportedTerm();
+}
+
+/* A cancellable, interactive-only entry point. Non-TTY and unsupported
+ * terminals are reported to the caller instead of falling back to getline,
+ * whose EOF state cannot be represented by the historical bool API. */
+inline ReadlineResult ReadlineInterruptible(const char *prompt, std::string& line,
+                                            const CancellationCallback& cancelled) {
+    if (!IsInteractive()) return ReadlineResult::Unsupported;
+    if (!enableRawMode(STDIN_FILENO, true)) return ReadlineResult::Unsupported;
+
+    char buf[LINENOISE_MAX_LINE];
+    const int count = linenoiseEdit(STDIN_FILENO, STDOUT_FILENO, buf,
+                                    LINENOISE_MAX_LINE, prompt, cancelled);
+    disableRawMode(STDIN_FILENO);
+    printf("\n");
+
+    if (count == -2) return ReadlineResult::Cancelled;
+    if (count == -3) return ReadlineResult::Error;
+    if (count == -1) return ReadlineResult::EndOfInput;
+    line.assign(buf, count);
+    return ReadlineResult::Success;
 }
 
 inline std::string Readline(const char *prompt, bool& quit) {
