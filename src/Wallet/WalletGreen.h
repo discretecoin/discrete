@@ -285,6 +285,14 @@ protected:
   // Wipe every secret this wallet holds: the container key, the password, and
   // the master seeds in the address records.
   void wipeSecrets();
+
+public:
+  // True while any secret is still resident. Never exposes a secret; it lets the
+  // daemon report state and lets tests assert that closing a wallet, or failing
+  // to open one, leaves nothing behind.
+  bool hasResidentSecrets() const;
+
+private:
   // Set up a fresh (empty) PQ wallet container: the prefix holds only the version
   // — there is no classical view key. The primary seed lands as record 0 via the
   // first createAddress()/doCreateAddress().

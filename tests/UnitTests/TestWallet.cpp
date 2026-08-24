@@ -1953,3 +1953,106 @@ TEST(PqWalletIntegration, LegacyContainerWithAWrongPasswordIsLeftAlone) {
   boost::filesystem::remove(path);
   boost::filesystem::remove(path + ".v9");
 }
+
+// Secrets must not outlive the wallet that holds them. Closing a wallet, and
+// failing to open one, both have to leave the container key, the password and
+// the master seeds zeroed rather than sitting in freed heap (and in swap) until
+// the process ends.
+TEST(PqWalletIntegration, ClosingAWalletScrubsItsSecrets) {
+  System::Dispatcher dispatcher;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(1000000).upgradeHeightV6(1000000)
+      .currency();
+  TestBlockchainGenerator generator(currency);
+  INodeTrivialRefreshStub node(generator);
+  CryptoNote::WalletGreen wallet(dispatcher, currency, node, logger);
+
+  const std::string path = "pq_scrub.wallet";
+  boost::filesystem::remove(path);
+
+  wallet.initialize(path, "pass");
+  wallet.createAddress();
+  EXPECT_TRUE(wallet.hasResidentSecrets());
+
+  wallet.shutdown();
+  EXPECT_FALSE(wallet.hasResidentSecrets())
+      << "a closed wallet is still holding its key, password or master seed";
+
+  // Reopening and closing again behaves the same way.
+  wallet.load(path, "pass");
+  EXPECT_TRUE(wallet.hasResidentSecrets());
+  wallet.shutdown();
+  EXPECT_FALSE(wallet.hasResidentSecrets());
+
+  boost::filesystem::remove(path);
+}
+
+TEST(PqWalletIntegration, AFailedOpenLeavesNoSecretsBehind) {
+  System::Dispatcher dispatcher;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(1000000).upgradeHeightV6(1000000)
+      .currency();
+  TestBlockchainGenerator generator(currency);
+  INodeTrivialRefreshStub node(generator);
+
+  const std::string path = "pq_scrub_badpass.wallet";
+  boost::filesystem::remove(path);
+
+  {
+    CryptoNote::WalletGreen wallet(dispatcher, currency, node, logger);
+    wallet.initialize(path, "pass");
+    wallet.createAddress();
+    wallet.save(CryptoNote::WalletSaveLevel::SAVE_ALL);
+    wallet.shutdown();
+  }
+
+  // A wrong password still derives a key before it fails. That key must not
+  // survive the failure.
+  CryptoNote::WalletGreen wallet(dispatcher, currency, node, logger);
+  EXPECT_ANY_THROW(wallet.load(path, "wrong"));
+  EXPECT_FALSE(wallet.hasResidentSecrets())
+      << "a failed open left the derived container key resident";
+
+  boost::filesystem::remove(path);
+}
+
+TEST(PqWalletIntegration, ChangingThePasswordDoesNotStrandTheOldKey) {
+  System::Dispatcher dispatcher;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(1000000).upgradeHeightV6(1000000)
+      .currency();
+  TestBlockchainGenerator generator(currency);
+  INodeTrivialRefreshStub node(generator);
+  CryptoNote::WalletGreen wallet(dispatcher, currency, node, logger);
+
+  const std::string path = "pq_scrub_chpass.wallet";
+  boost::filesystem::remove(path);
+
+  wallet.initialize(path, "old pass");
+  wallet.createAddress();
+  const std::string address = wallet.getAddress(0);
+
+  wallet.changePassword("old pass", "new pass");
+  wallet.save(CryptoNote::WalletSaveLevel::SAVE_ALL);
+  wallet.shutdown();
+  EXPECT_FALSE(wallet.hasResidentSecrets());
+
+  // The new password opens it and the old one does not.
+  wallet.load(path, "new pass");
+  EXPECT_EQ(address, wallet.getAddress(0));
+  wallet.shutdown();
+
+  CryptoNote::WalletGreen stale(dispatcher, currency, node, logger);
+  EXPECT_ANY_THROW(stale.load(path, "old pass"));
+
+  boost::filesystem::remove(path);
+}

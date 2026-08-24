@@ -173,6 +173,10 @@ WalletGreen::~WalletGreen() {
   if (m_state == WalletState::INITIALIZED) {
     doShutdown();
   }
+  // Also covers the half-open cases: load() derives the container key before the
+  // state flips, so a load that threw part-way would otherwise leave the key
+  // resident for the rest of the process's life.
+  wipeSecrets();
 
   m_dispatcher.yield(); //let remote spawns finish
 }
@@ -684,6 +688,23 @@ void WalletGreen::migrateLegacyContainer(const std::string& path, const std::str
                                << backupPath;
 }
 
+bool WalletGreen::hasResidentSecrets() const {
+  const auto* keyBytes = reinterpret_cast<const uint8_t*>(&m_key);
+  if (std::any_of(keyBytes, keyBytes + sizeof(m_key), [](uint8_t b) { return b != 0; })) {
+    return true;
+  }
+  if (!m_password.empty()) {
+    return true;
+  }
+  for (const auto& record : m_walletsContainer.get<RandomAccessIndex>()) {
+    if (std::any_of(record.seedMaster.begin(), record.seedMaster.end(),
+                    [](uint8_t b) { return b != 0; })) {
+      return true;
+    }
+  }
+  return false;
+}
+
 void WalletGreen::wipeSecrets() {
   sodium_memzero(&m_key, sizeof(m_key));
   if (!m_password.empty()) {
@@ -732,6 +753,9 @@ void WalletGreen::loadContainerStorage(const std::string& path, const std::strin
   } catch (const std::exception& e) {
     m_logger(ERROR, BRIGHT_RED) << "Failed to load container keys: " << e.what();
 
+    // A wrong password still derived a key, and a partially loaded container
+    // still holds master seeds. Neither may outlive the failed open.
+    wipeSecrets();
     m_walletsContainer.clear();
     m_containerStorage.close();
 
