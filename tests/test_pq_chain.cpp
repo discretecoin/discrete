@@ -618,7 +618,32 @@ bool runFreeRegAdmissionOrder() {
   ok &= expect(registered.proofWork == 0,
                "order: already-registered identity cost no proof work");
 
-  // 5. An invalid proof is remembered, so replaying it is free the second time.
+  // 5. A registration padded with an unknown tx_extra tag has a different
+  //    transaction id but carries the very same proof. It must not be relayed,
+  //    or one proof buys unlimited fresh-looking transactions.
+  {
+    Transaction padded = makeFastFreeRegTx(refHash, 54);
+    Transaction canonical = padded;
+    // A tag the parser does not know. It is skipped one byte at a time and
+    // yields no field, so the field-level checks never see it.
+    padded.extra.push_back(0x7F);
+    ok &= expect(getObjectHash(padded) != getObjectHash(canonical),
+                 "order: padded registration has a different id");
+    ok &= expect(!isCanonicalFreeRegExtra(padded.extra),
+                 "order: padded extra is not canonical");
+    ok &= expect(isCanonicalFreeRegExtra(canonical.extra),
+                 "order: unpadded extra is canonical");
+
+    Outcome relayed = submit(padded);
+    ok &= expect(!relayed.accepted, "order: padded registration not relayed");
+    ok &= expect(relayed.proofWork == 0, "order: padded registration cost no proof work");
+
+    // The canonical form of the same registration is still fine.
+    Outcome clean = submit(canonical);
+    ok &= expect(clean.accepted, "order: canonical registration still accepted");
+  }
+
+  // 6. An invalid proof is remembered, so replaying it is free the second time.
   const Currency strict = CurrencyBuilder(logger)
       .testnet(true)
       .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)

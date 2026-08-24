@@ -380,6 +380,19 @@ bool Core::check_tx_semantic(const Transaction& tx, const Crypto::Hash& txHash, 
         logger(ERROR) << "free-reg tx semantic check failed (" << pqErr << ") for tx id= " << Common::podToHex(txHash);
         return false;
       }
+      // RELAY POLICY, deliberately not applied to transactions arriving inside a
+      // block: block validity must stay exactly as it was, or upgraded and old
+      // nodes would disagree about a block.
+      //
+      // parseTransactionExtra() silently skips tags it does not know, so the
+      // field-level checks above cannot see padding bytes appended to an
+      // otherwise valid registration. Without this, one registration proof can
+      // be re-wrapped into unlimited transactions with different ids, each of
+      // which looks new to every id-keyed cache on the network.
+      if (!keeped_by_block && !isCanonicalFreeRegExtra(tx.extra)) {
+        logger(INFO) << "free-reg tx has non-canonical extra, not relayed: " << Common::podToHex(txHash);
+        return false;
+      }
       return true;
     } else {
       logger(ERROR) << "unknown PQ tx subtype " << static_cast<int>(tx.txType)
