@@ -629,6 +629,72 @@ TEST(WalletLedger, SingleKeyIndexAutomaticallyCreditsLegacyNonzeroT) {
     EXPECT_EQ(st.outputs()[0].depositIndex, 44u);
 }
 
+// T is 64 bits on the wire; the ledger's deposit buckets are 32. The SENDER
+// picks T, so narrowing it with a cast would let a payer choose which of our
+// deposits their payment is credited to — T = 2^32 + n would land on bucket n,
+// and T = 0xFFFFFFFF would land on the primary-address sentinel. Out-of-range
+// values must be recorded as unattributed instead, with the funds still owned.
+TEST(WalletLedger, HugeRoutingIndexDoesNotAliasADepositBucket) {
+    // The pure mapping, over the boundary cases.
+    EXPECT_EQ(PQ_PRIMARY_DEPOSIT, pqDepositIndexForRoute(0));
+    EXPECT_EQ(1u, pqDepositIndexForRoute(1));
+    EXPECT_EQ(7u, pqDepositIndexForRoute(7));
+
+    EXPECT_EQ(PQ_UNATTRIBUTED_DEPOSIT, pqDepositIndexForRoute(1ull << 32));
+    EXPECT_NE(0u, pqDepositIndexForRoute(1ull << 32));
+
+    EXPECT_EQ(PQ_UNATTRIBUTED_DEPOSIT, pqDepositIndexForRoute((1ull << 32) + 5));
+    EXPECT_NE(5u, pqDepositIndexForRoute((1ull << 32) + 5));
+
+    EXPECT_EQ(PQ_UNATTRIBUTED_DEPOSIT, pqDepositIndexForRoute(0xFFFFFFFFull));
+    EXPECT_NE(PQ_PRIMARY_DEPOSIT, pqDepositIndexForRoute(0xFFFFFFFFull));
+
+    EXPECT_EQ(PQ_UNATTRIBUTED_DEPOSIT, pqDepositIndexForRoute(0xFFFFFFFFFFFFFFFFull));
+
+    // The last attributable index still maps to itself.
+    EXPECT_EQ(static_cast<uint32_t>(PQ_MAX_DEPOSIT_ROUTE),
+              pqDepositIndexForRoute(PQ_MAX_DEPOSIT_ROUTE));
+}
+
+TEST(WalletLedger, OutOfRangeRoutingIndexIsOwnedButUnattributed) {
+    PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
+    PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
+
+    WalletLedger st(me);
+    st.setDepositConfig(PqDepositScheme::SingleKeyIndex, 8);
+
+    // A payer aiming at deposit 3 by way of 2^32 + 3.
+    Funded f = payToPub(them, me.viewPub, me.spendPub, 1000000, 750000, 0xB8,
+                        (1ull << 32) + 3);
+    ASSERT_TRUE(st.processTransaction(f.tx, f.txid, 100));
+
+    // The money is ours and spendable...
+    EXPECT_EQ(750000u, st.balance());
+    ASSERT_EQ(1u, st.outputs().size());
+    EXPECT_EQ(1u, st.spendableInputs().size());
+
+    // ...but it did not land in deposit 3, nor on the primary address.
+    EXPECT_EQ(PQ_UNATTRIBUTED_DEPOSIT, st.outputs()[0].depositIndex);
+    EXPECT_EQ(0u, st.depositBalance(3));
+    EXPECT_EQ(0u, st.depositBalance(PQ_PRIMARY_DEPOSIT));
+}
+
+TEST(WalletLedger, RoutingIndexAtTheSentinelDoesNotBecomeThePrimaryAddress) {
+    PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
+    PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
+
+    WalletLedger st(me);
+    st.setDepositConfig(PqDepositScheme::SingleKeyIndex, 8);
+
+    Funded f = payToPub(them, me.viewPub, me.spendPub, 1000000, 750000, 0xB9,
+                        0xFFFFFFFFull);
+    ASSERT_TRUE(st.processTransaction(f.tx, f.txid, 100));
+
+    ASSERT_EQ(1u, st.outputs().size());
+    EXPECT_EQ(PQ_UNATTRIBUTED_DEPOSIT, st.outputs()[0].depositIndex);
+    EXPECT_EQ(0u, st.depositBalance(PQ_PRIMARY_DEPOSIT));
+}
+
 TEST(WalletLedger, SingleKeyIndexDoesNotCreditLegacyTOutsideIssuedWindow) {
     PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
     PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));

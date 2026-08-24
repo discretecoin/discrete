@@ -222,8 +222,12 @@ PqSendResult buildPqSend(const std::vector<PqSpendInput>& available,
     for (const auto& si : sel) {
       auth.emplace_back();
       PqInputAuth& entry = auth.back();
+      // An unattributed output is ours but has no deposit; like the primary
+      // bucket it is authorized by the wallet's own spend key, never by a
+      // per-deposit key derived from the sentinel value.
       if (req.scheme == PqDepositScheme::SingleKeyIndex ||
-          si.depositIndex == PQ_PRIMARY_DEPOSIT) {
+          si.depositIndex == PQ_PRIMARY_DEPOSIT ||
+          si.depositIndex == PQ_UNATTRIBUTED_DEPOSIT) {
         entry.spendPub = keys.spendPub;
         entry.spendSk = keys.spendSk;
       } else {

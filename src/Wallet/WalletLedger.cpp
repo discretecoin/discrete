@@ -221,9 +221,15 @@ bool WalletLedger::processTransaction(const TransactionPrefix& tx, const Crypto:
         // and a base H-I-A-C account number both send at T=0, so an output there
         // is not attributable to any deposit. Deposit issuance starts at T=1
         // (WalletGreen::pqFirstDepositIndex) precisely so this stays unambiguous.
-        depositIndex = owned->subaddrIndexT == 0
-            ? PQ_PRIMARY_DEPOSIT
-            : static_cast<uint32_t>(owned->subaddrIndexT);
+        //
+        // T is 64 bits on the wire while the ledger buckets are 32. Truncating
+        // would let a sender pick which of OUR deposits an incoming payment is
+        // credited to: T = 2^32 + n lands on bucket n, and T = 0xFFFFFFFF lands
+        // on the primary-address sentinel itself. So the value is range-checked
+        // instead of cast, and anything outside the supported range is recorded
+        // as unattributed. The output is still recognised and still spendable —
+        // only the deposit it is credited to is withheld.
+        depositIndex = pqDepositIndexForRoute(owned->subaddrIndexT);
       }
     } else {
       // AggregatedMultikey: the wallet's own primary address (T=0), then the

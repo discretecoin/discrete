@@ -43,6 +43,34 @@ namespace CryptoNote {
 // share one definition.
 constexpr uint32_t PQ_PRIMARY_DEPOSIT = 0xFFFFFFFFu;
 
+// Sentinel depositIndex meaning "ours, but we cannot say which deposit". Used
+// when an incoming output carries a routing index outside the range the wallet
+// can account for; the funds are still recognised, owned and spendable, only the
+// deposit attribution is withheld.
+constexpr uint32_t PQ_UNATTRIBUTED_DEPOSIT = 0xFFFFFFFEu;
+
+// The largest routing index a wallet can attribute to a deposit bucket. T is
+// 64 bits on the wire and the ledger buckets are 32, and the top two 32-bit
+// values are the sentinels above, so the usable range stops below them.
+constexpr uint64_t PQ_MAX_DEPOSIT_ROUTE = 0xFFFFFFFDull;
+
+// Map a wire routing index T onto a ledger deposit bucket.
+//
+// Never narrow T with a cast. The sender picks T, so a truncating cast would let
+// a payer choose which of the recipient's deposits their payment is credited to:
+// T = 2^32 + n would alias bucket n, and T = 0xFFFFFFFF would alias the
+// primary-address sentinel. Out-of-range values are classified as unattributed
+// instead.
+inline uint32_t pqDepositIndexForRoute(uint64_t subaddrIndexT) {
+  if (subaddrIndexT == 0) {
+    return PQ_PRIMARY_DEPOSIT;  // T = 0 IS the primary address
+  }
+  if (subaddrIndexT > PQ_MAX_DEPOSIT_ROUTE) {
+    return PQ_UNATTRIBUTED_DEPOSIT;
+  }
+  return static_cast<uint32_t>(subaddrIndexT);
+}
+
 // A PQ output this wallet owns and is spending. `rho` comes from the scan record
 // (CryptoPQ::PqOwnedOutput.rho). The spend is authorized by the ML-DSA spend secret
 // that matches the output's spend_commit: the wallet's primary key for primary
