@@ -42,6 +42,7 @@
 #include <string>
 #include <cstdint>
 #include <map>
+#include <vector>
 #include <boost/algorithm/string.hpp>
 #include "crypto/crypto.h"  // for declaration of Crypto::SecretKey
 #include "language_base.h"
@@ -90,6 +91,12 @@ void get_language_list(std::vector<std::string> &languages);
 	*/
 bool get_is_old_style_seed(std::string seed);
 
+/*!
+ * rief The English word list, used to report which words of a rejected phrase
+ *        are not in the dictionary. Never empty, never null.
+ */
+const std::vector<std::string>& english_word_list();
+
     /* Templates have to be implemented in the header to be accessible
        elsewhere */
 
@@ -101,10 +108,11 @@ bool get_is_old_style_seed(std::string seed);
     template <typename T>
     void log_incorrect_words(std::vector<std::string> words, T &stream)
     {
-      //Language::Base *language = Language::Singleton<Language::English>::instance();
-	  Language::Base *language = NULL;
-	  
-      const std::vector<std::string> &dictionary = language->get_word_list();
+      // The dictionary comes from english_word_list(), which owns a real list.
+      // This used to dereference a null Language::Base, so every rejected
+      // 25-word phrase — the one length that reaches this reporting path —
+      // crashed the wallet instead of re-prompting.
+      const std::vector<std::string> &dictionary = english_word_list();
 
       Common::Console::setTextColor(Common::Console::Color::BrightRed);
 

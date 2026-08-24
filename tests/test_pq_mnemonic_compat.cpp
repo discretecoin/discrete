@@ -25,6 +25,7 @@
 
 #include "Mnemonics/electrum-words.h"
 
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -213,6 +214,43 @@ TEST(MnemonicCompat, RejectsEmptyAndNonWords) {
   std::vector<std::string> words = split(kValidPhrase);
   words[0] = "notaword";
   EXPECT_FALSE(Crypto::ElectrumWords::words_to_bytes(join(words), decoded, language));
+}
+
+// The import prompt calls is_valid_mnemonic in a retry loop. A phrase of exactly
+// 25 words passes the length gate and, if it then fails to decode, reaches the
+// diagnostic that lists which words are not in the dictionary. That path used to
+// read the word list through a null Language::Base and take the wallet down, so
+// a single mistyped word ended the session instead of re-prompting.
+TEST(MnemonicCompat, InvalidTwentyFiveWordPhraseReportsInsteadOfCrashing) {
+  std::vector<std::string> words = split(kValidPhrase);
+  words[0] = "notaword";
+  ASSERT_EQ(25u, words.size());
+
+  Crypto::SecretKey decoded;
+  std::ostringstream out;
+  EXPECT_FALSE(Crypto::ElectrumWords::is_valid_mnemonic(join(words), decoded, out));
+
+  // The rejected word is named, which is the whole point of the diagnostic.
+  EXPECT_NE(std::string::npos, out.str().find("notaword"));
+}
+
+TEST(MnemonicCompat, EveryWordUnknownIsAlsoReported) {
+  std::vector<std::string> words(25, "zzzznotaword");
+
+  Crypto::SecretKey decoded;
+  std::ostringstream out;
+  EXPECT_FALSE(Crypto::ElectrumWords::is_valid_mnemonic(join(words), decoded, out));
+  EXPECT_NE(std::string::npos, out.str().find("zzzznotaword"));
+}
+
+TEST(MnemonicCompat, ValidPhraseStillPassesTheFrontEndCheck) {
+  Crypto::SecretKey decoded;
+  std::ostringstream out;
+  EXPECT_TRUE(Crypto::ElectrumWords::is_valid_mnemonic(kValidPhrase, decoded, out));
+}
+
+TEST(MnemonicCompat, EnglishWordListIsPopulated) {
+  EXPECT_EQ(1626u, Crypto::ElectrumWords::english_word_list().size());
 }
 
 int main(int argc, char** argv) {
