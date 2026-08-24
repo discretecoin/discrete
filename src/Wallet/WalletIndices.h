@@ -65,17 +65,13 @@ struct WalletRecord {
 // The container is versioned. Version 10 is the current format; version 9 is
 // still readable so an existing wallet can be opened once and migrated.
 //
-// What changed, and why:
-//   * The password KDF takes a per-wallet random salt, so two wallets sharing a
-//     password no longer derive the same encryption key and no precomputation
-//     carries from one wallet to another.
-//   * Records and the cache blob are AEAD (ChaCha20-Poly1305) rather than raw
-//     ChaCha8. A stream cipher with no tag lets anyone who can write the file
-//     flip chosen bits of the decrypted plaintext.
-//   * Every ciphertext carries a freshly drawn 96-bit nonce. Version 9 handed
-//     nonces out from a mutable counter in the unauthenticated header, which
-//     could repeat under one key and, for a stream cipher, leak plaintext.
-//   * The header (version, KDF id and parameters, salt) is authenticated as
+// What version 10 provides:
+//   * A per-wallet random KDF salt, so two wallets sharing a password derive
+//     different keys and no precomputation carries between them.
+//   * AEAD (ChaCha20-Poly1305) for records and the cache blob, so tampering is
+//     detected rather than decrypting to altered plaintext.
+//   * A freshly drawn 96-bit nonce on every ciphertext, never a stored counter.
+//   * The header (version, KDF id and parameters, salt) authenticated as
 //     associated data, so it cannot be edited to steer how the body is read.
 constexpr uint8_t WALLET_CONTAINER_VERSION = 10;
 constexpr uint8_t WALLET_CONTAINER_VERSION_LEGACY = 9;

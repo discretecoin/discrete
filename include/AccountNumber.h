@@ -42,13 +42,11 @@ namespace CryptoNote {
 // resolver recomputes A from the on-chain keys (pqAccountFingerprint(), see
 // PqAddress.h) and refuses the payment if it does not match the A the payer typed.
 //
-// A is short by design and is NOT a defence against a hostile resolver. 20 bits
-// is decisive against an accidental or reorg mismatch (~1/1,048,576), but a
-// daemon that wants to redirect a payment can grind about a million keypairs
-// until one fingerprints to the A the payer typed. Wallets therefore refuse to
-// resolve a compact number through a daemon the user has not trusted; see
-// Common/DaemonTrust.h. Full Bech32m addresses carry both keys and are safe
-// through any daemon.
+// A is short by design: decisive against an accidental or reorg mismatch
+// (~1/1,048,576), but a failsafe rather than an authentication of the party that
+// answers the lookup. Wallets therefore resolve a compact number only through a
+// daemon the user has trusted; see Common/DaemonTrust.h. Full Bech32m addresses
+// carry both keys and are safe through any daemon.
 //
 // The whole number uses only Crockford-Base32-safe symbols (digits plus letters,
 // excluding the ambiguous I, L, O, U), so 0/O and 1/I/L can never be confused. The

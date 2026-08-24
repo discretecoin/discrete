@@ -222,13 +222,11 @@ bool WalletLedger::processTransaction(const TransactionPrefix& tx, const Crypto:
         // is not attributable to any deposit. Deposit issuance starts at T=1
         // (WalletGreen::pqFirstDepositIndex) precisely so this stays unambiguous.
         //
-        // T is 64 bits on the wire while the ledger buckets are 32. Truncating
-        // would let a sender pick which of OUR deposits an incoming payment is
-        // credited to: T = 2^32 + n lands on bucket n, and T = 0xFFFFFFFF lands
-        // on the primary-address sentinel itself. So the value is range-checked
-        // instead of cast, and anything outside the supported range is recorded
-        // as unattributed. The output is still recognised and still spendable —
-        // only the deposit it is credited to is withheld.
+        // T is 64 bits on the wire while the ledger buckets are 32, and the
+        // sender chooses it, so the value is range-checked rather than cast.
+        // Anything outside the attributable range is recorded as unattributed:
+        // the output is still recognised and still spendable, only the deposit
+        // it is credited to is withheld.
         depositIndex = pqDepositIndexForRoute(owned->subaddrIndexT);
       }
     } else {

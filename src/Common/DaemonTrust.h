@@ -25,10 +25,9 @@ namespace Common {
 //
 // A compact number (H-I-A-C) is a locator, not a self-contained address: the
 // wallet hands (H, I) to a daemon and spends to whatever keys come back. The
-// 4-character A fingerprint covers 20 bits, which is decisive against a typo or
-// a reorg but is only a speed bump for a resolver willing to grind about a
-// million keypairs until one fingerprints to the A the payer typed. Whoever
-// answers the lookup therefore picks the recipient.
+// 4-character A fingerprint is a transcription and reorg failsafe, not an
+// authentication of the party that answers. Whoever answers the lookup therefore
+// picks the recipient.
 //
 // Full Bech32m addresses carry both public keys, so they are safe through any
 // daemon and are never subject to this check.

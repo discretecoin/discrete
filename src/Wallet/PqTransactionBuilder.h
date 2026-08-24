@@ -58,11 +58,10 @@ constexpr uint64_t PQ_MAX_DEPOSIT_ROUTE = 0xFFFFFFFDull;
 
 // Map a wire routing index T onto a ledger deposit bucket.
 //
-// Never narrow T with a cast. The sender picks T, so a truncating cast would let
-// a payer choose which of the recipient's deposits their payment is credited to:
-// T = 2^32 + n would alias bucket n, and T = 0xFFFFFFFF would alias the
-// primary-address sentinel. Out-of-range values are classified as unattributed
-// instead.
+// T is 64 bits on the wire and the buckets are 32, and the sender chooses T, so
+// the value is range-checked rather than cast: anything outside the attributable
+// range is classified as unattributed instead of folding onto a bucket or onto a
+// sentinel.
 inline uint32_t pqDepositIndexForRoute(uint64_t subaddrIndexT) {
   if (subaddrIndexT == 0) {
     return PQ_PRIMARY_DEPOSIT;  // T = 0 IS the primary address

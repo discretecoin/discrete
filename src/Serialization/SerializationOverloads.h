@@ -99,9 +99,9 @@ serializeAsBinary(std::list<T>& value, Common::StringView name, CryptoNote::ISer
 
 // Upper bound on how much a wire-supplied element count may pre-allocate. It is
 // only a hint: containers still grow to whatever the input actually decodes to,
-// so no valid object is rejected or truncated. Bounding it stops a short blob
-// that declares billions of elements from committing gigabytes before the first
-// element is read.
+// so no valid object is rejected or truncated. Element counts arrive from the
+// wire, so the memory they can commit is kept proportional to the bytes actually
+// received rather than to the number claimed.
 constexpr size_t SERIALIZATION_MAX_PREALLOC_ELEMENTS = 4096;
 
 template<typename T, typename A>
@@ -126,10 +126,9 @@ bool serializeContainer(Cont& value, Common::StringView name, CryptoNote::ISeria
   }
 
   if (serializer.type() == ISerializer::INPUT) {
-    // Grow as elements decode rather than sizing to the declared count up front.
-    // Every element costs at least one byte on the wire, so the peak allocation
-    // is bounded by the bytes the peer actually sent; a bogus count runs the
-    // stream dry and throws instead of allocating.
+    // Grow as elements decode rather than sizing to the declared count up front,
+    // so peak allocation tracks the bytes actually supplied. A count the input
+    // cannot back runs the stream dry and throws.
     value.clear();
     reserveBoundedByInput(value, size);
 

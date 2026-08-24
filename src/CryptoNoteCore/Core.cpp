@@ -372,10 +372,9 @@ bool Core::check_tx_semantic(const Transaction& tx, const Crypto::Hash& txHash, 
       }
       return true;
     } else if (tx.txType == TX_FREE_REG) {
-      // Shape only. The memory-hard anti-spam proof is deliberately NOT verified
-      // here: this runs before the duplicate-transaction and chain-state checks,
-      // so a peer replaying one blob would buy a full yespower evaluation per
-      // copy. checkFreeRegInputs() runs it once everything cheaper has passed.
+      // Shape only. Verifying the memory-hard anti-spam proof is the most
+      // expensive step in admission, so it runs last, in checkFreeRegInputs(),
+      // once every cheaper check has passed.
       if (!checkFreeRegTransactionShape(tx, &pqErr)) {
         logger(ERROR) << "free-reg tx semantic check failed (" << pqErr << ") for tx id= " << Common::podToHex(txHash);
         return false;
@@ -384,11 +383,9 @@ bool Core::check_tx_semantic(const Transaction& tx, const Crypto::Hash& txHash, 
       // block: block validity must stay exactly as it was, or upgraded and old
       // nodes would disagree about a block.
       //
-      // parseTransactionExtra() silently skips tags it does not know, so the
-      // field-level checks above cannot see padding bytes appended to an
-      // otherwise valid registration. Without this, one registration proof can
-      // be re-wrapped into unlimited transactions with different ids, each of
-      // which looks new to every id-keyed cache on the network.
+      // The field-level checks above run on parsed fields, which do not capture
+      // the exact byte encoding. Requiring the canonical form keeps one
+      // registration proof to one transaction id.
       if (!keeped_by_block && !isCanonicalFreeRegExtra(tx.extra)) {
         logger(INFO) << "free-reg tx has non-canonical extra, not relayed: " << Common::podToHex(txHash);
         return false;

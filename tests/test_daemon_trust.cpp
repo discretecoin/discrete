@@ -3,12 +3,10 @@
 // This file is part of Discrete.
 //
 // Compact Account Numbers are locators, not self-contained addresses: the wallet
-// asks a daemon which keys (H, I) points at and pays whatever comes back. The
-// 20-bit A fingerprint catches typos and reorgs but not a resolver willing to
-// grind about a million keypairs until one matches, so resolution is a trust
-// decision. These tests pin the policy and the fail-closed behaviour: sending to
-// a compact number through an untrusted daemon must stop before any output is
-// built, while a full address goes through unaffected.
+// asks a daemon which keys (H, I) points at and pays whatever comes back, so
+// resolution is a trust decision. These tests pin the policy and the fail-closed
+// behaviour: sending to a compact number through an untrusted daemon must stop
+// before any output is built, while a full address goes through unaffected.
 
 #include "gtest/gtest.h"
 
@@ -27,9 +25,9 @@ using namespace CryptoNote;
 
 namespace {
 
-// A node that answers a compact-number lookup with attacker-chosen keys — what a
-// hostile resolver does after grinding a fingerprint collision. Its trust flag is
-// settable so the same collider can be tried from both sides of the policy.
+// A node that answers a compact-number lookup with keys of its own choosing. Its
+// trust flag is settable so the same node can be tried from both sides of the
+// policy.
 class ColliderNode : public INode {
 public:
   ColliderNode(bool trusted, const CryptoPQ::KemPublicKey& viewPub,
@@ -253,9 +251,9 @@ TEST_F(ResolverTest, CompactNumberResolvesOnATrustedDaemon) {
 }
 
 TEST_F(ResolverTest, ColliderIsNeverReachedWhileUntrusted) {
-  // The fingerprint check still catches an unrelated substitution, but that is a
-  // second line: on an untrusted daemon the payment must not depend on it, since
-  // 20 bits is grindable. Assert the lookup does not even happen.
+  // The fingerprint check still catches an unrelated substitution, but on an
+  // untrusted daemon the payment must not depend on it. Assert the lookup does
+  // not even happen.
   ColliderNode node(/*trusted=*/false, forgedView, forgedSpend);
 
   CryptoPQ::KemPublicKey viewPub{};

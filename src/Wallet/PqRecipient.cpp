@@ -66,20 +66,17 @@ bool resolvePqRecipient(INode& node, bool testnet, const std::string& s,
   //    reorg cannot repoint (H,I) under a payer's feet (finality gate).
   //
   //    The A fingerprint is recomputed from the keys the node returned and the
-  //    number is refused unless it matches. That is decisive against a typo or a
-  //    reorg, but A is only 20 bits: a daemon that WANTS to redirect this payment
-  //    can grind roughly a million keypairs until one fingerprints to the A the
-  //    payer typed. A resolver is therefore trusted, and an untrusted one is
-  //    refused above rather than checked here.
+  //    number is refused unless it matches. That covers a typo or a reorg, but a
+  //    short fingerprint is a failsafe, not an authentication of the responder,
+  //    so an untrusted resolver is refused above rather than checked here.
   CryptoNote::AccountNumber acct;
   uint32_t t = 0;
   uint32_t wantFingerprint = 0;
   bool isHitc = CryptoNote::AccountNumber::fromStringWithIndex(s, acct, t, wantFingerprint);
   if (isHitc || CryptoNote::AccountNumber::fromString(s, acct, wantFingerprint)) {
     // Fail closed BEFORE the lookup, and so before any output is constructed.
-    // Resolution hands the choice of recipient to whoever answers; A is 20 bits,
-    // which a resolver that wants to redirect this payment can grind through in
-    // about a million keypairs.
+    // Resolution takes the recipient keys from whoever answers, so it is only
+    // performed against a resolver the user has trusted.
     if (!node.isTrustedResolver()) {
       return fail(error, kUntrustedResolverMessage);
     }

@@ -1405,12 +1405,11 @@ bool Blockchain::handle_alternative_block(const Block& b, const Crypto::Hash& id
     // decision. The peer-split hint and the WARNING with peer counts are added
     // by the protocol layer via bvc.m_finality_fork.
     //
-    // The snapshot is what resync_to_majority rolls back to, so it must never be
-    // taken on a peer's say-so: block_height above comes straight out of the
-    // candidate's own coinbase. Only a block that survives the same structural
-    // validation any competing block has to pass, on a branch whose ancestry we
-    // already store, may arm it — and the divergence is then derived from that
-    // stored ancestry rather than from the claimed height.
+    // The snapshot is what resync_to_majority rolls back to, so it is armed only
+    // by a block that survives the same structural validation any competing
+    // block has to pass, on a branch whose ancestry we already store. The
+    // divergence is derived from that stored ancestry, not from the height the
+    // candidate's own coinbase claims.
     uint32_t validatedHeight = 0;
     if (m_checkpoints.is_finality_violation(chainLen, block_height) &&
         validateCompetingBlock(b, id, validatedHeight)) {
