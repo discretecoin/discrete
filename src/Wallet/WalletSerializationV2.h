@@ -45,11 +45,12 @@ public:
   std::unordered_set<Crypto::PublicKey>& addedKeys();
   std::unordered_set<Crypto::PublicKey>& deletedKeys();
 
-  // v9 is the PQ-native container: each record stores a 32-byte master seed (no
-  // classical key material). Older formats (v6-v8) carried classical key pairs and
-  // are no longer loadable (Discrete is pre-launch with no frozen wallet format).
-  static const uint8_t MIN_VERSION = 9;
-  static const uint8_t SERIALIZATION_VERSION = 9;
+  // v10 is the authenticated, salted container (see WalletIndices.h). v9 is the
+  // same PQ-native record content under unauthenticated ChaCha8 with an unsalted
+  // key; it is still readable so an existing wallet can be opened and migrated.
+  // Older formats (v6-v8) carried classical key pairs and are not loadable.
+  static const uint8_t MIN_VERSION = WALLET_CONTAINER_VERSION_LEGACY;
+  static const uint8_t SERIALIZATION_VERSION = WALLET_CONTAINER_VERSION;
   static const uint8_t LAST_CLASSICAL_VERSION = 7;
   // hdIndex + the address-generation state were introduced at this version.
   static const uint8_t HD_FIELDS_VERSION = 7;

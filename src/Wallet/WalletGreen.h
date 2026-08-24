@@ -269,14 +269,22 @@ protected:
   void doShutdown();
   void clearCaches(bool clearTransactions, bool clearCachedData);
   void convertAndLoadWalletFile(const std::string& path, std::ifstream&& walletFileStream);
-  // Encrypt/decrypt a wallet record = magic || PQ master seed || creation timestamp.
-  // decryptSeed returns false if the magic doesn't match (i.e. wrong password).
-  static bool decryptSeed(const EncryptedWalletRecord& cipher, CryptoPQ::SeedMaster& seedMaster,
-    uint64_t& creationTimestamp, const Crypto::chacha8_key& key);
-  bool decryptSeed(const EncryptedWalletRecord& cipher, CryptoPQ::SeedMaster& seedMaster, uint64_t& creationTimestamp) const;
-  static EncryptedWalletRecord encryptSeed(const CryptoPQ::SeedMaster& seedMaster, uint64_t creationTimestamp,
-    const Crypto::chacha8_key& key, const Crypto::chacha8_iv& iv);
-  EncryptedWalletRecord encryptSeed(const CryptoPQ::SeedMaster& seedMaster, uint64_t creationTimestamp) const;
+  // Encrypt/decrypt a wallet record (PQ master seed + creation timestamp) under
+  // this container's key and header. decryptSeed returns false for a wrong
+  // password and for a tampered record alike.
+  bool decryptSeed(const EncryptedWalletRecord& cipher, CryptoPQ::SeedMaster& seedMaster,
+                   uint64_t& creationTimestamp) const;
+  EncryptedWalletRecord encryptSeed(const CryptoPQ::SeedMaster& seedMaster,
+                                    uint64_t creationTimestamp) const;
+  // The container's authenticated header.
+  const ContainerStoragePrefix& containerHeader() const;
+  // Open a version-9 container, decrypt it with the legacy unsalted key, and
+  // rewrite it in the current format under a fresh salt. The original file is
+  // only replaced once the rewritten one has been reopened and authenticated.
+  void migrateLegacyContainer(const std::string& path, const std::string& password);
+  // Wipe every secret this wallet holds: the container key, the password, and
+  // the master seeds in the address records.
+  void wipeSecrets();
   // Set up a fresh (empty) PQ wallet container: the prefix holds only the version
   // — there is no classical view key. The primary seed lands as record 0 via the
   // first createAddress()/doCreateAddress().
@@ -365,13 +373,18 @@ protected:
   void addUnconfirmedTransaction(const ITransactionReader& transaction);
   void removeUnconfirmedTransaction(const Crypto::Hash& transactionHash);
 
-  void copyContainerStorageKeys(ContainerStorage& src, const Crypto::chacha8_key& srcKey, ContainerStorage& dst, const Crypto::chacha8_key& dstKey);
-  static void copyContainerStoragePrefix(ContainerStorage& src, const Crypto::chacha8_key& srcKey, ContainerStorage& dst, const Crypto::chacha8_key& dstKey);
+  // Re-encrypt every seed record from src into dst. dst carries its own header,
+  // so the records are bound to it and cannot be moved back.
+  void copyContainerStorageKeys(ContainerStorage& src, const Crypto::chacha8_key& srcKey,
+                                ContainerStorage& dst, const Crypto::chacha8_key& dstKey,
+                                const ContainerStoragePrefix& dstHeader);
   void deleteOrphanTransactions(const std::unordered_set<Crypto::PublicKey>& deletedKeys);
-  static void encryptAndSaveContainerData(ContainerStorage& storage, const Crypto::chacha8_key& key, const void* containerData, size_t containerDataSize);
-  static void loadAndDecryptContainerData(ContainerStorage& storage, const Crypto::chacha8_key& key, BinaryArray& containerData);
+  static void encryptAndSaveContainerData(ContainerStorage& storage, const Crypto::chacha8_key& key,
+                                          const void* containerData, size_t containerDataSize);
+  static void loadAndDecryptContainerData(ContainerStorage& storage, const Crypto::chacha8_key& key,
+                                          BinaryArray& containerData);
   void loadSpendKeys();
-  void loadContainerStorage(const std::string& path);
+  void loadContainerStorage(const std::string& path, const std::string& password);
   void loadWalletCache(std::unordered_set<Crypto::PublicKey>& addedKeys, std::unordered_set<Crypto::PublicKey>& deletedKeys, std::string& extra);
   void saveWalletCache(ContainerStorage& storage, const Crypto::chacha8_key& key, WalletSaveLevel saveLevel, const std::string& extra);
 

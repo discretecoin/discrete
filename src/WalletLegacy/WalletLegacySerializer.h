@@ -37,6 +37,25 @@ public:
   static constexpr uint32_t STANDARD_VERSION = 2;
   static constexpr uint32_t PROTECTED_SPEND_VERSION = 3;
 
+  // Outer envelope marker. A file starting with this instead of a content
+  // version is salted and authenticated:
+  //
+  //   AUTHENTICATED_ENVELOPE | salt(32) | nonce(12) | AEAD(payload) || tag
+  //
+  // and the content version lives inside the payload. Keeping it separate from
+  // the content version leaves STANDARD_VERSION / PROTECTED_SPEND_VERSION
+  // meaning exactly what they meant before.
+  //
+  // Versions 1-3 are the old envelope: raw ChaCha8 with no tag, under a key
+  // derived from the password alone. Unauthenticated means anyone who can write
+  // the file can flip chosen bits of the decrypted plaintext, and unsalted means
+  // one derivation serves every wallet with that password. Those files still
+  // open, and are rewritten in the new envelope on the next save.
+  //
+  // The value has to stay below 6: both wallet products identify a file by its
+  // first byte, and 6 and above means "container".
+  static constexpr uint32_t AUTHENTICATED_ENVELOPE = 4;
+
   explicit WalletLegacySerializer(
       CryptoNote::AccountBase& account,
       uint32_t serializationVersion = STANDARD_VERSION);
@@ -52,8 +71,15 @@ private:
   void saveKeys(CryptoNote::ISerializer& serializer);
   void loadKeys(CryptoNote::ISerializer& serializer);
 
+  // Legacy envelope (versions 1-3), read-only apart from the test that pins it.
   Crypto::chacha8_iv encrypt(const std::string& plain, const std::string& password, std::string& cipher);
   void decrypt(const std::string& cipher, std::string& plain, Crypto::chacha8_iv iv, const std::string& password);
+
+  // Read the payload out of either envelope. Throws WRONG_PASSWORD when the
+  // password is wrong or, in the new envelope, when the file has been tampered
+  // with; the two are deliberately indistinguishable.
+  void readPayload(std::istream& stream, const std::string& password,
+                   std::string& payload, uint32_t& contentVersion);
 
   CryptoNote::AccountBase& account;
   const uint32_t walletSerializationVersion;
