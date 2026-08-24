@@ -91,6 +91,27 @@ const uint64_t MINIMUM_FEE                                   = UINT64_C(1);
 const uint64_t MAXIMUM_FEE                                   = UINT64_C(100);
 
 const uint64_t DEFAULT_DUST_THRESHOLD                        = UINT64_C(1);
+// tx_extra caps. Read these together with maxExtraSize() below, because neither
+// is the general "no transaction may carry more extra than this" rule it looks
+// like.
+//
+//   MAX_EXTRA_SIZE     applies to the COINBASE extra only, through
+//                      maxExtraSize(), enforced in prevalidate_miner_transaction.
+//                      It has never bounded an ordinary transaction, here or in
+//                      the CryptoNote lineage this is forked from.
+//   MAX_EXTRA_SIZE_PQ  applies to TX_PQ, enforced in checkPqTransactionSemantic.
+//
+// What bounds an ordinary transaction's extra is the fee: every byte past
+// TX_EXTRA_FEE_FREE_BYTES is surcharged (pqTxExtraSurcharge), so a large extra
+// costs proportionally more. That is the whole bound for TX_PQ beyond the cap.
+//
+// TX_FREE_REG is the exception, and deliberately so for now: it pays no fee, so
+// the surcharge never applies to it, and it has no cap of its own. Relay policy
+// covers it -- isCanonicalFreeRegExtra() requires the exact registration
+// grammar, so a padded registration is never accepted from a peer or put in the
+// pool. Block validity does not, which is why an explicit cap rides along with
+// PQ_TRANSCRIPT_V2_HEIGHT rather than being added on its own; adding it now
+// would be a consensus change made outside a scheduled upgrade.
 const uint64_t MAX_EXTRA_SIZE                                = 4096;
 const uint64_t MAX_EXTRA_SIZE_PQ                             = 4096;
 
@@ -400,6 +421,10 @@ const uint8_t  BLOCK_MAJOR_VERSION_6                         =  6;  // reserved
 const uint8_t  BLOCK_MAJOR_VERSION_7                         =  7;  // reserved
 const uint8_t  BLOCK_MAJOR_VERSION_8                         =  8;  // reserved
 
+// COINBASE extra cap. Despite the general-sounding name this is only ever
+// applied to Block::baseTransaction (prevalidate_miner_transaction); ordinary
+// transactions are bounded by their own type's rules. See the note on
+// MAX_EXTRA_SIZE above.
 inline uint64_t maxExtraSize(uint8_t /*blockMajorVersion*/) {
   return parameters::MAX_EXTRA_SIZE_PQ;
 }

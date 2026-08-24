@@ -264,6 +264,14 @@ bool checkFreeRegTransactionShape(const Transaction& tx, std::string* error) {
     return fail(error, "TX_FREE_REG must have unlockHeight == 0");
   }
 
+  // Deliberately no size cap here, unlike checkPqTransactionSemantic. A free
+  // registration pays no fee, so the tx_extra surcharge that bounds every other
+  // transaction's extra never applies to it, and adding a cap to this function
+  // would change block validity outside a scheduled upgrade. Relay and pool
+  // admission already require the exact grammar (isCanonicalFreeRegExtra), which
+  // pins the size at 3,178 bytes; the matching consensus rule activates with
+  // parameters::PQ_TRANSCRIPT_V2_HEIGHT.
+
   // tx_extra must contain EXACTLY one PQ registration tag + one PoW tag, nothing else.
   std::vector<TransactionExtraField> fields;
   if (!parseTransactionExtra(tx.extra, fields)) {
