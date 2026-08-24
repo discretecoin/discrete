@@ -44,6 +44,14 @@
 #define _YESPOWER_OPT_C_PASS_ 1
 #endif
 
+/* MSVC does not define __SSE2__ for native x64, where SSE2 is the default. */
+#ifndef YESPOWER_USE_SSE2
+#if defined(__SSE2__) || \
+    (defined(_MSC_VER) && defined(_M_X64) && !defined(_M_ARM64EC))
+#define YESPOWER_USE_SSE2 1
+#endif
+#endif
+
 #if _YESPOWER_OPT_C_PASS_ == 1
 /*
  * AVX and especially XOP speed up Salsa20 a lot, but needlessly result in
@@ -64,7 +72,7 @@
 #else
 #pragma message("Note: AVX is enabled.  That's OK.")
 #endif
-#elif defined(__SSE2__)
+#elif defined(YESPOWER_USE_SSE2)
 #ifdef __GNUC__
 #warning "Note: AVX and XOP are not enabled.  That's OK."
 #else
@@ -92,7 +100,7 @@
  */
 #undef USE_SSE4_FOR_32BIT
 
-#ifdef __SSE2__
+#ifdef YESPOWER_USE_SSE2
 /*
  * GCC before 4.9 would by default unnecessarily use store/load (without
  * SSE4.1) or (V)PEXTR (with SSE4.1 or AVX) instead of simply (V)MOV.
@@ -272,7 +280,7 @@ static int free_region(yespower_region_t *region)
 typedef union {
     uint32_t w[16];
     uint64_t d[8];
-#ifdef __SSE2__
+#ifdef YESPOWER_USE_SSE2
     __m128i q[4];
 #endif
 } salsa20_blk_t;
@@ -310,7 +318,7 @@ static inline void salsa20_simd_unshuffle(const salsa20_blk_t *Bin,
 #undef UNCOMBINE
 }
 
-#ifdef __SSE2__
+#ifdef YESPOWER_USE_SSE2
 #define DECL_X \
     __m128i X0, X1, X2, X3;
 #define DECL_Y \
@@ -402,7 +410,7 @@ static inline void salsa20_simd_unshuffle(const salsa20_blk_t *Bin,
 
 #define INTEGERIFY _mm_cvtsi128_si32(X0)
 
-#else /* !defined(__SSE2__) */
+#else /* !defined(YESPOWER_USE_SSE2) */
 
 #define DECL_X \
     salsa20_blk_t X;
@@ -583,7 +591,7 @@ typedef struct {
 #define DECL_SMASK2REG /* empty */
 #define MAYBE_MEMORY_BARRIER /* empty */
 
-#ifdef __SSE2__
+#ifdef YESPOWER_USE_SSE2
 /*
  * (V)PSRLDQ and (V)PSHUFD have higher throughput than (V)PSRLQ on some CPUs
  * starting with Sandy Bridge.  Additionally, PSHUFD uses separate source and
@@ -751,7 +759,7 @@ static volatile uint64_t Smask2var = Smask2;
     PWXFORM_SIMD(X2) \
     PWXFORM_SIMD(X3)
 
-#else /* !defined(__SSE2__) */
+#else /* !defined(YESPOWER_USE_SSE2) */
 
 #define PWXFORM_SIMD(x0, x1) { \
     uint64_t x = x0 & Smask2; \
