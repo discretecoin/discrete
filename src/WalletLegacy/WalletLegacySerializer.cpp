@@ -158,7 +158,10 @@ void WalletLegacySerializer::loadProtectedSpendCompatibilityGuard(
 Crypto::chacha8_iv WalletLegacySerializer::encrypt(const std::string& plain, const std::string& password, std::string& cipher) {
   Crypto::chacha8_key key;
   Crypto::cn_context context;
-  Crypto::generate_chacha8_key(context, password, key);
+  if (!Crypto::generate_chacha8_key(context, password, key)) {
+    throw std::system_error(make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR),
+                            "Password key derivation failed");
+  }
 
   cipher.resize(plain.size());
 
@@ -294,7 +297,10 @@ bool WalletLegacySerializer::deserialize(std::istream& stream, const std::string
 void WalletLegacySerializer::decrypt(const std::string& cipher, std::string& plain, Crypto::chacha8_iv iv, const std::string& password) {
   Crypto::chacha8_key key;
   Crypto::cn_context context;
-  Crypto::generate_chacha8_key(context, password, key);
+  if (!Crypto::generate_chacha8_key(context, password, key)) {
+    throw std::system_error(make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR),
+                            "Password key derivation failed");
+  }
 
   plain.resize(cipher.size());
 

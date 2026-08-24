@@ -330,7 +330,11 @@ void WalletGreen::initContainer(const std::string& path, const std::string& pass
   prefix->nextIv = Crypto::randomChachaIV();
 
   Crypto::cn_context cnContext;
-  Crypto::generate_chacha8_key(cnContext, password, m_key);
+  if (!Crypto::generate_chacha8_key(cnContext, password, m_key)) {
+    m_logger(ERROR, BRIGHT_RED) << "Failed to initialize: password key derivation failed";
+    throw std::system_error(make_error_code(error::INTERNAL_WALLET_ERROR),
+                            "Password key derivation failed");
+  }
 
   newStorage.flush();
   m_containerStorage.swap(newStorage);
@@ -392,7 +396,10 @@ void WalletGreen::exportWallet(const std::string& path, bool encrypt, WalletSave
       newStorageKey = m_key;
     } else {
       cn_context cnContext;
-      generate_chacha8_key(cnContext, "", newStorageKey);
+      if (!generate_chacha8_key(cnContext, "", newStorageKey)) {
+        throw std::system_error(make_error_code(error::INTERNAL_WALLET_ERROR),
+                                "Password key derivation failed");
+      }
     }
 
     copyContainerStoragePrefix(m_containerStorage, m_key, newStorage, newStorageKey);
@@ -425,7 +432,12 @@ void WalletGreen::load(const std::string& path, const std::string& password, std
   stopBlockchainSynchronizer();
 
   Crypto::cn_context cnContext;
-  generate_chacha8_key(cnContext, password, m_key);
+  if (!generate_chacha8_key(cnContext, password, m_key)) {
+    m_logger(ERROR, BRIGHT_RED) << "Failed to load: password key derivation failed";
+    startBlockchainSynchronizer();
+    throw std::system_error(make_error_code(error::INTERNAL_WALLET_ERROR),
+                            "Password key derivation failed");
+  }
 
   std::ifstream walletFileStream(path, std::ios_base::binary);
   int version = walletFileStream.peek();
@@ -728,7 +740,13 @@ void WalletGreen::changePassword(const std::string& oldPassword, const std::stri
 
   Crypto::cn_context cnContext;
   Crypto::chacha8_key newKey;
-  Crypto::generate_chacha8_key(cnContext, newPassword, newKey);
+  // Derive before touching the container: a KDF failure must leave the existing
+  // wallet file untouched rather than half-rewritten under an unusable key.
+  if (!Crypto::generate_chacha8_key(cnContext, newPassword, newKey)) {
+    m_logger(ERROR, BRIGHT_RED) << "Failed to change password: password key derivation failed";
+    throw std::system_error(make_error_code(error::INTERNAL_WALLET_ERROR),
+                            "Password key derivation failed");
+  }
 
   m_containerStorage.atomicUpdate([this, newKey](ContainerStorage& newStorage) {
     copyContainerStoragePrefix(m_containerStorage, m_key, newStorage, newKey);

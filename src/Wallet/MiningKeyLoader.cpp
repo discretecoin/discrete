@@ -70,7 +70,11 @@ Crypto::SecretKey loadLegacyMasterSeed(const std::string& path, const std::strin
   chacha8_key key;
   {
     cn_context cnContext;
-    generate_chacha8_key(cnContext, password, key);
+    if (!generate_chacha8_key(cnContext, password, key)) {
+      sodium_memzero(&key, sizeof(key));
+      throw std::system_error(make_error_code(error::INTERNAL_WALLET_ERROR),
+                              "Password key derivation failed");
+    }
   }
   std::string plain(cipher.size(), '\0');
   chacha8(cipher.data(), cipher.size(), key, iv, &plain[0]);
@@ -146,7 +150,11 @@ Crypto::SecretKey loadMiningSpendSecret(const std::string& path,
   chacha8_key key;
   {
     cn_context cnContext;
-    generate_chacha8_key(cnContext, password, key);
+    if (!generate_chacha8_key(cnContext, password, key)) {
+      sodium_memzero(&key, sizeof(key));
+      throw std::system_error(make_error_code(error::INTERNAL_WALLET_ERROR),
+                              "Password key derivation failed");
+    }
   }
 
   ContainerStorage storage;
