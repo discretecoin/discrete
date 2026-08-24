@@ -25,6 +25,7 @@
 #include "CryptoNoteConfig.h"
 
 #include <cstring>
+#include <limits>
 #include <new>
 #include <vector>
 
@@ -323,6 +324,213 @@ TEST(PqFreeReg, BuildsValidRegistration) {
 
     std::string err;
     EXPECT_TRUE(checkFreeRegTransactionSemantic(tx, &err, kTestFreeRegPowTarget)) << err;
+}
+
+
+namespace {
+
+CryptoPQ::SeedMaster seedBytes(uint8_t a, uint8_t b) {
+    CryptoPQ::SeedMaster out{};
+    for (std::size_t i = 0; i < out.size(); ++i) {
+        out[i] = static_cast<uint8_t>(i * a + b);
+    }
+    return out;
+}
+
+CryptoPQ::Rho rhoBytes(uint8_t a, uint8_t b) {
+    CryptoPQ::Rho out{};
+    for (std::size_t i = 0; i < out.size(); ++i) {
+        out[i] = static_cast<uint8_t>(i * a + b);
+    }
+    return out;
+}
+
+}  // namespace
+
+// --- Version-2 signing transcript ------------------------------------------
+//
+// Transcript v1 has two properties a signature ought not to have.
+//
+// It says nothing about which chain the transaction belongs to. The outpoints it
+// names are just (txid, index), so a signature made for one network verifies on
+// another that happens to hold the same live outpoint.
+//
+// And it gives every input the same digest, so two inputs spending under one key
+// carry interchangeable signatures. Swapping them leaves the transaction valid
+// but changes its id, which lets a third party mutate an unconfirmed payment's
+// identity without touching what it pays.
+//
+// v2 folds the chain identity and the input's index into the message. These
+// tests pin both halves, and pin that v1 still behaves exactly as it did (it is
+// what consensus requires until the change is activated).
+
+namespace {
+
+CryptoPQ::Hash256 chainIdOf(const char* label) {
+    return CryptoPQ::sha3_256(label, std::strlen(label));
+}
+
+// A transaction spending TWO outputs owned by the SAME key -- the shape in which
+// v1's shared digest makes the two signatures interchangeable.
+struct TwoInputTx {
+    Transaction tx;
+    std::vector<PqResolvedInput> resolved;
+};
+
+TwoInputTx makeTwoInputTx(const PqSigningContext& signing) {
+    CryptoPQ::SeedMaster ms = seedBytes(5, 11);
+    auto spend = CryptoPQ::deriveSpendKeys(ms);
+    auto recipV = CryptoPQ::deriveViewKeys(seedBytes(6, 12));
+    auto recipS = CryptoPQ::deriveSpendKeys(seedBytes(6, 12));
+
+    std::vector<PqSpendInput> inputs(2);
+    std::vector<PqResolvedInput> resolved(2);
+    for (size_t i = 0; i < 2; ++i) {
+        for (size_t j = 0; j < 32; ++j) {
+            inputs[i].prevTxid.data[j] = static_cast<uint8_t>(j + i * 17 + 3);
+        }
+        inputs[i].prevOutIndex = static_cast<uint32_t>(i);
+        inputs[i].amount = 500000;
+        inputs[i].rho = rhoBytes(static_cast<uint8_t>(7 + i), 13);
+
+        CryptoPQ::Hash256 sc = CryptoPQ::spendCommit(spend.first, inputs[i].rho);
+        resolved[i].exists = true;
+        resolved[i].isPqOutput = true;
+        resolved[i].amount = 500000;
+        std::memcpy(resolved[i].spendCommit.data, sc.data(), 32);
+    }
+
+    PqSendOutput out{recipV.first, recipS.first, 900000};
+
+    TwoInputTx result;
+    result.tx = buildPqTransaction(inputs, {out}, spend.first, spend.second,
+                                   /*unlockHeight=*/0, /*extra=*/{}, signing);
+    result.resolved = resolved;
+    return result;
+}
+
+}  // namespace
+
+TEST(PqTranscriptV2, DigestBindsTheInputIndex) {
+    CryptoPQ::UnsignedTx u;
+    u.inputs.resize(2);
+    u.fee = 7;
+    const CryptoPQ::Hash256 chain = chainIdOf("chain");
+
+    EXPECT_NE(CryptoPQ::txSigningDigestV2(u, chain, 0),
+              CryptoPQ::txSigningDigestV2(u, chain, 1));
+}
+
+TEST(PqTranscriptV2, DigestBindsTheChain) {
+    CryptoPQ::UnsignedTx u;
+    u.inputs.resize(1);
+    u.fee = 7;
+
+    EXPECT_NE(CryptoPQ::txSigningDigestV2(u, chainIdOf("mainnet"), 0),
+              CryptoPQ::txSigningDigestV2(u, chainIdOf("testnet"), 0));
+}
+
+TEST(PqTranscriptV2, DigestIsDomainSeparatedFromV1) {
+    CryptoPQ::UnsignedTx u;
+    u.inputs.resize(1);
+    u.fee = 7;
+
+    // Even with a zero chain id and input index 0, v2 must not collide with v1.
+    CryptoPQ::Hash256 zeroChain{};
+    EXPECT_NE(CryptoPQ::txSigningDigest(u),
+              CryptoPQ::txSigningDigestV2(u, zeroChain, 0));
+}
+
+TEST(PqTranscriptV2, SignaturesDoNotCarryToAnotherNetwork) {
+    // The concrete replay: the same transaction, judged on two chains. Under v2
+    // the signature made for one chain must fail on the other.
+    PqSigningContext mainnet;
+    mainnet.useV2 = true;
+    mainnet.chainId = chainIdOf("mainnet genesis");
+
+    PqSigningContext testnet;
+    testnet.useV2 = true;
+    testnet.chainId = chainIdOf("testnet genesis");
+
+    TwoInputTx built = makeTwoInputTx(mainnet);
+
+    std::vector<Crypto::Hash> nf;
+    std::string err;
+    ASSERT_TRUE(checkPqTransactionInputs(built.tx, built.resolved, 0, &nf, &err, mainnet)) << err;
+
+    nf.clear();
+    EXPECT_FALSE(checkPqTransactionInputs(built.tx, built.resolved, 0, &nf, &err, testnet))
+        << "a signature made for one chain verified on another";
+}
+
+TEST(PqTranscriptV2, SameKeySignaturesCannotBePermuted) {
+    PqSigningContext signing;
+    signing.useV2 = true;
+    signing.chainId = chainIdOf("chain");
+
+    TwoInputTx built = makeTwoInputTx(signing);
+    ASSERT_EQ(2u, built.tx.pqSignatures.size());
+
+    std::vector<Crypto::Hash> nf;
+    std::string err;
+    ASSERT_TRUE(checkPqTransactionInputs(built.tx, built.resolved, 0, &nf, &err, signing)) << err;
+
+    // Both inputs are authorized by the same key, so under v1 the signatures are
+    // interchangeable. Under v2 each is bound to its position.
+    Transaction permuted = built.tx;
+    std::swap(permuted.pqSignatures[0], permuted.pqSignatures[1]);
+    EXPECT_NE(getObjectHash(built.tx), getObjectHash(permuted));
+
+    nf.clear();
+    EXPECT_FALSE(checkPqTransactionInputs(permuted, built.resolved, 0, &nf, &err, signing))
+        << "signatures over the same key were still interchangeable";
+}
+
+TEST(PqTranscriptV2, VersionOneStillAcceptsWhatItAlwaysDid) {
+    // The activation is not scheduled, so the v1 rules are what consensus applies
+    // today -- including the permutation it accepts. Pinning it here makes the
+    // change of behaviour at activation explicit rather than incidental.
+    PqSigningContext v1;  // useV2 == false
+    TwoInputTx built = makeTwoInputTx(v1);
+
+    std::vector<Crypto::Hash> nf;
+    std::string err;
+    ASSERT_TRUE(checkPqTransactionInputs(built.tx, built.resolved, 0, &nf, &err, v1)) << err;
+
+    Transaction permuted = built.tx;
+    std::swap(permuted.pqSignatures[0], permuted.pqSignatures[1]);
+    nf.clear();
+    EXPECT_TRUE(checkPqTransactionInputs(permuted, built.resolved, 0, &nf, &err, v1))
+        << "v1 behaviour changed; that is a consensus change and must be deliberate";
+}
+
+TEST(PqTranscriptV2, ATransactionSignedUnderOneVersionFailsUnderTheOther) {
+    PqSigningContext v2;
+    v2.useV2 = true;
+    v2.chainId = chainIdOf("chain");
+    PqSigningContext v1;
+
+    std::vector<Crypto::Hash> nf;
+    std::string err;
+
+    TwoInputTx underV2 = makeTwoInputTx(v2);
+    EXPECT_FALSE(checkPqTransactionInputs(underV2.tx, underV2.resolved, 0, &nf, &err, v1));
+
+    nf.clear();
+    TwoInputTx underV1 = makeTwoInputTx(v1);
+    EXPECT_FALSE(checkPqTransactionInputs(underV1.tx, underV1.resolved, 0, &nf, &err, v2));
+}
+
+TEST(PqTranscriptV2, ActivationIsNotScheduled) {
+    // Setting a real height is a hard fork. Until one is chosen deliberately, no
+    // height reaches activation and every node keeps applying the v1 rules.
+    EXPECT_EQ(std::numeric_limits<uint32_t>::max(), parameters::PQ_TRANSCRIPT_V2_HEIGHT);
+
+    Crypto::Hash genesis{};
+    EXPECT_FALSE(pqSigningContextForHeight(0, genesis).useV2);
+    EXPECT_FALSE(pqSigningContextForHeight(1000000, genesis).useV2);
+    EXPECT_FALSE(pqSigningContextForHeight(
+        std::numeric_limits<uint32_t>::max() - 1, genesis).useV2);
 }
 
 int main(int argc, char** argv) {

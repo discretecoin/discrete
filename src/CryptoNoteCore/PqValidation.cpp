@@ -72,7 +72,7 @@ bool fail(std::string* error, const char* msg) {
 
 }  // namespace
 
-CryptoPQ::Hash256 pqSigningDigest(const Transaction& tx, uint64_t fee) {
+CryptoPQ::UnsignedTx pqUnsignedTx(const Transaction& tx, uint64_t fee) {
   CryptoPQ::UnsignedTx u;
   u.version = tx.version;
   u.txType = tx.txType;
@@ -99,7 +99,11 @@ CryptoPQ::Hash256 pqSigningDigest(const Transaction& tx, uint64_t fee) {
     std::memcpy(dou.spendCommit.data(), po.spendCommit.data, 32);
     u.outputs.push_back(dou);
   }
-  return CryptoPQ::txSigningDigest(u);
+  return u;
+}
+
+CryptoPQ::Hash256 pqSigningDigest(const Transaction& tx, uint64_t fee) {
+  return CryptoPQ::txSigningDigest(pqUnsignedTx(tx, fee));
 }
 
 Crypto::Hash pqNullifier(const PqInput& in) {
@@ -309,11 +313,19 @@ bool checkFreeRegTransactionSemantic(const Transaction& tx, std::string* error, 
          checkFreeRegTransactionPow(tx, error, powTarget);
 }
 
+PqSigningContext pqSigningContextForHeight(uint32_t height, const Crypto::Hash& genesisId) {
+  PqSigningContext ctx;
+  ctx.useV2 = height >= parameters::PQ_TRANSCRIPT_V2_HEIGHT;
+  std::memcpy(ctx.chainId.data(), genesisId.data, ctx.chainId.size());
+  return ctx;
+}
+
 bool checkPqTransactionInputs(const Transaction& tx,
                              const std::vector<PqResolvedInput>& resolved,
                              uint64_t minFee,
                              std::vector<Crypto::Hash>* outNullifiers,
-                             std::string* error) {
+                             std::string* error,
+                             const PqSigningContext& signing) {
   if (resolved.size() != tx.inputs.size()) {
     return fail(error, "resolved inputs size mismatch");
   }
@@ -389,12 +401,26 @@ bool checkPqTransactionInputs(const Transaction& tx,
   }
 
   // ML-DSA signature verification over the recomputed digest.
-  CryptoPQ::Hash256 digest = pqSigningDigest(tx, fee);
+  //
+  // Version 1 gives every input the same digest, so two inputs spending under one
+  // key have interchangeable signatures. Version 2 folds the chain identity and
+  // the input's index in, which makes each signature valid in exactly one
+  // position on exactly one network.
+  const CryptoPQ::UnsignedTx unsigned_ = pqUnsignedTx(tx, fee);
+  const CryptoPQ::Hash256 sharedDigest =
+      signing.useV2 ? CryptoPQ::Hash256{} : CryptoPQ::txSigningDigest(unsigned_);
+
   for (size_t i = 0; i < tx.inputs.size(); ++i) {
     const PqInput& in = boost::get<PqInput>(tx.inputs[i]);
     CryptoPQ::DsaPublicKey pub = toDsaPub(in.authPub);
     CryptoPQ::DsaSignature sig;
     std::memcpy(sig.data(), tx.pqSignatures[i].data(), sig.size());
+
+    const CryptoPQ::Hash256 digest =
+        signing.useV2
+            ? CryptoPQ::txSigningDigestV2(unsigned_, signing.chainId, static_cast<uint32_t>(i))
+            : sharedDigest;
+
     if (!CryptoPQ::dsa_verify(pub, digest.data(), digest.size(), sig)) {
       return fail(error, "ML-DSA signature verification failed");
     }

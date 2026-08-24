@@ -36,6 +36,8 @@
 // This header covers TX_PQ (PQ inputs -> PQ outputs), which is node-independent,
 // and TX_FREE_REG (account-number registration).
 
+#include "CryptoNoteCore/PqValidation.h"  // PqSigningContext
+
 namespace CryptoNote {
 
 // Sentinel depositIndex meaning "the wallet's own primary address" (not a deposit
@@ -155,7 +157,8 @@ Transaction buildPqTransaction(const std::vector<PqSpendInput>& inputs,
                                const CryptoPQ::DsaPublicKey& spendPub,
                                const CryptoPQ::DsaSecretKey& spendSk,
                                uint64_t unlockHeight = 0,
-                               const std::vector<uint8_t>& extra = {});
+                               const std::vector<uint8_t>& extra = {},
+                               const PqSigningContext& signing = PqSigningContext());
 
 PqTransactionBuildResult buildPqTransactionWithProof(
     const std::vector<PqSpendInput>& inputs,
@@ -169,18 +172,26 @@ PqTransactionBuildResult buildPqTransactionWithProof(
 // single TX_PQ spend outputs owned by DIFFERENT spend keys — e.g. AggregatedMultikey
 // deposit outputs, each committing to its own per-deposit key. inputAuth.size() must
 // equal inputs.size(). (The single-key overload above is this with one key repeated.)
+// `signing` selects the transcript the inputs are signed under. The default is
+// version 1, which is what consensus requires until
+// parameters::PQ_TRANSCRIPT_V2_HEIGHT activates; a builder aimed at a height past
+// activation passes the version-2 context so each signature binds the chain
+// identity and its own input index. Signing and verification read the same
+// PqSigningContext, so the two can never drift.
 Transaction buildPqTransaction(const std::vector<PqSpendInput>& inputs,
                                const std::vector<PqSendOutput>& outputs,
                                const std::vector<PqInputAuth>& inputAuth,
                                uint64_t unlockHeight = 0,
-                               const std::vector<uint8_t>& extra = {});
+                               const std::vector<uint8_t>& extra = {},
+                               const PqSigningContext& signing = PqSigningContext());
 
 PqTransactionBuildResult buildPqTransactionWithProof(
     const std::vector<PqSpendInput>& inputs,
     const std::vector<PqSendOutput>& outputs,
     const std::vector<PqInputAuth>& inputAuth,
     uint64_t unlockHeight = 0,
-    const std::vector<uint8_t>& extra = {});
+    const std::vector<uint8_t>& extra = {},
+    const PqSigningContext& signing = PqSigningContext());
 
 // Translate a final signed wire transaction into the pure payment-proof view,
 // including its canonical txid and inputs hash. Throws if any output is not a

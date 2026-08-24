@@ -1982,7 +1982,12 @@ bool Blockchain::checkPqInputs(const Transaction& tx, uint32_t* pmax_used_block_
 
   std::vector<Crypto::Hash> nullifiers;
   std::string err;
-  if (!checkPqTransactionInputs(tx, resolved, parameters::MINIMUM_FEE, &nullifiers, &err)) {
+  // Which signing transcript applies is a function of the height this
+  // transaction is being judged at, so a reorg across the activation boundary
+  // re-evaluates against the rules of the height the block actually lands on.
+  const PqSigningContext signing =
+      pqSigningContextForHeight(getCurrentBlockchainHeight(), m_currency.genesisBlockHash());
+  if (!checkPqTransactionInputs(tx, resolved, parameters::MINIMUM_FEE, &nullifiers, &err, signing)) {
     logger(INFO, BRIGHT_WHITE) << "PQ input check failed (" << err << ") for tx " << getObjectHash(tx);
     return false;
   }
@@ -2049,6 +2054,17 @@ bool Blockchain::checkFreeRegInputs(const Transaction& tx, uint32_t* pmax_used_b
 
   uint32_t refHeight = 0;
   Crypto::Hash identity = getPqAccountIdentityHash(reg);
+
+  // From the scheduled upgrade onwards a registration's tx_extra must match the
+  // exact grammar, which is what stops one proof from being re-wrapped into
+  // unlimited transactions with different ids. Before activation this is relay
+  // policy only (Core::check_tx_semantic): applying it to blocks early would make
+  // upgraded and old nodes disagree about a block.
+  if (getCurrentBlockchainHeight() >= parameters::PQ_TRANSCRIPT_V2_HEIGHT &&
+      !isCanonicalFreeRegExtra(tx.extra)) {
+    logger(INFO, BRIGHT_WHITE) << "free-reg tx_extra is not canonical, rejected";
+    return false;
+  }
 
   // Everything decidable from chain state, under the chain lock. The memory-hard
   // proof check is deliberately outside it: it costs milliseconds of CPU and

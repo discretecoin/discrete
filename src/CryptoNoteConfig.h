@@ -158,6 +158,27 @@ const uint64_t FREE_REG_POW_TARGET                          = UINT64_C(0x00007FF
 // from while bounding pool occupancy (~20*100*3.2KB ~= 6.4 MB worst case).
 const uint64_t FREE_REG_POOL_LIMIT                          = FREE_REG_PER_BLOCK * 20;
 
+// ---- Scheduled consensus changes -----------------------------------------
+//
+// Height at which the version-2 TX_PQ signing transcript becomes required, and
+// at which a TX_FREE_REG must carry a canonical tx_extra. Both are consensus
+// changes and both are implemented and tested, but NOTHING IS SCHEDULED: the
+// value is UINT32_MAX, so no height ever reaches it and every node keeps
+// applying the version-1 rules. Setting a real height is a hard fork and belongs
+// with the rest of the next planned upgrade, not on its own.
+//
+// What activation changes:
+//   * TX_PQ input signatures must verify against CryptoPQ::txSigningDigestV2,
+//     which binds the genesis block id (so a signature made for one network
+//     cannot be replayed onto another) and the input's index (so two inputs
+//     spending under one key stop having interchangeable signatures, which today
+//     lets a third party change an unconfirmed transaction's id).
+//   * TX_FREE_REG tx_extra must match the exact registration grammar. Until
+//     then that rule is relay policy only (see isCanonicalFreeRegExtra), because
+//     applying it to blocks before activation would make upgraded and old nodes
+//     disagree about a block.
+const uint32_t PQ_TRANSCRIPT_V2_HEIGHT                      = UINT32_MAX;
+
 // Node-local anti-DoS, not consensus. Verifying a registration proof costs a
 // memory-hard yespower evaluation, so a proof that has already failed is
 // remembered and replays of it are rejected without re-running the work. The
