@@ -45,22 +45,16 @@ For exchange and service wallet operation, including the two `walletd` deposit
 modes and the recommended H-I-A-T-C workflow, see the
 [walletd exchange integration guide](https://docs.discrete.cash/#/wallets/walletd-exchange-guide).
 
-### Account numbers need a trusted daemon
+### Account numbers and daemon trust
 
 An account number (`H-I-A-C`, or `H-I-A-T-C` for a deposit subaddress) is a short
-locator, not a self-contained address. To pay one, a wallet asks its daemon which
-keys the registration at `(H, I)` holds and pays whatever comes back. The `A`
-fingerprint is 20 bits: it reliably catches a mistyped number or a reorg that
-repointed `(H, I)`, but a daemon that wants to redirect a payment can grind about
-a million keypairs until one fingerprints to the `A` the payer typed. **Whoever
-resolves an account number therefore chooses where the payment goes**, and TLS
-does not change that — a hostile endpoint can hold a perfectly valid certificate.
+locator: it points at a registration on chain, and the wallet asks a daemon to look
+up the keys it names. A full Bech32m address carries the recipient's keys directly
+and needs no lookup.
 
-Full Bech32m addresses carry both public keys, so they need no resolution and are
-safe through any daemon, trusted or not.
-
-Wallets fail closed on this. Sending to an account number is refused, before any
-output is constructed, unless the daemon is trusted:
+Wallets treat the two accordingly. Paying a full address asks nothing of the daemon
+beyond relaying the transaction, so it works through any node. Paying an account
+number depends on the lookup, so wallets only do it through a daemon you trust:
 
 | Daemon | Trusted |
 |---|---|
@@ -68,10 +62,10 @@ output is constructed, unless the daemon is trusted:
 | An official Discrete endpoint | yes |
 | Any other remote daemon | no, until you say so |
 
-To use an account number through a custom remote daemon you must state the trust
-decision explicitly, with `--trusted-daemon` on `simplewallet`, `greenwallet`, or
-`walletd`. Only do that for a daemon you run or otherwise trust; otherwise use the
-recipient's full address.
+Sending to an account number through an untrusted daemon is refused before the
+transaction is built. To allow it, say so explicitly with `--trusted-daemon` on
+`simplewallet`, `greenwallet`, or `walletd`, and only for a daemon you run or
+otherwise trust. If in doubt, use the recipient's full address.
 
 ## Building (Windows / Visual Studio 2022, x64)
 
