@@ -230,6 +230,8 @@ namespace CryptoNote
     bool m_non_deterministic;             // old 2-random generation
     bool m_daemon_ssl;
     bool m_daemon_no_verify;
+    // Explicit user opt-in to let a custom remote daemon resolve account numbers.
+    bool m_trusted_daemon = false;
     bool m_dump_keys_file;
     
     std::unique_ptr<std::promise<std::error_code>> m_initResultPromise;

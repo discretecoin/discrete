@@ -118,6 +118,7 @@ const command_line::arg_descriptor<std::string> arg_daemon_host = { "daemon-host
 const command_line::arg_descriptor<uint16_t> arg_daemon_port = { "daemon-port", "Use daemon instance at port <arg> instead of default", 0 };
 const command_line::arg_descriptor<std::string> arg_daemon_cert = { "daemon-cert", "Custom cert file for performing verification", "" };
 const command_line::arg_descriptor<bool> arg_daemon_no_verify = { "daemon-no-verify", "Disable verification procedure", false };
+const command_line::arg_descriptor<bool> arg_trusted_daemon = { "trusted-daemon", "Trust this daemon to resolve account numbers. Only needed for a custom remote daemon: your own daemon and the official endpoints are trusted already. A daemon that resolves account numbers chooses where the payment goes, so only set this for a daemon you run or otherwise trust.", false };
 const command_line::arg_descriptor<std::string> arg_password = { "password", "Wallet password", "", true };
 const command_line::arg_descriptor<std::string> arg_change_password = { "change-password", "Change wallet password and exit", "", true };
 const command_line::arg_descriptor<std::string> arg_mnemonic_seed = { "mnemonic-seed", "Specify mnemonic seed for wallet recovery", "" };
@@ -712,6 +713,9 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
   }
 
   this->m_node.reset(new NodeRpcProxy(m_daemon_host, m_daemon_port, m_daemon_path, m_daemon_ssl));
+  if (m_trusted_daemon) {
+    this->m_node->setTrustedResolver(true);
+  }
 
   if (!m_daemon_cert.empty()) this->m_node->setRootCert(m_daemon_cert);
   if (m_daemon_no_verify) this->m_node->disableVerify();
@@ -1106,6 +1110,7 @@ void simple_wallet::handle_command_line(const boost::program_options::variables_
   m_daemon_port                  = command_line::get_arg(vm, arg_daemon_port);
   m_daemon_cert                  = command_line::get_arg(vm, arg_daemon_cert);
   m_daemon_no_verify             = command_line::get_arg(vm, arg_daemon_no_verify);
+  m_trusted_daemon               = command_line::get_arg(vm, arg_trusted_daemon);
   m_restore_wallet               = command_line::get_arg(vm, arg_restore_wallet);
   m_non_deterministic            = command_line::get_arg(vm, arg_non_deterministic);
   m_mnemonic_seed                = command_line::get_arg(vm, arg_mnemonic_seed);
@@ -2434,7 +2439,15 @@ bool simple_wallet::pq_account(const std::vector<std::string> &args) {
 bool simple_wallet::resolvePqRecipient(const std::string& s, CryptoPQ::KemPublicKey& viewPub,
                                        CryptoPQ::DsaPublicKey& spendPub, uint64_t& subaddrIndexT) {
   // Delegate to the shared resolver so every front-end parses addresses identically.
-  return CryptoNote::resolvePqRecipient(*m_node, m_currency.isTestnet(), s, viewPub, spendPub, subaddrIndexT);
+  std::string error;
+  if (CryptoNote::resolvePqRecipient(*m_node, m_currency.isTestnet(), s, viewPub, spendPub,
+                                     subaddrIndexT, &error)) {
+    return true;
+  }
+  if (!error.empty()) {
+    fail_msg_writer() << error;
+  }
+  return false;
 }
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::process_command(const std::vector<std::string> &args) {
@@ -2494,6 +2507,7 @@ int main(int argc, char* argv[]) {
   command_line::add_arg(desc_params, arg_daemon_port);
   command_line::add_arg(desc_params, arg_daemon_cert);
   command_line::add_arg(desc_params, arg_daemon_no_verify);
+  command_line::add_arg(desc_params, arg_trusted_daemon);
   command_line::add_arg(desc_params, arg_command);
   command_line::add_arg(desc_params, arg_log_file);
   command_line::add_arg(desc_params, arg_log_level);
@@ -2605,6 +2619,7 @@ int main(int argc, char* argv[]) {
     std::string daemon_host = command_line::get_arg(vm, arg_daemon_host);
     uint16_t daemon_port = command_line::get_arg(vm, arg_daemon_port);
     bool daemon_no_verify = command_line::get_arg(vm, arg_daemon_no_verify);
+    bool trusted_daemon = command_line::get_arg(vm, arg_trusted_daemon);
     std::string daemon_path = "/";
     bool daemon_ssl = false;
 
@@ -2625,7 +2640,11 @@ int main(int argc, char* argv[]) {
       }
     }
 
-    std::unique_ptr<INode> node(new NodeRpcProxy(daemon_host, daemon_port, daemon_path, daemon_ssl));
+    std::unique_ptr<NodeRpcProxy> proxy(new NodeRpcProxy(daemon_host, daemon_port, daemon_path, daemon_ssl));
+    if (trusted_daemon) {
+      proxy->setTrustedResolver(true);
+    }
+    std::unique_ptr<INode> node(std::move(proxy));
 
     if (!daemon_cert.empty()) node->setRootCert(daemon_cert);
     if (daemon_no_verify) node->disableVerify();

@@ -449,5 +449,16 @@ const char* const SEED_NODES[] = {
   "seed2.discrete.cash:9330",
 };
 
+// Remote wallet endpoints the project itself operates. A wallet trusts these,
+// and its own local daemon, to resolve Compact Account Numbers; any other remote
+// daemon has to be trusted explicitly by the user first (see
+// Common/DaemonTrust.h for why resolution is a trust decision at all).
+//
+// P2P seed nodes are NOT wallet endpoints and deliberately do not appear here.
+const char* const OFFICIAL_REMOTE_NODES[] = {
+  "node.discrete.cash:9331",
+  "wallet.discrete.cash:9331",
+};
+
 } // CryptoNote
 

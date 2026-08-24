@@ -92,6 +92,9 @@ public:
   virtual void getPoolTransactions(uint64_t timestampBegin, uint64_t timestampEnd, uint32_t transactionsNumberLimit, std::vector<TransactionDetails>& transactions, uint64_t& transactionsNumberWithinTimestamps, const Callback& callback) override;
   virtual void getBlockTimestamp(uint32_t height, uint64_t& timestamp, const Callback& callback) override;
   virtual void isSynchronized(bool& syncStatus, const Callback& callback) override;
+
+  // An in-process node IS the wallet's own daemon: same process, same operator.
+  virtual bool isTrustedResolver() const override { return true; }
   virtual void getConnections(std::vector<p2pConnection>& connections, const Callback& callback) override;
 
   // PQ account registry — routed straight to the wrapped Core (via ICore), so a

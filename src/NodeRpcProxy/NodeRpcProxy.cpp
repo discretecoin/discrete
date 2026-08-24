@@ -17,6 +17,8 @@
 // along with Karbo.  If not, see <http://www.gnu.org/licenses/>.
 
 #include "NodeRpcProxy.h"
+
+#include "Common/DaemonTrust.h"
 #include "NodeErrors.h"
 
 #include <system_error>
@@ -69,6 +71,7 @@ std::error_code interpretResponseStatus(const std::string& status) {
 NodeRpcProxy::NodeRpcProxy(const std::string& nodeHost, unsigned short nodePort, const std::string &daemon_path, const bool &daemon_ssl) :
     m_rpcTimeout(10000),
     m_pullInterval(5000),
+    m_trustedResolver(Common::isTrustedByDefault(nodeHost)),
     m_nodeHost(nodeHost),
     m_nodePort(nodePort),
     m_daemon_path(daemon_path),

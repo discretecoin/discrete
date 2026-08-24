@@ -1637,8 +1637,11 @@ std::error_code WalletService::createTransaction(const SendTransaction::Request&
         CryptoPQ::DsaPublicKey spendPub;
         uint64_t subaddrT = 0;
         const std::string recipient = canonicalizeAddressSelector(wallet, t.address);
-        if (!CryptoNote::resolvePqRecipient(node, currency.isTestnet(), recipient, viewPub, spendPub, subaddrT)) {
-          logger(Logging::WARNING) << "Invalid recipient: " << recipient;
+        std::string resolveError;
+        if (!CryptoNote::resolvePqRecipient(node, currency.isTestnet(), recipient, viewPub, spendPub,
+                                            subaddrT, &resolveError)) {
+          logger(Logging::WARNING) << "Invalid recipient: " << recipient
+                                   << (resolveError.empty() ? "" : " - " + resolveError);
           return make_error_code(CryptoNote::error::BAD_ADDRESS);
         }
         recipients.push_back(CryptoNote::PqSendOutput{viewPub, spendPub, t.amount, subaddrT});

@@ -41,9 +41,18 @@ namespace CryptoNote {
 // `testnet` selects which address HRP is accepted (testnet "tdisc" vs mainnet
 // "disc"); a raw address for the other network is rejected, so a wallet can't
 // pay a foreign-network address. Pass currency.isTestnet().
+// An account number is resolved by the daemon, which therefore chooses the keys
+// the payment goes to; the A fingerprint is a transcription failsafe, not a
+// defence against a resolver grinding keypairs to match it. Resolution is
+// refused outright on a daemon the user has not trusted, before any output is
+// built. `error`, when given, receives a message suitable for showing to the
+// user. Raw addresses carry both keys and are always accepted.
+extern const char* const kUntrustedResolverMessage;
+
 bool resolvePqRecipient(INode& node, bool testnet, const std::string& s,
                         CryptoPQ::KemPublicKey& viewPub,
                         CryptoPQ::DsaPublicKey& spendPub,
-                        uint64_t& subaddrIndexT);
+                        uint64_t& subaddrIndexT,
+                        std::string* error = nullptr);
 
 }  // namespace CryptoNote

@@ -45,6 +45,34 @@ For exchange and service wallet operation, including the two `walletd` deposit
 modes and the recommended H-I-A-T-C workflow, see the
 [walletd exchange integration guide](https://docs.discrete.cash/#/wallets/walletd-exchange-guide).
 
+### Account numbers need a trusted daemon
+
+An account number (`H-I-A-C`, or `H-I-A-T-C` for a deposit subaddress) is a short
+locator, not a self-contained address. To pay one, a wallet asks its daemon which
+keys the registration at `(H, I)` holds and pays whatever comes back. The `A`
+fingerprint is 20 bits: it reliably catches a mistyped number or a reorg that
+repointed `(H, I)`, but a daemon that wants to redirect a payment can grind about
+a million keypairs until one fingerprints to the `A` the payer typed. **Whoever
+resolves an account number therefore chooses where the payment goes**, and TLS
+does not change that — a hostile endpoint can hold a perfectly valid certificate.
+
+Full Bech32m addresses carry both public keys, so they need no resolution and are
+safe through any daemon, trusted or not.
+
+Wallets fail closed on this. Sending to an account number is refused, before any
+output is constructed, unless the daemon is trusted:
+
+| Daemon | Trusted |
+|---|---|
+| Your own daemon (loopback) | yes |
+| An official Discrete endpoint | yes |
+| Any other remote daemon | no, until you say so |
+
+To use an account number through a custom remote daemon you must state the trust
+decision explicitly, with `--trusted-daemon` on `simplewallet`, `greenwallet`, or
+`walletd`. Only do that for a daemon you run or otherwise trust; otherwise use the
+recipient's full address.
+
 ## Building (Windows / Visual Studio 2022, x64)
 
 Discrete vendors [liboqs](https://github.com/open-quantum-safe/liboqs) (ML-KEM /

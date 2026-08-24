@@ -157,6 +157,11 @@ Config parseArguments(int argc, char **argv)
       config.testnet = true;
     }
 
+    if (cmdOptionExists(argv, argv+argc, "--trusted-daemon"))
+    {
+      config.trustedDaemon = true;
+    }
+
     return config;
 }
 
@@ -184,6 +189,10 @@ std::vector<CLICommand> getCLICommands()
          false, true},
 
         {"--daemon-no-verify", "Disable verification procedure", "", false, false},
+
+        {"--trusted-daemon", "Trust this daemon to resolve account numbers. Your own "
+         "daemon and the official endpoints are trusted already; a custom remote daemon "
+         "that resolves an account number chooses where the payment goes", "", false, false},
 
         {"--wallet-file <file>", "Open the wallet <file>", "", false, true},
 

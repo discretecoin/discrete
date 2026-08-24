@@ -28,7 +28,8 @@ public:
   static CryptoNote::INode* createNode(const std::string& daemonAddress,
                                        uint16_t daemonPort,
                                        const std::string &daemonPath,
-                                       const bool &daemonSSL);
+                                       const bool &daemonSSL,
+                                       bool trustedResolver = false);
   static CryptoNote::INode* createNodeStub();
 private:
   NodeFactory();

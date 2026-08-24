@@ -48,6 +48,12 @@ public:
 class NodeRpcProxy : public CryptoNote::INode {
 public:
   NodeRpcProxy(const std::string& nodeHost, unsigned short nodePort, const std::string &daemon_path, const bool &daemon_ssl);
+
+  // Compact Account Number resolution is only as honest as the daemon answering
+  // it, so a remote endpoint is untrusted unless it is this machine's own
+  // daemon, one the project operates, or one the user has explicitly trusted.
+  virtual bool isTrustedResolver() const override { return m_trustedResolver; }
+  void setTrustedResolver(bool trusted) { m_trustedResolver = trusted; }
   virtual ~NodeRpcProxy();
 
   virtual bool addObserver(CryptoNote::INodeObserver* observer) override;
@@ -110,6 +116,7 @@ public:
   void rpcTimeout(unsigned int val) { m_rpcTimeout = val; }
 
   const std::string m_daemon_path;
+  bool m_trustedResolver = false;
   const std::string m_nodeHost;
   const unsigned short m_nodePort;
   const bool m_daemon_ssl;

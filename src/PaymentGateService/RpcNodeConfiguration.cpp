@@ -26,12 +26,14 @@ namespace po = boost::program_options;
 RpcNodeConfiguration::RpcNodeConfiguration() {
   m_daemon_host = "";
   m_daemon_port = 0;
+  m_trusted_daemon = false;
 }
 
 void RpcNodeConfiguration::initOptions(boost::program_options::options_description& desc) {
   desc.add_options()
     ("daemon-address", po::value<std::string>()->default_value("127.0.0.1"), "daemon address")
-    ("daemon-port", po::value<uint16_t>()->default_value((uint16_t) CryptoNote::RPC_DEFAULT_PORT), "daemon port");
+    ("daemon-port", po::value<uint16_t>()->default_value((uint16_t) CryptoNote::RPC_DEFAULT_PORT), "daemon port")
+    ("trusted-daemon", po::bool_switch(), "trust this daemon to resolve account numbers; a local daemon and the official endpoints are trusted already, and whoever resolves an account number chooses where the payment goes");
 }
 
 void RpcNodeConfiguration::init(const boost::program_options::variables_map& options) {
@@ -41,6 +43,10 @@ void RpcNodeConfiguration::init(const boost::program_options::variables_map& opt
 
   if (options.count("daemon-port") != 0 && (!options["daemon-port"].defaulted() || m_daemon_port == 0)) {
     m_daemon_port = options["daemon-port"].as<uint16_t>();
+  }
+
+  if (options.count("trusted-daemon") != 0 && options["trusted-daemon"].as<bool>()) {
+    m_trusted_daemon = true;
   }
 }
 

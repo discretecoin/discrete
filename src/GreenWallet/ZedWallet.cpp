@@ -61,7 +61,12 @@ int main(int argc, char **argv)
     System::Dispatcher dispatcher;
 
     /* Our connection to daemon */
-    CryptoNote::INode* node = new CryptoNote::NodeRpcProxy(config.host, config.port, config.path, config.ssl);
+    CryptoNote::NodeRpcProxy* proxy = new CryptoNote::NodeRpcProxy(config.host, config.port, config.path, config.ssl);
+    if (config.trustedDaemon)
+    {
+        proxy->setTrustedResolver(true);
+    }
+    CryptoNote::INode* node = proxy;
 
     // Set ssl options
     if (!config.daemonCert.empty()) node->setRootCert(config.daemonCert);

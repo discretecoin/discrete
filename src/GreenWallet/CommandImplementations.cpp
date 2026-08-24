@@ -846,10 +846,10 @@ void pqBalance(std::shared_ptr<WalletInfo> walletInfo)
 // its view + spend public keys, querying the node for an account number.
 static bool resolvePqRecipientGreen(CryptoNote::INode &node, bool testnet, const std::string &s,
                                     CryptoPQ::KemPublicKey &viewPub, CryptoPQ::DsaPublicKey &spendPub,
-                                    uint64_t &subaddrIndexT)
+                                    uint64_t &subaddrIndexT, std::string &error)
 {
     // Delegate to the shared resolver so every front-end parses addresses identically.
-    return CryptoNote::resolvePqRecipient(node, testnet, s, viewPub, spendPub, subaddrIndexT);
+    return CryptoNote::resolvePqRecipient(node, testnet, s, viewPub, spendPub, subaddrIndexT, &error);
 }
 
 void pqTransfer(std::shared_ptr<WalletInfo> walletInfo, CryptoNote::INode &node)
@@ -867,9 +867,14 @@ void pqTransfer(std::shared_ptr<WalletInfo> walletInfo, CryptoNote::INode &node)
     CryptoPQ::KemPublicKey destView;
     CryptoPQ::DsaPublicKey destSpend;
     uint64_t destSubaddrT = 0;  // non-zero only for an H-I-A-T-C deposit subaddress
-    if (!resolvePqRecipientGreen(node, wallet.isTestnet(), addrStr, destView, destSpend, destSubaddrT))
+    std::string resolveError;
+    if (!resolvePqRecipientGreen(node, wallet.isTestnet(), addrStr, destView, destSpend,
+                                 destSubaddrT, resolveError))
     {
-        std::cout << WarningMsg("Not a valid address or account number.") << std::endl;
+        std::cout << WarningMsg(resolveError.empty()
+                                    ? std::string("Not a valid address or account number.")
+                                    : resolveError)
+                  << std::endl;
         return;
     }
 
