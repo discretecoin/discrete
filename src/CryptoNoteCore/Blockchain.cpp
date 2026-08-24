@@ -1404,8 +1404,17 @@ bool Blockchain::handle_alternative_block(const Block& b, const Crypto::Hash& id
     // block is still refused — this only records why, it does not change the
     // decision. The peer-split hint and the WARNING with peer counts are added
     // by the protocol layer via bvc.m_finality_fork.
-    if (m_checkpoints.is_finality_violation(chainLen, block_height)) {
-      recordFinalityFork(chainLen, block_height, id);
+    //
+    // The snapshot is what resync_to_majority rolls back to, so it must never be
+    // taken on a peer's say-so: block_height above comes straight out of the
+    // candidate's own coinbase. Only a block that survives the same structural
+    // validation any competing block has to pass, on a branch whose ancestry we
+    // already store, may arm it — and the divergence is then derived from that
+    // stored ancestry rather than from the claimed height.
+    uint32_t validatedHeight = 0;
+    if (m_checkpoints.is_finality_violation(chainLen, block_height) &&
+        validateCompetingBlock(b, id, validatedHeight)) {
+      recordFinalityFork(chainLen, validatedHeight, id);
       bvc.m_finality_fork = true;
     }
     bvc.m_verification_failed = true;
@@ -2932,6 +2941,66 @@ void Blockchain::rollbackBlockchainTo(uint32_t height) {
 }
 
 // ─── first-seen finality: fork detection state + operator recovery ───────────
+
+bool Blockchain::validateCompetingBlock(const Block& b, const Crypto::Hash& id,
+                                        uint32_t& validatedHeight) {
+  // Caller holds m_blockchain_lock.
+
+  // Ancestry first: the parent has to be a block we already store, either on the
+  // main chain or in an alternative chain we have previously validated. Without
+  // it there is no branch to diverge from and nothing to roll back to.
+  uint32_t parentHeight = 0;
+  const auto altParent = m_alternative_chains.find(b.previousBlockHash);
+  if (altParent != m_alternative_chains.end()) {
+    parentHeight = altParent->second.height;
+  } else if (!m_db.getHashHeight(b.previousBlockHash, parentHeight)) {
+    logger(DEBUGGING) << "Refused deep-fork block " << id
+                      << " has an unknown parent; not arming finality recovery";
+    return false;
+  }
+
+  // Height comes from the stored parent, never from the candidate's coinbase.
+  validatedHeight = parentHeight + 1;
+
+  // Nothing new to learn if the snapshot already covers a divergence at least
+  // this deep with a competing tip at least this high. Skipping keeps a peer from
+  // replaying near-identical candidates to make us re-verify proofs of work.
+  if (m_finalityForkState.active &&
+      m_finalityForkState.divergenceHeight <= validatedHeight - 1 &&
+      m_finalityForkState.competingTipHeight >= validatedHeight) {
+    return false;
+  }
+
+  if (!checkBlockVersion(b)) {
+    return false;
+  }
+  if (!checkParentBlockSize(b, id)) {
+    return false;
+  }
+  if (!prevalidate_miner_transaction(b, validatedHeight)) {
+    logger(DEBUGGING) << "Refused deep-fork block " << id
+                      << " has an invalid miner transaction; not arming finality recovery";
+    return false;
+  }
+  if (!validate_block_signature(b, id, validatedHeight)) {
+    logger(DEBUGGING) << "Refused deep-fork block " << id
+                      << " has an invalid block signature; not arming finality recovery";
+    return false;
+  }
+
+  const Difficulty diff = getDifficultyForNextBlock(b.previousBlockHash);
+  if (!diff) {
+    return false;
+  }
+  Crypto::Hash proofOfWork = NULL_HASH;
+  if (!checkProofOfWork(m_cn_context, b, diff, proofOfWork)) {
+    logger(DEBUGGING) << "Refused deep-fork block " << id
+                      << " does not carry enough proof of work; not arming finality recovery";
+    return false;
+  }
+
+  return true;
+}
 
 void Blockchain::recordFinalityFork(uint32_t chainLen, uint32_t altBlockHeight,
                                     const Crypto::Hash& altBlockId) {

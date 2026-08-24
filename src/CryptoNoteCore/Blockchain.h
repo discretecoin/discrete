@@ -432,6 +432,10 @@ namespace CryptoNote {
     bool checkUpgradeHeight(const UpgradeDetector& upgradeDetector);
     // Snapshot a refused deep reorg into m_finalityForkState (call under
     // m_blockchain_lock). chainLen is the current chain length (tip height + 1).
+    // Structural validation of a competing block that the finality rule refused,
+    // used only to decide whether it may arm operator recovery state. Returns the
+    // height derived from the stored parent, not the block's claimed one.
+    bool validateCompetingBlock(const Block& b, const Crypto::Hash& id, uint32_t& validatedHeight);
     void recordFinalityFork(uint32_t chainLen, uint32_t altBlockHeight,
                             const Crypto::Hash& altBlockId);
 

@@ -640,6 +640,137 @@ bool runFreeRegAdmissionOrder() {
   return ok;
 }
 
+// Finality-fork recovery state must only be armed by a competing block that is
+// actually valid on a branch we already store. It is what an operator-confirmed
+// resync_to_majority rolls back to, and the height it records used to come
+// straight out of the candidate's own coinbase, so any peer could aim a rollback
+// wherever it liked with an unsigned, proof-of-work-free block.
+bool runFinalityForkArming() {
+  using namespace CryptoNote;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+
+  const Currency currency = CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(11).upgradeHeightV6(12)
+      .currency();
+
+  std::filesystem::path dataDir("pq_finality_arm_test_data");
+  std::error_code ec;
+  std::filesystem::remove_all(dataDir, ec);
+  std::filesystem::create_directories(dataDir, ec);
+
+  System::Dispatcher dispatcher;
+  Core core(currency, nullptr, logger, dispatcher);
+  CoreConfig coreConfig; coreConfig.configFolder = dataDir.string();
+  MinerConfig minerConfig;
+  if (!expect(core.init(coreConfig, minerConfig, false), "arm: core.init")) return false;
+
+  test_generator gen(currency);
+  gen.setBlockchain(&core.get_blockchain_storage());
+  AccountBase miner; miner.generate();
+
+  Crypto::Hash genesisHash = core.getBlockIdByHeight(0);
+  Block genesis;
+  if (!expect(core.getBlockByHash(genesisHash, genesis), "arm: load genesis")) {
+    core.deinit(); return false;
+  }
+  std::vector<size_t> emptySizes;
+  gen.addBlock(genesis, 0, 0, emptySizes, 0);
+
+  // Deep enough that a fork near the bottom is past CRYPTONOTE_FINALITY_DEPTH.
+  uint64_t ts = static_cast<uint64_t>(std::time(nullptr)) - 24 * 60 * 60;
+  const uint64_t step = currency.difficultyTarget() * 10;
+  const uint32_t chainBlocks = parameters::CRYPTONOTE_FINALITY_DEPTH + 8;
+  for (uint32_t i = 0; i < chainBlocks; ++i) {
+    if (!expect(mineBlock(core, currency, gen, miner, ts), "arm: mine " + std::to_string(i + 1))) {
+      core.deinit(); std::filesystem::remove_all(dataDir, ec); return false;
+    }
+    ts += step;
+  }
+
+  bool ok = true;
+  ok &= expect(!core.getFinalityForkState().active, "arm: no fork flagged on a clean chain");
+
+  // Take a real early block and mutate it. Its coinbase still claims a deep
+  // height, which is all the old code looked at.
+  const uint32_t forkHeight = 3;
+  Block realEarly;
+  if (!expect(core.getBlockByHash(core.getBlockIdByHeight(forkHeight), realEarly),
+              "arm: load early block")) {
+    core.deinit(); std::filesystem::remove_all(dataDir, ec); return false;
+  }
+
+  auto submitBlock = [&](Block blk, const std::string& lbl) {
+    block_verification_context bvc{};
+    core.handle_incoming_block(blk, bvc, false, false);
+    ok &= expect(!bvc.m_added_to_main_chain, "arm: " + lbl + " not added");
+    ok &= expect(!core.getFinalityForkState().active,
+                 "arm: " + lbl + " did not arm finality recovery");
+  };
+
+  // 1. Valid ancestry, but the block signature is garbage.
+  {
+    Block forged = realEarly;
+    forged.timestamp += 1;                       // change the id
+    forged.signature.assign(forged.signature.size(), 0x00);
+    submitBlock(forged, "unsigned block");
+  }
+
+  // 2. Correctly signed, but by an identity the coinbase does not commit to, so
+  //    the block carries no authorization for the reward it claims.
+  {
+    AccountBase stranger; stranger.generate();
+    Block forged = realEarly;
+    forged.timestamp += 2;
+    signBlockForTest(forged, stranger);
+    submitBlock(forged, "block signed by a stranger");
+  }
+
+  // 3. A parent we have never seen: there is no branch to diverge from.
+  {
+    Block forged = realEarly;
+    forged.timestamp += 3;
+    for (size_t i = 0; i < sizeof(forged.previousBlockHash.data); ++i) {
+      forged.previousBlockHash.data[i] = static_cast<uint8_t>(i + 77);
+    }
+    signBlockForTest(forged, miner);
+    submitBlock(forged, "block with an unknown parent");
+  }
+
+  // 4. A genuine competing block on a branch we store still arms recovery, and
+  //    the divergence it records comes from the stored parent.
+  {
+    const Crypto::Hash parentHash = core.getBlockIdByHeight(forkHeight - 1);
+    uint64_t generated = 0;
+    std::vector<size_t> sizes;
+    ok &= expect(core.getAlreadyGeneratedCoins(parentHash, generated), "arm: generated coins");
+    ok &= expect(core.getBackwardBlocksSizes(forkHeight - 1, sizes, currency.rewardBlocksWindow()),
+                 "arm: backward sizes");
+
+    gen.defaultMajorVersion = core.getBlockMajorVersionForHeight(forkHeight);
+    Block competitor;
+    std::list<Transaction> none;
+    ok &= expect(gen.constructBlock(competitor, forkHeight, parentHash, miner,
+                                    realEarly.timestamp + 4, generated, sizes, none),
+                 "arm: build competitor");
+    ok &= expect(signBlockForTest(competitor, miner), "arm: sign competitor");
+
+    block_verification_context bvc{};
+    core.handle_incoming_block(competitor, bvc, false, false);
+    ok &= expect(!bvc.m_added_to_main_chain, "arm: competitor refused by the finality rule");
+
+    const FinalityForkState state = core.getFinalityForkState();
+    ok &= expect(state.active, "arm: valid competitor arms finality recovery");
+    ok &= expect(state.divergenceHeight == forkHeight - 1,
+                 "arm: divergence taken from the stored parent");
+  }
+
+  core.deinit();
+  std::filesystem::remove_all(dataDir, ec);
+  return ok;
+}
+
 // Free-reg per-block cap: verifies that a block is rejected when it carries more
 // than freeRegPerBlock(2) TX_FREE_REG transactions.
 bool runFreeRegCap() {
@@ -1377,6 +1508,10 @@ int main() {
   }
   if (!runFreeRegAdmissionOrder()) {
     std::cerr << "[FAIL] PQ free-reg admission ordering test" << std::endl;
+    return 1;
+  }
+  if (!runFinalityForkArming()) {
+    std::cerr << "[FAIL] PQ finality-fork arming test" << std::endl;
     return 1;
   }
   if (!runStaleRegTemplate()) {
