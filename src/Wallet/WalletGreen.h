@@ -277,10 +277,7 @@ protected:
   static EncryptedWalletRecord encryptSeed(const CryptoPQ::SeedMaster& seedMaster, uint64_t creationTimestamp,
     const Crypto::chacha8_key& key, const Crypto::chacha8_iv& iv);
   EncryptedWalletRecord encryptSeed(const CryptoPQ::SeedMaster& seedMaster, uint64_t creationTimestamp) const;
-  Crypto::chacha8_iv getNextIv() const;
-  static void incIv(Crypto::chacha8_iv& iv);
-  void incNextIv();
-  // Set up a fresh (empty) PQ wallet container: the prefix holds only {version,nextIv}
+  // Set up a fresh (empty) PQ wallet container: the prefix holds only the version
   // — there is no classical view key. The primary seed lands as record 0 via the
   // first createAddress()/doCreateAddress().
   void initContainer(const std::string& path, const std::string& password);

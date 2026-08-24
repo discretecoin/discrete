@@ -21,6 +21,7 @@
 #include <chrono>
 #include <fstream>
 #include <numeric>
+#include <set>
 #include <sstream>
 #include <system_error>
 #include <thread>
@@ -36,6 +37,7 @@
 #include "Wallet/MiningKeyLoader.h"
 #include "Wallet/WalletErrors.h"
 #include "Wallet/WalletGreen.h"
+#include "Wallet/WalletIndices.h"
 #include "Wallet/PqWallet.h"
 #include "Wallet/PqTransactionBuilder.h"
 #include "crypto_pq/PqOutputBuilder.h"
@@ -1717,5 +1719,85 @@ TEST(PqWalletIntegration, AggregatedPerSubaddressMessageSigning) {
   EXPECT_TRUE(wallet.verifyMessage(msg, primary, sigEmpty));
 
   wallet.shutdown();
+  boost::filesystem::remove(path);
+}
+
+// Every ciphertext in the container must carry its own IV. ChaCha8 is a stream
+// cipher: reusing one (key, IV) pair across two plaintexts leaks their XOR, and
+// the wallet cache is largely predictable, so a collision between a seed record
+// and the cache blob exposes the master seed. reset() is the path that rewrites
+// every seed record and then immediately rewrites the cache, so it is where a
+// shared IV counter shows up.
+namespace {
+// Collect every IV the container file holds: one per live seed record, plus the
+// one that prefixes the encrypted cache blob. Read straight off disk (the file
+// layout is prefix | size | capacity | records | suffix) because the wallet keeps
+// an exclusive mapping open while it is loaded.
+std::vector<std::string> collectContainerIvs(const std::string& path) {
+  std::ifstream in(path, std::ios::binary);
+  std::string bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+
+  const size_t prefixSize = sizeof(CryptoNote::ContainerStoragePrefix);
+  const size_t recordSize = sizeof(CryptoNote::EncryptedWalletRecord);
+  const size_t ivSize = sizeof(Crypto::chacha8_iv);
+
+  uint64_t capacity = 0, count = 0;
+  std::memcpy(&capacity, bytes.data() + prefixSize, sizeof(capacity));
+  std::memcpy(&count, bytes.data() + prefixSize + sizeof(capacity), sizeof(count));
+
+  std::vector<std::string> ivs;
+  const size_t recordsAt = prefixSize + 2 * sizeof(uint64_t);
+  for (uint64_t i = 0; i < count; ++i) {
+    ivs.emplace_back(bytes.data() + recordsAt + i * recordSize, ivSize);
+  }
+
+  const size_t suffixAt = recordsAt + static_cast<size_t>(capacity) * recordSize;
+  if (bytes.size() >= suffixAt + ivSize) {
+    ivs.emplace_back(bytes.data() + suffixAt, ivSize);
+  }
+  return ivs;
+}
+}  // namespace
+
+TEST(PqWalletIntegration, ResetNeverReusesAnIv) {
+  System::Dispatcher dispatcher;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(1000000).upgradeHeightV6(1000000)
+      .currency();
+  TestBlockchainGenerator generator(currency);
+  INodeTrivialRefreshStub node(generator);
+  CryptoNote::WalletGreen wallet(dispatcher, currency, node, logger);
+
+  const std::string path = "pq_reset_iv.wallet";
+  boost::filesystem::remove(path);
+  wallet.initialize(path, "pass");
+  wallet.createAddress();
+  wallet.save(CryptoNote::WalletSaveLevel::SAVE_ALL);
+  wallet.shutdown();
+
+  std::vector<std::string> before = collectContainerIvs(path);
+  ASSERT_GE(before.size(), 2u) << "expected at least one seed record plus a cache blob";
+  EXPECT_EQ(before.size(), std::set<std::string>(before.begin(), before.end()).size());
+
+  // reset() re-encrypts every seed record and then saves the cache.
+  wallet.load(path, "pass");
+  wallet.reset(0);
+  wallet.save(CryptoNote::WalletSaveLevel::SAVE_ALL);
+  wallet.shutdown();
+
+  std::vector<std::string> after = collectContainerIvs(path);
+  ASSERT_EQ(before.size(), after.size());
+  EXPECT_EQ(after.size(), std::set<std::string>(after.begin(), after.end()).size())
+      << "an IV was reused inside the container after reset";
+
+  // The rewrite must also not reuse the IVs the previous ciphertexts were under.
+  std::set<std::string> seen(before.begin(), before.end());
+  for (const std::string& iv : after) {
+    EXPECT_EQ(0u, seen.count(iv)) << "reset reused a pre-reset IV";
+  }
+
   boost::filesystem::remove(path);
 }

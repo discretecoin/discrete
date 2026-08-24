@@ -284,7 +284,12 @@ EncryptedWalletRecord WalletGreen::encryptSeed(const CryptoPQ::SeedMaster& seedM
 }
 
 EncryptedWalletRecord WalletGreen::encryptSeed(const CryptoPQ::SeedMaster& seedMaster, uint64_t creationTimestamp) const {
-  return encryptSeed(seedMaster, creationTimestamp, m_key, getNextIv());
+  // A fresh random IV per record, never the shared prefix counter. ChaCha8 is a
+  // stream cipher, so encrypting two different plaintexts under one (key, IV)
+  // pair leaks their XOR; rewriting the seed records in place — which reset()
+  // does for every record, and which the container cache then follows with its
+  // own write — must not draw the same IV twice.
+  return encryptSeed(seedMaster, creationTimestamp, m_key, Crypto::randomChachaIV());
 }
 
 CryptoPQ::SeedMaster WalletGreen::primarySeedMaster() const {
@@ -295,26 +300,8 @@ CryptoPQ::SeedMaster WalletGreen::primarySeedMaster() const {
   return index.front().seedMaster;
 }
 
-Crypto::chacha8_iv WalletGreen::getNextIv() const {
-  const auto* prefix = reinterpret_cast<const ContainerStoragePrefix*>(m_containerStorage.prefix());
-  return prefix->nextIv;
-}
 
-void WalletGreen::incIv(Crypto::chacha8_iv& iv) {
-  static_assert(sizeof(uint64_t) == sizeof(Crypto::chacha8_iv), "Bad Crypto::chacha8_iv size");
-  uint64_t* i = reinterpret_cast<uint64_t*>(&iv);
-  if (*i < std::numeric_limits<uint64_t>::max()) {
-    ++(*i);
-  } else {
-    *i = 0;
-  }
-}
 
-void WalletGreen::incNextIv() {
-  static_assert(sizeof(uint64_t) == sizeof(Crypto::chacha8_iv), "Bad Crypto::chacha8_iv size");
-  auto* prefix = reinterpret_cast<ContainerStoragePrefix*>(m_containerStorage.prefix());
-  incIv(prefix->nextIv);
-}
 
 void WalletGreen::initContainer(const std::string& path, const std::string& password) {
   if (m_state != WalletState::NOT_INITIALIZED) {
@@ -634,12 +621,7 @@ void WalletGreen::copyContainerStorageKeys(ContainerStorage& src, const chacha8_
       throw std::system_error(make_error_code(error::WRONG_PASSWORD), "Wrong password");
     }
 
-    // push_back() can resize container, and dstPrefix address can be changed, so it is requested for each record
-    ContainerStoragePrefix* dstPrefix = reinterpret_cast<ContainerStoragePrefix*>(dst.prefix());
-    Crypto::chacha8_iv recordIv = dstPrefix->nextIv;
-    incIv(dstPrefix->nextIv);
-
-    dst.push_back(encryptSeed(seed, creationTimestamp, dstKey, recordIv));
+    dst.push_back(encryptSeed(seed, creationTimestamp, dstKey, Crypto::randomChachaIV()));
   }
 }
 
@@ -653,10 +635,10 @@ void WalletGreen::copyContainerStoragePrefix(ContainerStorage& src, const chacha
 }
 
 void WalletGreen::encryptAndSaveContainerData(ContainerStorage& storage, const Crypto::chacha8_key& key, const void* containerData, size_t containerDataSize) {
-  ContainerStoragePrefix* prefix = reinterpret_cast<ContainerStoragePrefix*>(storage.prefix());
-
-  Crypto::chacha8_iv suffixIv = prefix->nextIv;
-  incIv(prefix->nextIv);
+  // Random IV, for the same reason the seed records use one: the cache blob is
+  // rewritten on every save under an unchanged key, and the prefix counter it
+  // used to draw from is neither authenticated nor guaranteed to move forward.
+  Crypto::chacha8_iv suffixIv = Crypto::randomChachaIV();
 
   BinaryArray encryptedContainer;
   encryptedContainer.resize(containerDataSize);
@@ -1109,7 +1091,6 @@ std::string WalletGreen::addWallet(const CryptoPQ::SeedMaster& seedMaster, bool 
 
   // Persist the encrypted seed record, then register the in-memory record.
   m_containerStorage.push_back(encryptSeed(seedMaster, creationTimestamp));
-  incNextIv();
 
   try {
     WalletRecord wallet;

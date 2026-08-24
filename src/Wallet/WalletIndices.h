@@ -68,6 +68,11 @@ struct EncryptedWalletRecord {
 // On-disk container header. PQ containers keep no key material here (the master
 // seed lives in the body records); this is part of the wallet file format and is
 // shared by WalletGreen and the daemon's read-only mining-key loader.
+//
+// `nextIv` is a vestige of the counter that used to hand out record and cache
+// IVs. Every ciphertext now carries its own freshly drawn IV, so nothing reads
+// this field; it stays in the layout because the prefix size is part of the
+// on-disk format.
 struct ContainerStoragePrefix {
   uint8_t version;
   Crypto::chacha8_iv nextIv;
