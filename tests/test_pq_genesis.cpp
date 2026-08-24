@@ -91,6 +91,72 @@ TEST(PqGenesis, GenesisBlockHashPinned) {
             "06c4df2cd46045b9fbc1664a10f1bdf0355f672c8349bbd29d671bf48e83d7bd");
 }
 
+
+// Mainnet and testnet must not share a genesis transaction.
+//
+// A TX_PQ spend signature covers the transaction body, which names the outpoints
+// being spent but not the chain they belong to. If both networks started from the
+// same genesis transaction they would have the same genesis transaction id and
+// the same genesis outpoints, and a signature spending one of them would verify
+// on either chain. Differing block nonces do not help: the nonce is in the block,
+// and the outpoint comes from the transaction.
+//
+// This pins the mitigation. The complete fix is to bind chain identity into the
+// signing transcript, which is a consensus change scheduled for the next upgrade.
+TEST(PqGenesis, NetworksDoNotShareAGenesisTransaction) {
+  Logging::ConsoleLogger logger;
+  Currency mainnet = CurrencyBuilder(logger).testnet(false).currency();
+  Currency testnet = CurrencyBuilder(logger).testnet(true).currency();
+
+  const Transaction& mainCb = mainnet.genesisBlock().baseTransaction;
+  const Transaction& testCb = testnet.genesisBlock().baseTransaction;
+
+  const Crypto::Hash mainTxid = getObjectHash(mainCb);
+  const Crypto::Hash testTxid = getObjectHash(testCb);
+  EXPECT_NE(Common::podToHex(mainTxid), Common::podToHex(testTxid))
+      << "the two networks share a genesis transaction id, so they share genesis "
+         "outpoints and a spend signed for one verifies on the other";
+
+  // Every genesis outpoint is (txid, index), so distinct txids make every
+  // outpoint distinct. Assert the transactions really do differ on the wire too.
+  EXPECT_NE(toBinaryArray(mainCb), toBinaryArray(testCb));
+
+  // And the block hashes differ, as they already did.
+  EXPECT_NE(Common::podToHex(mainnet.genesisBlockHash()),
+            Common::podToHex(testnet.genesisBlockHash()));
+}
+
+// The testnet marker changes only the coinbase extra: the reserve outputs, the
+// amounts, and the unlock schedule are the same on both networks.
+TEST(PqGenesis, TestnetKeepsTheSameReserveStructure) {
+  Logging::ConsoleLogger logger;
+  Currency testnet = CurrencyBuilder(logger).testnet(true).currency();
+  const Transaction& cb = testnet.genesisBlock().baseTransaction;
+
+  ASSERT_EQ(GENESIS_TREASURY_RESERVE_BATCHES, cb.outputs.size());
+  uint64_t total = 0;
+  for (size_t i = 0; i < cb.outputs.size(); ++i) {
+    EXPECT_EQ(GENESIS_TREASURY_RESERVE_BATCH_ATOMS, cb.outputs[i].amount);
+    EXPECT_EQ(static_cast<uint64_t>(i) * GENESIS_TREASURY_RESERVE_UNLOCK_STEP,
+              cb.outputs[i].unlockHeight);
+    total += cb.outputs[i].amount;
+  }
+  EXPECT_EQ(GENESIS_TREASURY_RESERVE_TOTAL_ATOMS, total);
+}
+
+// The mainnet artifact is frozen and must not move because testnet changed.
+TEST(PqGenesis, TestnetMarkerDoesNotTouchMainnet) {
+  BinaryArray fromConst;
+  ASSERT_TRUE(Common::fromHex(std::string(GENESIS_COINBASE_TX_HEX), fromConst));
+  EXPECT_EQ(fromConst, toBinaryArray(buildGenesisTreasuryReserveCoinbase(false)));
+  EXPECT_NE(fromConst, toBinaryArray(buildGenesisTreasuryReserveCoinbase(true)));
+}
+
+TEST(PqGenesis, TestnetBuilderIsDeterministic) {
+  EXPECT_EQ(toBinaryArray(buildGenesisTreasuryReserveCoinbase(true)),
+            toBinaryArray(buildGenesisTreasuryReserveCoinbase(true)));
+}
+
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
