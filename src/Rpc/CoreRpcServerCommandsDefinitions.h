@@ -1221,9 +1221,23 @@ struct COMMAND_RPC_CHECK_TRANSACTION_PROOF {
   };
 
   struct response {
-    // Retained under the historical Karbo field name for RPC compatibility;
-    // in Discrete it reports validity of the PQ payment proof.
+    // What this proof actually establishes: the listed outputs commit to the
+    // destination's SPEND key. That is authority over the funds, and nothing
+    // more.
+    //
+    // It does NOT establish the routing index T, so it cannot tell one deposit
+    // subaddress of an account apart from another: the same proof verifies
+    // identically against H-I-A-1-C and H-I-A-2-C, because T is not part of what
+    // was signed. Settlement software must not credit an invoice from
+    // spend_authority_valid alone; establishing T needs the recipient wallet to
+    // decrypt the output. route_verified says so explicitly and is always false
+    // on this call.
+    //
+    // signature_valid keeps the historical Karbo field name and mirrors
+    // spend_authority_valid for RPC compatibility.
     bool signature_valid;
+    bool spend_authority_valid = false;
+    bool route_verified = false;
     uint64_t received_amount;
     std::vector<TransactionOutput> outputs;
     std::vector<uint32_t> output_indices;
@@ -1232,6 +1246,8 @@ struct COMMAND_RPC_CHECK_TRANSACTION_PROOF {
 
     void serialize(ISerializer &s) {
       KV_MEMBER(signature_valid)
+      KV_MEMBER(spend_authority_valid)
+      KV_MEMBER(route_verified)
       KV_MEMBER(received_amount)
       KV_MEMBER(outputs)
       KV_MEMBER(output_indices)

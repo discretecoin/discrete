@@ -2066,7 +2066,11 @@ bool RpcServer::on_check_transaction_proof(
           CORE_RPC_ERROR_CODE_WRONG_PARAM,
           "Destination account fingerprint does not match the on-chain keys"};
     }
-    recipient.subaddrIndexT = hasSubaddress ? subaddressIndex : 0;
+    // Parsed for address validation only. verifyPqPaymentProof does not check it
+    // and could not: nothing in the proof commits to T.
+    (void)hasSubaddress;
+    (void)subaddressIndex;
+    recipient.subaddrIndexT = 0;
   }
 
   PqPaymentProof proof;
@@ -2086,6 +2090,11 @@ bool RpcServer::on_check_transaction_proof(
   }
 
   res.signature_valid = false;
+  res.spend_authority_valid = false;
+  // The proof binds spend authority, never the routing index. A caller that
+  // supplied a deposit subaddress gets no confirmation that the payment went to
+  // THAT subaddress, because T is not part of what the payer signed.
+  res.route_verified = false;
   res.received_amount = 0;
   res.outputs.clear();
   res.output_indices.clear();
@@ -2105,6 +2114,7 @@ bool RpcServer::on_check_transaction_proof(
 
     res.received_amount = verifyPqPaymentProof(
         proof, expectedGenesis, proofTransaction, recipient);
+    res.spend_authority_valid = true;
     res.signature_valid = true;
     res.output_indices.reserve(proof.entries.size());
     res.outputs.reserve(proof.entries.size());

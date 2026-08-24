@@ -5,6 +5,7 @@
 
 #include "crypto_pq/PqOutputBuilder.h"
 #include "crypto_pq/PqPaymentProof.h"
+#include "Rpc/CoreRpcServerCommandsDefinitions.h"
 
 #include <cstring>
 
@@ -109,6 +110,29 @@ TEST(PqPaymentProof, DoesNotClaimViewKeyOrSubaddressDelivery) {
   EXPECT_EQ(CryptoNote::verifyPqPaymentProof(
                 f.proof, f.genesisId, f.tx, sameAuthority),
             1000u);
+}
+
+// The proof is authority-only, so it cannot distinguish one deposit subaddress
+// of an account from another: every routing index verifies identically. Anything
+// that credits an invoice from this result alone is crediting the wrong thing.
+TEST(PqPaymentProof, VerdictIsIdenticalForEveryRoutingIndex) {
+  ProofFixture f;
+  const uint64_t routes[] = { 0, 1, 2, 17, 4294967295ULL, 4294967296ULL,
+                              18446744073709551615ULL };
+  for (uint64_t t : routes) {
+    auto recipient = f.recipient;
+    recipient.subaddrIndexT = t;
+    EXPECT_EQ(1000u, CryptoNote::verifyPqPaymentProof(f.proof, f.genesisId, f.tx, recipient))
+        << "routing index " << t << " changed the verdict, which the proof cannot support";
+  }
+}
+
+TEST(PqPaymentProof, RpcResultDoesNotClaimTheRoute) {
+  CryptoNote::COMMAND_RPC_CHECK_TRANSACTION_PROOF::response res;
+  // The default must be the safe one: a caller that forgets to look still does
+  // not read a route confirmation that was never established.
+  EXPECT_FALSE(res.route_verified);
+  EXPECT_FALSE(res.spend_authority_valid);
 }
 
 TEST(PqPaymentProof, RejectsChangedCommitment) {
