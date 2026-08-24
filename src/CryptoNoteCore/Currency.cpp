@@ -508,7 +508,10 @@ namespace CryptoNote {
     // Deterministic Treasury Reserve coinbase. Used by `discreted --print-genesis-tx` to
     // emit GENESIS_COINBASE_TX_HEX. (The legacy ECC constructMinerTx path is dead
     // in Discrete.)
-    return buildGenesisTreasuryReserveCoinbase();
+    //
+    // Follows the builder's own testnet flag, so printing on a testnet build
+    // emits that network's genesis transaction rather than mainnet's.
+    return buildGenesisTreasuryReserveCoinbase(m_currency.m_testnet);
   }
   CurrencyBuilder& CurrencyBuilder::emissionSpeedFactor(unsigned int val) {
     if (val <= 0 || val > 8 * sizeof(uint64_t)) {

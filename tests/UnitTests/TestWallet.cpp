@@ -1398,8 +1398,12 @@ TEST(WalletLegacySmoke, DetachedSeedNeverReturnsToSavedTrackingWallet) {
   }
   const std::string protectedWalletBytes = serialized.str();
   ASSERT_FALSE(protectedWalletBytes.empty());
+  // The first byte is the envelope marker now, not the content version: the
+  // content version moved inside the authenticated payload so it cannot be edited
+  // on disk. inspectWalletSnapshot below reads it back out and is what pins that
+  // this is still a protected-spend wallet.
   EXPECT_EQ(static_cast<unsigned char>(protectedWalletBytes.front()),
-            CryptoNote::WalletLegacySerializer::PROTECTED_SPEND_VERSION);
+            CryptoNote::WalletLegacySerializer::AUTHENTICATED_ENVELOPE);
 
   CryptoNote::WalletSnapshotInfo snapshotInfo;
   std::string snapshotError;
