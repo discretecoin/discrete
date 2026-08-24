@@ -246,7 +246,7 @@ uint64_t grindFreeRegPow(const std::array<uint8_t, 1184>& viewPub,
   return winner.load(std::memory_order_relaxed);
 }
 
-bool checkFreeRegTransactionSemantic(const Transaction& tx, std::string* error, uint64_t powTarget) {
+bool checkFreeRegTransactionShape(const Transaction& tx, std::string* error) {
   if (tx.txType != TX_FREE_REG) {
     return fail(error, "not a TX_FREE_REG subtype");
   }
@@ -279,15 +279,34 @@ bool checkFreeRegTransactionSemantic(const Transaction& tx, std::string* error, 
     return fail(error, "TX_FREE_REG: PoW tag is not the final tx_extra field");
   }
 
+  return true;
+}
+
+namespace {
+thread_local uint64_t g_freeRegPowEvaluations = 0;
+}  // namespace
+
+uint64_t freeRegPowEvaluationCount() {
+  return g_freeRegPowEvaluations;
+}
+
+bool checkFreeRegTransactionPow(const Transaction& tx, std::string* error, uint64_t powTarget) {
+  ++g_freeRegPowEvaluations;
   TransactionExtraPqAccountRegistration reg;
   TransactionExtraPow pow;
-  getPqAccountRegistrationFromExtra(tx.extra, reg);
-  getPowTagFromExtra(tx.extra, pow);
+  if (!getPqAccountRegistrationFromExtra(tx.extra, reg) || !getPowTagFromExtra(tx.extra, pow)) {
+    return fail(error, "TX_FREE_REG: missing registration or PoW tag");
+  }
 
   if (!checkFreeRegPow(reg.viewPub, reg.spendPub, pow.refBlockHash, pow.nonce, powTarget)) {
     return fail(error, "TX_FREE_REG: anti-spam PoW not satisfied");
   }
   return true;
+}
+
+bool checkFreeRegTransactionSemantic(const Transaction& tx, std::string* error, uint64_t powTarget) {
+  return checkFreeRegTransactionShape(tx, error) &&
+         checkFreeRegTransactionPow(tx, error, powTarget);
 }
 
 bool checkPqTransactionInputs(const Transaction& tx,

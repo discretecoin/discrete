@@ -68,6 +68,22 @@ bool checkPqTransactionSemantic(const Transaction& tx, std::string* error);
 // per-block count) are enforced by the Blockchain layer.
 // powTarget defaults to parameters::FREE_REG_POW_TARGET; pass a custom value
 // (e.g. UINT64_MAX) in tests to bypass PoW grinding.
+//
+// The check is split so callers can run the cheap half first. Verifying the PoW
+// costs a full memory-hard yespower evaluation (16 MiB, milliseconds), which a
+// peer can trigger for free by replaying a blob, so the expensive half must only
+// run once everything a node can decide cheaply — shape, whether the transaction
+// is already known, whether the reference block is in the window, whether the
+// identity is already registered — has already passed.
+bool checkFreeRegTransactionShape(const Transaction& tx, std::string* error);
+
+// How many registration-proof evaluations the calling thread has run. Node-local
+// instrumentation, not consensus: the relay layer samples the delta across one
+// transaction admission to charge the peer that caused the work, and tests use
+// it to assert that cheap rejections never reach the proof at all.
+uint64_t freeRegPowEvaluationCount();
+bool checkFreeRegTransactionPow(const Transaction& tx, std::string* error,
+                                uint64_t powTarget = parameters::FREE_REG_POW_TARGET);
 bool checkFreeRegTransactionSemantic(const Transaction& tx, std::string* error,
                                      uint64_t powTarget = parameters::FREE_REG_POW_TARGET);
 

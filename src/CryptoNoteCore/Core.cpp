@@ -372,7 +372,11 @@ bool Core::check_tx_semantic(const Transaction& tx, const Crypto::Hash& txHash, 
       }
       return true;
     } else if (tx.txType == TX_FREE_REG) {
-      if (!checkFreeRegTransactionSemantic(tx, &pqErr, m_currency.freeRegPowTarget())) {
+      // Shape only. The memory-hard anti-spam proof is deliberately NOT verified
+      // here: this runs before the duplicate-transaction and chain-state checks,
+      // so a peer replaying one blob would buy a full yespower evaluation per
+      // copy. checkFreeRegInputs() runs it once everything cheaper has passed.
+      if (!checkFreeRegTransactionShape(tx, &pqErr)) {
         logger(ERROR) << "free-reg tx semantic check failed (" << pqErr << ") for tx id= " << Common::podToHex(txHash);
         return false;
       }

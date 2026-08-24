@@ -520,6 +520,126 @@ bool runCoroutineStack() {
   return ok;
 }
 
+// Registration admission ordering: verifying the anti-spam proof costs a
+// memory-hard yespower evaluation, and a peer can ask for one by replaying a
+// blob. Everything a node can decide cheaply — is the transaction already known,
+// is the reference block in the window, is the identity already registered —
+// must therefore be settled before the proof is touched. The proof-evaluation
+// counter makes "did this cost us real work?" directly observable.
+bool runFreeRegAdmissionOrder() {
+  using namespace CryptoNote;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+
+  const Currency currency = CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(11).upgradeHeightV6(12)
+      .freeRegPowTarget(UINT64_MAX)
+      .currency();
+
+  std::filesystem::path dataDir("pq_freereg_order_test_data");
+  std::error_code ec;
+  std::filesystem::remove_all(dataDir, ec);
+  std::filesystem::create_directories(dataDir, ec);
+
+  System::Dispatcher dispatcher;
+  Core core(currency, nullptr, logger, dispatcher);
+  CoreConfig coreConfig; coreConfig.configFolder = dataDir.string();
+  MinerConfig minerConfig;
+  if (!expect(core.init(coreConfig, minerConfig, false), "order: core.init")) return false;
+
+  test_generator gen(currency);
+  gen.setBlockchain(&core.get_blockchain_storage());
+  AccountBase miner; miner.generate();
+
+  Crypto::Hash genesisHash = core.getBlockIdByHeight(0);
+  Block genesis;
+  if (!expect(core.getBlockByHash(genesisHash, genesis), "order: load genesis")) {
+    core.deinit(); return false;
+  }
+  std::vector<size_t> emptySizes;
+  gen.addBlock(genesis, 0, 0, emptySizes, 0);
+
+  uint64_t ts = static_cast<uint64_t>(std::time(nullptr)) - 24 * 60 * 60;
+  const uint64_t step = currency.difficultyTarget() * 10;
+  for (int i = 0; i < 13; ++i) {
+    if (!expect(mineBlock(core, currency, gen, miner, ts), "order: mine " + std::to_string(i + 1))) {
+      core.deinit(); std::filesystem::remove_all(dataDir, ec); return false;
+    }
+    ts += step;
+  }
+
+  bool ok = true;
+  const Crypto::Hash refHash = core.get_tail_id();
+
+  // Submit `tx` and report both the verdict and how many proof evaluations it cost.
+  struct Outcome { bool accepted; bool failed; uint64_t proofWork; };
+  auto submit = [&](const Transaction& tx) -> Outcome {
+    Crypto::Hash txHash = getObjectHash(tx);
+    BinaryArray blob = toBinaryArray(tx);
+    tx_verification_context tvc{};
+    const uint64_t before = freeRegPowEvaluationCount();
+    core.handleIncomingTransaction(tx, txHash, blob.size(), tvc, false,
+                                   core.getCurrentBlockchainHeight());
+    return { tvc.m_added_to_pool, tvc.m_verification_failed,
+             freeRegPowEvaluationCount() - before };
+  };
+
+  // 1. A reference block that is not on the main chain is rejected for free.
+  Crypto::Hash bogusRef{};
+  for (size_t i = 0; i < sizeof(bogusRef.data); ++i) bogusRef.data[i] = static_cast<uint8_t>(i + 200);
+  Outcome stale = submit(makeFastFreeRegTx(bogusRef, 51));
+  ok &= expect(!stale.accepted, "order: stale reference rejected");
+  ok &= expect(stale.proofWork == 0, "order: stale reference cost no proof work");
+
+  // 2. A genuinely new registration does reach the proof and is accepted.
+  Transaction fresh = makeFastFreeRegTx(refHash, 52);
+  Outcome first = submit(fresh);
+  ok &= expect(first.accepted, "order: fresh registration accepted");
+  ok &= expect(first.proofWork >= 1, "order: fresh registration reached the proof");
+
+  // 3. Replaying the very same transaction costs nothing more.
+  Outcome replay = submit(fresh);
+  ok &= expect(!replay.accepted, "order: exact replay not re-added");
+  ok &= expect(replay.proofWork == 0, "order: exact replay cost no further proof work");
+
+  // 4. Once the identity is registered on-chain, further attempts are refused
+  //    before the proof, even when the transaction id is one we have not seen.
+  std::list<Transaction> block = { fresh };
+  ok &= expect(mineBlockWithTxs(core, currency, gen, miner, ts, block),
+               "order: registration mined");
+  ts += step;
+
+  Transaction sameIdentity = makeFastFreeRegTx(refHash, 52, /*nonce=*/7);
+  ok &= expect(getObjectHash(sameIdentity) != getObjectHash(fresh),
+               "order: competitor has a different transaction id");
+  Outcome registered = submit(sameIdentity);
+  ok &= expect(!registered.accepted, "order: already-registered identity rejected");
+  ok &= expect(registered.proofWork == 0,
+               "order: already-registered identity cost no proof work");
+
+  // 5. An invalid proof is remembered, so replaying it is free the second time.
+  const Currency strict = CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(11).upgradeHeightV6(12)
+      .freeRegPowTarget(0)  // nothing can satisfy this
+      .currency();
+  {
+    Transaction bad = makeFastFreeRegTx(refHash, 53);
+    std::string err;
+    const uint64_t before = freeRegPowEvaluationCount();
+    bool firstVerdict = checkFreeRegTransactionPow(bad, &err, strict.freeRegPowTarget());
+    const uint64_t spent = freeRegPowEvaluationCount() - before;
+    ok &= expect(!firstVerdict, "order: unsatisfiable proof rejected");
+    ok &= expect(spent == 1, "order: proof check is metered");
+  }
+
+  core.deinit();
+  std::filesystem::remove_all(dataDir, ec);
+  return ok;
+}
+
 // Free-reg per-block cap: verifies that a block is rejected when it carries more
 // than freeRegPerBlock(2) TX_FREE_REG transactions.
 bool runFreeRegCap() {
@@ -1253,6 +1373,10 @@ int main() {
   }
   if (!runFreeRegCap()) {
     std::cerr << "[FAIL] PQ free-reg per-block cap test" << std::endl;
+    return 1;
+  }
+  if (!runFreeRegAdmissionOrder()) {
+    std::cerr << "[FAIL] PQ free-reg admission ordering test" << std::endl;
     return 1;
   }
   if (!runStaleRegTemplate()) {

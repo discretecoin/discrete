@@ -19,7 +19,10 @@
 #pragma once
 
 #include <atomic>
+#include <deque>
+#include <mutex>
 #include <unordered_map>
+#include <unordered_set>
 #include <parallel_hashmap/phmap.h>
 
 #include "Common/ObserverManager.h"
@@ -320,6 +323,13 @@ namespace CryptoNote {
     // successful chain switch or operator-confirmed recovery.
     FinalityForkState m_finalityForkState;
 
+    // Registration proofs already found invalid, so replays cost a lookup rather
+    // than another memory-hard evaluation. Node-local, bounded, FIFO-evicted;
+    // guarded by its own mutex because it is consulted outside the chain lock.
+    std::mutex m_badFreeRegProofsLock;
+    std::unordered_set<Crypto::Hash> m_badFreeRegProofs;
+    std::deque<Crypto::Hash> m_badFreeRegProofsOrder;
+
     UpgradeDetector m_upgradeDetectorV2;
     UpgradeDetector m_upgradeDetectorV3;
     UpgradeDetector m_upgradeDetectorV4;
@@ -391,6 +401,10 @@ namespace CryptoNote {
     // TX_FREE_REG chain-context checks: refBlockHash on the main chain within
     // FREE_REG_REF_WINDOW, and first-registration-wins. No height gate (PQ from genesis).
     bool checkFreeRegInputs(const Transaction& tx, uint32_t* pmax_used_block_height);
+    static Crypto::Hash freeRegProofTuple(const Crypto::Hash& identity,
+                                          const Crypto::Hash& refBlockHash, uint64_t nonce);
+    bool isKnownBadFreeRegProof(const Crypto::Hash& proofTuple);
+    void rememberBadFreeRegProof(const Crypto::Hash& proofTuple);
     // First-registration-wins: true if the tx carries a PQ account registration
     // whose identity is already in the on-chain registry.
     bool isPqAccountAlreadyRegistered(const Transaction& tx);

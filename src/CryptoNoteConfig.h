@@ -158,6 +158,19 @@ const uint64_t FREE_REG_POW_TARGET                          = UINT64_C(0x00007FF
 // from while bounding pool occupancy (~20*100*3.2KB ~= 6.4 MB worst case).
 const uint64_t FREE_REG_POOL_LIMIT                          = FREE_REG_PER_BLOCK * 20;
 
+// Node-local anti-DoS, not consensus. Verifying a registration proof costs a
+// memory-hard yespower evaluation, so a proof that has already failed is
+// remembered and replays of it are rejected without re-running the work. The
+// cache is keyed by (identity, refBlockHash, nonce) rather than transaction id,
+// so re-wrapping the same proof in a differently-padded transaction does not
+// buy a fresh evaluation. Bounded and FIFO-evicted: ~32 bytes per entry.
+const size_t   FREE_REG_BAD_PROOF_CACHE_SIZE                = 8192;
+
+// How many memory-hard registration-proof evaluations one peer may cause before
+// the connection is dropped. A well-behaved peer relays proofs that verify, and
+// verified proofs do not count against the budget — only wasted work does.
+const size_t   FREE_REG_PEER_WORK_BUDGET                    = 32;
+
 // ─── DiscretePower (signature-tape proof of work) ────────────────────────────
 // Consensus PoW. Every candidate carries exactly one ML-DSA-65 signature which is
 // padded to a 3312-byte "tape" and injected, 8 bytes at a time, throughout a

@@ -57,6 +57,13 @@ struct CryptoNoteConnectionContext {
   std::unordered_set<Crypto::Hash> m_requested_objects;
   uint32_t m_remote_blockchain_height = 0;
   uint32_t m_last_response_height = 0;
+
+  // Memory-hard registration-proof evaluations this peer has made us run that
+  // produced nothing (invalid proof, or a duplicate of one we already hold).
+  // Verifying a proof costs milliseconds and 16 MiB while relaying one costs a
+  // peer nothing, so the imbalance is metered and the connection is dropped once
+  // it goes past parameters::FREE_REG_PEER_WORK_BUDGET.
+  uint64_t m_wasted_proof_work = 0;
 };
 
 inline std::string get_protocol_state_string(CryptoNoteConnectionContext::state s) {
