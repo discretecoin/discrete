@@ -61,6 +61,7 @@ add_executable(PqDnsCheckpointTests test_dns_checkpoint.cpp)
 add_executable(HttpFramingTests test_http_framing.cpp)
 add_executable(PqMnemonicCompatTests test_pq_mnemonic_compat.cpp)
 add_executable(PqWalletSecurityTests test_wallet_security.cpp)
+add_executable(PqSerializationBoundsTests test_serialization_bounds.cpp)
 
 target_link_libraries(IntegrationTests IntegrationTestLibrary Wallet NodeRpcProxy InProcessNode P2P Rpc Http CryptoNoteProtocol Transfers Serialization System CryptoNoteCore Logging Common Crypto BlockchainExplorer Checkpoints gtest Mnemonics upnpc-static ${Boost_LIBRARIES})
 target_link_libraries(NodeRpcProxyTests NodeRpcProxy CryptoNoteCore Rpc Http Serialization System Logging Common Crypto ${Boost_LIBRARIES})
@@ -96,6 +97,7 @@ target_link_libraries(PqDnsCheckpointTests CheckpointsDns CryptoNoteCore Seriali
 target_link_libraries(HttpFramingTests Http System Logging Common Crypto gtest ${Boost_LIBRARIES})
 target_link_libraries(PqMnemonicCompatTests Mnemonics Common Crypto gtest ${Boost_LIBRARIES})
 target_link_libraries(PqWalletSecurityTests Wallet CryptoNoteCore Serialization System Logging Common Crypto CryptoPq gtest ${Boost_LIBRARIES})
+target_link_libraries(PqSerializationBoundsTests CryptoNoteCore Serialization System Logging Common Crypto CryptoPq gtest ${Boost_LIBRARIES})
 
 if(MSVC)
   target_link_libraries(SystemTests ws2_32)
@@ -123,6 +125,7 @@ if(MSVC)
   target_link_libraries(PqPowTests legacy_stdio_definitions.lib ws2_32)
   target_link_libraries(PqDnsCheckpointTests legacy_stdio_definitions.lib ws2_32)
   target_link_libraries(PqWalletSecurityTests legacy_stdio_definitions.lib ws2_32)
+  target_link_libraries(PqSerializationBoundsTests legacy_stdio_definitions.lib ws2_32)
 endif()
 
 if(${CMAKE_SYSTEM_NAME} STREQUAL "Linux" OR APPLE AND NOT ANDROID)
@@ -217,6 +220,7 @@ set_property(TARGET PqDnsCheckpointTests PROPERTY OUTPUT_NAME "pq_dns_checkpoint
 set_property(TARGET HttpFramingTests PROPERTY OUTPUT_NAME "http_framing_tests")
 set_property(TARGET PqMnemonicCompatTests PROPERTY OUTPUT_NAME "pq_mnemonic_compat_tests")
 set_property(TARGET PqWalletSecurityTests PROPERTY OUTPUT_NAME "pq_wallet_security_tests")
+set_property(TARGET PqSerializationBoundsTests PROPERTY OUTPUT_NAME "pq_serialization_bounds_tests")
 
 add_test(HashTests hash_tests)
 add_test(HashTargetTests hash_target_tests)
@@ -249,6 +253,7 @@ add_test(PqDnsCheckpointTests pq_dns_checkpoint_tests)
 add_test(HttpFramingTests http_framing_tests)
 add_test(PqMnemonicCompatTests pq_mnemonic_compat_tests)
 add_test(PqWalletSecurityTests pq_wallet_security_tests)
+add_test(PqSerializationBoundsTests pq_serialization_bounds_tests)
 # Wallet-sync E2E lives in unit_tests; expose just the PQ integration case under a
 # Pq* name so it joins the regression gate (ctest -R "Pq|Denomination") without
 # pulling in the runtime-broken classical UnitTests suites.

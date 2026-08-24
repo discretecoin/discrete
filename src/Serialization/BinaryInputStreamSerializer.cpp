@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <limits>
 #include <stdexcept>
 #include <Common/StreamTools.h>
 #include "SerializationOverloads.h"
@@ -38,8 +39,16 @@ void BinaryInputStreamSerializer::endObject() {
 }
 
 bool BinaryInputStreamSerializer::beginArray(size_t& size, Common::StringView name) {
-  readVarintAs<uint64_t>(stream, size);
+  // The count is a wire-supplied uint64. Truncating it into size_t would make a
+  // 32-bit node accept a different set of objects than a 64-bit one, so reject
+  // anything that does not fit instead of wrapping. Callers bound the allocation
+  // separately: no element count is trusted before the elements are read.
+  const uint64_t count = readVarint<uint64_t>(stream);
+  if (count > static_cast<uint64_t>(std::numeric_limits<size_t>::max())) {
+    throw std::runtime_error("array size does not fit in size_t");
+  }
 
+  size = static_cast<size_t>(count);
   return true;
 }
 
