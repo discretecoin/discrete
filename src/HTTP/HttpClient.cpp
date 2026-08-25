@@ -138,6 +138,17 @@ void loadWindowsRootCertificates(boost::asio::ssl::context& context) {
     }
   }
 
+  // Host header value for this connection. The port is included unless it is the
+  // default for the scheme, which is what every other client does and what name-based
+  // virtual hosts expect.
+  std::string HttpClient::hostHeaderValue() const {
+    const uint16_t defaultPort = m_useSsl ? 443 : 80;
+    if (m_port == defaultPort) {
+      return m_address;
+    }
+    return m_address + ":" + std::to_string(m_port);
+  }
+
   void HttpClient::request(const HttpRequest& req, HttpResponse& res) {
     if (!m_connected) {
       if (m_useSsl) {
@@ -148,6 +159,17 @@ void loadWindowsRootCertificates(boost::asio::ssl::context& context) {
       }
     }
 
+    // HTTP/1.1 requires Host, and the request is serialized as HTTP/1.1. A daemon
+    // reached directly does not mind its absence, but anything name-based in front
+    // of one — the reverse proxy terminating TLS on the project endpoints, for
+    // instance — answers 400 without it. Set it here rather than at every call
+    // site: this is the only place that knows which host the connection went to.
+    HttpRequest withHost = req;
+    if (withHost.getHeaders().count("Host") == 0) {
+      withHost.addHeader("Host", hostHeaderValue());
+    }
+    const HttpRequest& outgoing = withHost;
+
     try {
       std::iostream stream(m_useSsl ?
         static_cast<std::streambuf*>(m_sslStreamBuf.get()) :
@@ -155,7 +177,7 @@ void loadWindowsRootCertificates(boost::asio::ssl::context& context) {
       HttpParser parser;
 
       bool timedOut = runWithTimeout([&] {
-        stream << req;
+        stream << outgoing;
         stream.flush();
 
         if (!stream) {
