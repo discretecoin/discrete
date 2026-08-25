@@ -17,6 +17,8 @@ void changePassword(std::shared_ptr<WalletInfo> walletInfo);
 
 void printPrivateKeys(CryptoNote::WalletGreen &wallet, bool viewWallet);
 
+void rescan(CryptoNote::INode &node, std::shared_ptr<WalletInfo> walletInfo);
+
 void reset(CryptoNote::INode &node, std::shared_ptr<WalletInfo> walletInfo);
 
 void status(CryptoNote::INode &node, CryptoNote::WalletGreen &wallet);

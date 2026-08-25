@@ -76,6 +76,7 @@ private:
   std::unordered_map<std::string, HandlerFunction> handlers;
 
   std::error_code handleSave(const Save::Request& request, Save::Response& response);
+  std::error_code handleRescan(const Rescan::Request& request, Rescan::Response& response);
   std::error_code handleReset(const Reset::Request& request, Reset::Response& response);
   std::error_code handleExport(const Export::Request& request, Export::Response& response);
   std::error_code handleCreateAddress(const CreateAddress::Request& request, CreateAddress::Response& response);

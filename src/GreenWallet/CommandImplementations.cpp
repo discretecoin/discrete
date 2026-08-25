@@ -434,7 +434,7 @@ void status(CryptoNote::INode &node, CryptoNote::WalletGreen &wallet)
     printSyncSummary(localHeight, remoteHeight, walletHeight);
 }
 
-void reset(CryptoNote::INode &node, std::shared_ptr<WalletInfo> walletInfo)
+void rescan(CryptoNote::INode &node, std::shared_ptr<WalletInfo> walletInfo)
 {
     uint64_t scanHeight = getScanHeight();
 
@@ -450,10 +450,43 @@ void reset(CryptoNote::INode &node, std::shared_ptr<WalletInfo> walletInfo)
         return;
     }
 
+    std::cout << InformationMsg("Rescanning wallet...") << std::endl;
+
+    walletInfo->wallet.rescan(scanHeight);
+
+    syncWallet(node, walletInfo);
+}
+
+void reset(CryptoNote::INode &node, std::shared_ptr<WalletInfo> walletInfo)
+{
+    uint64_t scanHeight = getScanHeight();
+
+    std::cout << std::endl
+        << WarningMsg("WARNING: Reset removes locally stored recipient addresses and payment proofs from the active wallet.")
+        << std::endl
+        << WarningMsg("Transaction history may show (n/a), and the removed details cannot be reconstructed from the blockchain or seed.")
+        << std::endl
+        << WarningMsg("This is logical deletion, not forensic erasure: backups, exports, snapshots, or storage remnants may retain copies.")
+        << std::endl
+        << InformationMsg("Account keys, PQ tracking credentials, and required wallet authority data are retained.")
+        << std::endl << std::endl;
+
+    if (!confirm("Continue with destructive reset?", false))
+    {
+        return;
+    }
+
+    std::cout << InformationMsg("Type ERASE to confirm: ");
+    std::string confirmation;
+    std::getline(std::cin, confirmation);
+    if (confirmation != "ERASE")
+    {
+        std::cout << InformationMsg("Reset cancelled.") << std::endl;
+        return;
+    }
+
     std::cout << InformationMsg("Resetting wallet...") << std::endl;
-
     walletInfo->wallet.reset(scanHeight);
-
     syncWallet(node, walletInfo);
 }
 

@@ -33,9 +33,17 @@ void Save::Response::serialize(CryptoNote::ISerializer& /*serializer*/) {
 void Reset::Request::serialize(CryptoNote::ISerializer& serializer) {
   serializer(viewSecretKey, "viewSecretKey");
   serializer(scanHeight, "scanHeight");
+  serializer(confirmDestructive, "confirmDestructive");
 }
 
 void Reset::Response::serialize(CryptoNote::ISerializer& serializer) {
+}
+
+void Rescan::Request::serialize(CryptoNote::ISerializer& serializer) {
+  serializer(scanHeight, "scanHeight");
+}
+
+void Rescan::Response::serialize(CryptoNote::ISerializer& serializer) {
 }
 
 void Export::Request::serialize(CryptoNote::ISerializer& serializer) {

@@ -25,6 +25,7 @@
 
 #include "PaymentServiceJsonRpcMessages.h"
 #include "WalletService.h"
+#include "WalletServiceErrorCategory.h"
 
 #include "Serialization/JsonInputValueSerializer.h"
 #include "Serialization/JsonOutputStreamSerializer.h"
@@ -39,6 +40,7 @@ PaymentServiceJsonRpcServer::PaymentServiceJsonRpcServer(System::Dispatcher* sys
   , logger(loggerGroup, "PaymentServiceJsonRpcServer")
 {
   handlers.emplace("save", jsonHandler<Save::Request, Save::Response>(std::bind(&PaymentServiceJsonRpcServer::handleSave, this, std::placeholders::_1, std::placeholders::_2)));
+  handlers.emplace("rescan", jsonHandler<Rescan::Request, Rescan::Response>(std::bind(&PaymentServiceJsonRpcServer::handleRescan, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("reset", jsonHandler<Reset::Request, Reset::Response>(std::bind(&PaymentServiceJsonRpcServer::handleReset, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("export", jsonHandler<Export::Request, Export::Response>(std::bind(&PaymentServiceJsonRpcServer::handleExport, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("createAddress", jsonHandler<CreateAddress::Request, CreateAddress::Response>(std::bind(&PaymentServiceJsonRpcServer::handleCreateAddress, this, std::placeholders::_1, std::placeholders::_2)));
@@ -119,7 +121,19 @@ std::error_code PaymentServiceJsonRpcServer::handleSave(const Save::Request& /*r
   return service.saveWalletNoThrow();
 }
 
-std::error_code PaymentServiceJsonRpcServer::handleReset(const Reset::Request& request, Reset::Response& response) {
+std::error_code PaymentServiceJsonRpcServer::handleRescan(const Rescan::Request& request, Rescan::Response& /*response*/) {
+  if (request.scanHeight != std::numeric_limits<uint32_t>::max()) {
+    return service.rescanWallet(request.scanHeight);
+  }
+
+  return service.rescanWallet();
+}
+
+std::error_code PaymentServiceJsonRpcServer::handleReset(const Reset::Request& request, Reset::Response& /*response*/) {
+  if (!request.confirmDestructive) {
+    return make_error_code(CryptoNote::error::WalletServiceErrorCode::DESTRUCTIVE_RESET_CONFIRMATION_REQUIRED);
+  }
+
   if (request.viewSecretKey.empty()) {
     if (request.scanHeight != std::numeric_limits<uint32_t>::max()) {
       return service.resetWallet(request.scanHeight);

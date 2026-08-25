@@ -68,6 +68,8 @@ public:
   void saveWallet();
 
   std::error_code saveWalletNoThrow();
+  std::error_code rescanWallet();
+  std::error_code rescanWallet(const uint32_t scanHeight);
   std::error_code resetWallet();
   std::error_code resetWallet(const uint32_t scanHeight);
   std::error_code exportWallet(const std::string& fileName);
@@ -142,7 +144,6 @@ private:
                                     std::string& transactionHex,
                                     std::vector<std::string>& paymentProofs);
   void refresh();
-  void reset();
 
   void loadWallet();
   void loadTransactionIdIndex();

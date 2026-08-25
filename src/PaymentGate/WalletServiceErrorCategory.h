@@ -31,7 +31,8 @@ enum class WalletServiceErrorCode {
   WRONG_HASH_FORMAT,
   OBJECT_NOT_FOUND,
   DUPLICATE_KEY,
-  KEYS_NOT_DETERMINISTIC
+  KEYS_NOT_DETERMINISTIC,
+  DESTRUCTIVE_RESET_CONFIRMATION_REQUIRED
 };
 
 // custom category:
@@ -57,6 +58,8 @@ public:
       case WalletServiceErrorCode::OBJECT_NOT_FOUND: return "Requested object not found";
       case WalletServiceErrorCode::DUPLICATE_KEY: return "Duplicate key";
       case WalletServiceErrorCode::KEYS_NOT_DETERMINISTIC: return "Keys are non-deterministic";
+      case WalletServiceErrorCode::DESTRUCTIVE_RESET_CONFIRMATION_REQUIRED:
+        return "Destructive reset requires explicit confirmation";
       default: return "Unknown error";
     }
   }

@@ -783,11 +783,11 @@ TEST(PqWalletIntegration, SingleKeyIndexContainerWithNoDepositsRoundTrips) {
   boost::filesystem::remove(path);
 }
 
-// reset(scanHeight) intentionally drops the scan cursor and WalletLedger so old
+// rescan(scanHeight) intentionally drops the scan cursor and WalletLedger so old
 // blocks are visited again. It must not also erase the SingleKeyIndex registry:
 // that registry is durable identity/routing metadata, and losing it makes a fresh
 // wallet process unable to scan the deposit T values it previously issued.
-TEST(PqWalletIntegration, ResetScanHeightPreservesSingleKeyIndexRegistry) {
+TEST(PqWalletIntegration, RescanPreservesSingleKeyIndexRegistry) {
   System::Dispatcher dispatcher;
   Logging::ConsoleLogger logger(Logging::ERROR);
   CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
@@ -809,7 +809,7 @@ TEST(PqWalletIntegration, ResetScanHeightPreservesSingleKeyIndexRegistry) {
     ASSERT_EQ(wallet.reservePqDepositIndex(), 2u);
     ASSERT_EQ(wallet.reservePqDepositIndex(), 3u);
 
-    ASSERT_NO_THROW(wallet.reset(/*scanHeight=*/0));
+    ASSERT_NO_THROW(wallet.rescan(/*scanHeight=*/0));
     EXPECT_EQ(wallet.getPqDepositScheme(), CryptoNote::PqDepositScheme::SingleKeyIndex);
     EXPECT_EQ(wallet.getPqDepositCount(), 3u);
     wallet.shutdown();
@@ -826,11 +826,11 @@ TEST(PqWalletIntegration, ResetScanHeightPreservesSingleKeyIndexRegistry) {
   boost::filesystem::remove(path);
 }
 
-// A tracking credential is also PQ identity, not scan cache. A reset that writes
+// A tracking credential is also PQ identity, not scan cache. A rescan that writes
 // keys-only state used to erase that credential and could reopen with no scanning
-// consumer. Prove both the immediate reload inside reset() and a new process keep
+// consumer. Prove both the immediate reload inside rescan() and a new process keep
 // the same identity and issued SingleKeyIndex range.
-TEST(PqWalletIntegration, ResetScanHeightPreservesTrackingIdentity) {
+TEST(PqWalletIntegration, RescanPreservesTrackingIdentity) {
   System::Dispatcher dispatcher;
   Logging::ConsoleLogger logger(Logging::ERROR);
   CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
@@ -863,7 +863,7 @@ TEST(PqWalletIntegration, ResetScanHeightPreservesTrackingIdentity) {
     ASSERT_EQ(tracking.reservePqDepositIndex(), 1u);
     ASSERT_EQ(tracking.reservePqDepositIndex(), 2u);
 
-    ASSERT_NO_THROW(tracking.reset(/*scanHeight=*/0));
+    ASSERT_NO_THROW(tracking.rescan(/*scanHeight=*/0));
     CryptoNote::PqTrackingKeys afterReset;
     ASSERT_TRUE(tracking.getPqTrackingKeys(afterReset));
     EXPECT_EQ(CryptoNote::encodePqTrackingKey(afterReset), encoded);
@@ -886,10 +886,10 @@ TEST(PqWalletIntegration, ResetScanHeightPreservesTrackingIdentity) {
 
 // Exact recovery chain: a released legacy sender pays issued T=44, the wallet has
 // already scanned past that block without the range, then its registry grows to
-// cursor 45 and reset(0) revisits history. The output must be recognized, attributed
-// to deposit 44, and rediscovered by a fresh process from the metadata-only reset
+// cursor 45 and rescan(0) revisits history. The output must be recognized, attributed
+// to deposit 44, and rediscovered by a fresh process from the metadata-only rescan
 // file even if no post-sync save occurred.
-TEST(PqWalletIntegration, ResetRecoversLegacyNonzeroTThroughWalletSynchronizer) {
+TEST(PqWalletIntegration, RescanRecoversLegacyNonzeroTThroughWalletSynchronizer) {
   System::Dispatcher dispatcher;
   Logging::ConsoleLogger logger(Logging::ERROR);
   CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
@@ -935,7 +935,7 @@ TEST(PqWalletIntegration, ResetRecoversLegacyNonzeroTThroughWalletSynchronizer) 
       ASSERT_EQ(wallet.reservePqDepositIndex(), t);
     }
 
-    ASSERT_NO_THROW(wallet.reset(/*scanHeight=*/0));
+    ASSERT_NO_THROW(wallet.rescan(/*scanHeight=*/0));
     pumpUntil(dispatcher, wallet,
               [&wallet, tipHeight]() { return wallet.pqSyncedHeight() >= tipHeight; });
     EXPECT_EQ(wallet.getActualBalance(), amount);
@@ -943,7 +943,7 @@ TEST(PqWalletIntegration, ResetRecoversLegacyNonzeroTThroughWalletSynchronizer) 
     ASSERT_EQ(wallet.getTransactionCount(), 1u);
     EXPECT_EQ(wallet.getTransaction(0).hash, legacyTxid);
 
-    // Deliberately do not save after recovery: the reset file itself must retain
+    // Deliberately do not save after recovery: the rescan file itself must retain
     // enough identity metadata for a new process to rescan and recover again.
     wallet.shutdown();
   }
@@ -964,9 +964,9 @@ TEST(PqWalletIntegration, ResetRecoversLegacyNonzeroTThroughWalletSynchronizer) 
 }
 
 // The manual window is only for metadata-loss recovery beyond the issued cursor.
-// It is set before reset, so WalletGreen—not the soon-to-be-destroyed ledger—must
+// It is set before rescan, so WalletGreen—not the soon-to-be-destroyed ledger—must
 // carry it through the internal shutdown/load cycle.
-TEST(PqWalletIntegration, ManualLegacyWindowSurvivesResetCycle) {
+TEST(PqWalletIntegration, ManualLegacyWindowSurvivesRescanCycle) {
   System::Dispatcher dispatcher;
   Logging::ConsoleLogger logger(Logging::ERROR);
   CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
@@ -1007,7 +1007,7 @@ TEST(PqWalletIntegration, ManualLegacyWindowSurvivesResetCycle) {
   EXPECT_EQ(wallet.getActualBalance(), 0u);  // cursor 45 excludes T=45
 
   wallet.enableLegacyDepositRescan(/*maxT=*/46);
-  ASSERT_NO_THROW(wallet.reset(/*scanHeight=*/0));
+  ASSERT_NO_THROW(wallet.rescan(/*scanHeight=*/0));
   pumpUntil(dispatcher, wallet,
             [&wallet, tipHeight]() { return wallet.pqSyncedHeight() >= tipHeight; });
   EXPECT_EQ(wallet.getActualBalance(), amount);
@@ -1089,6 +1089,104 @@ TEST(PqWalletIntegration, RelayFailureRollsBackReservation) {
     EXPECT_FALSE(saved.recipients[0].proof.empty());
     reloaded.shutdown();
   }
+  boost::filesystem::remove(path);
+}
+
+TEST(PqWalletIntegration, RescanPreservesAndResetDiscardsSentPaymentMetadata) {
+  System::Dispatcher dispatcher;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(1000000).upgradeHeightV6(1000000)
+      .currency();
+  TestBlockchainGenerator generator(currency);
+  INodeTrivialRefreshStub node(generator);
+
+  const std::string path = "pq_rescan_reset_history.wallet";
+  boost::filesystem::remove(path);
+  Crypto::Hash sentTxid{};
+  std::string primaryAddress;
+  std::string trackingCredential;
+
+  {
+    CryptoNote::WalletGreen wallet(dispatcher, currency, node, logger);
+    wallet.initialize(path, "pass");
+    wallet.createAddress();
+    wallet.setPqDepositScheme(CryptoNote::PqDepositScheme::SingleKeyIndex);
+    ASSERT_EQ(wallet.reservePqDepositIndex(), 1u);
+    primaryAddress = wallet.getAddress(0);
+    CryptoNote::PqTrackingKeys trackingKeys;
+    ASSERT_TRUE(wallet.getPqTrackingKeys(trackingKeys));
+    trackingCredential = CryptoNote::encodePqTrackingKey(trackingKeys);
+
+    const Crypto::SecretKey spend = wallet.getAddressSpendKey(0).secretKey;
+    const CryptoNote::PqWalletKeys mine = pqKeysFromWalletSeed(spend);
+    Crypto::SecretKey otherSecret;
+    for (std::size_t i = 0; i < sizeof(otherSecret.data); ++i) {
+      otherSecret.data[i] = static_cast<uint8_t>(i * 17 + 9);
+    }
+    const CryptoNote::PqWalletKeys recipient = CryptoNote::derivePqWalletKeys(otherSecret);
+
+    CryptoNote::Transaction funding = makePqPayTo(recipient, mine, 1000000, 800000, 0x56);
+    generator.setTxFee(CryptoNote::getObjectHash(funding), 200000);
+    generator.addTxToBlockchain(funding);
+    node.updateObservers();
+    pumpUntil(dispatcher, wallet, [&wallet]() { return wallet.getActualBalance() == 800000u; });
+
+    node.setNextTransactionToPool();
+    const CryptoNote::PqSendResult sent = wallet.sendPqTransfer(
+        { CryptoNote::PqSendOutput{ recipient.viewPub, recipient.spendPub, 300000 } });
+    sentTxid = CryptoNote::getObjectHash(sent.tx);
+
+    CryptoNote::SentPaymentRecord beforeRescan;
+    ASSERT_TRUE(wallet.copyPaymentProofs(sentTxid, beforeRescan));
+    ASSERT_NO_THROW(wallet.rescan(0));
+
+    CryptoNote::SentPaymentRecord afterRescan;
+    ASSERT_TRUE(wallet.copyPaymentProofs(sentTxid, afterRescan));
+    EXPECT_EQ(afterRescan.recipients.size(), beforeRescan.recipients.size());
+    ASSERT_EQ(afterRescan.recipients.size(), 1u);
+    EXPECT_EQ(afterRescan.recipients[0].address, beforeRescan.recipients[0].address);
+    EXPECT_EQ(afterRescan.recipients[0].amount, beforeRescan.recipients[0].amount);
+    EXPECT_EQ(afterRescan.recipients[0].proof, beforeRescan.recipients[0].proof);
+    EXPECT_EQ(wallet.getAddress(0), primaryAddress);
+    EXPECT_EQ(wallet.getPqDepositScheme(), CryptoNote::PqDepositScheme::SingleKeyIndex);
+    EXPECT_EQ(wallet.getPqDepositCount(), 1u);
+    wallet.shutdown();
+  }
+
+  {
+    CryptoNote::WalletGreen reloaded(dispatcher, currency, node, logger);
+    ASSERT_NO_THROW(reloaded.load(path, "pass"));
+    CryptoNote::SentPaymentRecord afterRestart;
+    ASSERT_TRUE(reloaded.copyPaymentProofs(sentTxid, afterRestart));
+
+    ASSERT_NO_THROW(reloaded.reset(0));
+    EXPECT_FALSE(reloaded.copyPaymentProofs(sentTxid, afterRestart));
+    EXPECT_EQ(reloaded.getAddress(0), primaryAddress);
+    EXPECT_EQ(reloaded.getPqDepositScheme(), CryptoNote::PqDepositScheme::SingleKeyIndex);
+    EXPECT_EQ(reloaded.getPqDepositCount(), 1u);
+    CryptoNote::PqTrackingKeys afterResetTracking;
+    ASSERT_TRUE(reloaded.getPqTrackingKeys(afterResetTracking));
+    EXPECT_EQ(CryptoNote::encodePqTrackingKey(afterResetTracking), trackingCredential);
+    reloaded.shutdown();
+  }
+
+  {
+    CryptoNote::WalletGreen reopened(dispatcher, currency, node, logger);
+    ASSERT_NO_THROW(reopened.load(path, "pass"));
+    CryptoNote::SentPaymentRecord afterReset;
+    EXPECT_FALSE(reopened.copyPaymentProofs(sentTxid, afterReset));
+    EXPECT_EQ(reopened.getAddress(0), primaryAddress);
+    EXPECT_EQ(reopened.getPqDepositScheme(), CryptoNote::PqDepositScheme::SingleKeyIndex);
+    EXPECT_EQ(reopened.getPqDepositCount(), 1u);
+    CryptoNote::PqTrackingKeys afterRestartTracking;
+    ASSERT_TRUE(reopened.getPqTrackingKeys(afterRestartTracking));
+    EXPECT_EQ(CryptoNote::encodePqTrackingKey(afterRestartTracking), trackingCredential);
+    reopened.shutdown();
+  }
+
   boost::filesystem::remove(path);
 }
 
@@ -1547,9 +1645,9 @@ TEST(PqWalletIntegration, LockedOutputNotSpendableUntilUnlockHeight) {
   boost::filesystem::remove(path);
 }
 
-// reset(scanHeight) drops the PQ ledger and re-derives it by rescanning the chain; the
+// rescan(scanHeight) drops the PQ ledger and re-derives it by rescanning the chain; the
 // balance and history come back identical.
-TEST(PqWalletIntegration, ResetRescansLedger) {
+TEST(PqWalletIntegration, RescanRebuildsLedger) {
   System::Dispatcher dispatcher;
   Logging::ConsoleLogger logger(Logging::ERROR);
   CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
@@ -1582,7 +1680,7 @@ TEST(PqWalletIntegration, ResetRescansLedger) {
   ASSERT_EQ(wallet.getTransactionCount(), 1u);
 
   // Rescan from genesis: the ledger is rebuilt from the chain to the same state.
-  wallet.reset(0);
+  wallet.rescan(0);
   pumpUntil(dispatcher, wallet, [&wallet]() { return wallet.getActualBalance() == 800000u; },
             std::chrono::seconds(20));
   EXPECT_EQ(wallet.getActualBalance(), 800000u);

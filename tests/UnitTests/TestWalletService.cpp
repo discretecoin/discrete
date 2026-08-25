@@ -31,6 +31,7 @@
 #include <System/Event.h>
 #include "PaymentGate/WalletService.h"
 #include "PaymentGate/WalletServiceErrorCategory.h"
+#include "PaymentGate/PaymentServiceJsonRpcServer.h"
 #include "INodeStubs.h"
 #include "Wallet/WalletErrors.h"
 
@@ -63,6 +64,7 @@ struct IWalletBaseStub : public CryptoNote::IWallet {
 
   virtual void changePassword(const std::string& oldPassword, const std::string& newPassword) override { }
   virtual void save(WalletSaveLevel saveLevel = WalletSaveLevel::SAVE_ALL, const std::string& extra = "") override { }
+  virtual void rescan(const uint64_t scanHeight) override { }
   virtual void reset(const uint64_t scanHeight) override { }
   virtual void exportWallet(const std::string& path, bool encrypt = true, WalletSaveLevel saveLevel = WalletSaveLevel::SAVE_ALL, const std::string& extra = "") override { }
 
@@ -189,6 +191,131 @@ Crypto::Hash WalletServiceTest::generateRandomHash() {
   Crypto::Hash hash;
   std::generate(std::begin(hash.data), std::end(hash.data), std::rand);
   return hash;
+}
+
+struct WalletRebuildStub : public IWalletBaseStub {
+  explicit WalletRebuildStub(System::Dispatcher& dispatcher) : IWalletBaseStub(dispatcher) {}
+
+  void rescan(const uint64_t scanHeight) override {
+    ++rescanCalls;
+    lastRescanHeight = scanHeight;
+    if (failRescan) {
+      throw std::runtime_error("injected rescan failure");
+    }
+  }
+
+  void reset(const uint64_t scanHeight) override {
+    ++resetCalls;
+    lastResetHeight = scanHeight;
+    if (failReset) {
+      throw std::runtime_error("injected reset failure");
+    }
+  }
+
+  size_t rescanCalls = 0;
+  size_t resetCalls = 0;
+  uint64_t lastRescanHeight = 0;
+  uint64_t lastResetHeight = 0;
+  bool failRescan = false;
+  bool failReset = false;
+};
+
+TEST_F(WalletServiceTest, RescanAndResetRouteToDistinctWalletOperations) {
+  WalletRebuildStub wallet(dispatcher);
+  std::unique_ptr<WalletService> service = createWalletService(wallet);
+  service->init();
+
+  EXPECT_FALSE(service->rescanWallet(123));
+  EXPECT_EQ(wallet.rescanCalls, 1u);
+  EXPECT_EQ(wallet.lastRescanHeight, 123u);
+  EXPECT_EQ(wallet.resetCalls, 0u);
+
+  EXPECT_FALSE(service->resetWallet(456));
+  EXPECT_EQ(wallet.rescanCalls, 1u);
+  EXPECT_EQ(wallet.resetCalls, 1u);
+  EXPECT_EQ(wallet.lastResetHeight, 456u);
+}
+
+TEST_F(WalletServiceTest, DefaultRescanAndResetStartFromGenesis) {
+  WalletRebuildStub wallet(dispatcher);
+  std::unique_ptr<WalletService> service = createWalletService(wallet);
+  service->init();
+
+  EXPECT_FALSE(service->rescanWallet());
+  EXPECT_EQ(wallet.lastRescanHeight, 0u);
+  EXPECT_FALSE(service->resetWallet());
+  EXPECT_EQ(wallet.lastResetHeight, 0u);
+}
+
+TEST_F(WalletServiceTest, FailedRebuildCanBeRetriedWithoutLosingTheEventLoop) {
+  WalletRebuildStub wallet(dispatcher);
+  std::unique_ptr<WalletService> service = createWalletService(wallet);
+  service->init();
+
+  wallet.failRescan = true;
+  EXPECT_EQ(service->rescanWallet(11), make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR));
+  wallet.failRescan = false;
+  EXPECT_FALSE(service->rescanWallet(12));
+  EXPECT_EQ(wallet.rescanCalls, 2u);
+  EXPECT_EQ(wallet.lastRescanHeight, 12u);
+
+  wallet.failReset = true;
+  EXPECT_EQ(service->resetWallet(21), make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR));
+  wallet.failReset = false;
+  EXPECT_FALSE(service->resetWallet(22));
+  EXPECT_EQ(wallet.resetCalls, 2u);
+  EXPECT_EQ(wallet.lastResetHeight, 22u);
+}
+
+class ExposedPaymentServiceJsonRpcServer : public PaymentServiceJsonRpcServer {
+public:
+  ExposedPaymentServiceJsonRpcServer(System::Dispatcher* dispatcher, System::Event* stopEvent,
+                                     WalletService& service, Logging::ILogger& logger)
+      : PaymentServiceJsonRpcServer(dispatcher, stopEvent, service, logger) {}
+
+  using PaymentServiceJsonRpcServer::processJsonRpcRequest;
+};
+
+TEST_F(WalletServiceTest, RpcResetRequiresExplicitDestructiveConfirmation) {
+  WalletRebuildStub wallet(dispatcher);
+  std::unique_ptr<WalletService> service = createWalletService(wallet);
+  service->init();
+  System::Event stopEvent(dispatcher);
+  ExposedPaymentServiceJsonRpcServer server(&dispatcher, &stopEvent, *service, logger);
+
+  Common::JsonValue unconfirmed = Common::JsonValue::fromString(
+      "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"reset\",\"params\":{\"scanHeight\":77}}");
+  Common::JsonValue unconfirmedResponse(Common::JsonValue::OBJECT);
+  server.processJsonRpcRequest(unconfirmed, unconfirmedResponse);
+  EXPECT_EQ(wallet.resetCalls, 0u);
+  EXPECT_TRUE(unconfirmedResponse.contains("error"));
+  EXPECT_EQ(unconfirmedResponse("error")("data")("application_code").getInteger(),
+            static_cast<int64_t>(CryptoNote::error::WalletServiceErrorCode::DESTRUCTIVE_RESET_CONFIRMATION_REQUIRED));
+
+  Common::JsonValue confirmed = Common::JsonValue::fromString(
+      "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"reset\",\"params\":{\"scanHeight\":77,\"confirmDestructive\":true}}");
+  Common::JsonValue confirmedResponse(Common::JsonValue::OBJECT);
+  server.processJsonRpcRequest(confirmed, confirmedResponse);
+  EXPECT_EQ(wallet.resetCalls, 1u);
+  EXPECT_EQ(wallet.lastResetHeight, 77u);
+  EXPECT_FALSE(confirmedResponse.contains("error"));
+}
+
+TEST_F(WalletServiceTest, RpcRescanUsesSafeWalletOperationWithoutDestructiveConfirmation) {
+  WalletRebuildStub wallet(dispatcher);
+  std::unique_ptr<WalletService> service = createWalletService(wallet);
+  service->init();
+  System::Event stopEvent(dispatcher);
+  ExposedPaymentServiceJsonRpcServer server(&dispatcher, &stopEvent, *service, logger);
+
+  Common::JsonValue request = Common::JsonValue::fromString(
+      "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"rescan\",\"params\":{\"scanHeight\":88}}");
+  Common::JsonValue response(Common::JsonValue::OBJECT);
+  server.processJsonRpcRequest(request, response);
+  EXPECT_EQ(wallet.rescanCalls, 1u);
+  EXPECT_EQ(wallet.lastRescanHeight, 88u);
+  EXPECT_EQ(wallet.resetCalls, 0u);
+  EXPECT_FALSE(response.contains("error"));
 }
 
 class WalletServiceTest_createAddress : public WalletServiceTest {

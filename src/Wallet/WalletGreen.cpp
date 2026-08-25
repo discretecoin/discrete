@@ -572,11 +572,12 @@ void WalletGreen::loadWalletCache(std::unordered_set<Crypto::PublicKey>& addedKe
   m_logger(DEBUGGING) << "Container cache loaded";
 }
 
-void WalletGreen::saveWalletCache(ContainerStorage& storage, const Crypto::chacha8_key& key, WalletSaveLevel saveLevel, const std::string& extra) {
+void WalletGreen::saveWalletCache(ContainerStorage& storage, const Crypto::chacha8_key& key, WalletSaveLevel saveLevel,
+                                  const std::string& extra, bool includeSentPayments) {
   m_logger(DEBUGGING) << "Saving cache...";
 
   // Capture the current PQ consumer cursor + owned outputs so they persist.
-  buildPqStateBlob();
+  buildPqStateBlob(includeSentPayments);
 
   std::string containerData;
   Common::StringOutputStream containerStream(containerData);
@@ -1198,7 +1199,17 @@ uint64_t WalletGreen::getCurrentTimestampAdjusted() {
   return time - adjust;
 }
 
+void WalletGreen::rescan(const uint64_t scanHeight)
+{
+    rebuildFromBlockchain(scanHeight, true);
+}
+
 void WalletGreen::reset(const uint64_t scanHeight)
+{
+    rebuildFromBlockchain(scanHeight, false);
+}
+
+void WalletGreen::rebuildFromBlockchain(const uint64_t scanHeight, const bool preserveSentPayments)
 {
     throwIfNotInitialized();
     throwIfStopped();
@@ -1225,11 +1236,10 @@ void WalletGreen::reset(const uint64_t scanHeight)
         }
     }
 
-    /* A reset must discard the scan cursor/ledger, but PQ identity metadata is
-       not cache: the deposit scheme/cursor, tracking credential and sent-payment
-       proofs must survive both this reload and a later fresh process. Stop the
-       synchronizer, remove only its cached consumer state, then write a SAVE_ALL
-       container whose PQ blob has empty cache sections and intact metadata. */
+    /* Both operations discard the scan cursor/ledger. PQ identity metadata is
+       required wallet authority and always survives. A rescan also preserves
+       payer-created recipient/proof metadata; a destructive reset omits only
+       that local-history section from the durable container. */
     clearCaches(true, true);
 
     /* Start again so the normal container write can proceed. Call the private
@@ -1237,7 +1247,8 @@ void WalletGreen::reset(const uint64_t scanHeight)
        consumer is reconstructed by load(). */
     start();
     try {
-      saveWalletCache(m_containerStorage, m_key, CryptoNote::WalletSaveLevel::SAVE_ALL, m_extra);
+      saveWalletCache(m_containerStorage, m_key, CryptoNote::WalletSaveLevel::SAVE_ALL,
+                      m_extra, preserveSentPayments);
     } catch (...) {
       // Leave the live object usable if the reset write itself fails.
       initPqConsumerForPrimary();
@@ -1882,10 +1893,10 @@ void WalletGreen::enableLegacyDepositRescan(uint32_t maxT) {
 // index to issue. See buildPqStateBlob().
 static constexpr uint8_t kPqDepositMetaVersion = 2;
 
-void WalletGreen::buildPqStateBlob() {
+void WalletGreen::buildPqStateBlob(const bool includeSentPayments) {
   m_pqState.clear();
   if (!m_pqConsumer && !m_pqTrackingKeys &&
-      !m_pqDepositSchemeChosen && m_sentPayments.empty()) {
+      !m_pqDepositSchemeChosen && (!includeSentPayments || m_sentPayments.empty())) {
     return;
   }
   std::string consumerBlob;
@@ -1930,7 +1941,7 @@ void WalletGreen::buildPqStateBlob() {
   writeSection(depositBlob);
   writeSection(m_pqTrackingKeys ? encodePqTrackingKey(*m_pqTrackingKeys) : std::string());
   std::string sentPayments;
-  if (!m_sentPayments.empty()) {
+  if (includeSentPayments && !m_sentPayments.empty()) {
     std::stringstream sent;
     m_sentPayments.save(sent);
     sentPayments = sent.str();
