@@ -422,6 +422,10 @@ void WalletGreen::load(const std::string& path, const std::string& password, std
 
   stopBlockchainSynchronizer();
 
+  // Armed once the container is open (below); until then nothing secret exists
+  // and the early failures have nothing to clean up.
+  std::unique_ptr<Tools::ScopeExit> loadGuard;
+
   std::ifstream walletFileStream(path, std::ios_base::binary);
   int version = walletFileStream.peek();
   if (version == EOF) {
@@ -456,12 +460,26 @@ void WalletGreen::load(const std::string& path, const std::string& password, std
         migrateLegacyContainer(path, password);
       } catch (const std::exception& e) {
         m_logger(ERROR, BRIGHT_RED) << "Failed to upgrade wallet file: " << e.what();
-        startBlockchainSynchronizer();
+        // Deliberately no startBlockchainSynchronizer() here: no wallet is loaded
+        // at this point, so there is nothing for it to synchronize, and starting
+        // it would leave a thread running against a NOT_INITIALIZED object.
         throw;
       }
     }
 
     loadContainerStorage(path, password);
+
+    // From here on the container key and the master seeds are resident. Every
+    // remaining step can throw — restoring the cache, building the PQ consumer,
+    // seeding the blockchain, starting the synchronizer — and until the very end
+    // of this function the wallet is still NOT_INITIALIZED, so nothing else would
+    // ever clean it up. One guard covers all of it; it is dismissed only once the
+    // state invariants are actually established.
+    loadGuard.reset(new Tools::ScopeExit([this] { abortLoad(); }));
+
+    if (loadFaultInjector()) {
+      loadFaultInjector()();  // test-only; never set in production
+    }
 
     if (m_containerStorage.suffixSize() > 0) {
       try {
@@ -514,6 +532,9 @@ void WalletGreen::load(const std::string& path, const std::string& password, std
   m_extra = extra;
 
   m_state = WalletState::INITIALIZED;
+  if (loadGuard) {
+    loadGuard->cancel();
+  }
   m_logger(INFO, BRIGHT_WHITE) << "Container loaded, wallet count " << m_walletsContainer.size() <<
     ", balance " << m_currency.formatAmount(getActualBalance());
 }
@@ -703,6 +724,58 @@ bool WalletGreen::hasResidentSecrets() const {
     }
   }
   return false;
+}
+
+std::function<void()>& WalletGreen::loadFaultInjector() {
+  static std::function<void()> injector;
+  return injector;
+}
+
+void WalletGreen::abortLoad() {
+  // Order mirrors doShutdown(): stop anything running, detach from the
+  // synchronizer, close the file, and only then scrub. Each step is written to
+  // be a no-op if that stage was never reached, because this runs for failures
+  // anywhere between opening the container and the final state assignment.
+  try {
+    stopBlockchainSynchronizer();
+  } catch (const std::exception& e) {
+    m_logger(DEBUGGING) << "Ignoring synchronizer stop failure during load cleanup: " << e.what();
+  }
+
+  try {
+    if (m_pqConsumer) {
+      m_blockchainSynchronizer.removeConsumer(m_pqConsumer.get());
+    }
+    m_blockchainSynchronizer.removeObserver(this);
+  } catch (const std::exception& e) {
+    m_logger(DEBUGGING) << "Ignoring synchronizer detach failure during load cleanup: " << e.what();
+  }
+  m_pqConsumer.reset();
+
+  try {
+    m_containerStorage.close();
+  } catch (const std::exception& e) {
+    m_logger(DEBUGGING) << "Ignoring container close failure during load cleanup: " << e.what();
+  }
+
+  // Secrets last, so nothing above can fault and leave them behind.
+  wipeSecrets();
+  m_walletsContainer.clear();
+  m_addressGenerationMode = AddressGenerationMode::INDEPENDENT_SPEND_KEYS;
+  m_deterministicSeed = NULL_SECRET_KEY;
+  m_nextDeterministicIndex = 0;
+  m_pqTrackingKeys.reset();
+  m_pqState.clear();
+  m_sentPayments.clear();
+  m_blockchain.clear();
+  m_pqNotifiedTxCount = 0;
+  m_extra.clear();
+  m_path.clear();
+
+  std::queue<WalletEvent> noEvents;
+  std::swap(m_events, noEvents);
+
+  m_state = WalletState::NOT_INITIALIZED;
 }
 
 void WalletGreen::wipeSecrets() {

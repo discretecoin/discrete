@@ -206,6 +206,185 @@ static CryptoNote::PqWalletKeys pqKeysFromWalletSeed(const Crypto::SecretKey& se
   return CryptoNote::derivePqWalletKeys(sm);
 }
 
+// --- Failed loads leave nothing behind -------------------------------------
+//
+// Once the container has opened, the container key and the master seeds are
+// resident. Everything after that point can still fail, and until load() reaches
+// its end the wallet is NOT_INITIALIZED, so no later shutdown would ever clean it
+// up. These assert the post-failure invariant directly rather than merely that
+// nothing crashed.
+
+namespace {
+
+struct LoadFixture {
+  System::Dispatcher dispatcher;
+  Logging::ConsoleLogger logger{Logging::ERROR};
+  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(1000000).upgradeHeightV6(1000000)
+      .currency();
+  TestBlockchainGenerator generator{currency};
+  INodeTrivialRefreshStub node{generator};
+};
+
+// Create a real container at `path` and close it.
+void makeWallet(LoadFixture& f, const std::string& path, const std::string& password) {
+  boost::filesystem::remove(path);
+  CryptoNote::WalletGreen wallet(f.dispatcher, f.currency, f.node, f.logger);
+  wallet.initialize(path, password);
+  wallet.createAddress();
+  wallet.save(CryptoNote::WalletSaveLevel::SAVE_ALL);
+  wallet.shutdown();
+}
+
+// Clears any injected fault however the test leaves.
+struct FaultInjectorGuard {
+  ~FaultInjectorGuard() { CryptoNote::WalletGreen::loadFaultInjector() = nullptr; }
+};
+
+}  // namespace
+
+TEST(PqWalletLoadFailure, WrongPasswordLeavesNoResidentSecrets) {
+  LoadFixture f;
+  const std::string path = "pq_loadfail_password.wallet";
+  makeWallet(f, path, "right");
+
+  CryptoNote::WalletGreen wallet(f.dispatcher, f.currency, f.node, f.logger);
+  EXPECT_ANY_THROW(wallet.load(path, "wrong"));
+  EXPECT_FALSE(wallet.hasResidentSecrets());
+
+  boost::filesystem::remove(path);
+}
+
+TEST(PqWalletLoadFailure, CorruptedRecordLeavesNoResidentSecrets) {
+  LoadFixture f;
+  const std::string path = "pq_loadfail_corrupt.wallet";
+  makeWallet(f, path, "pass");
+
+  // Flip a byte inside the first encrypted seed record, past the header, so the
+  // password is right but the authentication tag is not.
+  {
+    // Rewrite the file at exactly its original length, so the failure is the
+    // record's authentication tag and not a size or structural check.
+    std::vector<char> bytes;
+    {
+      std::ifstream in(path, std::ios::binary);
+      ASSERT_TRUE(in.is_open());
+      bytes.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+    }
+    // FileMappedVector lays the file out as: prefix, capacity(u64), size(u64),
+    // then the records. Land inside the first record's ciphertext, past its
+    // nonce, so the tag is what rejects this and not a structural check.
+    const std::size_t offset = sizeof(CryptoNote::ContainerStoragePrefix) +
+                               2 * sizeof(uint64_t) + CryptoPQ::kAeadNonceBytes + 4;
+    ASSERT_GT(bytes.size(), offset);
+    const std::size_t original = bytes.size();
+    bytes[offset] = static_cast<char>(bytes[offset] ^ 0x5A);
+    {
+      std::ofstream out(path, std::ios::binary | std::ios::trunc);
+      ASSERT_TRUE(out.is_open());
+      out.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+    }
+    ASSERT_EQ(original, static_cast<std::size_t>(boost::filesystem::file_size(path)));
+  }
+
+  CryptoNote::WalletGreen wallet(f.dispatcher, f.currency, f.node, f.logger);
+  EXPECT_ANY_THROW(wallet.load(path, "pass"));
+  EXPECT_FALSE(wallet.hasResidentSecrets());
+
+  boost::filesystem::remove(path);
+}
+
+// The gap this covers: the container opened, the records authenticated, the key
+// and the seeds are resident — and then a later initialization step throws.
+TEST(PqWalletLoadFailure, FailureAfterRecordsLoadLeavesNoResidentSecrets) {
+  LoadFixture f;
+  const std::string path = "pq_loadfail_late.wallet";
+  makeWallet(f, path, "pass");
+
+  FaultInjectorGuard restore;
+  CryptoNote::WalletGreen wallet(f.dispatcher, f.currency, f.node, f.logger);
+
+  bool secretsWereResident = false;
+  CryptoNote::WalletGreen::loadFaultInjector() = [&wallet, &secretsWereResident] {
+    // Establishes that this fires in the window that matters: had the load
+    // succeeded to here and then thrown, these secrets would have stayed.
+    secretsWereResident = wallet.hasResidentSecrets();
+    throw std::runtime_error("injected post-container load failure");
+  };
+
+  EXPECT_ANY_THROW(wallet.load(path, "pass"));
+  EXPECT_TRUE(secretsWereResident) << "fault injected too early to be meaningful";
+  EXPECT_FALSE(wallet.hasResidentSecrets());
+
+  boost::filesystem::remove(path);
+}
+
+// After the cleanup the object must be genuinely reusable, not merely scrubbed:
+// the synchronizer detached, the consumer dropped, the state reset.
+TEST(PqWalletLoadFailure, ObjectIsReusableAfterAFailedLoad) {
+  LoadFixture f;
+  const std::string path = "pq_loadfail_reuse.wallet";
+  makeWallet(f, path, "pass");
+
+  CryptoNote::WalletGreen wallet(f.dispatcher, f.currency, f.node, f.logger);
+  {
+    FaultInjectorGuard restore;
+    CryptoNote::WalletGreen::loadFaultInjector() = [] {
+      throw std::runtime_error("injected post-container load failure");
+    };
+    EXPECT_ANY_THROW(wallet.load(path, "pass"));
+  }
+  ASSERT_FALSE(wallet.hasResidentSecrets());
+
+  // The same object now loads the same file normally.
+  ASSERT_NO_THROW(wallet.load(path, "pass"));
+  EXPECT_TRUE(wallet.hasResidentSecrets());
+  EXPECT_GE(wallet.getAddressCount(), 1u);
+
+  wallet.shutdown();
+  EXPECT_FALSE(wallet.hasResidentSecrets());
+
+  boost::filesystem::remove(path);
+}
+
+TEST(PqWalletLoadFailure, ShutdownAfterFailedLoadIsSafe) {
+  LoadFixture f;
+  const std::string path = "pq_loadfail_shutdown.wallet";
+  makeWallet(f, path, "pass");
+
+  CryptoNote::WalletGreen wallet(f.dispatcher, f.currency, f.node, f.logger);
+  EXPECT_ANY_THROW(wallet.load(path, "wrong"));
+
+  // The wallet never reached INITIALIZED, so shutdown() is expected to refuse
+  // rather than tear down a second time. Either way it must not leave secrets.
+  try {
+    wallet.shutdown();
+  } catch (const std::exception&) {
+  }
+  EXPECT_FALSE(wallet.hasResidentSecrets());
+
+  boost::filesystem::remove(path);
+}
+
+TEST(PqWalletLoadFailure, SuccessfulLoadStillRetainsItsSecrets) {
+  LoadFixture f;
+  const std::string path = "pq_loadfail_success.wallet";
+  makeWallet(f, path, "pass");
+
+  CryptoNote::WalletGreen wallet(f.dispatcher, f.currency, f.node, f.logger);
+  ASSERT_NO_THROW(wallet.load(path, "pass"));
+  // The guard must be dismissed on success, not merely not fire.
+  EXPECT_TRUE(wallet.hasResidentSecrets());
+  EXPECT_GE(wallet.getAddressCount(), 1u);
+
+  wallet.shutdown();
+  EXPECT_FALSE(wallet.hasResidentSecrets());
+
+  boost::filesystem::remove(path);
+}
+
 TEST(PqWalletIntegration, IncomingTransactionCreditsNativeBalance) {
   System::Dispatcher dispatcher;
   Logging::ConsoleLogger logger(Logging::ERROR);

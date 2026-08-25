@@ -20,6 +20,7 @@
 
 #include "IWallet.h"
 
+#include <functional>
 #include <map>
 #include <memory>
 #include <queue>
@@ -286,11 +287,26 @@ protected:
   // the master seeds in the address records.
   void wipeSecrets();
 
+  // Return the object to a clean NOT_INITIALIZED state after a load that failed
+  // at any point. Safe to call however far the attempt got, including when a
+  // component was never created, and safe to call more than once.
+  void abortLoad();
+
 public:
   // True while any secret is still resident. Never exposes a secret; it lets the
   // daemon report state and lets tests assert that closing a wallet, or failing
   // to open one, leaves nothing behind.
   bool hasResidentSecrets() const;
+
+  // Test-only fault injection, in the same spirit as Crypto::kdf_forced_failure().
+  //
+  // The steps that run after the container has been opened — building the PQ
+  // consumer, seeding the blockchain, starting the synchronizer — fail only under
+  // conditions a unit test cannot practically create, yet they are exactly the
+  // window in which the container key and the master seeds are already resident.
+  // Setting this makes load() throw at that point so the cleanup can be checked.
+  // Production never sets it; load() only reads it.
+  static std::function<void()>& loadFaultInjector();
 
 private:
   // Set up a fresh (empty) PQ wallet container: the prefix holds only the version
