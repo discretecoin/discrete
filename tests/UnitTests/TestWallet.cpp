@@ -18,6 +18,7 @@
 #include "gtest/gtest.h"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <fstream>
 #include <numeric>
@@ -30,6 +31,7 @@
 #include "CryptoNoteCore/Currency.h"
 #include "CryptoNoteCore/TransactionApi.h"
 #include "CryptoNoteCore/TransactionApiExtra.h"
+#include "CryptoNoteCore/PqValidation.h"
 #include "INodeStubs.h"
 #include "TestBlockchainGenerator.h"
 #include <Logging/ConsoleLogger.h>
@@ -38,6 +40,7 @@
 #include "Wallet/WalletGreen.h"
 #include "Wallet/PqWallet.h"
 #include "Wallet/PqTransactionBuilder.h"
+#include "crypto_pq/PqAead.h"
 #include "crypto_pq/PqOutputBuilder.h"
 #include "crypto_pq/PqDerive.h"
 #include "crypto_pq/PqSeed.h"   // deriveDepositSpendKeys
@@ -170,6 +173,53 @@ CryptoNote::Transaction makePqPayTo(const CryptoNote::PqWalletKeys& from,
   out.unlockHeight = outUnlockHeight;  // per-output spend lock (0 = none); 0 != coinbase maturity
   return CryptoNote::buildPqTransaction({in}, {out}, from.spendPub, from.spendSk,
                                         /*unlockHeight=*/0, extra);
+}
+
+// Recreate the released pre-outContext-v2 SingleKeyIndex output format. The
+// legacy AEAD key derivation includes the destination's actual T, so current
+// receivers must try the issued T range to recover the payload.
+CryptoNote::Transaction makePqPayToLegacyV1(
+    const CryptoNote::PqWalletKeys& from, const CryptoNote::PqWalletKeys& to,
+    uint64_t inAmount, uint64_t payAmount, uint8_t seed, uint64_t subaddrT) {
+  CryptoNote::Transaction tx =
+      makePqPayTo(from, to, inAmount, payAmount, seed, subaddrT);
+  CryptoPQ::Hash256 ih = CryptoNote::pqTransactionInputsHash(tx);
+
+  auto encapsulation = CryptoPQ::kem_encaps(to.viewPub);
+  CryptoPQ::Rho rho{};
+  for (std::size_t i = 0; i < rho.size(); ++i) {
+    rho[i] = static_cast<uint8_t>(seed + i);
+  }
+  CryptoPQ::Hash256 oc = CryptoPQ::legacyOutContextV1(
+      ih, encapsulation.first, /*outputIndex=*/0, subaddrT);
+  CryptoPQ::Hash256 aeadKey = CryptoPQ::deriveAeadKey(encapsulation.second, oc);
+  CryptoPQ::AeadNonce nonce{};
+  std::array<uint8_t, 40> aad{};
+  std::memcpy(aad.data(), oc.data(), 32);
+  for (int i = 0; i < 8; ++i) {
+    aad[32 + i] = static_cast<uint8_t>((payAmount >> (8 * i)) & 0xFF);
+  }
+  std::array<uint8_t, 40> plaintext{};
+  std::memcpy(plaintext.data(), rho.data(), 32);
+  for (int i = 0; i < 8; ++i) {
+    plaintext[32 + i] = static_cast<uint8_t>((subaddrT >> (8 * i)) & 0xFF);
+  }
+
+  CryptoNote::PqOutput legacy;
+  legacy.kemCt.assign(encapsulation.first.begin(), encapsulation.first.end());
+  legacy.encPayload = CryptoPQ::aead_encrypt(
+      aeadKey, nonce, aad.data(), aad.size(), plaintext.data(), plaintext.size());
+  CryptoPQ::Hash256 commitment = CryptoPQ::spendCommit(to.spendPub, rho);
+  std::memcpy(legacy.spendCommit.data, commitment.data(), commitment.size());
+  tx.outputs[0].target = std::move(legacy);
+
+  // Output bytes participate in the transaction signing digest. Re-sign after
+  // replacing the v2 output so this fixture is a valid released-format TX_PQ,
+  // not merely a scanner-shaped prefix.
+  CryptoPQ::Hash256 digest = CryptoNote::pqSigningDigest(tx, inAmount - payAmount);
+  tx.pqSignatures[0] = CryptoPQ::dsa_sign(
+      from.spendSk, digest.data(), digest.size());
+  return tx;
 }
 // Pump wallet events until `pred` holds or the timeout elapses.
 void pumpUntil(System::Dispatcher& dispatcher, CryptoNote::WalletGreen& wallet,
@@ -730,6 +780,249 @@ TEST(PqWalletIntegration, SingleKeyIndexContainerWithNoDepositsRoundTrips) {
     reloaded.shutdown();
   }
 
+  boost::filesystem::remove(path);
+}
+
+// reset(scanHeight) intentionally drops the scan cursor and WalletLedger so old
+// blocks are visited again. It must not also erase the SingleKeyIndex registry:
+// that registry is durable identity/routing metadata, and losing it makes a fresh
+// wallet process unable to scan the deposit T values it previously issued.
+TEST(PqWalletIntegration, ResetScanHeightPreservesSingleKeyIndexRegistry) {
+  System::Dispatcher dispatcher;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(1000000).upgradeHeightV6(1000000)
+      .currency();
+  TestBlockchainGenerator generator(currency);
+  INodeTrivialRefreshStub node(generator);
+
+  const std::string path = "pq_reset_ski.wallet";
+  boost::filesystem::remove(path);
+  {
+    CryptoNote::WalletGreen wallet(dispatcher, currency, node, logger);
+    wallet.initialize(path, "pass");
+    wallet.createAddress();
+    wallet.setPqDepositScheme(CryptoNote::PqDepositScheme::SingleKeyIndex);
+    ASSERT_EQ(wallet.reservePqDepositIndex(), 1u);
+    ASSERT_EQ(wallet.reservePqDepositIndex(), 2u);
+    ASSERT_EQ(wallet.reservePqDepositIndex(), 3u);
+
+    ASSERT_NO_THROW(wallet.reset(/*scanHeight=*/0));
+    EXPECT_EQ(wallet.getPqDepositScheme(), CryptoNote::PqDepositScheme::SingleKeyIndex);
+    EXPECT_EQ(wallet.getPqDepositCount(), 3u);
+    wallet.shutdown();
+  }
+  {
+    CryptoNote::WalletGreen reopened(dispatcher, currency, node, logger);
+    ASSERT_NO_THROW(reopened.load(path, "pass"));
+    EXPECT_EQ(reopened.getPqDepositScheme(), CryptoNote::PqDepositScheme::SingleKeyIndex);
+    EXPECT_EQ(reopened.getPqDepositCount(), 3u);
+    EXPECT_EQ(reopened.getPqDepositIndexAt(0), 1u);
+    EXPECT_EQ(reopened.reservePqDepositIndex(), 4u);
+    reopened.shutdown();
+  }
+  boost::filesystem::remove(path);
+}
+
+// A tracking credential is also PQ identity, not scan cache. A reset that writes
+// keys-only state used to erase that credential and could reopen with no scanning
+// consumer. Prove both the immediate reload inside reset() and a new process keep
+// the same identity and issued SingleKeyIndex range.
+TEST(PqWalletIntegration, ResetScanHeightPreservesTrackingIdentity) {
+  System::Dispatcher dispatcher;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(1000000).upgradeHeightV6(1000000)
+      .currency();
+  TestBlockchainGenerator generator(currency);
+  INodeTrivialRefreshStub node(generator);
+
+  CryptoNote::PqTrackingKeys credential;
+  const std::string fullPath = "pq_reset_tracking_source.wallet";
+  boost::filesystem::remove(fullPath);
+  {
+    CryptoNote::WalletGreen full(dispatcher, currency, node, logger);
+    full.initialize(fullPath, "pass");
+    full.createAddress();
+    ASSERT_TRUE(full.getPqTrackingKeys(credential));
+    full.shutdown();
+  }
+  boost::filesystem::remove(fullPath);
+
+  const std::string path = "pq_reset_tracking.wallet";
+  boost::filesystem::remove(path);
+  const std::string encoded = CryptoNote::encodePqTrackingKey(credential);
+  {
+    CryptoNote::WalletGreen tracking(dispatcher, currency, node, logger);
+    tracking.initializeWithPqTrackingKey(path, "pass", credential);
+    tracking.setPqDepositScheme(CryptoNote::PqDepositScheme::SingleKeyIndex);
+    ASSERT_EQ(tracking.reservePqDepositIndex(), 1u);
+    ASSERT_EQ(tracking.reservePqDepositIndex(), 2u);
+
+    ASSERT_NO_THROW(tracking.reset(/*scanHeight=*/0));
+    CryptoNote::PqTrackingKeys afterReset;
+    ASSERT_TRUE(tracking.getPqTrackingKeys(afterReset));
+    EXPECT_EQ(CryptoNote::encodePqTrackingKey(afterReset), encoded);
+    EXPECT_EQ(tracking.getPqDepositCount(), 2u);
+    tracking.shutdown();
+  }
+  {
+    CryptoNote::WalletGreen reopened(dispatcher, currency, node, logger);
+    ASSERT_NO_THROW(reopened.load(path, "pass"));
+    CryptoNote::PqTrackingKeys afterReopen;
+    ASSERT_TRUE(reopened.getPqTrackingKeys(afterReopen));
+    EXPECT_EQ(CryptoNote::encodePqTrackingKey(afterReopen), encoded);
+    EXPECT_EQ(reopened.getPqDepositScheme(), CryptoNote::PqDepositScheme::SingleKeyIndex);
+    EXPECT_EQ(reopened.getPqDepositCount(), 2u);
+    EXPECT_EQ(reopened.reservePqDepositIndex(), 3u);
+    reopened.shutdown();
+  }
+  boost::filesystem::remove(path);
+}
+
+// Exact recovery chain: a released legacy sender pays issued T=44, the wallet has
+// already scanned past that block without the range, then its registry grows to
+// cursor 45 and reset(0) revisits history. The output must be recognized, attributed
+// to deposit 44, and rediscovered by a fresh process from the metadata-only reset
+// file even if no post-sync save occurred.
+TEST(PqWalletIntegration, ResetRecoversLegacyNonzeroTThroughWalletSynchronizer) {
+  System::Dispatcher dispatcher;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(1000000).upgradeHeightV6(1000000)
+      .currency();
+  TestBlockchainGenerator generator(currency);
+  INodeTrivialRefreshStub node(generator);
+
+  const std::string path = "pq_reset_legacy_t.wallet";
+  boost::filesystem::remove(path);
+  const uint64_t amount = 500000;
+  Crypto::Hash legacyTxid{};
+  uint32_t tipHeight = 0;
+  {
+    CryptoNote::WalletGreen wallet(dispatcher, currency, node, logger);
+    wallet.initialize(path, "pass");
+    wallet.createAddress();
+    wallet.setPqDepositScheme(CryptoNote::PqDepositScheme::SingleKeyIndex);
+
+    Crypto::SecretKey spend = wallet.getAddressSpendKey(0).secretKey;
+    CryptoNote::PqWalletKeys mine = pqKeysFromWalletSeed(spend);
+    Crypto::SecretKey otherSecret;
+    for (std::size_t i = 0; i < sizeof(otherSecret.data); ++i) {
+      otherSecret.data[i] = static_cast<uint8_t>(i * 11 + 5);
+    }
+    CryptoNote::PqWalletKeys them = CryptoNote::derivePqWalletKeys(otherSecret);
+
+    CryptoNote::Transaction legacy = makePqPayToLegacyV1(
+        them, mine, 1000000, amount, 0x74, /*T=*/44);
+    legacyTxid = CryptoNote::getObjectHash(legacy);
+    generator.setTxFee(legacyTxid, 1000000 - amount);
+    generator.addTxToBlockchain(legacy);
+    tipHeight = static_cast<uint32_t>(generator.getBlockchain().size() - 1);
+    node.updateObservers();
+    pumpUntil(dispatcher, wallet,
+              [&wallet, tipHeight]() { return wallet.pqSyncedHeight() >= tipHeight; });
+
+    // Cursor 1 has not issued T=44 yet, so the first scan correctly ignores it.
+    EXPECT_EQ(wallet.getActualBalance(), 0u);
+    for (uint32_t t = 1; t <= 44; ++t) {
+      ASSERT_EQ(wallet.reservePqDepositIndex(), t);
+    }
+
+    ASSERT_NO_THROW(wallet.reset(/*scanHeight=*/0));
+    pumpUntil(dispatcher, wallet,
+              [&wallet, tipHeight]() { return wallet.pqSyncedHeight() >= tipHeight; });
+    EXPECT_EQ(wallet.getActualBalance(), amount);
+    EXPECT_EQ(wallet.pqDepositBalance(44), amount);
+    ASSERT_EQ(wallet.getTransactionCount(), 1u);
+    EXPECT_EQ(wallet.getTransaction(0).hash, legacyTxid);
+
+    // Deliberately do not save after recovery: the reset file itself must retain
+    // enough identity metadata for a new process to rescan and recover again.
+    wallet.shutdown();
+  }
+  {
+    CryptoNote::WalletGreen reopened(dispatcher, currency, node, logger);
+    ASSERT_NO_THROW(reopened.load(path, "pass"));
+    pumpUntil(dispatcher, reopened,
+              [&reopened, tipHeight]() { return reopened.pqSyncedHeight() >= tipHeight; });
+    EXPECT_EQ(reopened.getPqDepositScheme(), CryptoNote::PqDepositScheme::SingleKeyIndex);
+    EXPECT_EQ(reopened.getPqDepositCount(), 44u);
+    EXPECT_EQ(reopened.getActualBalance(), amount);
+    EXPECT_EQ(reopened.pqDepositBalance(44), amount);
+    ASSERT_EQ(reopened.getTransactionCount(), 1u);
+    EXPECT_EQ(reopened.getTransaction(0).hash, legacyTxid);
+    reopened.shutdown();
+  }
+  boost::filesystem::remove(path);
+}
+
+// The manual window is only for metadata-loss recovery beyond the issued cursor.
+// It is set before reset, so WalletGreen—not the soon-to-be-destroyed ledger—must
+// carry it through the internal shutdown/load cycle.
+TEST(PqWalletIntegration, ManualLegacyWindowSurvivesResetCycle) {
+  System::Dispatcher dispatcher;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(1000000).upgradeHeightV6(1000000)
+      .currency();
+  TestBlockchainGenerator generator(currency);
+  INodeTrivialRefreshStub node(generator);
+
+  const std::string path = "pq_reset_manual_legacy.wallet";
+  boost::filesystem::remove(path);
+  CryptoNote::WalletGreen wallet(dispatcher, currency, node, logger);
+  wallet.initialize(path, "pass");
+  wallet.createAddress();
+  wallet.setPqDepositScheme(CryptoNote::PqDepositScheme::SingleKeyIndex);
+  for (uint32_t t = 1; t <= 44; ++t) {
+    ASSERT_EQ(wallet.reservePqDepositIndex(), t);
+  }
+
+  Crypto::SecretKey spend = wallet.getAddressSpendKey(0).secretKey;
+  CryptoNote::PqWalletKeys mine = pqKeysFromWalletSeed(spend);
+  Crypto::SecretKey otherSecret;
+  for (std::size_t i = 0; i < sizeof(otherSecret.data); ++i) {
+    otherSecret.data[i] = static_cast<uint8_t>(i * 13 + 7);
+  }
+  CryptoNote::PqWalletKeys them = CryptoNote::derivePqWalletKeys(otherSecret);
+
+  const uint64_t amount = 400000;
+  CryptoNote::Transaction legacy = makePqPayToLegacyV1(
+      them, mine, 1000000, amount, 0x75, /*T=*/45);
+  generator.setTxFee(CryptoNote::getObjectHash(legacy), 1000000 - amount);
+  generator.addTxToBlockchain(legacy);
+  const uint32_t tipHeight = static_cast<uint32_t>(generator.getBlockchain().size() - 1);
+  node.updateObservers();
+  pumpUntil(dispatcher, wallet,
+            [&wallet, tipHeight]() { return wallet.pqSyncedHeight() >= tipHeight; });
+  EXPECT_EQ(wallet.getActualBalance(), 0u);  // cursor 45 excludes T=45
+
+  wallet.enableLegacyDepositRescan(/*maxT=*/46);
+  ASSERT_NO_THROW(wallet.reset(/*scanHeight=*/0));
+  pumpUntil(dispatcher, wallet,
+            [&wallet, tipHeight]() { return wallet.pqSyncedHeight() >= tipHeight; });
+  EXPECT_EQ(wallet.getActualBalance(), amount);
+  EXPECT_EQ(wallet.pqDepositBalance(45), amount);
+
+  // The extension is deliberately session-local. Reusing the same WalletGreen
+  // object after a normal shutdown must not leak T=45 scanning into the next
+  // load; the persisted issued cursor still ends at 45 and excludes T=45.
+  wallet.shutdown();
+  ASSERT_NO_THROW(wallet.load(path, "pass"));
+  pumpUntil(dispatcher, wallet,
+            [&wallet, tipHeight]() { return wallet.pqSyncedHeight() >= tipHeight; });
+  EXPECT_EQ(wallet.getActualBalance(), 0u);
+  EXPECT_EQ(wallet.pqDepositBalance(45), 0u);
+  wallet.shutdown();
   boost::filesystem::remove(path);
 }
 

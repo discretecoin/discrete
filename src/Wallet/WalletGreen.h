@@ -168,13 +168,11 @@ public:
   // of all non-empty deposit balances by index (for walletd deposit attribution).
   uint64_t pqDepositBalance(uint32_t index) const;
   std::map<uint32_t, uint64_t> pqDepositBalances() const;
-  // MANUAL RECOVERY KNOB (SingleKeyIndex only) — OFF by default (maxT=0), not
-  // persisted, and not needed for ordinary scanning: outContext-v2 reads T
-  // back from the payload directly, without enumerating deposit indices. This
-  // exists only in case an unupgraded/hand-rolled sender ever creates a
-  // legacy (pre-v2) output at a nonzero T, which nothing in consensus
-  // prevents. Pair with a rescan (reset) to actually re-examine history.
-  // Most relevant to walletd, the exchange-facing surface for these deposits.
+  // MANUAL RECOVERY WINDOW EXTENSION (SingleKeyIndex only) — OFF by default
+  // and not persisted across process restarts. Normal scanning already covers
+  // every issued T. Set maxT above the issued cursor before reset() only when
+  // recovering a legacy output whose local address metadata was lost. The
+  // runtime value survives reset()'s internal shutdown/load cycle.
   void enableLegacyDepositRescan(uint32_t maxT);
 
   virtual void initialize(const std::string& path, const std::string& password) override;
@@ -441,6 +439,10 @@ protected:
   // True once the scheme has been chosen (at creation) or read back from a
   // persisted container; makes setPqDepositScheme reject any later change.
   bool m_pqDepositSchemeChosen = false;
+  // Volatile operator extension for legacy-v1 scanning beyond the persisted
+  // issued cursor. Kept on WalletGreen so reset() can rebuild WalletLedger
+  // without losing it; deliberately returns to zero in a new process.
+  uint32_t m_pqLegacyTWindowMaxT = 0;
   // Cache of this wallet's own PQ registration coords (H,I), resolved from the node
   // the first time a SingleKeyIndex (H-I-A-T-C) deposit address must be rendered.
   mutable bool m_pqRegResolved = false;

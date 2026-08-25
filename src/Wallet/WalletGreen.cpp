@@ -244,6 +244,11 @@ void WalletGreen::doShutdown() {
   m_nextDeterministicIndex = 0;
   m_pqTrackingKeys.reset();
   m_pqState.clear();
+  // Operator recovery scope belongs to one live wallet session. reset() saves
+  // and restores it explicitly around its internal shutdown; an ordinary
+  // shutdown must not leak the range into another container loaded by the same
+  // WalletGreen object.
+  m_pqLegacyTWindowMaxT = 0;
   // Chain cache and payer-created proof records have different lifetimes. Drop the
   // in-memory mirror when closing a wallet; its archive is reloaded on the next load.
   m_sentPayments.clear();
@@ -1198,8 +1203,13 @@ void WalletGreen::reset(const uint64_t scanHeight)
     throwIfNotInitialized();
     throwIfStopped();
 
+    /* Preserve the volatile operator recovery scope only across this reset's
+       internal shutdown/load cycle. A normal shutdown clears it. */
+    const uint32_t legacyTWindowMaxT = m_pqLegacyTWindowMaxT;
+
     /* Stop so things can't be added to the container as we're looping */
     stop();
+    stopBlockchainSynchronizer();
 
     uint64_t newTimestamp = scanHeightToTimestamp((uint32_t) scanHeight);
 
@@ -1215,11 +1225,25 @@ void WalletGreen::reset(const uint64_t scanHeight)
         }
     }
 
-    /* Start again so we can save */
-    start();
+    /* A reset must discard the scan cursor/ledger, but PQ identity metadata is
+       not cache: the deposit scheme/cursor, tracking credential and sent-payment
+       proofs must survive both this reload and a later fresh process. Stop the
+       synchronizer, remove only its cached consumer state, then write a SAVE_ALL
+       container whose PQ blob has empty cache sections and intact metadata. */
+    clearCaches(true, true);
 
-    /* Save just the keys + timestamp to file */
-    save(CryptoNote::WalletSaveLevel::SAVE_KEYS_ONLY);
+    /* Start again so the normal container write can proceed. Call the private
+       writer directly: save() would try to restart synchronization before the
+       consumer is reconstructed by load(). */
+    start();
+    try {
+      saveWalletCache(m_containerStorage, m_key, CryptoNote::WalletSaveLevel::SAVE_ALL, m_extra);
+    } catch (...) {
+      // Leave the live object usable if the reset write itself fails.
+      initPqConsumerForPrimary();
+      startBlockchainSynchronizer();
+      throw;
+    }
 
     /* Stop and shutdown */
     stop();
@@ -1227,6 +1251,7 @@ void WalletGreen::reset(const uint64_t scanHeight)
     /* Shutdown the wallet */
     shutdown();
 
+    m_pqLegacyTWindowMaxT = legacyTWindowMaxT;
     start();
 
     /* Reopen from truncated storage */
@@ -1839,12 +1864,14 @@ void WalletGreen::syncPqDepositConfigToState() {
     // derive, i.e. indices [0, next). SingleKeyIndex ignores it (T comes out of the
     // decrypted payload), so passing the cursor is correct for both.
     m_pqConsumer->state().setDepositConfig(m_pqDepositScheme, m_pqNextDepositIndex);
+    m_pqConsumer->state().setLegacyTWindowRescan(m_pqLegacyTWindowMaxT);
   }
 }
 
 void WalletGreen::enableLegacyDepositRescan(uint32_t maxT) {
   throwIfNotInitialized();
   throwIfStopped();
+  m_pqLegacyTWindowMaxT = maxT;
   if (m_pqConsumer) {
     m_pqConsumer->state().setLegacyTWindowRescan(maxT);
   }
@@ -1857,7 +1884,8 @@ static constexpr uint8_t kPqDepositMetaVersion = 2;
 
 void WalletGreen::buildPqStateBlob() {
   m_pqState.clear();
-  if (!m_pqConsumer && !m_pqTrackingKeys) {
+  if (!m_pqConsumer && !m_pqTrackingKeys &&
+      !m_pqDepositSchemeChosen && m_sentPayments.empty()) {
     return;
   }
   std::string consumerBlob;

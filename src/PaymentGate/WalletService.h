@@ -110,10 +110,10 @@ public:
   std::error_code getPqDepositScheme(std::string& scheme, uint32_t& depositCount);
   std::error_code createPqDepositAddress(std::string& address, uint32_t& index);
   std::error_code listPqDepositAddresses(std::vector<std::string>& addresses, std::vector<uint32_t>& indices);
-  // MANUAL RECOVERY KNOB (SingleKeyIndex only) — OFF by default (maxT=0), not
-  // needed for ordinary scanning. Only flips the runtime flag; pair with
-  // `reset` (a scanHeight rescan) to actually re-examine history for a
-  // suspected legacy nonzero-T deposit from an unupgraded sender.
+  // Volatile SingleKeyIndex legacy-window extension. Normal scanning covers
+  // the issued cursor automatically; use this before `reset` only to recover
+  // beyond locally retained metadata. WalletGreen carries it through reset's
+  // internal reload, but a new process starts at zero again.
   std::error_code enableLegacyDepositRescan(uint32_t maxT);
   std::error_code sendTransaction(const SendTransaction::Request& request, std::string& transactionHash,
                                   std::vector<std::string>& paymentProofs);
