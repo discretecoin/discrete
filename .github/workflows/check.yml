@@ -330,6 +330,7 @@ jobs:
             -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON \
             -DCMAKE_OSX_ARCHITECTURES=arm64 \
             -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 \
+            -DBUILD_TESTS=ON \
             -DOPENSSL_USE_STATIC_LIBS=ON \
             -DBOOST_ROOT="$BOOST_ROOT" \
             -DBoost_INCLUDE_DIR="$Boost_INCLUDE_DIR" \
@@ -340,7 +341,11 @@ jobs:
             -DBoost_ARCHITECTURE=-a64 \
             -DBoost_THREADAPI=pthread
 
-          make -j$(sysctl -n hw.ncpu)
+          cmake --build . --config Release \
+            --target Daemon SimpleWallet GreenWallet PaymentGateService AdminTools PqPowTests \
+            -- -j"$(sysctl -n hw.ncpu)"
+
+          ./tests/pq_pow_tests '--gtest_filter=-*Bench*'
 
           mkdir "$release_name"
 
@@ -358,9 +363,35 @@ jobs:
 
           sha256=$(shasum -a 256 "$release_name.zip" | awk '{print toupper($1)}')
 
-          echo "sha256=$sha256" >> $GITHUB_OUTPUT
-          echo "release_name=$release_name.zip" >> $GITHUB_OUTPUT
-          echo "artifact_path=$build_folder/$release_name" >> $GITHUB_OUTPUT
+          {
+            echo "sha256=$sha256"
+            echo "release_name=$release_name.zip"
+            echo "artifact_path=$build_folder/$release_name"
+          } >> "$GITHUB_OUTPUT"
+
+          # Run the same corpus through the scalar path on this runner.
+          scalar_build="../build-pow-scalar"
+          cmake -S .. -B "$scalar_build" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 \
+            -DCMAKE_C_FLAGS=-U__ARM_NEON \
+            -DBUILD_TESTS=ON \
+            -DOPENSSL_USE_STATIC_LIBS=ON \
+            -DBOOST_ROOT="$BOOST_ROOT" \
+            -DBoost_INCLUDE_DIR="$Boost_INCLUDE_DIR" \
+            -DBoost_LIBRARY_DIR="$Boost_LIBRARY_DIR" \
+            -DBoost_NO_SYSTEM_PATHS=ON \
+            -DBoost_USE_STATIC_LIBS=ON \
+            -DBoost_COMPILER=-clang \
+            -DBoost_ARCHITECTURE=-a64 \
+            -DBoost_THREADAPI=pthread
+
+          cmake --build "$scalar_build" --config Release --target PqPowTests \
+            -- -j"$(sysctl -n hw.ncpu)"
+
+          "$scalar_build/tests/pq_pow_tests" '--gtest_filter=-*Bench*'
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
