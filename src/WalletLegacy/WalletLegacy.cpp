@@ -585,12 +585,20 @@ void WalletLegacy::doLoad(std::istream& source) {
       m_pqProtectedSpendMetadata = pqSections.protectedSpendMetadata;
     }
 
-    initSync();
+    // Parse non-derivable payer evidence before touching the recoverable scan
+    // cache. A malformed consumer/state blob may be discarded and rescanned,
+    // but recipient labels and payment proofs cannot be reconstructed from the
+    // chain and must never be skipped because an earlier cache section failed.
+    SentPaymentsStore loadedSentPayments;
+    if (framedPqCache && !pqSections.sentPayments.empty()) {
+      std::stringstream sp(pqSections.sentPayments);
+      std::string sentPaymentsError;
+      if (!loadedSentPayments.load(sp, &sentPaymentsError)) {
+        throw std::runtime_error("sent-payments cache rejected: " + sentPaymentsError);
+      }
+    }
 
-    // Start from the file's recipient labels: a reset saves without the cache, so on
-    // the subsequent reload this section is absent and the store clears — matching the
-    // classic "labels vanish on reset" behavior.
-    m_sentPayments.clear();
+    initSync();
 
     try {
       // Only the PQ sections are loaded now; the legacy transfers-cache section (if
@@ -604,10 +612,6 @@ void WalletLegacy::doLoad(std::istream& source) {
           std::stringstream ps(pqSections.pqState);
           m_pqConsumer->state().load(ps);
         }
-        if (!pqSections.sentPayments.empty()) {
-          std::stringstream sp(pqSections.sentPayments);
-          m_sentPayments.load(sp);
-        }
       }
     } catch (const std::exception& e) {
       // A cache failure is recoverable (the synchronizer rescans), but it must be
@@ -615,6 +619,9 @@ void WalletLegacy::doLoad(std::istream& source) {
       m_logger(WARNING) << "Failed to restore PQ wallet cache: " << e.what()
                         << "; a blockchain rescan will rebuild it";
     }
+
+    // Commit payer evidence independently of the recoverable scan-cache result.
+    m_sentPayments = std::move(loadedSentPayments);
 
     // History rows already on disk are this wallet's past; baseline the announce
     // cursor to them so reloading does not re-announce every old transaction. New
@@ -683,14 +690,22 @@ void WalletLegacy::shutdown() {
   m_logger(INFO) << "Wallet shut down";
 }
 
+void WalletLegacy::rescan() {
+  rebuild(true);
+}
+
 void WalletLegacy::reset() {
+  rebuild(false);
+}
+
+void WalletLegacy::rebuild(bool preserveSentPayments) {
   try {
     std::error_code saveError;
     std::stringstream ss;
     {
       SaveWaiter saveWaiter;
       WalletHelper::IWalletRemoveObserverGuard saveGuarantee(*this, saveWaiter);
-      save(ss, false, false);
+      save(ss, false, false, preserveSentPayments);
       saveError = saveWaiter.waitSave();
     }
 
@@ -702,11 +717,15 @@ void WalletLegacy::reset() {
       initWaiter.waitInit();
     }
   } catch (std::exception& e) {
-    m_logger(Logging::ERROR) << "exception in reset: " << e.what();
+    m_logger(Logging::ERROR) << "exception while rebuilding wallet: " << e.what();
   }
 }
 
 void WalletLegacy::save(std::ostream& destination, bool saveDetailed, bool saveCache) {
+  save(destination, saveDetailed, saveCache, true);
+}
+
+void WalletLegacy::save(std::ostream& destination, bool saveDetailed, bool saveCache, bool includeSentPayments) {
   if(m_isStopping) {
     m_observerManager.notify(&IWalletLegacyObserver::saveCompleted, make_error_code(CryptoNote::error::OPERATION_CANCELLED));
     return;
@@ -724,11 +743,11 @@ void WalletLegacy::save(std::ostream& destination, bool saveDetailed, bool saveC
                       << ", cache " << (saveCache ? "yes" : "no");
 
   m_asyncContextCounter.addAsyncContext();
-  std::thread saver(&WalletLegacy::doSave, this, std::ref(destination), saveDetailed, saveCache);
+  std::thread saver(&WalletLegacy::doSave, this, std::ref(destination), saveDetailed, saveCache, includeSentPayments);
   saver.detach();
 }
 
-void WalletLegacy::doSave(std::ostream& destination, bool saveDetailed, bool saveCache) {
+void WalletLegacy::doSave(std::ostream& destination, bool saveDetailed, bool saveCache, bool includeSentPayments) {
   ContextCounterHolder counterHolder(m_asyncContextCounter);
 
   try {
@@ -743,11 +762,11 @@ void WalletLegacy::doSave(std::ostream& destination, bool saveDetailed, bool sav
             : WalletLegacySerializer::STANDARD_VERSION);
     std::string cache;
 
-    if (saveCache || m_pqTrackingKeys || protectedSpendMetadata) {
+    if (saveCache || m_pqTrackingKeys || (includeSentPayments && !m_sentPayments.empty()) || protectedSpendMetadata) {
       // Framed cache: magic || [u64 len || bytes] x6 (transfers, PQ consumer
       // cursor, PQ wallet state, PQ tracking credential, payer-side recipient
       // labels, opaque protected-spend metadata). The sixth section is written
-      // independently of saveCache so reset and cache-free backups cannot drop
+      // independently of saveCache so rescan and cache-free backups cannot drop
       // spend recovery. Version 3's compatibility guard prevents old readers
       // from opening and later stripping this section.
       std::stringstream combined;
@@ -772,10 +791,11 @@ void WalletLegacy::doSave(std::ostream& destination, bool saveDetailed, bool sav
       writeSection(pqState);
       writeSection(m_pqTrackingKeys ? serializePqTrackingKeys(*m_pqTrackingKeys) : std::string());
 
-      // Payer-side recipient labels ride with the cache: excluded from the reset
-      // save (saveCache == false) so a reset drops them, as in Karbo.
+      // Payer-side recipient labels and payment proofs are not scan-derived: neither
+      // the blockchain nor the mnemonic can reconstruct them. Preserve this section
+      // in cache-free snapshots while still omitting consumerState and pqState.
       std::string sentPayments;
-      if (saveCache && !m_sentPayments.empty()) {
+      if (includeSentPayments && !m_sentPayments.empty()) {
         std::stringstream sp;
         m_sentPayments.save(sp);
         sentPayments = sp.str();

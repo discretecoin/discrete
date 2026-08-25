@@ -14,18 +14,24 @@
 #include "gtest/gtest.h"
 
 #include <cstring>
+#include <cstdio>
 #include <fstream>
+#include <iterator>
 #include <sstream>
 #include <string>
+#include <utility>
 
 #include "CryptoNoteCore/Account.h"
 #include "Wallet/WalletErrors.h"
+#include "Wallet/MiningKeyLoader.h"
 #include "Common/StdOutputStream.h"
 #include "Serialization/BinaryOutputStreamSerializer.h"
 #include "CryptoNoteCore/CryptoNoteSerialization.h"
 #include "WalletLegacy/KeysStorage.h"
 #include "WalletLegacy/WalletLegacySerializer.h"
 #include "crypto/crypto-util.h"
+#include "crypto_pq/PqAead.h"
+#include "Logging/ConsoleLogger.h"
 
 using namespace CryptoNote;
 
@@ -62,6 +68,24 @@ std::string saveWallet(AccountBase& account, const std::string& password,
 uint8_t firstByte(const std::string& blob) {
   return static_cast<uint8_t>(blob[0]);
 }
+
+void appendVarint(std::string& blob, uint64_t value) {
+  while (value >= 0x80) {
+    blob.push_back(static_cast<char>((value & 0x7f) | 0x80));
+    value >>= 7;
+  }
+  blob.push_back(static_cast<char>(value));
+}
+
+struct ScopedFileRemoval {
+  explicit ScopedFileRemoval(std::string filePath) : path(std::move(filePath)) {}
+  ~ScopedFileRemoval() {
+    if (!path.empty()) {
+      std::remove(path.c_str());
+    }
+  }
+  std::string path;
+};
 
 }  // namespace
 
@@ -296,6 +320,90 @@ TEST(WalletLegacyEnvelope, OldEnvelopeWithAWrongPasswordIsStillRejected) {
   std::stringstream in(blob);
   std::string cache;
   EXPECT_ANY_THROW(reader.deserialize(in, "wrong", cache));
+}
+
+TEST(WalletLegacyEnvelope, RejectsTrailingBytesInAuthenticatedAndLegacyFiles) {
+  AccountBase account = makeAccount(12);
+  const std::string authenticated = saveWallet(
+      account, "pw", "cache", WalletLegacySerializer::STANDARD_VERSION);
+  const std::string legacy = saveWalletOldEnvelope(
+      account, "pw", "cache", WalletLegacySerializer::STANDARD_VERSION);
+
+  for (const std::string& blob : {authenticated, legacy}) {
+    AccountBase restored;
+    WalletLegacySerializer reader(restored);
+    std::stringstream in(blob + "trailing");
+    std::string cache;
+    EXPECT_ANY_THROW(reader.deserialize(in, "pw", cache));
+  }
+}
+
+TEST(WalletLegacyEnvelope, RejectsDeclaredCiphertextLargerThanTheRemainingFile) {
+  std::string authenticated;
+  appendVarint(authenticated, WalletLegacySerializer::AUTHENTICATED_ENVELOPE);
+  appendVarint(authenticated, sizeof(Crypto::Hash));
+  authenticated.append(sizeof(Crypto::Hash), '\0');
+  appendVarint(authenticated, CryptoPQ::kAeadNonceBytes);
+  authenticated.append(CryptoPQ::kAeadNonceBytes, '\0');
+  appendVarint(authenticated, 1024);  // no ciphertext bytes follow
+
+  std::string legacy;
+  appendVarint(legacy, WalletLegacySerializer::STANDARD_VERSION);
+  legacy.append(sizeof(Crypto::chacha8_iv), '\0');
+  appendVarint(legacy, 1024);  // no ciphertext bytes follow
+
+  for (const std::string& blob : {authenticated, legacy}) {
+    AccountBase restored;
+    WalletLegacySerializer reader(restored);
+    std::stringstream input(blob);
+    std::string cache;
+    EXPECT_ANY_THROW(reader.deserialize(input, "pw", cache));
+  }
+}
+
+TEST(WalletLegacyEnvelope, MiningKeyLoaderMatchesCanonicalReaderForLegacyVersionsOneThroughThree) {
+  Logging::ConsoleLogger logger(Logging::ERROR);
+
+  for (uint32_t version = 1; version <= WalletLegacySerializer::PROTECTED_SPEND_VERSION; ++version) {
+    AccountBase account = makeAccount(static_cast<uint8_t>(20 + version));
+    const std::string blob = saveWalletOldEnvelope(account, "pw", "cache", version);
+    ASSERT_FALSE(blob.empty()) << "version " << version;
+
+    AccountBase canonicalAccount;
+    WalletLegacySerializer canonicalReader(canonicalAccount);
+    std::stringstream canonicalInput(blob);
+    std::string canonicalCache;
+    ASSERT_NO_THROW(canonicalReader.deserialize(canonicalInput, "pw", canonicalCache))
+        << "version " << version;
+
+    const std::string path =
+        "mining_key_loader_legacy_v" + std::to_string(version) + ".wallet";
+    std::remove(path.c_str());
+    ScopedFileRemoval cleanup(path);
+    {
+      std::ofstream output(path, std::ios::binary | std::ios::trunc);
+      ASSERT_TRUE(output.good());
+      output.write(blob.data(), static_cast<std::streamsize>(blob.size()));
+      ASSERT_TRUE(output.good());
+    }
+
+    Crypto::SecretKey loaded{};
+    ASSERT_NO_THROW(loaded = loadMiningSpendSecret(path, "pw", logger))
+        << "version " << version;
+    EXPECT_EQ(0, std::memcmp(loaded.data,
+                             canonicalAccount.getAccountKeys().spendSecretKey.data,
+                             sizeof(loaded.data)))
+        << "version " << version;
+
+    {
+      std::ifstream unchangedInput(path, std::ios::binary);
+      const std::string unchanged((std::istreambuf_iterator<char>(unchangedInput)),
+                                  std::istreambuf_iterator<char>());
+      EXPECT_EQ(unchanged, blob) << "loader modified version " << version;
+    }
+    EXPECT_EQ(std::remove(path.c_str()), 0) << "version " << version;
+    cleanup.path.clear();
+  }
 }
 
 int main(int argc, char** argv) {

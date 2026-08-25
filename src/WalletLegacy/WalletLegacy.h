@@ -97,6 +97,7 @@ public:
   void initWithPqTrackingKeys(const AccountKeys& accountKeys, const PqTrackingKeys& pqTrackingKeys, const std::string& password);
   void initWithPqTrackingKeys(const AccountKeys& accountKeys, const PqTrackingKeys& pqTrackingKeys, const std::string& password, const uint32_t scanHeight);
   virtual void shutdown() override;
+  virtual void rescan() override;
   virtual void reset() override;
   virtual bool tryLoadWallet(std::istream& source, const std::string& password) override;
 
@@ -239,7 +240,9 @@ private:
   void initSync();
   void throwIfNotInitialised();
 
-  void doSave(std::ostream& destination, bool saveDetailed, bool saveCache);
+  void save(std::ostream& destination, bool saveDetailed, bool saveCache, bool includeSentPayments);
+  void doSave(std::ostream& destination, bool saveDetailed, bool saveCache, bool includeSentPayments);
+  void rebuild(bool preserveSentPayments);
   void doLoad(std::istream& source);
 
   void synchronizationCallback(WalletRequest::Callback callback, std::error_code ec);
@@ -314,7 +317,7 @@ private:
   // Payer-side recipient labels captured at send time (the counterparty address is
   // not recoverable from PQ output scanning). Keyed by txid, surfaced through the
   // legacy transfer accessors so the History view can show who a payment went to.
-  // Serialized into the wallet's encrypted cache; dropped on reset, as in Karbo.
+  // Serialized into the encrypted wallet independently of scan-cache retention.
   SentPaymentsStore m_sentPayments;
 
   WalletAsyncContextCounter m_asyncContextCounter;

@@ -17,26 +17,19 @@
 
 #include "MiningKeyLoader.h"
 
-#include <array>
 #include <fstream>
 #include <system_error>
 
 #include "Common/FileMappedVector.h"
-#include "Common/MemoryInputStream.h"
-#include "Common/StdInputStream.h"
+#include "CryptoNoteCore/Account.h"
 #include "CryptoNoteCore/CryptoNoteBasic.h"   // NULL_SECRET_KEY
-#include "CryptoNoteCore/CryptoNoteSerialization.h"  // chacha8_iv serialize overload
 #include "Logging/LoggerRef.h"
-#include "Serialization/BinaryInputStreamSerializer.h"
 #include "crypto/chacha8.h"
-#include "crypto/crypto.h"                     // Crypto::cn_context
 #include "crypto/crypto-util.h"                // sodium_memzero
 
 #include "WalletErrors.h"
 #include "WalletIndices.h"          // ContainerStorage(Prefix), seed-record codec
 #include "WalletLegacy/WalletLegacySerializer.h"
-#include "crypto_pq/PqAead.h"
-#include "WalletLegacy/KeysStorage.h"  // simplewallet single-blob keystore DTO
 #include "WalletSerializationV2.h"  // version constants
 
 using namespace Crypto;
@@ -45,10 +38,9 @@ namespace CryptoNote {
 
 namespace {
 
-// Read the master seed from a simplewallet (WalletLegacy) container: a single
-// chacha8 blob whose head is a KeysStorage. The wallet's PQ identity derives from
-// spendSecretKey (now the 32-byte master seed), so that is what we return.
-// Strictly read-only (never rewrites the file).
+// Read the master seed from a simplewallet (WalletLegacy) container through the
+// canonical wallet codec. This keeps the daemon's read-only mining path aligned
+// with both backward-readable ChaCha8 versions and the authenticated envelope.
 Crypto::SecretKey loadLegacyMasterSeed(const std::string& path, const std::string& password) {
   std::ifstream file(path, std::ios_base::binary);
   if (!file) {
@@ -56,103 +48,20 @@ Crypto::SecretKey loadLegacyMasterSeed(const std::string& path, const std::strin
                             "Failed to open wallet '" + path + "'");
   }
 
-  uint32_t version = 0;
-  std::string plain;
-  {
-    Common::StdInputStream stdStream(file);
-    BinaryInputStreamSerializer envelope(stdStream);
-    envelope.beginObject("wallet");
-    envelope(version, "version");
-
-    if (version == WalletLegacySerializer::AUTHENTICATED_ENVELOPE) {
-      std::string saltField, nonceField, dataField;
-      envelope(saltField, "salt");
-      envelope(nonceField, "nonce");
-      envelope(dataField, "data");
-      envelope.endObject();
-
-      if (saltField.size() != sizeof(Crypto::Hash) ||
-          nonceField.size() != CryptoPQ::kAeadNonceBytes ||
-          dataField.size() < CryptoPQ::kAeadTagBytes) {
-        throw std::system_error(make_error_code(error::WRONG_PASSWORD),
-                                "Wrong password, or corrupt wallet");
-      }
-
-      Crypto::Hash salt{};
-      std::memcpy(salt.data, saltField.data(), sizeof(salt.data));
-
-      chacha8_key key;
-      if (!Crypto::generate_chacha8_key_salted(password, salt, key)) {
-        sodium_memzero(&key, sizeof(key));
-        throw std::system_error(make_error_code(error::INTERNAL_WALLET_ERROR),
-                                "Password key derivation failed");
-      }
-
-      CryptoPQ::AeadNonce nonce{};
-      std::memcpy(nonce.data(), nonceField.data(), nonce.size());
-      CryptoPQ::AeadKey aeadKey{};
-      std::memcpy(aeadKey.data(), key.data, aeadKey.size());
-      sodium_memzero(&key, sizeof(key));
-
-      auto opened = CryptoPQ::aead_decrypt(aeadKey, nonce, salt.data, sizeof(salt.data),
-                                           dataField.data(), dataField.size());
-      sodium_memzero(aeadKey.data(), aeadKey.size());
-      if (!opened) {
-        throw std::system_error(make_error_code(error::WRONG_PASSWORD),
-                                "Wrong password, or corrupt wallet");
-      }
-
-      // Skip the content version that leads the authenticated payload. It is a
-      // varint, so read it rather than assuming a width.
-      Common::MemoryInputStream payloadStream(opened->data(), opened->size());
-      BinaryInputStreamSerializer payloadSerializer(payloadStream);
-      uint32_t contentVersion = 0;
-      payloadSerializer(contentVersion, "content_version");
-
-      plain.assign(opened->begin() + payloadStream.getPosition(), opened->end());
-      sodium_memzero(opened->data(), opened->size());
-    } else {
-      chacha8_iv iv;
-      std::string cipher;
-      envelope(iv, "iv");
-      envelope(cipher, "data");
-      envelope.endObject();
-
-      chacha8_key key;
-      cn_context cnContext;
-      if (!generate_chacha8_key(cnContext, password, key)) {
-        sodium_memzero(&key, sizeof(key));
-        throw std::system_error(make_error_code(error::INTERNAL_WALLET_ERROR),
-                                "Password key derivation failed");
-      }
-      plain.assign(cipher.size(), '\0');
-      chacha8(cipher.data(), cipher.size(), key, iv, &plain[0]);
-      sodium_memzero(&key, sizeof(key));
+  AccountBase account;
+  std::string cache;
+  struct Scrubber {
+    AccountBase& account;
+    std::string& cache;
+    ~Scrubber() {
+      account.setAccountKeys(AccountKeys{});
+      if (!cache.empty()) sodium_memzero(&cache[0], cache.size());
     }
-  }
+  } scrubber{account, cache};
 
-  KeysStorage keys;
-  try {
-    Common::MemoryInputStream plainStream(plain.data(), plain.size());
-    BinaryInputStreamSerializer serializer(plainStream);
-    keys.serialize(serializer, "keys");
-  } catch (const std::exception&) {
-    sodium_memzero(&plain[0], plain.size());
-    sodium_memzero(&keys, sizeof(keys));
-    throw std::system_error(make_error_code(error::WRONG_PASSWORD), "Wrong password, or corrupt wallet");
-  }
-  sodium_memzero(&plain[0], plain.size());
-
-  Crypto::SecretKey seed = keys.spendSecretKey;
-  // Password check: cn_fast_hash(seed) is stored in the spendPublicKey slot.
-  Crypto::Hash checksum;
-  Crypto::cn_fast_hash(seed.data, sizeof(seed.data), checksum);
-  bool ok = std::memcmp(checksum.data, keys.spendPublicKey.data, sizeof(checksum.data)) == 0;
-  sodium_memzero(&keys, sizeof(keys));
-  if (!ok) {
-    sodium_memzero(&seed, sizeof(seed));
-    throw std::system_error(make_error_code(error::WRONG_PASSWORD), "Wrong password, or corrupt wallet");
-  }
+  WalletLegacySerializer serializer(account);
+  serializer.deserialize(file, password, cache);
+  Crypto::SecretKey seed = account.getAccountKeys().spendSecretKey;
   if (seed == NULL_SECRET_KEY) {
     sodium_memzero(&seed, sizeof(seed));
     throw std::system_error(make_error_code(error::WRONG_STATE),

@@ -19,6 +19,7 @@
 #include "WalletLegacySerializer.h"
 
 #include <cstring>
+#include <limits>
 #include <stdexcept>
 
 #include "Common/MemoryInputStream.h"
@@ -34,6 +35,7 @@
 #include "WalletLegacy/KeysStorage.h"
 #include "Common/ScopeExit.h"
 #include "Common/SecureMemory.h"
+#include "Common/StreamTools.h"
 #include "crypto/crypto-util.h"
 #include "crypto/random.h"
 #include "crypto_pq/PqAead.h"
@@ -150,20 +152,71 @@ void WalletLegacySerializer::serialize(std::ostream& stream, const std::string& 
 
 void WalletLegacySerializer::readPayload(std::istream& stream, const std::string& password,
                                          std::string& payload, uint32_t& contentVersion) {
+  constexpr uint64_t MAX_WALLET_FIELD_BYTES = 100ull * 1024ull * 1024ull;
+
+  // Every current caller supplies one complete wallet file (or an in-memory
+  // stream containing exactly one wallet). Pin its end before parsing so a
+  // declared envelope cannot silently ignore appended bytes.
+  const std::ios::iostate originalState = stream.rdstate();
+  const std::istream::pos_type envelopeStart = stream.tellg();
+  std::istream::pos_type expectedEnd = std::istream::pos_type(-1);
+  if (envelopeStart != std::istream::pos_type(-1)) {
+    stream.seekg(0, std::ios::end);
+    expectedEnd = stream.tellg();
+    stream.seekg(envelopeStart);
+    if (!stream || expectedEnd < envelopeStart) {
+      throw std::runtime_error("cannot determine wallet envelope size");
+    }
+  } else {
+    stream.clear(originalState);
+  }
+
+  auto requireEnvelopeEnd = [&stream, expectedEnd]() {
+    if (expectedEnd != std::istream::pos_type(-1)) {
+      if (stream.tellg() != expectedEnd) {
+        throw std::runtime_error("wallet envelope length does not match stream size");
+      }
+    } else if (stream.peek() != std::char_traits<char>::eof()) {
+      throw std::runtime_error("trailing wallet data");
+    }
+  };
+
   StdInputStream stdStream(stream);
-  CryptoNote::BinaryInputStreamSerializer envelopeSerializer(stdStream);
-
-  envelopeSerializer.beginObject("wallet");
-
   uint32_t envelope = 0;
-  envelopeSerializer(envelope, "version");
+  Common::readVarint(stdStream, envelope);
+
+  auto readField = [&stream, &stdStream, expectedEnd](std::string& field,
+                                                      uint64_t maxBytes,
+                                                      bool finalField) {
+    uint64_t size = 0;
+    Common::readVarint(stdStream, size);
+    if (size > maxBytes ||
+        size > static_cast<uint64_t>((std::numeric_limits<std::size_t>::max)())) {
+      throw std::runtime_error("invalid wallet envelope field size");
+    }
+
+    // The last field must consume the exact rest of the complete wallet stream.
+    // Check this before resize(), because its length is attacker controlled.
+    if (finalField && expectedEnd != std::istream::pos_type(-1)) {
+      const std::istream::pos_type position = stream.tellg();
+      if (position == std::istream::pos_type(-1) || expectedEnd < position ||
+          static_cast<uint64_t>(expectedEnd - position) != size) {
+        throw std::runtime_error("wallet envelope length does not match stream size");
+      }
+    }
+
+    field.resize(static_cast<std::size_t>(size));
+    if (size != 0) {
+      Common::read(stdStream, &field[0], static_cast<std::size_t>(size));
+    }
+  };
 
   if (envelope == AUTHENTICATED_ENVELOPE) {
     std::string saltField, nonceField, dataField;
-    envelopeSerializer(saltField, "salt");
-    envelopeSerializer(nonceField, "nonce");
-    envelopeSerializer(dataField, "data");
-    envelopeSerializer.endObject();
+    readField(saltField, sizeof(Crypto::Hash), false);
+    readField(nonceField, CryptoPQ::kAeadNonceBytes, false);
+    readField(dataField, MAX_WALLET_FIELD_BYTES, true);
+    requireEnvelopeEnd();
 
     if (saltField.size() != sizeof(Crypto::Hash) ||
         nonceField.size() != CryptoPQ::kAeadNonceBytes ||
@@ -218,9 +271,9 @@ void WalletLegacySerializer::readPayload(std::istream& stream, const std::string
 
   Crypto::chacha8_iv iv;
   std::string cipher;
-  envelopeSerializer(iv, "iv");
-  envelopeSerializer(cipher, "data");
-  envelopeSerializer.endObject();
+  Common::read(stdStream, &iv, sizeof(iv));
+  readField(cipher, MAX_WALLET_FIELD_BYTES, true);
+  requireEnvelopeEnd();
 
   decrypt(cipher, payload, iv, password);
 }
@@ -342,6 +395,9 @@ void WalletLegacySerializer::deserialize(std::istream& stream, const std::string
   }
 
   serializer.binary(cache, "cache");
+  if (!decryptedStream.endOfStream()) {
+    throw std::runtime_error("trailing decrypted wallet data");
+  }
 }
 
 // used for password check

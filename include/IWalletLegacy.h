@@ -109,6 +109,10 @@ public:
   virtual void initWithKeys(const AccountKeys& accountKeys, const std::string& password) = 0;
   virtual void initWithKeys(const AccountKeys& accountKeys, const std::string& password, const uint32_t scanHeight) = 0;
   virtual void shutdown() = 0;
+  // Rebuild scan-derived state while preserving local recipient/proof metadata.
+  virtual void rescan() = 0;
+  // Rebuild scan-derived state and discard local recipient/proof metadata.
+  // Account keys and required wallet authority remain.
   virtual void reset() = 0;
   virtual bool tryLoadWallet(std::istream& source, const std::string& password) = 0;
 
