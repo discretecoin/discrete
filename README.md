@@ -91,6 +91,9 @@ spend and view keys are derived from a single 25-word mnemonic — there is no
 second seed to store.
 
 Everything is post-quantum by default, so the commands carry no `pq_` prefix.
+Interactive command history is kept only in memory: use the up/down arrow keys
+to browse it. It is discarded when `simplewallet` exits and is never written to
+disk.
 
 | Command | Description |
 |---|---|

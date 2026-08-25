@@ -18,8 +18,11 @@
 #pragma once
 
 #include <atomic>
+#include <condition_variable>
 #include <functional>
 #include <map>
+#include <memory>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -33,15 +36,36 @@
 
 namespace Common {
 
+enum class ConsoleReadResult {
+  Success,
+  EndOfInput,
+  Cancelled,
+  Error,
+  Unsupported
+};
+
+class IConsoleInput {
+public:
+  virtual ~IConsoleInput() = default;
+  virtual bool isInteractive() const = 0;
+  virtual ConsoleReadResult readInteractive(const std::string& prompt, std::string& line,
+                                            const std::function<bool()>& cancelled) = 0;
+  virtual bool waitInput(const std::function<bool()>& cancelled) = 0;
+  virtual bool readLegacy(std::string& line) = 0;
+};
+
 class AsyncConsoleReader {
 
 public:
 
-  AsyncConsoleReader();
+  explicit AsyncConsoleReader(std::shared_ptr<IConsoleInput> input = nullptr);
   ~AsyncConsoleReader();
 
-  void start();
+  void start(bool memoryHistory = false, const std::string& prompt = "",
+             Console::Color promptColor = Console::Color::Default);
   bool getline(std::string& line);
+  void inputConsumed();
+  bool usesLineEditor() const;
   void stop();
   bool stopped() const;
   void pause();
@@ -50,11 +74,18 @@ public:
 private:
 
   void consoleThread();
-  bool waitInput();
 
+  std::shared_ptr<IConsoleInput> m_input;
   std::atomic<bool> m_stop;
   std::thread m_thread;
   BlockingQueue<std::string> m_queue;
+  bool m_memoryHistory = false;
+  std::string m_prompt;
+  Console::Color m_promptColor = Console::Color::Default;
+  std::atomic<bool> m_lineEditorEnabled{false};
+  std::mutex m_inputMutex;
+  std::condition_variable m_inputConsumed;
+  bool m_inputPending = false;
 };
 
 
@@ -70,7 +101,8 @@ public:
   void requestStop();
   bool runCommand(const std::vector<std::string>& cmdAndArgs);
 
-  void start(bool startThread = true, const std::string& prompt = "", Console::Color promptColor = Console::Color::Default);
+  void start(bool startThread = true, const std::string& prompt = "", Console::Color promptColor = Console::Color::Default,
+             bool memoryHistory = false);
   void stop();
   void wait();
   void pause();

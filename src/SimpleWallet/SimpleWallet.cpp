@@ -1865,7 +1865,8 @@ bool simple_wallet::run() {
   std::string prompt_label = addr.size() > 18
       ? addr.substr(0, 12) + "..." + addr.substr(addr.size() - 6)
       : addr;
-  m_consoleHandler.start(false, "[" + prompt_label + "]: ", Common::Console::Color::BrightYellow);
+  m_consoleHandler.start(false, "[" + prompt_label + "]: ",
+                         Common::Console::Color::BrightYellow, true);
   return true;
 }
 //----------------------------------------------------------------------------------------------------
