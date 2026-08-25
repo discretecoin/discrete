@@ -143,7 +143,16 @@ public:
   uint64_t depositPendingBalance(uint32_t depositIndex) const;
 
   // Unspent balance per deposit index, excluding the primary address.
+  // Unspent balance per REAL deposit index. Excludes the primary bucket (not a
+  // deposit) and anything unattributed (no deposit could be determined); see
+  // unattributedBalance().
   std::map<uint32_t, uint64_t> depositBalances() const;
+
+  // Unspent balance this wallet owns but cannot attribute to a deposit, because
+  // the sender used a routing index outside the representable range. Included in
+  // the total and spendable balances; deliberately absent from depositBalances()
+  // so no caller mistakes it for a deposit.
+  uint64_t unattributedBalance() const;
 
   // The wallet's own net effect of `txid`, split by address bucket: +amount for an
   // output this tx created, -amount for an owned output this tx spent, summed per

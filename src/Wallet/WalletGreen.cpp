@@ -1561,6 +1561,14 @@ std::string WalletGreen::pqBucketAddress(uint32_t bucket) const {
   if (bucket == PQ_PRIMARY_DEPOSIT) {
     return getPqAddress();
   }
+  // The sentinel is not a deposit index and must never be fed to the deposit
+  // address derivation: doing so would mint a well-formed address for a deposit
+  // 4294967294 that does not exist, and a history row or API response carrying it
+  // would be indistinguishable from a real one. The funds are the wallet's own,
+  // so the wallet's own identity is the honest thing to show.
+  if (bucket == PQ_UNATTRIBUTED_DEPOSIT) {
+    return getPqAddress();
+  }
   // Deliberately NOT getAddress(): that bounds the index to the deposits THIS
   // container issued, but SingleKeyIndex scanning recognizes funds at any T
   // (outContext-v2 reads T out of the payload), so a bucket outside the issued

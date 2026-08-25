@@ -437,6 +437,12 @@ const PqWalletTransaction* WalletLedger::historyByTxid(const Crypto::Hash& txid)
 }
 
 uint64_t WalletLedger::depositBalance(uint32_t depositIndex) const {
+  // A query for the sentinel is a query for a deposit that does not exist. The
+  // index reaches here from RPC in walletd, so answer "no such deposit" rather
+  // than handing back the unattributed pool under a deposit-shaped name.
+  if (depositIndex == PQ_UNATTRIBUTED_DEPOSIT) {
+    return 0;
+  }
   uint64_t total = 0;
   for (const auto& o : m_outputs) {
     if (!o.spent && o.depositIndex == depositIndex) {
@@ -447,6 +453,9 @@ uint64_t WalletLedger::depositBalance(uint32_t depositIndex) const {
 }
 
 uint64_t WalletLedger::depositSpendableBalance(uint32_t depositIndex) const {
+  if (depositIndex == PQ_UNATTRIBUTED_DEPOSIT) {
+    return 0;  // see depositBalance()
+  }
   uint64_t total = 0;
   for (const auto& o : m_outputs) {
     if (o.spent || o.depositIndex != depositIndex) {
@@ -474,13 +483,31 @@ uint64_t WalletLedger::depositPendingBalance(uint32_t depositIndex) const {
 }
 
 std::map<uint32_t, uint64_t> WalletLedger::depositBalances() const {
+  // Balances of REAL deposits, keyed by deposit index. Both sentinels are
+  // excluded: the primary bucket is not a deposit, and an unattributed output is
+  // one whose deposit we could not determine, so reporting it under the sentinel
+  // value would present 4294967294 to a caller as though it were a customer
+  // deposit. The amount is still owned and still spendable, and is still counted
+  // by the total and spendable balances; only the per-deposit attribution is
+  // withheld. unattributedBalance() below reports it separately.
   std::map<uint32_t, uint64_t> out;
   for (const auto& o : m_outputs) {
-    if (!o.spent && o.depositIndex != PQ_PRIMARY_DEPOSIT) {
+    if (!o.spent && o.depositIndex != PQ_PRIMARY_DEPOSIT &&
+        o.depositIndex != PQ_UNATTRIBUTED_DEPOSIT) {
       out[o.depositIndex] += o.amount;
     }
   }
   return out;
+}
+
+uint64_t WalletLedger::unattributedBalance() const {
+  uint64_t total = 0;
+  for (const auto& o : m_outputs) {
+    if (!o.spent && o.depositIndex == PQ_UNATTRIBUTED_DEPOSIT) {
+      total += o.amount;
+    }
+  }
+  return total;
 }
 
 std::map<uint32_t, int64_t> WalletLedger::transfersByDeposit(const Crypto::Hash& txid) const {
