@@ -17,6 +17,8 @@
 
 #include "PqAead.h"
 
+#include "crypto/crypto-util.h"
+
 extern "C" {
 #include <chacha20poly1305.h>
 }
@@ -54,6 +56,9 @@ std::optional<std::vector<uint8_t>> aead_decrypt(
         static_cast<const uint8_t*>(in), in_len,
         key.data(), nonce.data());
     if (rc != 0) {
+        if (!out.empty()) {
+            sodium_memzero(out.data(), out.size());
+        }
         return std::nullopt;
     }
     return out;

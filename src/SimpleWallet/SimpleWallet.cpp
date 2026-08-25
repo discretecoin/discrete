@@ -1432,7 +1432,9 @@ bool simple_wallet::reset(const std::vector<std::string> &args) {
     m_walletSynchronized = false;
   }
 
-  m_wallet->reset();
+  // Preserve the historical command behavior: this command rebuilds
+  // blockchain-derived state without deleting local recipient metadata.
+  m_wallet->rescan();
   success_msg_writer(true) << "Reset completed successfully.";
 
   std::unique_lock<std::mutex> lock(m_walletSynchronizedMutex);
