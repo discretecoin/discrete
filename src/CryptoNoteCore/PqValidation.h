@@ -124,7 +124,15 @@ struct PqSigningContext {
 
 // The signing context for a transaction being validated at `height` on the chain
 // whose genesis block id is `genesisId`.
+//
+// `height` is the index of the BLOCK THE TRANSACTION WILL BE IN, not the index of
+// the current tip. Consensus judges a transaction at the height of the block that
+// carries it, so a wallet building one has to pass the same thing: the next block
+// index, i.e. the chain height. Both overloads exist because the chain holds the
+// genesis id as a Crypto::Hash and wallets carry it as a CryptoPQ::Hash256; they
+// share one activation comparison so the two sides cannot drift apart.
 PqSigningContext pqSigningContextForHeight(uint32_t height, const Crypto::Hash& genesisId);
+PqSigningContext pqSigningContextForHeight(uint32_t height, const CryptoPQ::Hash256& genesisId);
 
 // Context-free input/balance/signature checks given resolved referenced outputs
 // (resolved[i] corresponds to tx.inputs[i]). On success, *outNullifiers (if not

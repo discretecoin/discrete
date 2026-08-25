@@ -317,11 +317,20 @@ bool checkFreeRegTransactionSemantic(const Transaction& tx, std::string* error, 
          checkFreeRegTransactionPow(tx, error, powTarget);
 }
 
-PqSigningContext pqSigningContextForHeight(uint32_t height, const Crypto::Hash& genesisId) {
+PqSigningContext pqSigningContextForHeight(uint32_t height, const CryptoPQ::Hash256& genesisId) {
   PqSigningContext ctx;
+  // The one activation comparison. Every caller — consensus and wallet alike —
+  // reaches the transcript choice through here, so there is no second copy of
+  // this test to fall out of step.
   ctx.useV2 = height >= parameters::PQ_TRANSCRIPT_V2_HEIGHT;
-  std::memcpy(ctx.chainId.data(), genesisId.data, ctx.chainId.size());
+  ctx.chainId = genesisId;
   return ctx;
+}
+
+PqSigningContext pqSigningContextForHeight(uint32_t height, const Crypto::Hash& genesisId) {
+  CryptoPQ::Hash256 chainId{};
+  std::memcpy(chainId.data(), genesisId.data, chainId.size());
+  return pqSigningContextForHeight(height, chainId);
 }
 
 bool checkPqTransactionInputs(const Transaction& tx,

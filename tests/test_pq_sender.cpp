@@ -10,6 +10,7 @@
 #include "Wallet/PqSender.h"
 #include "Wallet/PqWallet.h"
 #include "Wallet/PqTransactionBuilder.h"
+#include "CryptoNoteCore/PqValidation.h"
 #include "Denominations.h"
 #include "CryptoNoteConfig.h"
 #include "CryptoNoteCore/CryptoNoteTools.h"
@@ -407,4 +408,249 @@ TEST(PqSender, SizeRetryReturnsOnlyAcceptedTransactionWitnesses) {
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
+}
+
+// --- Signing transcript on the production path -----------------------------
+//
+// The transcript is chosen from PqSendRequest::signingHeight, which every wallet
+// front-end fills with the index of the block the transaction expects to be in.
+// These go through buildPqSend, the API the wallets actually call, rather than
+// the low-level builder, because the gap this covers was that the production
+// path never passed a context at all and so could only ever produce v1.
+//
+// The boundary is expressed with the constant, not a literal, so these follow
+// PQ_TRANSCRIPT_V2_HEIGHT if it is ever scheduled.
+
+namespace {
+
+constexpr uint32_t kActivation = P::PQ_TRANSCRIPT_V2_HEIGHT;
+
+// A spendable input owned by `owner`, plus the resolved view a node would
+// reconstruct for it, so checkPqTransactionInputs can verify the signature.
+PqSpendInput fundOwned(const PqWalletKeys& owner, uint64_t amount, uint8_t seed,
+                       PqResolvedInput& resolvedOut, uint32_t depositIndex = PQ_PRIMARY_DEPOSIT) {
+    PqSpendInput in = mkBucketInput(amount, seed, depositIndex);
+    CryptoPQ::DsaPublicKey authPub = owner.spendPub;
+    if (depositIndex != PQ_PRIMARY_DEPOSIT) {
+        authPub = CryptoPQ::deriveDepositSpendKeys(owner.seedMaster, depositIndex).first;
+    }
+    const CryptoPQ::Hash256 sc = CryptoPQ::spendCommit(authPub, in.rho);
+    resolvedOut = PqResolvedInput{};
+    std::memcpy(resolvedOut.spendCommit.data, sc.data(), 32);
+    resolvedOut.amount = amount;
+    resolvedOut.exists = true;
+    resolvedOut.isPqOutput = true;
+    resolvedOut.isCoinbase = false;
+    return in;
+}
+
+PqSigningContext contextAt(uint32_t height, const CryptoPQ::Hash256& genesis) {
+    return pqSigningContextForHeight(height, genesis);
+}
+
+// buildPqSend sorts inputs largest-first, so give the caller the resolved views
+// in the order the built transaction actually references them.
+std::vector<PqResolvedInput> resolvedInSpendOrder(
+    const PqSendResult& result,
+    const std::vector<std::pair<PqSpendInput, PqResolvedInput>>& funded) {
+    std::vector<PqResolvedInput> out;
+    out.reserve(result.selected.size());
+    for (const auto& sel : result.selected) {
+        bool matched = false;
+        for (const auto& f : funded) {
+            if (f.first.prevTxid == sel.prevTxid && f.first.prevOutIndex == sel.prevOutIndex) {
+                out.push_back(f.second);
+                matched = true;
+                break;
+            }
+        }
+        EXPECT_TRUE(matched) << "selected input not among the funded set";
+    }
+    return out;
+}
+
+}  // namespace
+
+TEST(PqSenderTranscript, BelowActivationTheWalletSignsV1) {
+    PqWalletKeys me = derivePqWalletKeys(spendSecret(21, 5));
+    PqWalletKeys to = derivePqWalletKeys(spendSecret(22, 6));
+
+    PqResolvedInput resolved;
+    PqSpendInput in = fundOwned(me, 5000000, 0x31, resolved);
+
+    PqSendRequest req;
+    req.genesisId = testGenesis();
+    req.signingHeight = kActivation - 1;
+    req.recipients.push_back({to.viewPub, to.spendPub, 1000000});
+    PqSendResult r = buildPqSend({in}, me, req);
+
+    std::vector<Crypto::Hash> nf;
+    std::string err;
+    // Accepted under the rules of the height it was signed for.
+    EXPECT_TRUE(checkPqTransactionInputs(r.tx, {resolved}, 0, &nf, &err,
+                                         contextAt(kActivation - 1, req.genesisId))) << err;
+    // And rejected under v2, which is what makes this a real v1 signature rather
+    // than something that happens to satisfy both.
+    nf.clear();
+    EXPECT_FALSE(checkPqTransactionInputs(r.tx, {resolved}, 0, &nf, &err,
+                                          contextAt(kActivation, req.genesisId)));
+}
+
+TEST(PqSenderTranscript, AtActivationTheWalletSignsV2) {
+    PqWalletKeys me = derivePqWalletKeys(spendSecret(23, 7));
+    PqWalletKeys to = derivePqWalletKeys(spendSecret(24, 8));
+
+    PqResolvedInput resolved;
+    PqSpendInput in = fundOwned(me, 5000000, 0x32, resolved);
+
+    PqSendRequest req;
+    req.genesisId = testGenesis();
+    req.signingHeight = kActivation;
+    req.recipients.push_back({to.viewPub, to.spendPub, 1000000});
+    PqSendResult r = buildPqSend({in}, me, req);
+
+    std::vector<Crypto::Hash> nf;
+    std::string err;
+    EXPECT_TRUE(checkPqTransactionInputs(r.tx, {resolved}, 0, &nf, &err,
+                                         contextAt(kActivation, req.genesisId))) << err;
+    // A v2 signature must not also satisfy the pre-activation rules.
+    nf.clear();
+    EXPECT_FALSE(checkPqTransactionInputs(r.tx, {resolved}, 0, &nf, &err,
+                                          contextAt(kActivation - 1, req.genesisId)));
+}
+
+TEST(PqSenderTranscript, V2SignatureIsBoundToTheChain) {
+    PqWalletKeys me = derivePqWalletKeys(spendSecret(25, 9));
+    PqWalletKeys to = derivePqWalletKeys(spendSecret(26, 10));
+
+    PqResolvedInput resolved;
+    PqSpendInput in = fundOwned(me, 5000000, 0x33, resolved);
+
+    PqSendRequest req;
+    req.genesisId = testGenesis();
+    req.signingHeight = kActivation;
+    req.recipients.push_back({to.viewPub, to.spendPub, 1000000});
+    PqSendResult r = buildPqSend({in}, me, req);
+
+    CryptoPQ::Hash256 otherChain = req.genesisId;
+    otherChain[0] ^= 0xFF;
+
+    std::vector<Crypto::Hash> nf;
+    std::string err;
+    EXPECT_FALSE(checkPqTransactionInputs(r.tx, {resolved}, 0, &nf, &err,
+                                          contextAt(kActivation, otherChain)));
+}
+
+// v1 signs one shared digest, so two inputs of the same owner are interchangeable.
+// v2 binds each signature to its own index; reordering must therefore break it.
+TEST(PqSenderTranscript, V2SignatureIsBoundToTheInputIndex) {
+    PqWalletKeys me = derivePqWalletKeys(spendSecret(27, 11));
+    PqWalletKeys to = derivePqWalletKeys(spendSecret(28, 12));
+
+    std::vector<std::pair<PqSpendInput, PqResolvedInput>> funded(2);
+    funded[0].first = fundOwned(me, 4000000, 0x41, funded[0].second);
+    funded[1].first = fundOwned(me, 3000000, 0x42, funded[1].second);
+
+    PqSendRequest req;
+    req.genesisId = testGenesis();
+    req.signingHeight = kActivation;
+    req.recipients.push_back({to.viewPub, to.spendPub, 6000000});
+    PqSendResult r = buildPqSend({funded[0].first, funded[1].first}, me, req);
+    ASSERT_EQ(r.tx.inputs.size(), 2u);
+
+    std::vector<PqResolvedInput> resolved = resolvedInSpendOrder(r, funded);
+    ASSERT_EQ(resolved.size(), 2u);
+
+    std::vector<Crypto::Hash> nf;
+    std::string err;
+    ASSERT_TRUE(checkPqTransactionInputs(r.tx, resolved, 0, &nf, &err,
+                                         contextAt(kActivation, req.genesisId))) << err;
+
+    // Move each input to the other index, carrying its resolved view with it, so
+    // the ONLY thing that changed is which index each signature sits at.
+    Transaction swapped = r.tx;
+    std::swap(swapped.inputs[0], swapped.inputs[1]);
+    std::vector<PqResolvedInput> swappedResolved = {resolved[1], resolved[0]};
+
+    nf.clear();
+    EXPECT_FALSE(checkPqTransactionInputs(swapped, swappedResolved, 0, &nf, &err,
+                                          contextAt(kActivation, req.genesisId)));
+}
+
+// Every input of a multi-input spend must carry its own correct v2 context, and
+// that has to hold when the inputs are authorized by DIFFERENT keys.
+TEST(PqSenderTranscript, MultiKeyDepositSpendSignsEveryInputUnderV2) {
+    PqWalletKeys me = derivePqWalletKeys(spendSecret(29, 13));
+    PqWalletKeys to = derivePqWalletKeys(spendSecret(30, 14));
+
+    std::vector<std::pair<PqSpendInput, PqResolvedInput>> funded(3);
+    funded[0].first = fundOwned(me, 4000000, 0x51, funded[0].second, PQ_PRIMARY_DEPOSIT);
+    funded[1].first = fundOwned(me, 3000000, 0x52, funded[1].second, 3);
+    funded[2].first = fundOwned(me, 2000000, 0x53, funded[2].second, 7);
+
+    PqSendRequest req;
+    req.genesisId = testGenesis();
+    req.signingHeight = kActivation;
+    req.scheme = PqDepositScheme::AggregatedMultikey;
+    req.recipients.push_back({to.viewPub, to.spendPub, 8000000});
+    PqSendResult r = buildPqSend(
+        {funded[0].first, funded[1].first, funded[2].first}, me, req);
+    ASSERT_EQ(r.tx.inputs.size(), 3u);
+
+    std::vector<PqResolvedInput> resolved = resolvedInSpendOrder(r, funded);
+    std::vector<Crypto::Hash> nf;
+    std::string err;
+    EXPECT_TRUE(checkPqTransactionInputs(r.tx, resolved, 0, &nf, &err,
+                                         contextAt(kActivation, req.genesisId))) << err;
+}
+
+// buildFitting may rebuild the draft several times to fit the size cap. Each
+// rebuild has to reuse the requested context; a send large enough to decompose
+// into many outputs exercises that path.
+TEST(PqSenderTranscript, LargeMultiOutputSendKeepsTheRequestedContext) {
+    PqWalletKeys me = derivePqWalletKeys(spendSecret(31, 15));
+    PqWalletKeys a = derivePqWalletKeys(spendSecret(32, 16));
+    PqWalletKeys b = derivePqWalletKeys(spendSecret(33, 17));
+
+    std::vector<std::pair<PqSpendInput, PqResolvedInput>> funded(2);
+    funded[0].first = fundOwned(me, 900000000, 0x61, funded[0].second);
+    funded[1].first = fundOwned(me, 800000000, 0x62, funded[1].second);
+
+    PqSendRequest req;
+    req.genesisId = testGenesis();
+    req.signingHeight = kActivation;
+    req.recipients.push_back({a.viewPub, a.spendPub, 777777777});
+    req.recipients.push_back({b.viewPub, b.spendPub, 888888888});
+    PqSendResult r = buildPqSend({funded[0].first, funded[1].first}, me, req);
+    ASSERT_GT(r.tx.outputs.size(), 2u) << "expected a multi-denomination decomposition";
+
+    std::vector<PqResolvedInput> resolved = resolvedInSpendOrder(r, funded);
+    std::vector<Crypto::Hash> nf;
+    std::string err;
+    EXPECT_TRUE(checkPqTransactionInputs(r.tx, resolved, 0, &nf, &err,
+                                         contextAt(kActivation, req.genesisId))) << err;
+    nf.clear();
+    EXPECT_FALSE(checkPqTransactionInputs(r.tx, resolved, 0, &nf, &err,
+                                          contextAt(kActivation - 1, req.genesisId)));
+}
+
+// The default is the pre-activation transcript, so a caller that does not set a
+// height cannot accidentally produce a transaction the current network rejects.
+TEST(PqSenderTranscript, DefaultRequestSignsUnderV1) {
+    PqWalletKeys me = derivePqWalletKeys(spendSecret(34, 18));
+    PqWalletKeys to = derivePqWalletKeys(spendSecret(35, 19));
+
+    PqResolvedInput resolved;
+    PqSpendInput in = fundOwned(me, 5000000, 0x71, resolved);
+
+    PqSendRequest req;
+    req.genesisId = testGenesis();
+    req.recipients.push_back({to.viewPub, to.spendPub, 1000000});
+    EXPECT_EQ(req.signingHeight, 0u);
+    PqSendResult r = buildPqSend({in}, me, req);
+
+    std::vector<Crypto::Hash> nf;
+    std::string err;
+    EXPECT_TRUE(checkPqTransactionInputs(r.tx, {resolved}, 0, &nf, &err,
+                                         contextAt(0, req.genesisId))) << err;
 }

@@ -958,6 +958,10 @@ std::vector<PqSpendInput> WalletLegacy::pqSpendableInputs() const {
   return m_pqConsumer->state().spendableInputs();
 }
 
+uint32_t WalletLegacy::pqSigningHeight() const {
+  return m_node.getLocalBlockCount();
+}
+
 uint32_t WalletLegacy::pqSyncedHeight() const {
   std::unique_lock<std::mutex> lock(m_cacheMutex);
   if (!m_pqConsumer) {
@@ -1165,6 +1169,7 @@ PqSendResult WalletLegacy::sendPqTransferWithSeed(
   req.extra = extra;
   std::memcpy(req.genesisId.data(), m_currency.genesisBlockHash().data,
               req.genesisId.size());
+  req.signingHeight = pqSigningHeight();
   // Single key pair: outputs attributed to a subaddress index T (see initSync)
   // are still authorized by the primary spend key.
   req.scheme = PqDepositScheme::SingleKeyIndex;
@@ -1273,6 +1278,7 @@ PqSendResult WalletLegacy::preparePqTransferWithSeed(
   req.extra = extra;
   std::memcpy(req.genesisId.data(), m_currency.genesisBlockHash().data,
               req.genesisId.size());
+  req.signingHeight = pqSigningHeight();
   req.scheme = PqDepositScheme::SingleKeyIndex;
 
   std::vector<PqSpendInput> spendable = pqSpendableInputs();

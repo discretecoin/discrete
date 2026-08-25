@@ -417,6 +417,20 @@ private:
   System::Dispatcher& m_dispatcher;
   const Currency& m_currency;
   INode& m_node;
+
+  // The block index a transaction built now expects to be validated at.
+  //
+  // Consensus judges a TX_PQ at the height of the block that carries it, and the
+  // earliest such block is the one after the current tip. getLocalBlockCount() is
+  // that index (tip + 1) and is the same quantity the node reports as its chain
+  // height, so the wallet and the verifier read the activation boundary off the
+  // same number.
+  //
+  // A transaction left in the mempool across the activation height is therefore
+  // signed for a height it may no longer be mined at. Scheduling an activation
+  // has to account for that window; see PQ_TRANSCRIPT_V2_HEIGHT, which is
+  // deliberately unscheduled.
+  uint32_t pqSigningHeight() const;
   mutable Logging::LoggerRef m_logger;
   bool m_stopped;
 
