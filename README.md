@@ -38,7 +38,7 @@ block signature through a 32-byte SHAKE-256 witness, so randomized signatures
 over one candidate are separate proof-bearing block IDs and cannot alias in
 deduplication, checkpoints, or explorer lookups.
 
-The candidate wire format, domain-separation tags, and blob sizes are
+The frozen wire format, domain-separation tags, and blob sizes are
 documented in the [PQ wire-format reference](https://docs.discrete.cash/#/consensus/pq-wire-format)
 and pinned by `tests/test_pq_domains.cpp`.
 For exchange and service wallet operation, including the two `walletd` deposit
