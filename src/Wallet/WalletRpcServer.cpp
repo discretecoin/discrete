@@ -672,7 +672,9 @@ bool wallet_rpc_server::on_query_key(const wallet_rpc::COMMAND_RPC_QUERY_KEY::re
 bool wallet_rpc_server::on_reset(const wallet_rpc::COMMAND_RPC_RESET::request& req, 
   wallet_rpc::COMMAND_RPC_RESET::response& res)
 {
-  m_wallet.reset();
+  // Preserve the historical RPC contract: "reset" rebuilds scan-derived state
+  // without deleting payer-side recipient metadata or payment proofs.
+  m_wallet.rescan();
   return true;
 }
 
