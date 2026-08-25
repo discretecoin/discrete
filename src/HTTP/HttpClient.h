@@ -70,6 +70,8 @@ private:
   bool runWithTimeout(const std::function<void()>& operation);
 
   System::Dispatcher& m_dispatcher;
+  std::string hostHeaderValue() const;
+
   std::string m_address;
   uint16_t m_port;
 

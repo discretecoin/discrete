@@ -26,7 +26,9 @@
 #include <System/TcpListener.h>
 #include <System/Timer.h>
 
+#include <array>
 #include <chrono>
+#include <cstddef>
 #include <sstream>
 #include <string>
 
@@ -226,4 +228,108 @@ TEST(HttpFraming, BadRequestStatusIsReportable) {
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
+}
+
+// --- Host header -----------------------------------------------------------
+//
+// Requests are serialized as HTTP/1.1, which requires a Host header. A daemon
+// reached directly does not mind its absence, so this went unnoticed; anything
+// name-based in front of one does mind, and answers 400. That is the whole
+// difference between a plain daemon port working and the same daemon behind a
+// TLS-terminating proxy refusing every request.
+
+namespace {
+
+// Accept one connection, read the request head, and hand it back.
+std::string captureRequestHead(System::Dispatcher& dispatcher, uint16_t port,
+                               const std::string& host, bool& clientThrew) {
+  System::TcpListener listener(dispatcher, System::Ipv4Address("127.0.0.1"), port);
+  System::ContextGroup contextGroup(dispatcher);
+
+  std::string head;
+  contextGroup.spawn([&] {
+    auto connection = listener.accept();
+    std::array<uint8_t, 4096> buffer{};
+    const std::size_t got = connection.read(buffer.data(), buffer.size());
+    head.assign(reinterpret_cast<const char*>(buffer.data()), got);
+
+    // Answer so the client finishes rather than timing out on the read.
+    HttpResponse response;
+    response.setStatus(HttpResponse::STATUS_200);
+    response.setBody("{}");
+    const std::string wire = serialize(response);
+    connection.write(reinterpret_cast<const uint8_t*>(wire.data()), wire.size());
+  });
+
+  contextGroup.spawn([&] {
+    CryptoNote::HttpClient client(dispatcher, host, port);
+    client.setRequestTimeout(std::chrono::milliseconds(2000));
+    CryptoNote::HttpRequest request;
+    request.setMethod("GET");
+    request.setUrl("/getinfo");
+    CryptoNote::HttpResponse response;
+    try {
+      client.request(request, response);
+    } catch (const std::exception&) {
+      clientThrew = true;
+    }
+  });
+
+  contextGroup.wait();
+  return head;
+}
+
+}  // namespace
+
+TEST(HttpHostHeader, RequestCarriesHostAndPort) {
+  System::Dispatcher dispatcher;
+  bool clientThrew = false;
+  const std::string head =
+      captureRequestHead(dispatcher, 38771, "127.0.0.1", clientThrew);
+
+  EXPECT_FALSE(clientThrew);
+  EXPECT_NE(head.find("GET /getinfo HTTP/1.1\r\n"), std::string::npos) << head;
+  // Non-default port, so it belongs in the header value.
+  EXPECT_NE(head.find("\r\nHost: 127.0.0.1:38771\r\n"), std::string::npos) << head;
+  EXPECT_EQ(countOccurrences(head, "Host:"), 1u) << head;
+}
+
+// A caller that set its own Host keeps it; the client fills in only what is
+// missing.
+TEST(HttpHostHeader, ExplicitHostHeaderIsNotOverwritten) {
+  System::Dispatcher dispatcher;
+  System::TcpListener listener(dispatcher, System::Ipv4Address("127.0.0.1"), 38772);
+  System::ContextGroup contextGroup(dispatcher);
+
+  std::string head;
+  contextGroup.spawn([&] {
+    auto connection = listener.accept();
+    std::array<uint8_t, 4096> buffer{};
+    const std::size_t got = connection.read(buffer.data(), buffer.size());
+    head.assign(reinterpret_cast<const char*>(buffer.data()), got);
+    HttpResponse response;
+    response.setStatus(HttpResponse::STATUS_200);
+    response.setBody("{}");
+    const std::string wire = serialize(response);
+    connection.write(reinterpret_cast<const uint8_t*>(wire.data()), wire.size());
+  });
+
+  contextGroup.spawn([&] {
+    CryptoNote::HttpClient client(dispatcher, "127.0.0.1", 38772);
+    client.setRequestTimeout(std::chrono::milliseconds(2000));
+    CryptoNote::HttpRequest request;
+    request.setMethod("GET");
+    request.setUrl("/getinfo");
+    request.addHeader("Host", "chosen.example");
+    CryptoNote::HttpResponse response;
+    try {
+      client.request(request, response);
+    } catch (const std::exception&) {
+    }
+  });
+
+  contextGroup.wait();
+
+  EXPECT_NE(head.find("\r\nHost: chosen.example\r\n"), std::string::npos) << head;
+  EXPECT_EQ(countOccurrences(head, "Host:"), 1u) << head;
 }
