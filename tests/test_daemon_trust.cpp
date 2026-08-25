@@ -16,6 +16,7 @@
 
 #include "AccountNumber.h"
 #include "Common/DaemonTrust.h"
+#include "Common/UrlTools.h"
 #include "CryptoNoteConfig.h"
 #include "INode.h"
 #include "NodeRpcProxy/NodeRpcProxy.h"
@@ -252,6 +253,30 @@ TEST(DaemonTrust, OfficialEndpointsNeedAnAuthenticatedTransport) {
   EXPECT_FALSE(Common::isTrustedByDefault(host, kUnauthenticated));
 }
 
+// Every shipped entry, not just the first: each must be trusted over verified
+// TLS and none of them without it.
+TEST(DaemonTrust, EveryShippedEndpointFollowsTheTransportRule) {
+  const std::size_t count = sizeof(CryptoNote::OFFICIAL_REMOTE_NODES) / sizeof(char*);
+  ASSERT_GT(count, 0u);
+  for (std::size_t i = 0; i < count; ++i) {
+    const std::string entry = CryptoNote::OFFICIAL_REMOTE_NODES[i];
+    const std::string host = entry.substr(0, entry.rfind(':'));
+    EXPECT_TRUE(Common::isOfficialRemoteHost(host)) << host;
+    EXPECT_TRUE(Common::isTrustedByDefault(host, kVerifiedTls)) << host;
+    EXPECT_FALSE(Common::isTrustedByDefault(host, kUnauthenticated)) << host;
+    // A shipped endpoint must never be mistaken for this machine.
+    EXPECT_FALSE(Common::isLoopbackHost(host)) << host;
+  }
+}
+
+// wallet.discrete.cash is the web wallet, served from third-party static hosting;
+// it is not a daemon and answers no RPC. It must not sit in a list whose meaning
+// is "an endpoint the project operates and whose answers may pick a recipient".
+TEST(DaemonTrust, TheWebWalletHostIsNotAResolverEndpoint) {
+  EXPECT_FALSE(Common::isOfficialRemoteHost("wallet.discrete.cash"));
+  EXPECT_FALSE(Common::isTrustedByDefault("wallet.discrete.cash", kVerifiedTls));
+}
+
 TEST(DaemonTrust, ArbitraryRemoteHostsAreNotTrusted) {
   const char* const untrusted[] = {
       "node.example.com",
@@ -318,6 +343,43 @@ TEST(ProxyTrust, DisableVerifyWithdrawsAutomaticOfficialTrust) {
   ASSERT_TRUE(proxy->isTrustedResolver());
   proxy->disableVerify();
   EXPECT_FALSE(proxy->isTrustedResolver());
+}
+
+// End to end from what a user actually types: the --daemon-address URL is parsed,
+// the proxy is built from the parse, and the trust state is read back. This is
+// what proves the shipped endpoint list and the transport rule agree in practice
+// rather than only in isolation.
+TEST(ProxyTrust, ShippedEndpointsAreTrustedWhenReachedByTheirHttpsUrl) {
+  const std::size_t count = sizeof(CryptoNote::OFFICIAL_REMOTE_NODES) / sizeof(char*);
+  ASSERT_GT(count, 0u);
+  for (std::size_t i = 0; i < count; ++i) {
+    const std::string entry = CryptoNote::OFFICIAL_REMOTE_NODES[i];
+    const std::string url = "https://" + entry + "/";
+
+    std::string host, path;
+    uint16_t port = 0;
+    bool ssl = false;
+    ASSERT_TRUE(Common::parseUrlAddress(url, host, port, path, ssl)) << url;
+    ASSERT_TRUE(ssl) << url;
+
+    CryptoNote::NodeRpcProxy proxy(host, port, path, ssl);
+    EXPECT_TRUE(proxy.isTrustedResolver()) << url;
+  }
+}
+
+// The same endpoint over http:// is not, which is the whole point of the rule.
+TEST(ProxyTrust, ShippedEndpointsAreNotTrustedOverTheirHttpUrl) {
+  const std::string entry = CryptoNote::OFFICIAL_REMOTE_NODES[0];
+  const std::string url = "http://" + entry + "/";
+
+  std::string host, path;
+  uint16_t port = 0;
+  bool ssl = false;
+  ASSERT_TRUE(Common::parseUrlAddress(url, host, port, path, ssl));
+  ASSERT_FALSE(ssl);
+
+  CryptoNote::NodeRpcProxy proxy(host, port, path, ssl);
+  EXPECT_FALSE(proxy.isTrustedResolver());
 }
 
 TEST(ProxyTrust, ArbitraryHostOverVerifiedTlsIsNotTrusted) {

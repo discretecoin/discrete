@@ -483,10 +483,19 @@ const char* const SEED_NODES[] = {
 // daemon has to be trusted explicitly by the user first (see
 // Common/DaemonTrust.h for why resolution is a trust decision at all).
 //
-// P2P seed nodes are NOT wallet endpoints and deliberately do not appear here.
+// Trust is automatic here ONLY over TLS with certificate verification enabled,
+// because what is being trusted is the endpoint's identity and nothing else
+// establishes it. Each of these serves RPC over HTTPS on 9332 under a
+// certificate covering its own name; a connection to one of them on the plain
+// HTTP port is not automatically trusted and needs an explicit --trusted-daemon.
+//
+// Only the host is matched (isOfficialRemoteHost strips the port), so the port
+// shown is documentation of where each endpoint answers, not part of the trust
+// decision.
 const char* const OFFICIAL_REMOTE_NODES[] = {
-  "node.discrete.cash:9331",
-  "wallet.discrete.cash:9331",
+  "node.discrete.cash:9332",
+  "seed1.discrete.cash:9332",
+  "seed2.discrete.cash:9332",
 };
 
 } // CryptoNote
