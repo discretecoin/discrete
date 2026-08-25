@@ -51,9 +51,27 @@ public:
 
   // Compact Account Number resolution is only as honest as the daemon answering
   // it, so a remote endpoint is untrusted unless it is this machine's own
-  // daemon, one the project operates, or one the user has explicitly trusted.
-  virtual bool isTrustedResolver() const override { return m_trustedResolver; }
-  void setTrustedResolver(bool trusted) { m_trustedResolver = trusted; }
+  // daemon, one the project operates over an authenticated connection, or one
+  // the user has explicitly trusted.
+  //
+  // Trust has two independent sources, kept in separate state so neither can
+  // silently cancel the other:
+  //
+  //   explicit   the user passed --trusted-daemon. Their decision; transport
+  //              settings do not revoke it.
+  //   automatic  derived from where we connect and how. Recomputed on every
+  //              call, so a later disableVerify() withdraws it.
+  //
+  // Automatic trust for a project-operated host requires TLS with certificate
+  // verification enabled. Without that the entry in the endpoint list is only a
+  // name, which whoever answers for it can claim; "this is one of ours" is then
+  // not something the connection has established. TLS by itself is not
+  // sufficient either — any host can present a valid certificate for its own
+  // name — so an arbitrary HTTPS endpoint stays untrusted.
+  virtual bool isTrustedResolver() const override {
+    return m_explicitlyTrustedResolver || hasAutomaticResolverTrust();
+  }
+  void setTrustedResolver(bool trusted) { m_explicitlyTrustedResolver = trusted; }
   virtual ~NodeRpcProxy();
 
   virtual bool addObserver(CryptoNote::INodeObserver* observer) override;
@@ -116,7 +134,9 @@ public:
   void rpcTimeout(unsigned int val) { m_rpcTimeout = val; }
 
   const std::string m_daemon_path;
-  bool m_trustedResolver = false;
+  // The user's own --trusted-daemon decision. Never cleared by transport
+  // settings; see isTrustedResolver().
+  bool m_explicitlyTrustedResolver = false;
   const std::string m_nodeHost;
   const unsigned short m_nodePort;
   const bool m_daemon_ssl;
@@ -126,6 +146,11 @@ public:
   virtual void disableVerify() override;
 
 private:
+  // Trust that follows from the endpoint itself rather than from a user
+  // decision. Deliberately a function, not a stored flag: it is re-derived
+  // whenever it is read, so changing the transport policy changes the answer.
+  bool hasAutomaticResolverTrust() const;
+
   void resetInternalState();
   void workerThread(const Callback& initialized_callback);
 

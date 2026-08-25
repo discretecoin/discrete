@@ -29,7 +29,9 @@ namespace CryptoNote {
 
 const char* const kUntrustedResolverMessage =
     "Account numbers can only be resolved by a trusted daemon. Use the full "
-    "address instead, or connect to your own daemon (or mark this one trusted).";
+    "address instead, connect to your own daemon, or pass --trusted-daemon if "
+    "you trust this one. A project endpoint reached over plain HTTP, or with "
+    "certificate verification disabled, is not automatically trusted.";
 
 namespace {
 bool fail(std::string* error, const char* message) {

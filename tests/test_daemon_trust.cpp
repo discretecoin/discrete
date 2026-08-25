@@ -11,12 +11,14 @@
 #include "gtest/gtest.h"
 
 #include <cstring>
+#include <memory>
 #include <string>
 
 #include "AccountNumber.h"
 #include "Common/DaemonTrust.h"
 #include "CryptoNoteConfig.h"
 #include "INode.h"
+#include "NodeRpcProxy/NodeRpcProxy.h"
 #include "PqAddress.h"
 #include "Wallet/PqRecipient.h"
 #include "crypto_pq/PqSeed.h"
@@ -167,29 +169,212 @@ CryptoPQ::SeedMaster seedOf(uint8_t base) {
 
 // --- Trust policy ----------------------------------------------------------
 
-TEST(DaemonTrust, LocalDaemonsAreTrusted) {
-  EXPECT_TRUE(Common::isTrustedByDefault("127.0.0.1"));
-  EXPECT_TRUE(Common::isTrustedByDefault("127.1.2.3"));
-  EXPECT_TRUE(Common::isTrustedByDefault("localhost"));
-  EXPECT_TRUE(Common::isTrustedByDefault("LocalHost"));
-  EXPECT_TRUE(Common::isTrustedByDefault("::1"));
-  EXPECT_TRUE(Common::isTrustedByDefault("[::1]"));
+namespace {
+
+// First host of the shipped endpoint list, without its port.
+std::string officialHost() {
+  const std::string entry = CryptoNote::OFFICIAL_REMOTE_NODES[0];
+  return entry.substr(0, entry.rfind(':'));
 }
 
-TEST(DaemonTrust, OfficialEndpointsAreTrusted) {
+constexpr bool kVerifiedTls = true;
+constexpr bool kUnauthenticated = false;
+
+}  // namespace
+
+TEST(DaemonTrust, LocalDaemonsAreTrusted) {
+  // Loopback needs no transport evidence: there is no network in between.
+  for (const bool tls : {kVerifiedTls, kUnauthenticated}) {
+    EXPECT_TRUE(Common::isTrustedByDefault("127.0.0.1", tls));
+    EXPECT_TRUE(Common::isTrustedByDefault("127.1.2.3", tls));
+    EXPECT_TRUE(Common::isTrustedByDefault("127.0.0.0", tls));
+    EXPECT_TRUE(Common::isTrustedByDefault("127.255.255.255", tls));
+    EXPECT_TRUE(Common::isTrustedByDefault("localhost", tls));
+    EXPECT_TRUE(Common::isTrustedByDefault("LocalHost", tls));
+    EXPECT_TRUE(Common::isTrustedByDefault("::1", tls));
+    EXPECT_TRUE(Common::isTrustedByDefault("[::1]", tls));
+    EXPECT_TRUE(Common::isTrustedByDefault("0:0:0:0:0:0:0:1", tls));
+  }
+}
+
+// A hostname is not an address. Anyone can register a name whose first characters
+// are those of the loopback range, so the whole string has to parse as a numeric
+// address before it may be treated as this machine.
+TEST(DaemonTrust, LoopbackRequiresACompleteNumericAddress) {
+  const char* const notLoopback[] = {
+      "127.attacker.example",
+      "127.0.0.1.attacker.example",
+      "127.0.0.1.example.com",
+      "127.",
+      "127",
+      "127.0.0",
+      "127.0.0.1.",
+      "127.0.0.1:9331",  // host-and-port, not a host
+      "127.0.0.999",     // octet out of range
+      "127.0.0.256",
+      "127.0.0.01",  // leading zero: the reading is not agreed across parsers
+      "127.0.0.-1",
+      "127.0.0.+1",
+      "127.0.0. 1",
+      "127.0.0.1 ",
+      " 127.0.0.1",
+      "127.0.0.1x",
+      "0127.0.0.1",
+      "127.0.0.1.1",
+      "localhost.attacker.example",
+      "127localhost",
+      "",
+  };
+  for (const char* host : notLoopback) {
+    EXPECT_FALSE(Common::isLoopbackHost(host)) << host;
+    EXPECT_FALSE(Common::isTrustedByDefault(host, kVerifiedTls)) << host;
+    EXPECT_FALSE(Common::isTrustedByDefault(host, kUnauthenticated)) << host;
+  }
+}
+
+TEST(DaemonTrust, LoopbackAcceptsEveryValidNumericFormInRange) {
+  EXPECT_TRUE(Common::isLoopbackHost("127.0.0.1"));
+  EXPECT_TRUE(Common::isLoopbackHost("127.1.2.3"));
+  EXPECT_TRUE(Common::isLoopbackHost("127.255.255.255"));
+  // Outside 127.0.0.0/8, however well formed.
+  EXPECT_FALSE(Common::isLoopbackHost("128.0.0.1"));
+  EXPECT_FALSE(Common::isLoopbackHost("126.255.255.255"));
+  EXPECT_FALSE(Common::isLoopbackHost("12.7.0.1"));
+}
+
+// An official host is trusted for being that endpoint, so the connection has to
+// establish that much. The name on its own does not.
+TEST(DaemonTrust, OfficialEndpointsNeedAnAuthenticatedTransport) {
   ASSERT_GT(sizeof(CryptoNote::OFFICIAL_REMOTE_NODES) / sizeof(char*), 0u);
-  const std::string entry = CryptoNote::OFFICIAL_REMOTE_NODES[0];
-  const std::string host = entry.substr(0, entry.rfind(':'));
-  EXPECT_TRUE(Common::isTrustedByDefault(host));
+  const std::string host = officialHost();
+  EXPECT_TRUE(Common::isOfficialRemoteHost(host));
+  EXPECT_TRUE(Common::isTrustedByDefault(host, kVerifiedTls));
+  EXPECT_FALSE(Common::isTrustedByDefault(host, kUnauthenticated));
 }
 
 TEST(DaemonTrust, ArbitraryRemoteHostsAreNotTrusted) {
-  EXPECT_FALSE(Common::isTrustedByDefault("node.example.com"));
-  EXPECT_FALSE(Common::isTrustedByDefault("203.0.113.9"));
-  // A lookalike must not inherit the official endpoint's trust.
-  EXPECT_FALSE(Common::isTrustedByDefault("node.discrete.cash.evil.example"));
-  // Nor may a non-loopback address that merely starts with the same digits.
-  EXPECT_FALSE(Common::isTrustedByDefault("12.7.0.1"));
+  const char* const untrusted[] = {
+      "node.example.com",
+      "203.0.113.9",
+      // A lookalike must not inherit the official endpoint's trust.
+      "node.discrete.cash.evil.example",
+      "discrete.cash",
+      // Nor may a non-loopback address that merely starts with the same digits.
+      "12.7.0.1",
+  };
+  for (const char* host : untrusted) {
+    // Not even over verified TLS: any host can present a valid certificate for
+    // its own name, so TLS establishes who answered, not that they may choose
+    // recipients on the payer's behalf.
+    EXPECT_FALSE(Common::isTrustedByDefault(host, kVerifiedTls)) << host;
+    EXPECT_FALSE(Common::isTrustedByDefault(host, kUnauthenticated)) << host;
+  }
+}
+
+// --- Effective proxy trust -------------------------------------------------
+//
+// The helpers above are only half the policy: what protects a payer is the state
+// NodeRpcProxy actually reports after construction and after any transport
+// settings are applied. These build the proxy the way the wallet front-ends do
+// (no init(), so nothing connects) and read isTrustedResolver() back.
+
+namespace {
+
+constexpr unsigned short kPort = 9331;
+
+std::unique_ptr<CryptoNote::NodeRpcProxy> makeProxy(const std::string& host, bool ssl) {
+  return std::unique_ptr<CryptoNote::NodeRpcProxy>(
+      new CryptoNote::NodeRpcProxy(host, kPort, "/", ssl));
+}
+
+}  // namespace
+
+TEST(ProxyTrust, LoopbackOverPlainHttpIsAutomaticallyTrusted) {
+  auto proxy = makeProxy("127.0.0.1", false);
+  EXPECT_TRUE(proxy->isTrustedResolver());
+}
+
+TEST(ProxyTrust, LoopbackLookalikeIsNotTrusted) {
+  // The bypass this pins: a remote name beginning with "127." is not loopback.
+  auto proxy = makeProxy("127.attacker.example", false);
+  EXPECT_FALSE(proxy->isTrustedResolver());
+
+  auto tlsProxy = makeProxy("127.attacker.example", true);
+  EXPECT_FALSE(tlsProxy->isTrustedResolver());
+}
+
+TEST(ProxyTrust, OfficialHostOverVerifiedTlsIsAutomaticallyTrusted) {
+  auto proxy = makeProxy(officialHost(), true);
+  EXPECT_TRUE(proxy->isTrustedResolver());
+}
+
+TEST(ProxyTrust, OfficialHostOverPlainHttpIsNotAutomaticallyTrusted) {
+  auto proxy = makeProxy(officialHost(), false);
+  EXPECT_FALSE(proxy->isTrustedResolver());
+}
+
+TEST(ProxyTrust, DisableVerifyWithdrawsAutomaticOfficialTrust) {
+  auto proxy = makeProxy(officialHost(), true);
+  ASSERT_TRUE(proxy->isTrustedResolver());
+  proxy->disableVerify();
+  EXPECT_FALSE(proxy->isTrustedResolver());
+}
+
+TEST(ProxyTrust, ArbitraryHostOverVerifiedTlsIsNotTrusted) {
+  auto proxy = makeProxy("node.example.com", true);
+  EXPECT_FALSE(proxy->isTrustedResolver());
+}
+
+TEST(ProxyTrust, OfficialHostSuffixAttackIsNotTrusted) {
+  auto proxy = makeProxy("node.discrete.cash.evil.example", true);
+  EXPECT_FALSE(proxy->isTrustedResolver());
+}
+
+TEST(ProxyTrust, ExplicitTrustWorksForAnArbitraryHost) {
+  auto proxy = makeProxy("node.example.com", false);
+  ASSERT_FALSE(proxy->isTrustedResolver());
+  proxy->setTrustedResolver(true);
+  EXPECT_TRUE(proxy->isTrustedResolver());
+}
+
+// The user's decision is theirs. A transport policy they also chose must not
+// quietly cancel it, in either application order.
+TEST(ProxyTrust, ExplicitTrustSurvivesDisableVerify) {
+  auto proxy = makeProxy("node.example.com", true);
+  proxy->setTrustedResolver(true);
+  proxy->disableVerify();
+  EXPECT_TRUE(proxy->isTrustedResolver());
+
+  auto reordered = makeProxy("node.example.com", true);
+  reordered->disableVerify();
+  reordered->setTrustedResolver(true);
+  EXPECT_TRUE(reordered->isTrustedResolver());
+}
+
+// Same for an official host: explicit trust outlives losing automatic trust.
+TEST(ProxyTrust, ExplicitTrustSurvivesLosingAutomaticOfficialTrust) {
+  auto proxy = makeProxy(officialHost(), true);
+  proxy->setTrustedResolver(true);
+  ASSERT_TRUE(proxy->isTrustedResolver());
+  proxy->disableVerify();
+  EXPECT_TRUE(proxy->isTrustedResolver());
+}
+
+TEST(ProxyTrust, ExplicitTrustCanBeWithdrawn) {
+  auto proxy = makeProxy("node.example.com", true);
+  proxy->setTrustedResolver(true);
+  ASSERT_TRUE(proxy->isTrustedResolver());
+  proxy->setTrustedResolver(false);
+  EXPECT_FALSE(proxy->isTrustedResolver());
+}
+
+// Withdrawing explicit trust must not take automatic trust with it: a local
+// daemon stays trusted because of where it is, not because anyone said so.
+TEST(ProxyTrust, WithdrawingExplicitTrustLeavesLoopbackTrusted) {
+  auto proxy = makeProxy("127.0.0.1", false);
+  proxy->setTrustedResolver(true);
+  proxy->setTrustedResolver(false);
+  EXPECT_TRUE(proxy->isTrustedResolver());
 }
 
 // --- Fail-closed resolution ------------------------------------------------

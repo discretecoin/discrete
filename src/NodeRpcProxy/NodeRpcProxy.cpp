@@ -71,7 +71,6 @@ std::error_code interpretResponseStatus(const std::string& status) {
 NodeRpcProxy::NodeRpcProxy(const std::string& nodeHost, unsigned short nodePort, const std::string &daemon_path, const bool &daemon_ssl) :
     m_rpcTimeout(10000),
     m_pullInterval(5000),
-    m_trustedResolver(Common::isTrustedByDefault(nodeHost)),
     m_nodeHost(nodeHost),
     m_nodePort(nodePort),
     m_daemon_path(daemon_path),
@@ -109,11 +108,25 @@ NodeRpcProxy::~NodeRpcProxy() {
   }
 }
 
+bool NodeRpcProxy::hasAutomaticResolverTrust() const {
+  // Certificate verification is what turns "we reached this name" into "this is
+  // the endpoint the project operates". Without TLS, or with verification
+  // disabled, an official host is just a name that whoever is positioned to
+  // answer for it can claim, and they would then be choosing the recipient keys
+  // returned for an account number. Such a daemon remains usable; it just needs
+  // the user's explicit --trusted-daemon.
+  const bool authenticatedTransport = m_daemon_ssl && !m_daemon_no_verify;
+  return Common::isTrustedByDefault(m_nodeHost, authenticatedTransport);
+}
+
 void NodeRpcProxy::setRootCert(const std::string &path) {
   if (m_daemon_cert.empty()) m_daemon_cert = path;
 }
 
 void NodeRpcProxy::disableVerify() {
+  // Also withdraws automatic trust in a project-operated endpoint, because
+  // isTrustedResolver() re-derives it and this is one of its inputs. An explicit
+  // --trusted-daemon is a separate decision and is left alone.
   if (!m_daemon_no_verify) m_daemon_no_verify = true;
 }
 

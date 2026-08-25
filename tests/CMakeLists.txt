@@ -101,7 +101,7 @@ target_link_libraries(HttpFramingTests Http System Logging Common Crypto gtest $
 target_link_libraries(PqMnemonicCompatTests Mnemonics Common Crypto gtest ${Boost_LIBRARIES})
 target_link_libraries(PqWalletSecurityTests Wallet CryptoNoteCore Serialization System Logging Common Crypto CryptoPq gtest ${Boost_LIBRARIES})
 target_link_libraries(PqSerializationBoundsTests CryptoNoteCore Serialization System Logging Common Crypto CryptoPq gtest ${Boost_LIBRARIES})
-target_link_libraries(PqDaemonTrustTests Wallet CryptoNoteCore Serialization System Logging Common Crypto CryptoPq gtest ${Boost_LIBRARIES})
+target_link_libraries(PqDaemonTrustTests Wallet NodeRpcProxy Rpc Http CryptoNoteCore Serialization System Logging Common Crypto CryptoPq gtest ${Boost_LIBRARIES})
 target_link_libraries(PqMinerKeyTests CryptoNoteCore Serialization System Logging Common Crypto CryptoPq gtest ${Boost_LIBRARIES})
 target_link_libraries(PqWalletLegacyEnvelopeTests Wallet CryptoNoteCore Serialization System Logging Common Crypto CryptoPq gtest ${Boost_LIBRARIES})
 

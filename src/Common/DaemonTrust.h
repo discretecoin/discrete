@@ -36,14 +36,28 @@ namespace Common {
 // perfectly valid certificate.
 
 // A daemon on this machine. Its operator is the wallet's operator.
+//
+// Recognises "localhost", the IPv6 loopback in either form, and any complete
+// numeric address in 127.0.0.0/8. A name is never resolved to decide this: the
+// answer must depend only on the literal the wallet was configured with, so that
+// it cannot differ between this check and the connection that follows it.
 bool isLoopbackHost(const std::string& host);
 
-// An endpoint the project ships (see CryptoNote::OFFICIAL_REMOTE_NODES). Matching
-// is on the host name only; the port is not part of the identity.
+// An endpoint the project ships (see CryptoNote::OFFICIAL_REMOTE_NODES). The
+// whole host must match; the port is not part of the identity. This is a
+// statement about a name, not about who answers to it — see isTrustedByDefault.
 bool isOfficialRemoteHost(const std::string& host);
 
-// The default policy: local daemons and project-operated endpoints are trusted,
-// everything else has to be trusted explicitly by the user.
-bool isTrustedByDefault(const std::string& host);
+// The default policy, given how the connection is made.
+//
+// `authenticatedTransport` means TLS with certificate verification enabled. A
+// project-operated endpoint is trusted for being that endpoint, so the
+// connection has to establish that much; over plain HTTP, or with verification
+// disabled, the name on its own says nothing about who answers. Loopback needs
+// no transport evidence. Everything else has to be trusted explicitly by the
+// user — and note that an authenticated transport is not by itself a reason to
+// trust an arbitrary host, since any host can present a valid certificate for
+// its own name.
+bool isTrustedByDefault(const std::string& host, bool authenticatedTransport);
 
 }  // namespace Common

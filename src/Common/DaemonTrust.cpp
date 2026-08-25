@@ -46,6 +46,54 @@ std::string hostOf(const std::string& endpoint) {
   return normalizeHost(endpoint.substr(0, colon));
 }
 
+// Parse one dotted-quad octet: 1-3 decimal digits, no sign, no leading zero, and
+// at most 255. Leading zeros are refused rather than guessed at, because their
+// meaning (decimal here, octal in inet_aton) is not agreed across parsers, and a
+// trust decision must not depend on which reading a resolver happens to use.
+bool parseOctet(const std::string& text, unsigned& value) {
+  if (text.empty() || text.size() > 3) {
+    return false;
+  }
+  if (text.size() > 1 && text[0] == '0') {
+    return false;
+  }
+  unsigned acc = 0;
+  for (const char c : text) {
+    if (c < '0' || c > '9') {
+      return false;
+    }
+    acc = acc * 10 + static_cast<unsigned>(c - '0');
+  }
+  if (acc > 255) {
+    return false;
+  }
+  value = acc;
+  return true;
+}
+
+// Whether the WHOLE string is a numeric dotted-quad IPv4 address, and if so what
+// its first octet is. Anything else — a name, a name that merely looks like an
+// address, a host:port pair, a truncated quad — is not an address.
+bool parseIpv4(const std::string& text, unsigned& firstOctet) {
+  std::size_t start = 0;
+  unsigned octets[4] = {0, 0, 0, 0};
+  for (int i = 0; i < 4; ++i) {
+    const bool last = (i == 3);
+    const std::size_t dot = last ? std::string::npos : text.find('.', start);
+    if (!last && dot == std::string::npos) {
+      return false;  // fewer than four parts
+    }
+    const std::string part =
+        last ? text.substr(start) : text.substr(start, dot - start);
+    if (!parseOctet(part, octets[i])) {
+      return false;
+    }
+    start = last ? start : dot + 1;
+  }
+  firstOctet = octets[0];
+  return true;
+}
+
 }  // namespace
 
 bool isLoopbackHost(const std::string& host) {
@@ -53,8 +101,13 @@ bool isLoopbackHost(const std::string& host) {
   if (h == "localhost" || h == "::1" || h == "0:0:0:0:0:0:0:1") {
     return true;
   }
-  // Any address in 127.0.0.0/8.
-  return h.rfind("127.", 0) == 0;
+  // 127.0.0.0/8, and only as a complete numeric address. Matching on a leading
+  // "127." would also accept a DNS name that begins with those characters, which
+  // a remote host can choose freely; the name is never resolved here, so trust
+  // follows from the literal the caller was configured with and cannot change
+  // between this check and the connection.
+  unsigned firstOctet = 0;
+  return parseIpv4(h, firstOctet) && firstOctet == 127;
 }
 
 bool isOfficialRemoteHost(const std::string& host) {
@@ -67,8 +120,11 @@ bool isOfficialRemoteHost(const std::string& host) {
   return false;
 }
 
-bool isTrustedByDefault(const std::string& host) {
-  return isLoopbackHost(host) || isOfficialRemoteHost(host);
+bool isTrustedByDefault(const std::string& host, bool authenticatedTransport) {
+  if (isLoopbackHost(host)) {
+    return true;  // our own machine; no network in between to impersonate it
+  }
+  return isOfficialRemoteHost(host) && authenticatedTransport;
 }
 
 }  // namespace Common
