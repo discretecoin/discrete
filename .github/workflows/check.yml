@@ -42,11 +42,14 @@ jobs:
             -D BOOST_ROOT=/usr \
             -D DISCRETE_BOOST_PREFER_MODULE=ON
 
-          # Build ONLY the PoW KAT target (not the full test suite).
-          cmake --build build/powkat --config Release --target PqPowTests -- -j"$(nproc)"
+          # Build the PoW KAT plus the focused wallet-service regression target.
+          cmake --build build/powkat --config Release --target PqPowTests UnitTests -- -j"$(nproc)"
 
-          # Run ONLY the PoW KAT.
+          # Keep the existing consensus gate and exercise only the wallet-service
+          # rebuild lifecycle cases from the otherwise broad UnitTests binary.
           ctest --test-dir build/powkat -C Release -R PqPowTests --output-on-failure
+          ./build/powkat/tests/unit_tests \
+            --gtest_filter='WalletServiceTest.*Rebuild*:WalletServiceTest.UnrecoverableReload*'
 
   build-windows:
     name: Windows

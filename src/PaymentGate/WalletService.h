@@ -147,6 +147,7 @@ private:
 
   void loadWallet();
   void loadTransactionIdIndex();
+  void recoverWalletAfterRebuildFailure();
 
   void replaceWithNewWallet(const Crypto::SecretKey& viewSecretKey);
   void replaceWithNewWallet(const Crypto::SecretKey& viewSecretKey, const uint32_t scanHeight);
