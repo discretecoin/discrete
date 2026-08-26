@@ -1421,22 +1421,23 @@ std::error_code WalletService::getPqAccountStatus(bool& registered, std::string&
       return std::error_code();
     }
 
-    auto statusCompleted = std::promise<std::error_code>();
-    auto statusFuture = statusCompleted.get_future();
-    node.getPqAccount(viewHex, spendHex, registered, blockHeight, txIndex,
-                      [&statusCompleted](std::error_code error) {
-                        auto detached = std::move(statusCompleted);
-                        detached.set_value(error);
-                      });
-    std::error_code statusError = statusFuture.get();
-    if (statusError) {
-      logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Failed to query account: " << statusError.message();
-      return statusError;
+    // The number reported here is what the operator publishes to payers, so the
+    // coordinates come through the trusted-daemon gate. walletd is trusted when
+    // it was started against a daemon the operator vouched for; otherwise this
+    // field is simply left empty rather than filled from an unvouched answer.
+    const CryptoNote::PqAccountPublication status =
+        CryptoNote::lookupOwnPqAccount(node, viewHex, spendHex, blockHeight, txIndex);
+    if (status == CryptoNote::PqAccountPublication::QueryFailed) {
+      logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Failed to query account number";
+      return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
     }
-
+    registered = (status == CryptoNote::PqAccountPublication::Ok);
     if (registered) {
       accountNumber = CryptoNote::AccountNumber{blockHeight, txIndex}
                           .toString(greenWallet->pqAccountFingerprint());
+    } else {
+      logger(Logging::DEBUGGING) << "Account number not reported: "
+                                 << CryptoNote::pqAccountPublicationMessage(status);
     }
   } catch (std::system_error& x) {
     logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while getting account status: " << x.what();

@@ -616,6 +616,10 @@ void WalletGreen::migrateLegacyContainer(const std::string& path, const std::str
   const std::string upgradedPath = path + ".upgraded";
   boost::system::error_code ignore;
   boost::filesystem::remove(upgradedPath, ignore);
+  // How many pre-upgrade copies we will keep alongside a wallet before refusing
+  // to make another. Generous: each is small, and the cost of one too many is a
+  // message, while the cost of one too few is a destroyed seed.
+  constexpr unsigned kMaxWalletBackupCopies = 64;
 
   const ContainerStoragePrefix header = makeContainerHeader();
   Crypto::chacha8_key newKey;
@@ -692,8 +696,39 @@ void WalletGreen::migrateLegacyContainer(const std::string& path, const std::str
   }
 
   // 4. Only now replace the original, keeping it as a backup.
-  const std::string backupPath = path + ".v9";
-  boost::filesystem::remove(backupPath, ignore);
+  //
+  // Never over an existing backup. The v9 format authenticates nothing beyond a
+  // four-byte magic, so a single flipped ciphertext bit yields a different seed
+  // that still migrates successfully and still "verifies" in step 3 -- every
+  // check above compares the upgraded copy against what was read, not against
+  // what was originally written. The older .v9 may therefore be the only intact
+  // copy of the real seed, and deleting it to make room is the one action that
+  // turns a recoverable corruption into an unrecoverable one.
+  //
+  // So: take the first free name, and if every name is taken, refuse and let the
+  // operator decide. An existing backup is evidence of an earlier migration --
+  // something worth a person looking at, not something to tidy away.
+  std::string backupPath = path + ".v9";
+  if (boost::filesystem::exists(backupPath)) {
+    backupPath.clear();
+    for (unsigned n = 1; n <= kMaxWalletBackupCopies; ++n) {
+      const std::string candidate = path + ".v9." + std::to_string(n);
+      if (!boost::filesystem::exists(candidate)) {
+        backupPath = candidate;
+        break;
+      }
+    }
+    if (backupPath.empty()) {
+      throw std::system_error(
+          make_error_code(error::INTERNAL_WALLET_ERROR),
+          "Refusing to upgrade: " + path + ".v9 and its numbered copies all exist. "
+          "Move them somewhere safe first -- they may hold the only intact copy of "
+          "this wallet's seed, and none of them will be overwritten.");
+    }
+    m_logger(WARNING, BRIGHT_YELLOW)
+        << "A previous wallet backup already exists; keeping it and writing this one to "
+        << backupPath;
+  }
   boost::filesystem::rename(path, backupPath);
 
   boost::system::error_code renameError;
@@ -1063,13 +1098,16 @@ bool WalletGreen::pqRegistrationCoords(uint32_t& height, uint32_t& txIndex) cons
   if (!getPqRegistrationKeysHex(viewHex, spendHex)) {
     return false;  // tracking wallet
   }
-  bool registered = false;
+  // These coordinates are not internal bookkeeping: every caller turns them into
+  // an H-I-A-T-C deposit number for someone else to pay. A daemon that answers
+  // with coordinates of its own choosing therefore chooses who gets paid, so the
+  // same trust boundary applies here as on the payer side. Failure is not fatal
+  // anywhere -- callers fall back to the full address, which needs no daemon.
   uint32_t h = 0, i = 0;
-  std::promise<std::error_code> promise;
-  auto future = promise.get_future();
-  m_node.getPqAccount(viewHex, spendHex, registered, h, i,
-                      [&promise](std::error_code ec) { promise.set_value(ec); });
-  if (future.get() || !registered) {
+  const PqAccountPublication status = lookupOwnPqAccount(m_node, viewHex, spendHex, h, i);
+  if (status != PqAccountPublication::Ok) {
+    m_logger(DEBUGGING) << "Account-number coordinates unavailable: "
+                        << pqAccountPublicationMessage(status);
     return false;
   }
   m_pqRegResolved = true;

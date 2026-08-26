@@ -2339,11 +2339,22 @@ bool simple_wallet::pq_register_paid(const std::vector<std::string> &args) {
     }
   }
   if (registered) {
-    CryptoNote::AccountNumber acct{blockHeight, txIndex};
-    uint32_t fp = CryptoNote::pqAccountFingerprint(
-        m_currency.isTestnet(), pq.spendPub.data(), pq.spendPub.size(),
-        pq.viewPub.data(), pq.viewPub.size());
-    fail_msg_writer() << "This identity already has account number: " << acct.toString(fp);
+    // Naming the number is publication, and the daemon that just supplied these
+    // coordinates may not be one we would take a number from. Confirm before
+    // printing; the refusal to register stands either way.
+    uint32_t confirmedH = 0, confirmedI = 0;
+    const CryptoNote::PqAccountPublication status =
+        CryptoNote::lookupOwnPqAccount(*m_node, viewHex, spendHex, confirmedH, confirmedI);
+    if (status == CryptoNote::PqAccountPublication::Ok) {
+      CryptoNote::AccountNumber acct{confirmedH, confirmedI};
+      uint32_t fp = CryptoNote::pqAccountFingerprint(
+          m_currency.isTestnet(), pq.spendPub.data(), pq.spendPub.size(),
+          pq.viewPub.data(), pq.viewPub.size());
+      fail_msg_writer() << "This identity already has account number: " << acct.toString(fp);
+    } else {
+      fail_msg_writer() << "This identity is already registered. "
+                        << CryptoNote::pqAccountPublicationMessage(status);
+    }
     return true;
   }
 
@@ -2408,20 +2419,11 @@ bool simple_wallet::pq_account(const std::vector<std::string> &args) {
   std::string viewHex = Common::toHex(pq.viewPub.data(), pq.viewPub.size());
   std::string spendHex = Common::toHex(pq.spendPub.data(), pq.spendPub.size());
 
-  bool registered = false;
   uint32_t blockHeight = 0, txIndex = 0;
-  std::promise<std::error_code> promise;
-  auto future = promise.get_future();
-  m_node->getPqAccount(viewHex, spendHex, registered, blockHeight, txIndex,
-                       [&promise](std::error_code ec) { promise.set_value(ec); });
-  std::error_code ec = future.get();
-  if (ec) {
-    fail_msg_writer() << "Failed to query account: " << ec.message();
-    return true;
-  }
-  if (!registered) {
-    success_msg_writer() << "No account number registered yet. Use 'register', then "
-                            "re-check with 'account' once it is confirmed.";
+  const CryptoNote::PqAccountPublication status =
+      CryptoNote::lookupOwnPqAccount(*m_node, viewHex, spendHex, blockHeight, txIndex);
+  if (status != CryptoNote::PqAccountPublication::Ok) {
+    fail_msg_writer() << CryptoNote::pqAccountPublicationMessage(status);
     return true;
   }
   CryptoNote::AccountNumber acct{blockHeight, txIndex};

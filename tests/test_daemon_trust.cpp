@@ -547,3 +547,308 @@ int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
+
+// ---------------------------------------------------------------------------
+// Publication: the same trust boundary, seen from the payee's side.
+//
+// A wallet knows its keys but not its coordinates, so it asks a daemon "where am
+// I registered?" and prints H-I-A[-T]-C for other people to pay. A daemon that
+// answers with coordinates of its choosing therefore chooses what the user hands
+// out -- and because A is only 20 bits, a registration ground to collide with
+// the published A redirects payers who resolve through an honest node. So
+// publication is refused on an untrusted daemon, exactly as resolution is.
+
+namespace {
+
+std::string hexOf(const uint8_t* data, size_t size) {
+  static const char* digits = "0123456789abcdef";
+  std::string out;
+  out.reserve(size * 2);
+  for (size_t i = 0; i < size; ++i) {
+    out.push_back(digits[data[i] >> 4]);
+    out.push_back(digits[data[i] & 0x0F]);
+  }
+  return out;
+}
+
+// A daemon that can be told what to answer to each of the two questions, and
+// counts them, so a test can prove which one was asked and which was not.
+class PublisherNode : public INode {
+public:
+  PublisherNode(bool trusted, const CryptoPQ::KemPublicKey& ourView,
+                const CryptoPQ::DsaPublicKey& ourSpend)
+      : m_trusted(trusted), m_view(ourView), m_spend(ourSpend) {}
+  ~PublisherNode() override {}
+
+  bool isTrustedResolver() const override { return m_trusted; }
+
+  // What getPqAccount reports.
+  bool registered = true;
+  uint32_t height = 4242;
+  uint32_t index = 7;
+  std::error_code lookupError;
+
+  // What resolvePqAccount reports for those coordinates.
+  bool resolveFound = true;
+  bool resolveReturnsOurKeys = true;
+  std::error_code resolveError;
+
+  size_t lookups = 0;
+  size_t resolves = 0;
+
+  void getPqAccount(const std::string&, const std::string&, bool& isRegistered,
+                    uint32_t& blockHeight, uint32_t& txIndex,
+                    const Callback& callback) override {
+    ++lookups;
+    isRegistered = registered;
+    blockHeight = height;
+    txIndex = index;
+    callback(lookupError);
+  }
+
+  void resolvePqAccount(uint32_t, uint32_t, bool& found, std::string& viewPubHex,
+                        std::string& spendPubHex, const Callback& callback) override {
+    ++resolves;
+    found = resolveFound;
+    if (resolveReturnsOurKeys) {
+      viewPubHex = hexOf(m_view.data(), m_view.size());
+      spendPubHex = hexOf(m_spend.data(), m_spend.size());
+    } else {
+      // Somebody else's identity entirely.
+      CryptoPQ::KemKeypairSeed viewSeed{};
+      CryptoPQ::DsaKeypairSeed spendSeed{};
+      viewSeed[0] = 0xAB;
+      spendSeed[0] = 0xCD;
+      const auto otherView = CryptoPQ::kem_keygen_from_seed(viewSeed).first;
+      const auto otherSpend = CryptoPQ::dsa_keygen_from_seed(spendSeed).first;
+      viewPubHex = hexOf(otherView.data(), otherView.size());
+      spendPubHex = hexOf(otherSpend.data(), otherSpend.size());
+    }
+    callback(resolveError);
+  }
+
+  bool addObserver(INodeObserver*) override { return true; }
+  bool removeObserver(INodeObserver*) override { return true; }
+  void init(const Callback& callback) override { callback(std::error_code()); }
+  bool shutdown() override { return true; }
+  size_t getPeerCount() const override { return 0; }
+  uint32_t getLastLocalBlockHeight() const override { return 0; }
+  uint32_t getLastKnownBlockHeight() const override { return 0; }
+  uint32_t getLocalBlockCount() const override { return 0; }
+  uint32_t getKnownBlockCount() const override { return 0; }
+  uint64_t getLastLocalBlockTimestamp() const override { return 0; }
+  uint32_t getNodeHeight() const override { return 0; }
+  uint64_t getMinimalFee() const override { return 0; }
+  uint64_t getNextDifficulty() const override { return 0; }
+  uint64_t getNextReward() const override { return 0; }
+  uint64_t getAlreadyGeneratedCoins() const override { return 0; }
+  uint64_t getTransactionsCount() const override { return 0; }
+  uint64_t getTransactionsPoolSize() const override { return 0; }
+  uint64_t getAltBlocksCount() const override { return 0; }
+  uint64_t getOutConnectionsCount() const override { return 0; }
+  uint64_t getIncConnectionsCount() const override { return 0; }
+  uint64_t getRpcConnectionsCount() const override { return 0; }
+  uint64_t getWhitePeerlistSize() const override { return 0; }
+  uint64_t getGreyPeerlistSize() const override { return 0; }
+  std::string getNodeVersion() const override { return ""; }
+  BlockHeaderInfo getLastLocalBlockHeaderInfo() const override { return BlockHeaderInfo(); }
+  void relayTransaction(const Transaction&, const Callback& callback) override {
+    callback(std::error_code());
+  }
+  void getNewBlocks(std::vector<Crypto::Hash>&&, std::vector<block_complete_entry>&,
+                    uint32_t& startHeight, const Callback& callback) override {
+    startHeight = 0;
+    callback(std::error_code());
+  }
+  void getTransactionOutsGlobalIndices(const Crypto::Hash&, std::vector<uint32_t>&,
+                                       const Callback& callback) override {
+    callback(std::error_code());
+  }
+  void queryBlocks(std::vector<Crypto::Hash>&&, uint64_t, std::vector<BlockShortEntry>&,
+                   uint32_t& startHeight, const Callback& callback) override {
+    startHeight = 0;
+    callback(std::error_code());
+  }
+  void getPoolSymmetricDifference(std::vector<Crypto::Hash>&&, Crypto::Hash, bool& isBcActual,
+                                  std::vector<std::unique_ptr<ITransactionReader>>&,
+                                  std::vector<Crypto::Hash>&, const Callback& callback) override {
+    isBcActual = true;
+    callback(std::error_code());
+  }
+  void getBlocks(const std::vector<uint32_t>&, std::vector<std::vector<BlockDetails>>&,
+                 const Callback& callback) override {
+    callback(std::error_code());
+  }
+  void getBlocks(const std::vector<Crypto::Hash>&, std::vector<BlockDetails>&,
+                 const Callback& callback) override {
+    callback(std::error_code());
+  }
+  void getBlocks(uint64_t, uint64_t, uint32_t, std::vector<BlockDetails>&, uint32_t& count,
+                 const Callback& callback) override {
+    count = 0;
+    callback(std::error_code());
+  }
+  void getBlock(const uint32_t, BlockDetails&, const Callback& callback) override {
+    callback(std::error_code());
+  }
+  void getTransaction(const Crypto::Hash&, Transaction&, const Callback& callback) override {
+    callback(std::error_code());
+  }
+  void getTransactions(const std::vector<Crypto::Hash>&, std::vector<TransactionDetails>&,
+                       const Callback& callback) override {
+    callback(std::error_code());
+  }
+  void getTransactionsByPaymentId(const Crypto::Hash&, std::vector<TransactionDetails>&,
+                                  const Callback& callback) override {
+    callback(std::error_code());
+  }
+  void getPoolTransactions(uint64_t, uint64_t, uint32_t, std::vector<TransactionDetails>&,
+                           uint64_t& count, const Callback& callback) override {
+    count = 0;
+    callback(std::error_code());
+  }
+  void getBlockTimestamp(uint32_t, uint64_t& timestamp, const Callback& callback) override {
+    timestamp = 0;
+    callback(std::error_code());
+  }
+  void isSynchronized(bool& syncStatus, const Callback& callback) override {
+    syncStatus = true;
+    callback(std::error_code());
+  }
+  void getConnections(std::vector<p2pConnection>&, const Callback& callback) override {
+    callback(std::error_code());
+  }
+  void setRootCert(const std::string&) override {}
+  void disableVerify() override {}
+
+private:
+  bool m_trusted;
+  CryptoPQ::KemPublicKey m_view;
+  CryptoPQ::DsaPublicKey m_spend;
+};
+
+struct OwnIdentity {
+  CryptoPQ::KemPublicKey viewPub;
+  CryptoPQ::DsaPublicKey spendPub;
+  std::string viewHex;
+  std::string spendHex;
+
+  OwnIdentity() {
+    CryptoPQ::KemKeypairSeed viewSeed{};
+    CryptoPQ::DsaKeypairSeed spendSeed{};
+    viewSeed[0] = 11;
+    spendSeed[0] = 13;
+    viewPub = CryptoPQ::kem_keygen_from_seed(viewSeed).first;
+    spendPub = CryptoPQ::dsa_keygen_from_seed(spendSeed).first;
+    viewHex = hexOf(viewPub.data(), viewPub.size());
+    spendHex = hexOf(spendPub.data(), spendPub.size());
+  }
+};
+
+}  // namespace
+
+// Fail closed BEFORE the query, not after inspecting the answer: an untrusted
+// daemon is never asked where we are registered, so there is no answer sitting
+// in memory for a later mistake to publish.
+TEST(PublicationTrust, AnUntrustedDaemonIsNeverAskedWhereWeAreRegistered) {
+  OwnIdentity me;
+  PublisherNode node(/*trusted=*/false, me.viewPub, me.spendPub);
+
+  uint32_t h = 0xDEAD, i = 0xBEEF;
+  EXPECT_EQ(PqAccountPublication::UntrustedResolver,
+            lookupOwnPqAccount(node, me.viewHex, me.spendHex, h, i));
+  EXPECT_EQ(0u, node.lookups);
+  EXPECT_EQ(0u, node.resolves);
+  // The out-parameters are cleared, so a caller that ignores the status cannot
+  // publish stale coordinates.
+  EXPECT_EQ(0u, h);
+  EXPECT_EQ(0u, i);
+}
+
+TEST(PublicationTrust, ATrustedDaemonThatAgreesWithItselfConfirmsTheNumber) {
+  OwnIdentity me;
+  PublisherNode node(/*trusted=*/true, me.viewPub, me.spendPub);
+  node.height = 900;
+  node.index = 3;
+
+  uint32_t h = 0, i = 0;
+  EXPECT_EQ(PqAccountPublication::Ok, lookupOwnPqAccount(node, me.viewHex, me.spendHex, h, i));
+  EXPECT_EQ(900u, h);
+  EXPECT_EQ(3u, i);
+  EXPECT_EQ(1u, node.lookups);
+  EXPECT_EQ(1u, node.resolves);
+}
+
+// Coordinates that resolve to somebody else are never published, even from a
+// trusted daemon: that is a reorg or a bug, and either way the number would send
+// payers to the wrong keys.
+TEST(PublicationTrust, CoordinatesThatResolveToOtherKeysAreRefused) {
+  OwnIdentity me;
+  PublisherNode node(/*trusted=*/true, me.viewPub, me.spendPub);
+  node.resolveReturnsOurKeys = false;
+
+  uint32_t h = 0, i = 0;
+  EXPECT_EQ(PqAccountPublication::Mismatch,
+            lookupOwnPqAccount(node, me.viewHex, me.spendHex, h, i));
+  EXPECT_EQ(0u, h);
+  EXPECT_EQ(0u, i);
+}
+
+// Registered is not the same as payable: resolution is gated on first-seen
+// finality, so a number can exist and still be unusable. Publishing it as though
+// it worked would send payers to a failure.
+TEST(PublicationTrust, ARegistrationThatCannotYetBeResolvedIsNotPublished) {
+  OwnIdentity me;
+  PublisherNode node(/*trusted=*/true, me.viewPub, me.spendPub);
+  node.resolveFound = false;
+
+  uint32_t h = 0, i = 0;
+  EXPECT_EQ(PqAccountPublication::NotYetPayable,
+            lookupOwnPqAccount(node, me.viewHex, me.spendHex, h, i));
+  EXPECT_EQ(0u, h);
+  EXPECT_EQ(0u, i);
+}
+
+TEST(PublicationTrust, UnregisteredAndUnreachableAreDistinctFromRefusal) {
+  OwnIdentity me;
+  {
+    PublisherNode node(/*trusted=*/true, me.viewPub, me.spendPub);
+    node.registered = false;
+    uint32_t h = 0, i = 0;
+    EXPECT_EQ(PqAccountPublication::NotRegistered,
+              lookupOwnPqAccount(node, me.viewHex, me.spendHex, h, i));
+    EXPECT_EQ(0u, node.resolves) << "nothing to resolve if nothing is registered";
+  }
+  {
+    PublisherNode node(/*trusted=*/true, me.viewPub, me.spendPub);
+    node.lookupError = std::make_error_code(std::errc::host_unreachable);
+    uint32_t h = 0, i = 0;
+    EXPECT_EQ(PqAccountPublication::QueryFailed,
+              lookupOwnPqAccount(node, me.viewHex, me.spendHex, h, i));
+  }
+  {
+    // A tracking wallet has no identity to publish, and must not reach the node
+    // to discover that.
+    PublisherNode node(/*trusted=*/true, me.viewPub, me.spendPub);
+    uint32_t h = 0, i = 0;
+    EXPECT_EQ(PqAccountPublication::NotRegistered,
+              lookupOwnPqAccount(node, "", "", h, i));
+    EXPECT_EQ(0u, node.lookups);
+  }
+}
+
+// Every non-Ok status has to say something to the user; an empty string would
+// surface as a silent failure.
+TEST(PublicationTrust, EveryRefusalCarriesAnExplanation) {
+  const PqAccountPublication statuses[] = {
+      PqAccountPublication::NotRegistered, PqAccountPublication::NotYetPayable,
+      PqAccountPublication::UntrustedResolver, PqAccountPublication::Mismatch,
+      PqAccountPublication::QueryFailed};
+  for (PqAccountPublication status : statuses) {
+    const char* message = pqAccountPublicationMessage(status);
+    ASSERT_NE(nullptr, message);
+    EXPECT_GT(std::strlen(message), 20u)
+        << "status " << static_cast<int>(status) << " has no usable explanation";
+  }
+  EXPECT_STREQ("", pqAccountPublicationMessage(PqAccountPublication::Ok));
+}

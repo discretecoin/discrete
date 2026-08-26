@@ -54,4 +54,43 @@ bool resolvePqRecipient(INode& node, bool testnet, const std::string& s,
                         uint64_t& subaddrIndexT,
                         std::string* error = nullptr);
 
+// ---------------------------------------------------------------------------
+// The other direction: publishing OUR OWN account number.
+//
+// resolvePqRecipient() guards the payer. This guards the payee, and it is the
+// same trust boundary seen from the other side. The wallet knows its keys but
+// not its coordinates, so it asks a daemon "where am I registered?" and then
+// prints H-I-A[-T]-C for other people to pay. A daemon that answers with
+// coordinates of its choosing decides what the user publishes.
+//
+// Round-tripping the answer through the same daemon does not fix that -- it can
+// lie consistently in both directions -- and the A fingerprint does not either:
+// it is 20 bits, so a registration colliding with a chosen A is within easy
+// reach of grinding. What the round trip DOES establish is that the coordinates
+// are resolvable by a payer at all, which is a separate and real condition,
+// because a registration becomes visible to getPqAccount before it is buried
+// deep enough for resolution to be allowed.
+//
+// So: publication requires a trusted daemon, and the round trip is then used to
+// report whether the number is usable yet.
+enum class PqAccountPublication {
+  Ok,                 // confirmed; safe to show the user
+  NotRegistered,      // no registration for these keys (or no spend authority)
+  NotYetPayable,      // registered, but a payer cannot resolve it yet
+  UntrustedResolver,  // this daemon may not be asked where we are registered
+  Mismatch,           // the daemon's coordinates do not lead back to our keys
+  QueryFailed,        // the lookup itself failed
+};
+
+// Look up this wallet's own registration coordinates and confirm them before
+// they are shown to anyone. `viewPubHex`/`spendPubHex` are OUR keys. On Ok,
+// `blockHeight`/`txIndex` are the confirmed coordinates.
+PqAccountPublication lookupOwnPqAccount(INode& node,
+                                        const std::string& viewPubHex,
+                                        const std::string& spendPubHex,
+                                        uint32_t& blockHeight, uint32_t& txIndex);
+
+// A message suitable for showing the user, for any non-Ok status.
+const char* pqAccountPublicationMessage(PqAccountPublication status);
+
 }  // namespace CryptoNote

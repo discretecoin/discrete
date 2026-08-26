@@ -17,6 +17,8 @@
 
 #include "PqRecipient.h"
 
+#include <cctype>
+#include <cstddef>
 #include <future>
 #include <system_error>
 
@@ -34,6 +36,21 @@ const char* const kUntrustedResolverMessage =
     "certificate verification disabled, is not automatically trusted.";
 
 namespace {
+// Both sides are hex, but only one of them is ours; the daemon's casing is not
+// ours to assume.
+bool sameHex(const std::string& a, const std::string& b) {
+  if (a.size() != b.size()) {
+    return false;
+  }
+  for (std::size_t i = 0; i < a.size(); ++i) {
+    if (std::tolower(static_cast<unsigned char>(a[i])) !=
+        std::tolower(static_cast<unsigned char>(b[i]))) {
+      return false;
+    }
+  }
+  return true;
+}
+
 bool fail(std::string* error, const char* message) {
   if (error != nullptr) {
     *error = message;
@@ -111,6 +128,93 @@ bool resolvePqRecipient(INode& node, bool testnet, const std::string& s,
   }
 
   return fail(error, "Not a valid address or account number.");
+}
+
+// ---------------------------------------------------------------------------
+
+PqAccountPublication lookupOwnPqAccount(INode& node,
+                                        const std::string& viewPubHex,
+                                        const std::string& spendPubHex,
+                                        uint32_t& blockHeight, uint32_t& txIndex) {
+  blockHeight = 0;
+  txIndex = 0;
+
+  if (viewPubHex.empty() || spendPubHex.empty()) {
+    return PqAccountPublication::NotRegistered;  // tracking wallet: no identity to publish
+  }
+
+  // Fail closed BEFORE the query, exactly as the payer side does before a
+  // resolution. Whatever this daemon answers becomes what the user hands out.
+  if (!node.isTrustedResolver()) {
+    return PqAccountPublication::UntrustedResolver;
+  }
+
+  bool registered = false;
+  uint32_t h = 0, i = 0;
+  {
+    std::promise<std::error_code> promise;
+    auto future = promise.get_future();
+    node.getPqAccount(viewPubHex, spendPubHex, registered, h, i,
+                      [&promise](std::error_code ec) { promise.set_value(ec); });
+    if (future.get()) {
+      return PqAccountPublication::QueryFailed;
+    }
+  }
+  if (!registered) {
+    return PqAccountPublication::NotRegistered;
+  }
+
+  // Ask what those coordinates actually resolve to. The daemon is trusted, so
+  // this is not the defence against a lying daemon -- it is the payability gate:
+  // resolution is refused until the registration is buried past first-seen
+  // finality, so a number that does not resolve yet must not be published as if
+  // it were payable. Comparing the full keys, never the 20-bit fingerprint.
+  bool found = false;
+  std::string gotViewHex, gotSpendHex;
+  {
+    std::promise<std::error_code> promise;
+    auto future = promise.get_future();
+    node.resolvePqAccount(h, i, found, gotViewHex, gotSpendHex,
+                          [&promise](std::error_code ec) { promise.set_value(ec); });
+    if (future.get()) {
+      return PqAccountPublication::QueryFailed;
+    }
+  }
+  if (!found) {
+    return PqAccountPublication::NotYetPayable;
+  }
+  if (!sameHex(gotViewHex, viewPubHex) || !sameHex(gotSpendHex, spendPubHex)) {
+    return PqAccountPublication::Mismatch;
+  }
+
+  blockHeight = h;
+  txIndex = i;
+  return PqAccountPublication::Ok;
+}
+
+const char* pqAccountPublicationMessage(PqAccountPublication status) {
+  switch (status) {
+    case PqAccountPublication::Ok:
+      return "";
+    case PqAccountPublication::NotRegistered:
+      return "No account number registered yet. Use 'register', then re-check once "
+             "it is confirmed.";
+    case PqAccountPublication::NotYetPayable:
+      return "Your registration is on chain but not yet deep enough for anyone to "
+             "pay it. Re-check in a few blocks; share your full address meanwhile.";
+    case PqAccountPublication::UntrustedResolver:
+      return "Your account number can only be looked up through a trusted daemon: "
+             "whichever daemon answers decides the number you would hand out. "
+             "Connect to your own daemon, or pass --trusted-daemon if you trust "
+             "this one. Your full address is unaffected and always safe to share.";
+    case PqAccountPublication::Mismatch:
+      return "The daemon reported an account number that does not resolve back to "
+             "this wallet's keys. Nothing was shown; share your full address and "
+             "check which daemon you are connected to.";
+    case PqAccountPublication::QueryFailed:
+      return "Could not reach the daemon to look up your account number.";
+  }
+  return "Could not look up your account number.";
 }
 
 }  // namespace CryptoNote

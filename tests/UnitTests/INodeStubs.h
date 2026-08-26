@@ -111,6 +111,12 @@ public:
   virtual void getNewBlocks(std::vector<Crypto::Hash>&& knownBlockIds, std::vector<CryptoNote::block_complete_entry>& newBlocks, uint32_t& startHeight, const Callback& callback) override;
 
   virtual void relayTransaction(const CryptoNote::Transaction& transaction, const Callback& callback) override;
+  // The stub is an in-process chain, like the built-in node: its answers come
+  // from the very generator the test drives, so there is no third party between
+  // the wallet and the registry. Tests that exercise account numbers need this;
+  // tests of the trust boundary itself use their own nodes.
+  bool isTrustedResolver() const override { return true; }
+
   // PQ account registry resolved on-demand by scanning the generator's chain for a
   // TransactionExtraPqAccountRegistration tag. Account number = (block height, in-block
   // tx index; coinbase = 0, first regular tx = 1).
