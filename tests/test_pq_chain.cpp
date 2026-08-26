@@ -680,6 +680,20 @@ bool runFreeRegAdmissionOrder() {
                  "split: admission under the locks evaluated no proof");
   }
 
+  //    And admission really does route through phase one. The step above proves
+  //    the mechanism; this proves the wiring, which is the part that decides
+  //    whether the proof runs before Core::add_new_tx takes the mempool and
+  //    blockchain locks or inside them.
+  {
+    Transaction wired = makeFastFreeRegTx(refHash, 58);
+    const uint64_t prechecksBefore = core.get_blockchain_storage().freeRegPrecheckCount();
+    Outcome admitted = submit(wired);
+    const uint64_t prechecks =
+        core.get_blockchain_storage().freeRegPrecheckCount() - prechecksBefore;
+    ok &= expect(admitted.accepted, "wiring: registration accepted");
+    ok &= expect(prechecks == 1, "wiring: admission went through phase one");
+  }
+
   // 8. Phase two revalidates. The remembered verdict says only "this proof is
   //    good"; it must never carry a transaction past chain state that has moved
   //    since phase one looked at it. Verify a proof while its identity is still

@@ -118,6 +118,12 @@ namespace CryptoNote {
     //
     // Shape must already have been validated (Core::check_tx_semantic).
     bool precheckFreeRegPow(const Transaction& tx);
+
+    // How many times phase one has been entered. A meter, like
+    // freeRegPowEvaluationCount(): it lets a test establish that admission
+    // actually routes through phase one, which is a fact about where the call
+    // sits rather than anything visible in the verdict.
+    uint64_t freeRegPrecheckCount() const { return m_freeRegPrechecks.load(); }
     bool haveTransactionKeyImagesAsSpent(const Transaction& tx);
 
     uint32_t getCurrentBlockchainHeight();
@@ -353,6 +359,7 @@ namespace CryptoNote {
     // locks is a set lookup rather than a second yespower evaluation. Entries can
     // only be created by doing the work, so this cannot be filled by an attacker
     // more cheaply than by mining valid proofs. Bounded like the bad-proof cache.
+    std::atomic<uint64_t> m_freeRegPrechecks{0};
     std::mutex m_goodFreeRegProofsLock;
     std::unordered_set<Crypto::Hash> m_goodFreeRegProofs;
     std::deque<Crypto::Hash> m_goodFreeRegProofsOrder;

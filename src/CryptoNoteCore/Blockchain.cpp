@@ -2164,6 +2164,8 @@ bool Blockchain::precheckFreeRegPow(const Transaction& tx) {
   // already registered, or a proof we have seen fail before all cost a lookup
   // rather than a 16 MiB evaluation. Only a registration that is new, current
   // and unseen gets to spend real work.
+  ++m_freeRegPrechecks;
+
   Crypto::Hash proofTuple;
   if (!freeRegProofTupleOf(tx, proofTuple)) {
     return false;  // shape check should have caught this
