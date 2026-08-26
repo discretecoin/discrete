@@ -660,6 +660,54 @@ bool runFreeRegAdmissionOrder() {
     ok &= expect(spent == 1, "order: proof check is metered");
   }
 
+  // 7. The phase split. The memory-hard proof is evaluated once, in phase one,
+  //    before any lock is taken; the admission that follows -- which runs with
+  //    the mempool lock and the recursive blockchain lock held for its whole
+  //    duration -- evaluates nothing. Before the split, that second evaluation
+  //    happened under both locks, so one peer's proof stalled every unrelated
+  //    transaction, block and template on the node for as long as it took.
+  {
+    Transaction split = makeFastFreeRegTx(refHash, 55);
+    const uint64_t before = freeRegPowEvaluationCount();
+    const bool precheck = core.get_blockchain_storage().precheckFreeRegPow(split);
+    const uint64_t phaseOneWork = freeRegPowEvaluationCount() - before;
+    ok &= expect(precheck, "split: phase one accepted the proof");
+    ok &= expect(phaseOneWork == 1, "split: phase one evaluated the proof exactly once");
+
+    Outcome admitted = submit(split);
+    ok &= expect(admitted.accepted, "split: registration still admitted");
+    ok &= expect(admitted.proofWork == 0,
+                 "split: admission under the locks evaluated no proof");
+  }
+
+  // 8. Phase two revalidates. The remembered verdict says only "this proof is
+  //    good"; it must never carry a transaction past chain state that has moved
+  //    since phase one looked at it. Verify a proof while its identity is still
+  //    free, register that identity with a different transaction, and the first
+  //    one must then be refused on admission despite its cached verdict.
+  {
+    Transaction first = makeFastFreeRegTx(refHash, 57, /*nonce=*/1);
+    Transaction second = makeFastFreeRegTx(refHash, 57, /*nonce=*/2);
+    ok &= expect(getObjectHash(first) != getObjectHash(second),
+                 "revalidate: the two registrations are distinct transactions");
+
+    ok &= expect(core.get_blockchain_storage().precheckFreeRegPow(second),
+                 "revalidate: second proof verified while the identity was free");
+
+    Outcome firstOut = submit(first);
+    ok &= expect(firstOut.accepted, "revalidate: first registration accepted");
+    std::list<Transaction> claimed = { first };
+    ok &= expect(mineBlockWithTxs(core, currency, gen, miner, ts, claimed),
+                 "revalidate: first registration mined");
+    ts += step;
+
+    Outcome secondOut = submit(second);
+    ok &= expect(!secondOut.accepted,
+                 "revalidate: a cached-good proof is still refused once the identity is taken");
+    ok &= expect(secondOut.proofWork == 0,
+                 "revalidate: and the refusal cost no proof work");
+  }
+
   core.deinit();
   std::filesystem::remove_all(dataDir, ec);
   return ok;

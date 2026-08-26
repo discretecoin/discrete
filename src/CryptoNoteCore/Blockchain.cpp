@@ -2040,19 +2040,38 @@ bool Blockchain::getPqTransactionFee(const Transaction& tx, uint64_t& fee) {
   return true;
 }
 
-bool Blockchain::checkFreeRegInputs(const Transaction& tx, uint32_t* pmax_used_block_height) {
-  if (pmax_used_block_height) *pmax_used_block_height = 0;
-  // Discrete: free-reg is active from genesis.
+// Identity of a registration proof, independent of the transaction that carries
+// it: two transactions differing only in padding share this value.
+Crypto::Hash Blockchain::freeRegProofTuple(const Crypto::Hash& identity,
+                                           const Crypto::Hash& refBlockHash, uint64_t nonce) {
+  std::vector<uint8_t> buf;
+  buf.reserve(sizeof(identity.data) + sizeof(refBlockHash.data) + sizeof(nonce));
+  buf.insert(buf.end(), identity.data, identity.data + sizeof(identity.data));
+  buf.insert(buf.end(), refBlockHash.data, refBlockHash.data + sizeof(refBlockHash.data));
+  for (int i = 0; i < 8; ++i) buf.push_back(static_cast<uint8_t>((nonce >> (8 * i)) & 0xFF));
+  return Crypto::cn_fast_hash(buf.data(), buf.size());
+}
 
+bool Blockchain::freeRegProofTupleOf(const Transaction& tx, Crypto::Hash& proofTuple) {
   TransactionExtraPqAccountRegistration reg;
   TransactionExtraPow pow;
+  if (!getPqAccountRegistrationFromExtra(tx.extra, reg) || !getPowTagFromExtra(tx.extra, pow)) {
+    return false;
+  }
+  proofTuple = freeRegProofTuple(getPqAccountIdentityHash(reg), pow.refBlockHash, pow.nonce);
+  return true;
+}
+
+bool Blockchain::freeRegChainStateOk(const Transaction& tx, Crypto::Hash& identity,
+                                     TransactionExtraPow& pow, uint32_t& refHeight) {
+  refHeight = 0;
+
+  TransactionExtraPqAccountRegistration reg;
   if (!getPqAccountRegistrationFromExtra(tx.extra, reg) ||
       !getPowTagFromExtra(tx.extra, pow)) {
     return false;  // semantic check should have caught this
   }
-
-  uint32_t refHeight = 0;
-  Crypto::Hash identity = getPqAccountIdentityHash(reg);
+  identity = getPqAccountIdentityHash(reg);
 
   // From the scheduled upgrade onwards a registration's tx_extra must match the
   // exact grammar, which is what stops one proof from being re-wrapped into
@@ -2065,32 +2084,51 @@ bool Blockchain::checkFreeRegInputs(const Transaction& tx, uint32_t* pmax_used_b
     return false;
   }
 
-  // Everything decidable from chain state, under the chain lock. The memory-hard
-  // proof check is deliberately outside it: it costs milliseconds of CPU and
-  // 16 MiB, and holding the blockchain lock for that would let a peer stall the
-  // whole node as cheaply as it stalls one verification.
-  {
-    std::lock_guard<decltype(m_blockchain_lock)> lk(m_blockchain_lock);
+  // Everything decidable from chain state, under the chain lock and nothing else
+  // under it. Two database lookups; the memory-hard proof is deliberately not
+  // among them.
+  std::lock_guard<decltype(m_blockchain_lock)> lk(m_blockchain_lock);
 
-    // refBlockHash must be a main-chain block within the last FREE_REG_REF_WINDOW.
-    const uint32_t curHeight = getCurrentBlockchainHeight();
-    if (!m_db.getHashHeight(pow.refBlockHash, refHeight)) {
-      logger(INFO, BRIGHT_WHITE) << "free-reg refBlockHash not on the main chain, rejected";
-      return false;
-    }
-    if (refHeight >= curHeight ||
-        curHeight - refHeight > parameters::FREE_REG_REF_WINDOW) {
-      logger(INFO, BRIGHT_WHITE) << "free-reg refBlockHash outside the reference window, rejected";
-      return false;
-    }
+  // refBlockHash must be a main-chain block within the last FREE_REG_REF_WINDOW.
+  const uint32_t curHeight = getCurrentBlockchainHeight();
+  if (!m_db.getHashHeight(pow.refBlockHash, refHeight)) {
+    logger(INFO, BRIGHT_WHITE) << "free-reg refBlockHash not on the main chain, rejected";
+    return false;
+  }
+  if (refHeight >= curHeight ||
+      curHeight - refHeight > parameters::FREE_REG_REF_WINDOW) {
+    logger(INFO, BRIGHT_WHITE) << "free-reg refBlockHash outside the reference window, rejected";
+    return false;
+  }
 
-    // First-registration-wins: reject if the full PQ identity is already registered.
-    // (checkTransactionInputs runs the same check for every registration-carrying tx
-    // type; repeated here so this entry point stands on its own.)
-    if (m_db.hasPqAcctReg(identity)) {
-      logger(INFO, BRIGHT_WHITE) << "free-reg account already registered, rejected";
-      return false;
-    }
+  // First-registration-wins: reject if the full PQ identity is already registered.
+  // (checkTransactionInputs runs the same check for every registration-carrying tx
+  // type; repeated here so this entry point stands on its own.)
+  if (m_db.hasPqAcctReg(identity)) {
+    logger(INFO, BRIGHT_WHITE) << "free-reg account already registered, rejected";
+    return false;
+  }
+  return true;
+}
+
+bool Blockchain::checkFreeRegInputs(const Transaction& tx, uint32_t* pmax_used_block_height) {
+  if (pmax_used_block_height) *pmax_used_block_height = 0;
+  // Discrete: free-reg is active from genesis.
+
+  // Phase two. The caller (Core::add_new_tx) holds the mempool lock and the
+  // recursive blockchain lock around this whole call, so anything expensive here
+  // is expensive for every other transaction, block and template on the node.
+  //
+  // Re-check the chain state -- it may have moved since phase one -- and then
+  // reuse phase one's verdict on the proof rather than evaluating it again. The
+  // fallback evaluation below is for callers that never went through phase one,
+  // notably transactions arriving inside a block, where there is no admission
+  // decision to make and the full check must still happen.
+  TransactionExtraPow pow;
+  Crypto::Hash identity;
+  uint32_t refHeight = 0;
+  if (!freeRegChainStateOk(tx, identity, pow, refHeight)) {
+    return false;
   }
 
   // A proof that already failed is remembered, so replaying it — including under
@@ -2101,27 +2139,61 @@ bool Blockchain::checkFreeRegInputs(const Transaction& tx, uint32_t* pmax_used_b
     return false;
   }
 
-  std::string powError;
-  if (!checkFreeRegTransactionPow(tx, &powError, m_currency.freeRegPowTarget())) {
-    rememberBadFreeRegProof(proofTuple);
-    logger(INFO, BRIGHT_WHITE) << "free-reg rejected: " << powError;
-    return false;
+  // Already verified in phase one, outside the locks. Same tuple, same proof:
+  // this is the memoized result of the identical evaluation, not a weaker check.
+  if (!isKnownGoodFreeRegProof(proofTuple)) {
+    std::string powError;
+    if (!checkFreeRegTransactionPow(tx, &powError, m_currency.freeRegPowTarget())) {
+      rememberBadFreeRegProof(proofTuple);
+      logger(INFO, BRIGHT_WHITE) << "free-reg rejected: " << powError;
+      return false;
+    }
+    rememberGoodFreeRegProof(proofTuple);
   }
 
   if (pmax_used_block_height) *pmax_used_block_height = refHeight;
   return true;
 }
 
-// Identity of a registration proof, independent of the transaction that carries
-// it: two transactions differing only in padding share this value.
-Crypto::Hash Blockchain::freeRegProofTuple(const Crypto::Hash& identity,
-                                           const Crypto::Hash& refBlockHash, uint64_t nonce) {
-  std::vector<uint8_t> buf;
-  buf.reserve(sizeof(identity.data) + sizeof(refBlockHash.data) + sizeof(nonce));
-  buf.insert(buf.end(), identity.data, identity.data + sizeof(identity.data));
-  buf.insert(buf.end(), refBlockHash.data, refBlockHash.data + sizeof(refBlockHash.data));
-  for (int i = 0; i < 8; ++i) buf.push_back(static_cast<uint8_t>((nonce >> (8 * i)) & 0xFF));
-  return Crypto::cn_fast_hash(buf.data(), buf.size());
+bool Blockchain::precheckFreeRegPow(const Transaction& tx) {
+  // Phase one, with NO lock held on entry and none held across the proof.
+  //
+  // Order matters as much as the locking does. Everything cheap comes first --
+  // the two remembered-proof caches, then the chain-state checks under a short
+  // lock of their own -- so that a stale reference block, an identity that is
+  // already registered, or a proof we have seen fail before all cost a lookup
+  // rather than a 16 MiB evaluation. Only a registration that is new, current
+  // and unseen gets to spend real work.
+  Crypto::Hash proofTuple;
+  if (!freeRegProofTupleOf(tx, proofTuple)) {
+    return false;  // shape check should have caught this
+  }
+  if (isKnownBadFreeRegProof(proofTuple)) {
+    logger(DEBUGGING) << "free-reg proof already known to be invalid, rejected";
+    return false;
+  }
+  if (isKnownGoodFreeRegProof(proofTuple)) {
+    return true;
+  }
+
+  TransactionExtraPow pow;
+  Crypto::Hash identity;
+  uint32_t refHeight = 0;
+  if (!freeRegChainStateOk(tx, identity, pow, refHeight)) {
+    return false;  // the short lock is released before we return
+  }
+
+  // No lock is held here, and none may be taken: this is the whole point of the
+  // phase split. Phase two re-checks the state afterwards, so nothing is trusted
+  // across this gap.
+  std::string powError;
+  if (!checkFreeRegTransactionPow(tx, &powError, m_currency.freeRegPowTarget())) {
+    rememberBadFreeRegProof(proofTuple);
+    logger(INFO, BRIGHT_WHITE) << "free-reg rejected: " << powError;
+    return false;
+  }
+  rememberGoodFreeRegProof(proofTuple);
+  return true;
 }
 
 bool Blockchain::isKnownBadFreeRegProof(const Crypto::Hash& proofTuple) {
@@ -2142,6 +2214,24 @@ void Blockchain::rememberBadFreeRegProof(const Crypto::Hash& proofTuple) {
   }
   m_badFreeRegProofs.insert(proofTuple);
   m_badFreeRegProofsOrder.push_back(proofTuple);
+}
+
+bool Blockchain::isKnownGoodFreeRegProof(const Crypto::Hash& proofTuple) {
+  std::lock_guard<std::mutex> lk(m_goodFreeRegProofsLock);
+  return m_goodFreeRegProofs.count(proofTuple) != 0;
+}
+
+void Blockchain::rememberGoodFreeRegProof(const Crypto::Hash& proofTuple) {
+  std::lock_guard<std::mutex> lk(m_goodFreeRegProofsLock);
+  if (m_goodFreeRegProofs.count(proofTuple) != 0) {
+    return;
+  }
+  if (m_goodFreeRegProofsOrder.size() >= parameters::FREE_REG_BAD_PROOF_CACHE_SIZE) {
+    m_goodFreeRegProofs.erase(m_goodFreeRegProofsOrder.front());
+    m_goodFreeRegProofsOrder.pop_front();
+  }
+  m_goodFreeRegProofs.insert(proofTuple);
+  m_goodFreeRegProofsOrder.push_back(proofTuple);
 }
 
 bool Blockchain::isPqAccountAlreadyRegistered(const Transaction& tx) {

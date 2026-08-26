@@ -1311,6 +1311,25 @@ bool Core::handleIncomingTransaction(const Transaction& tx, const Crypto::Hash& 
     return false;
   }
 
+  // Phase one of TX_FREE_REG admission, deliberately BEFORE add_new_tx(), which
+  // takes the mempool lock and the recursive blockchain lock and holds both for
+  // the entire insertion. The registration proof is memory-hard -- milliseconds
+  // of CPU and 16 MiB apiece -- so evaluating it under those locks lets one peer
+  // stall every unrelated transaction, block, and template on the node for as
+  // long as it takes. Phase two (Blockchain::checkFreeRegInputs) re-checks the
+  // chain state under the locks and reuses this verdict.
+  //
+  // Skipped for transactions arriving inside a block: those are not admission
+  // decisions, the caller may already hold the chain lock, and phase two still
+  // performs the full check.
+  if (!keptByBlock && tx.version >= TRANSACTION_VERSION_1 && tx.txType == TX_FREE_REG) {
+    if (!m_blockchain.precheckFreeRegPow(tx)) {
+      logger(INFO) << "free-reg registration proof rejected for tx " << txHash;
+      tvc.m_verification_failed = true;
+      return false;
+    }
+  }
+
   bool r = add_new_tx(tx, txHash, blobSize, tvc, keptByBlock);
   if (tvc.m_verification_failed) {
     if (!tvc.m_tx_fee_too_small) {

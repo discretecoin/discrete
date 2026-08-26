@@ -99,6 +99,25 @@ namespace CryptoNote {
     bool getTransactionHeight(const Crypto::Hash& txId, uint32_t& blockHeight);
 
     bool haveTransaction(const Crypto::Hash& id);
+
+    // Phase one of TX_FREE_REG admission: verify the memory-hard registration
+    // proof with NO lock held, and memoize the verdict.
+    //
+    // The proof costs milliseconds of CPU and 16 MiB of memory. Everything that
+    // decides whether it is worth verifying is chain state, and the caller that
+    // consults that state (Core::add_new_tx) holds both the mempool lock and the
+    // recursive blockchain lock for the whole of admission -- so a scope inside
+    // checkFreeRegInputs() releases nothing: the same thread already owns the
+    // lock further up. Verifying here, before either lock is taken, is what
+    // actually keeps one peer's proof from stalling every other transaction,
+    // block, and template on the node.
+    //
+    // Phase two (checkFreeRegInputs, under the locks) re-checks the chain state
+    // and reuses this verdict, so a proof is never trusted from a stale read and
+    // never evaluated twice.
+    //
+    // Shape must already have been validated (Core::check_tx_semantic).
+    bool precheckFreeRegPow(const Transaction& tx);
     bool haveTransactionKeyImagesAsSpent(const Transaction& tx);
 
     uint32_t getCurrentBlockchainHeight();
@@ -329,6 +348,14 @@ namespace CryptoNote {
     std::mutex m_badFreeRegProofsLock;
     std::unordered_set<Crypto::Hash> m_badFreeRegProofs;
     std::deque<Crypto::Hash> m_badFreeRegProofsOrder;
+    // Proofs that verified. Memoizing a pure function of (identity, refBlockHash,
+    // nonce) -- exactly the tuple the proof commits to -- so phase two under the
+    // locks is a set lookup rather than a second yespower evaluation. Entries can
+    // only be created by doing the work, so this cannot be filled by an attacker
+    // more cheaply than by mining valid proofs. Bounded like the bad-proof cache.
+    std::mutex m_goodFreeRegProofsLock;
+    std::unordered_set<Crypto::Hash> m_goodFreeRegProofs;
+    std::deque<Crypto::Hash> m_goodFreeRegProofsOrder;
 
     UpgradeDetector m_upgradeDetectorV2;
     UpgradeDetector m_upgradeDetectorV3;
@@ -405,6 +432,17 @@ namespace CryptoNote {
                                           const Crypto::Hash& refBlockHash, uint64_t nonce);
     bool isKnownBadFreeRegProof(const Crypto::Hash& proofTuple);
     void rememberBadFreeRegProof(const Crypto::Hash& proofTuple);
+    bool isKnownGoodFreeRegProof(const Crypto::Hash& proofTuple);
+    void rememberGoodFreeRegProof(const Crypto::Hash& proofTuple);
+    // The (identity, refBlockHash, nonce) tuple of a TX_FREE_REG, or false if the
+    // transaction does not carry both fields.
+    bool freeRegProofTupleOf(const Transaction& tx, Crypto::Hash& proofTuple);
+    // The cheap half of TX_FREE_REG validation: parse the registration, apply the
+    // canonical-extra gate, and check the reference window and first-registration-
+    // wins against the chain. Takes the chain lock only for the two database
+    // lookups and releases it before returning, so both phases can use it.
+    bool freeRegChainStateOk(const Transaction& tx, Crypto::Hash& identity,
+                             TransactionExtraPow& pow, uint32_t& refHeight);
     // First-registration-wins: true if the tx carries a PQ account registration
     // whose identity is already in the on-chain registry.
     bool isPqAccountAlreadyRegistered(const Transaction& tx);
