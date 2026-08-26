@@ -251,4 +251,18 @@ private:
   }
 };
 
+// Whether a destination string names one specific deposit route, i.e. is in the
+// H-I-A-T-C form rather than a base H-I-A-C number or a full address.
+//
+// Anything that verifies a payment has to know this: a payment proof establishes
+// spend authority over an account and commits to nothing about T, so a caller
+// that named a route has asked a question the proof cannot answer, and must be
+// told no rather than yes. See COMMAND_RPC_CHECK_TRANSACTION_PROOF.
+inline bool namesDepositRoute(const std::string& destination) {
+  AccountNumber account;
+  uint32_t subaddrIndex = 0;
+  uint32_t fingerprint = 0;
+  return AccountNumber::fromStringWithIndex(destination, account, subaddrIndex, fingerprint);
+}
+
 }  // namespace CryptoNote

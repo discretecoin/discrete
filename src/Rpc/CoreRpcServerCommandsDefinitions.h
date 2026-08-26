@@ -1234,7 +1234,12 @@ struct COMMAND_RPC_CHECK_TRANSACTION_PROOF {
     // on this call.
     //
     // signature_valid keeps the historical Karbo field name and mirrors
-    // spend_authority_valid for RPC compatibility.
+    // spend_authority_valid for RPC compatibility -- with one deliberate
+    // exception. When the request named a deposit subaddress (H-I-A-T-C) it
+    // asserted a route the proof cannot support, so signature_valid stays false
+    // even though spend_authority_valid is true. A pre-route_verified client
+    // reading only this field then declines rather than crediting the wrong
+    // invoice; a current client reads all three fields and loses nothing.
     bool signature_valid;
     bool spend_authority_valid = false;
     bool route_verified = false;
