@@ -2095,6 +2095,125 @@ TEST(PqWalletIntegration, LegacyContainerIsUpgradedOnOpen) {
   boost::filesystem::remove(backup);
 }
 
+// An existing backup is never overwritten.
+//
+// The v9 format authenticates nothing beyond a four-byte magic, so a single
+// flipped ciphertext bit produces a different seed that still migrates and still
+// passes every read-back check -- those compare the new file against what was
+// read, not against what was originally written. An older .v9 may therefore hold
+// the only intact copy of the real seed, and removing it to make room is the one
+// step that turns a recoverable corruption into a permanent loss.
+TEST(PqWalletIntegration, MigrationNeverOverwritesAnExistingBackup) {
+  System::Dispatcher dispatcher;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(1000000).upgradeHeightV6(1000000)
+      .currency();
+  TestBlockchainGenerator generator(currency);
+  INodeTrivialRefreshStub node(generator);
+
+  const std::string path = "pq_legacy_noclobber.wallet";
+  const std::string firstBackup = path + ".v9";
+  const std::string secondBackup = path + ".v9.1";
+  boost::filesystem::remove(path);
+  boost::filesystem::remove(firstBackup);
+  boost::filesystem::remove(secondBackup);
+
+  // An earlier migration already left a backup. Stand in for it with a file
+  // whose exact bytes we can check afterwards.
+  const std::string sentinel = "the older backup, which must survive";
+  {
+    std::ofstream existing(firstBackup, std::ios::binary);
+    existing << sentinel;
+  }
+
+  CryptoPQ::SeedMaster seed{};
+  for (std::size_t i = 0; i < seed.size(); ++i) {
+    seed[i] = static_cast<uint8_t>(i * 5 + 2);
+  }
+  writeLegacyWallet(path, "pass", seed, 1700000000);
+  ASSERT_EQ(CryptoNote::WALLET_CONTAINER_VERSION_LEGACY, walletFileVersion(path));
+
+  {
+    CryptoNote::WalletGreen wallet(dispatcher, currency, node, logger);
+    wallet.load(path, "pass");
+    EXPECT_EQ(1u, wallet.getAddressCount());
+    wallet.shutdown();
+  }
+
+  // The upgrade happened...
+  EXPECT_EQ(CryptoNote::WALLET_CONTAINER_VERSION, walletFileVersion(path));
+
+  // ...the older backup is byte-for-byte untouched...
+  ASSERT_TRUE(boost::filesystem::exists(firstBackup));
+  {
+    std::ifstream kept(firstBackup, std::ios::binary);
+    std::string contents((std::istreambuf_iterator<char>(kept)),
+                         std::istreambuf_iterator<char>());
+    EXPECT_EQ(sentinel, contents)
+        << "the pre-existing backup was overwritten by this migration";
+  }
+
+  // ...and this migration's own backup went to the next free name.
+  ASSERT_TRUE(boost::filesystem::exists(secondBackup));
+  EXPECT_EQ(CryptoNote::WALLET_CONTAINER_VERSION_LEGACY, walletFileVersion(secondBackup));
+
+  boost::filesystem::remove(path);
+  boost::filesystem::remove(firstBackup);
+  boost::filesystem::remove(secondBackup);
+}
+
+// Numbered copies accumulate rather than replacing one another, so a wallet that
+// has been through several migrations still has every earlier state.
+TEST(PqWalletIntegration, EachMigrationTakesTheNextFreeBackupName) {
+  System::Dispatcher dispatcher;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(1000000).upgradeHeightV6(1000000)
+      .currency();
+  TestBlockchainGenerator generator(currency);
+  INodeTrivialRefreshStub node(generator);
+
+  const std::string path = "pq_legacy_backupnames.wallet";
+  std::vector<std::string> names = { path + ".v9", path + ".v9.1", path + ".v9.2" };
+  boost::filesystem::remove(path);
+  for (const std::string& name : names) {
+    boost::filesystem::remove(name);
+  }
+
+  // Three migrations of three different legacy wallets at the same path.
+  for (std::size_t round = 0; round < names.size(); ++round) {
+    CryptoPQ::SeedMaster seed{};
+    for (std::size_t i = 0; i < seed.size(); ++i) {
+      seed[i] = static_cast<uint8_t>(i + round * 40 + 1);
+    }
+    writeLegacyWallet(path, "pass", seed, 1700000000 + static_cast<uint64_t>(round));
+
+    CryptoNote::WalletGreen wallet(dispatcher, currency, node, logger);
+    wallet.load(path, "pass");
+    Crypto::SecretKey spend = wallet.getAddressSpendKey(0).secretKey;
+    EXPECT_EQ(0, std::memcmp(spend.data, seed.data(), sizeof(spend.data)))
+        << "round " << round;
+    wallet.shutdown();
+
+    // Every backup made so far still exists, this round's included.
+    for (std::size_t made = 0; made <= round; ++made) {
+      EXPECT_TRUE(boost::filesystem::exists(names[made]))
+          << names[made] << " disappeared during round " << round;
+    }
+    boost::filesystem::remove(path);
+  }
+
+  boost::filesystem::remove(path);
+  for (const std::string& name : names) {
+    boost::filesystem::remove(name);
+  }
+}
+
 TEST(PqWalletIntegration, LegacyContainerWithAWrongPasswordIsLeftAlone) {
   System::Dispatcher dispatcher;
   Logging::ConsoleLogger logger(Logging::ERROR);
