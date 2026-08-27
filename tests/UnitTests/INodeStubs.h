@@ -115,7 +115,10 @@ public:
   // from the very generator the test drives, so there is no third party between
   // the wallet and the registry. Tests that exercise account numbers need this;
   // tests of the trust boundary itself use their own nodes.
-  bool isTrustedResolver() const override { return true; }
+  bool isTrustedResolver() const override { return m_trustedResolver; }
+  // Settable so a test can stand on the other side of the boundary without a
+  // second stub. Defaults to trusted, which is what the stub models.
+  void setTrustedResolver(bool trusted) { m_trustedResolver = trusted; }
 
   // PQ account registry resolved on-demand by scanning the generator's chain for a
   // TransactionExtraPqAccountRegistration tag. Account number = (block height, in-block
@@ -158,6 +161,8 @@ public:
   void waitForAsyncContexts();
 
 protected:
+  bool m_trustedResolver = true;
+
   void doGetNewBlocks(std::vector<Crypto::Hash> knownBlockIds, std::vector<CryptoNote::block_complete_entry>& newBlocks,
           uint32_t& startHeight, std::vector<CryptoNote::Block> blockchain, const Callback& callback);
   void doGetTransactionOutsGlobalIndices(const Crypto::Hash& transactionHash, std::vector<uint32_t>& outsGlobalIndices, const Callback& callback);

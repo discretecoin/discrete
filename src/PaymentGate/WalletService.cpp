@@ -1457,7 +1457,21 @@ const char* depositSchemeName(CryptoNote::PqDepositScheme s) {
 }
 
 // Resolve this wallet's OWN PQ account registration coords (H, I) via the node.
-// `registered` is false (with H=I=0) when the wallet has no PQ identity or is unregistered.
+// `registered` is false (with H=I=0) when the wallet has no PQ identity or is
+// unregistered.
+//
+// These coordinates are not internal bookkeeping. Both deposit endpoints render
+// them as H-I-A-T-C and hand that to payers, so a daemon answering with
+// coordinates of its choosing chooses who gets paid -- and A is only 20 bits, so
+// a registration ground to collide with it redirects payers who resolve through
+// an honest node. Hence lookupOwnPqAccount rather than a bare getPqAccount: it
+// refuses on a daemon the operator has not trusted, and confirms the coordinates
+// resolve back to this wallet's own full keys.
+//
+// Every outcome that is not "confirmed" and not "plainly unregistered" is an
+// error here. Returning it as "unregistered" would read to a caller as a normal
+// empty state, and the list endpoint would answer an empty list rather than
+// saying it declined -- a silent failure exactly where silence is dangerous.
 std::error_code resolveOwnPqRegistration(CryptoNote::INode& node, CryptoNote::WalletGreen& gw,
                                          bool& registered, uint32_t& blockHeight, uint32_t& txIndex) {
   registered = false;
@@ -1467,14 +1481,24 @@ std::error_code resolveOwnPqRegistration(CryptoNote::INode& node, CryptoNote::Wa
   if (!gw.getPqRegistrationKeysHex(viewHex, spendHex)) {
     return std::error_code();  // no spend authority: nothing registered
   }
-  auto completed = std::promise<std::error_code>();
-  auto fut = completed.get_future();
-  node.getPqAccount(viewHex, spendHex, registered, blockHeight, txIndex,
-                    [&completed](std::error_code e) {
-                      auto detached = std::move(completed);
-                      detached.set_value(e);
-                    });
-  return fut.get();
+
+  const CryptoNote::PqAccountPublication status =
+      CryptoNote::lookupOwnPqAccount(node, viewHex, spendHex, blockHeight, txIndex);
+  switch (status) {
+    case CryptoNote::PqAccountPublication::Ok:
+      registered = true;
+      return std::error_code();
+    case CryptoNote::PqAccountPublication::NotRegistered:
+      return std::error_code();  // nothing to publish, and nothing wrong
+    case CryptoNote::PqAccountPublication::UntrustedResolver:
+      return make_error_code(CryptoNote::error::UNTRUSTED_DAEMON);
+    case CryptoNote::PqAccountPublication::NotYetPayable:
+    case CryptoNote::PqAccountPublication::Mismatch:
+      return make_error_code(CryptoNote::error::ACCOUNT_NUMBER_UNCONFIRMED);
+    case CryptoNote::PqAccountPublication::QueryFailed:
+      break;
+  }
+  return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
 }
 
 }  // namespace
@@ -1533,6 +1557,8 @@ std::error_code WalletService::createPqDepositAddress(std::string& address, uint
       bool registered = false;
       std::error_code rc = resolveOwnPqRegistration(node, *gw, registered, regH, regI);
       if (rc) {
+        logger(Logging::WARNING, Logging::BRIGHT_YELLOW)
+            << "Refusing to issue a deposit address: " << rc.message();
         return rc;
       }
       if (!registered) {
@@ -1577,6 +1603,8 @@ std::error_code WalletService::listPqDepositAddresses(std::vector<std::string>& 
       bool registered = false;
       std::error_code rc = resolveOwnPqRegistration(node, *gw, registered, regH, regI);
       if (rc) {
+        logger(Logging::WARNING, Logging::BRIGHT_YELLOW)
+            << "Refusing to list deposit addresses: " << rc.message();
         return rc;
       }
       // If unregistered we simply cannot render H-I-A-T-C; return the empty list.

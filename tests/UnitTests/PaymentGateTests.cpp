@@ -364,6 +364,119 @@ TEST_F(PaymentGateTest, IndexModeRegistersAndIssuesHITC) {
   EXPECT_EQ(depositIndices[0], 1u);
 }
 
+// Both deposit endpoints publish daemon-supplied coordinates: they take (H, I)
+// from the node and render H-I-A-T-C for payers. A daemon that answers with
+// coordinates of its own choosing therefore decides who gets paid, and the
+// 20-bit A fingerprint is short enough to grind a colliding registration, so it
+// catches nothing. Neither endpoint may go through an untrusted daemon.
+//
+// These are endpoint-level, not helper-level, on purpose: the bypass being
+// guarded against was a helper reaching past the trust gate while the endpoints
+// above it looked correct.
+TEST_F(PaymentGateTest, DepositEndpointsFailClosedOnAnUntrustedDaemon) {
+  auto cfg = createWalletConfiguration("pg_untrusted.bin");
+  unlink(cfg.walletFile.c_str());
+  generateNewWallet(currency, cfg, logger, dispatcher, nodeStub,
+                    CryptoNote::PqDepositScheme::SingleKeyIndex);
+  auto service = createWalletService(cfg);
+
+  std::string regTxHash;
+  ASSERT_FALSE(service->registerPqAccount(regTxHash));
+  ASSERT_FALSE(regTxHash.empty());
+
+  // Baseline: with a trusted daemon both endpoints work, so a later refusal is
+  // the trust gate and not some unrelated failure.
+  std::string trustedAddr;
+  uint32_t trustedIdx = 0;
+  ASSERT_FALSE(service->createPqDepositAddress(trustedAddr, trustedIdx));
+  EXPECT_EQ(trustedIdx, 1u);
+  ASSERT_FALSE(trustedAddr.empty());
+
+  std::vector<std::string> baselineAddrs;
+  std::vector<uint32_t> baselineIndices;
+  ASSERT_FALSE(service->listPqDepositAddresses(baselineAddrs, baselineIndices));
+  ASSERT_EQ(baselineAddrs.size(), 1u);
+
+  nodeStub.setTrustedResolver(false);
+
+  // create: refused, with the reason the operator needs, and nothing issued. The
+  // deposit index must not be consumed either -- a refusal that still burned an
+  // index would silently shift every later deposit.
+  {
+    std::string address = "untouched";
+    uint32_t index = 99;
+    std::error_code ec = service->createPqDepositAddress(address, index);
+    EXPECT_EQ(make_error_code(CryptoNote::error::UNTRUSTED_DAEMON), ec);
+    EXPECT_EQ(std::string("untouched"), address);
+    EXPECT_EQ(99u, index);
+  }
+
+  // list: refused rather than answering an empty list, which a caller would read
+  // as "this wallet has no deposit addresses".
+  {
+    std::vector<std::string> addresses;
+    std::vector<uint32_t> indices;
+    std::error_code ec = service->listPqDepositAddresses(addresses, indices);
+    EXPECT_EQ(make_error_code(CryptoNote::error::UNTRUSTED_DAEMON), ec);
+    EXPECT_TRUE(addresses.empty());
+    EXPECT_TRUE(indices.empty());
+  }
+
+  // The account-number status field is refused on the same grounds: it is the
+  // number the operator would hand out.
+  {
+    bool registered = true;
+    std::string accountNumber = "untouched";
+    uint32_t h = 0, i = 0;
+    ASSERT_FALSE(service->getPqAccountStatus(registered, accountNumber, h, i));
+    EXPECT_FALSE(registered);
+    EXPECT_TRUE(accountNumber.empty()) << accountNumber;
+  }
+
+  // Trust restored: the endpoints work again, the earlier deposit is still
+  // there, and its index was never consumed by the refusals.
+  nodeStub.setTrustedResolver(true);
+  {
+    std::vector<std::string> addresses;
+    std::vector<uint32_t> indices;
+    ASSERT_FALSE(service->listPqDepositAddresses(addresses, indices));
+    ASSERT_EQ(addresses.size(), 1u);
+    EXPECT_EQ(addresses[0], trustedAddr);
+    ASSERT_EQ(indices.size(), 1u);
+    EXPECT_EQ(indices[0], 1u);
+
+    std::string address;
+    uint32_t index = 0;
+    ASSERT_FALSE(service->createPqDepositAddress(address, index));
+    EXPECT_EQ(index, 2u) << "a refused request must not have consumed an index";
+  }
+}
+
+// A wallet whose deposits do not embed (H, I) needs no daemon to render them, so
+// the trust gate must not block it. Fail closed, but only where the daemon
+// actually decides something.
+TEST_F(PaymentGateTest, AggregatedDepositsAreUnaffectedByDaemonTrust) {
+  auto cfg = createWalletConfiguration("pg_untrusted_agg.bin");
+  unlink(cfg.walletFile.c_str());
+  generateNewWallet(currency, cfg, logger, dispatcher, nodeStub,
+                    CryptoNote::PqDepositScheme::AggregatedMultikey);
+  auto service = createWalletService(cfg);
+
+  nodeStub.setTrustedResolver(false);
+
+  std::string address;
+  uint32_t index = 0;
+  ASSERT_FALSE(service->createPqDepositAddress(address, index));
+  EXPECT_FALSE(address.empty());
+
+  std::vector<std::string> addresses;
+  std::vector<uint32_t> indices;
+  ASSERT_FALSE(service->listPqDepositAddresses(addresses, indices));
+  EXPECT_EQ(addresses.size(), 1u);
+
+  nodeStub.setTrustedResolver(true);
+}
+
 // Message signing (ML-DSA over the single spend identity), the mnemonic (the master
 // seed in Electrum words), and the (absent) classical view key.
 TEST_F(PaymentGateTest, MessageSigningMnemonicAndViewKeyShape) {
