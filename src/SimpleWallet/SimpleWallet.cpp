@@ -131,7 +131,8 @@ const command_line::arg_descriptor<bool> arg_non_deterministic = { "non-determin
 const command_line::arg_descriptor<std::string> arg_log_file = {"log-file", "Set the log file location", ""};
 const command_line::arg_descriptor<uint32_t> arg_log_level = { "log-level", "Set the log verbosity level", INFO, true };
 const command_line::arg_descriptor<bool> arg_testnet = { "testnet", "Used to deploy test nets. The daemon must be launched with --testnet flag", false };
-const command_line::arg_descriptor<bool> arg_reset = { "reset", "Discard cache data and start synchronizing from scratch", false };
+const command_line::arg_descriptor<bool> arg_reset = { "reset", "Deprecated alias for --rescan. Kept because it has always meant \"discard the cache and resynchronize\", which never deleted anything; the destructive operation is the interactive 'reset' command.", false };
+const command_line::arg_descriptor<bool> arg_rescan = { "rescan", "Discard cache data and synchronize from scratch. Recipient addresses and payment proofs are kept.", false };
 const command_line::arg_descriptor<uint32_t> arg_scan_height = { "scan-height", "The height to begin scanning a wallet from", 0 };
 const command_line::arg_descriptor< std::vector<std::string> > arg_command = { "command", "" };
 
@@ -471,7 +472,8 @@ simple_wallet::simple_wallet(System::Dispatcher& dispatcher, const CryptoNote::C
   m_consoleHandler.setHandler("address", std::bind(&simple_wallet::pq_address, this, std::placeholders::_1), "Show this wallet's address, derived from the seed.");
   m_consoleHandler.setHandler("save_address", std::bind(&simple_wallet::save_address_to_file, this, std::placeholders::_1), "Save current wallet public address to file");
   m_consoleHandler.setHandler("save", std::bind(&simple_wallet::save, this, std::placeholders::_1), "Save wallet synchronized data");
-  m_consoleHandler.setHandler("reset", std::bind(&simple_wallet::reset, this, std::placeholders::_1), "Discard cache data and start synchronizing from the start");
+  m_consoleHandler.setHandler("rescan", std::bind(&simple_wallet::rescan, this, std::placeholders::_1), "Rescan the blockchain from the start. Keeps recipient addresses and payment proofs");
+  m_consoleHandler.setHandler("reset", std::bind(&simple_wallet::reset, this, std::placeholders::_1), "Rescan the blockchain AND delete locally stored recipient addresses and payment proofs");
   m_consoleHandler.setHandler("payment_id", std::bind(&simple_wallet::payment_id, this, std::placeholders::_1), "Generate random Payment ID");
   m_consoleHandler.setHandler("password", std::bind(&simple_wallet::change_password, this, std::placeholders::_1), "Change password");
   m_consoleHandler.setHandler("sign_message", std::bind(&simple_wallet::sign_message, this, std::placeholders::_1), "Sign the message");
@@ -1082,8 +1084,8 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
       "**********************************************************************";
   }
 
-  if (command_line::has_arg(vm, arg_reset))
-    reset({});
+  if (command_line::has_arg(vm, arg_reset) || command_line::has_arg(vm, arg_rescan))
+    rescan({});
 
   return true;
 }
@@ -1426,23 +1428,66 @@ bool simple_wallet::save(const std::vector<std::string> &args)
   return true;
 }
 
+// Rebuild everything the chain can supply, and keep everything it cannot.
+bool simple_wallet::rescan(const std::vector<std::string> &args) {
+  armSynchronizationWait();
+  m_wallet->rescan();
+  success_msg_writer(true) << "Rescan started; recipient addresses and payment proofs were kept.";
+  waitForSynchronization();
+  return true;
+}
+
+// The destructive one. Everything it removes is local: the chain cannot supply a
+// recipient address or a payment proof back, and neither can the seed, so this
+// is the only operation in the wallet that loses information permanently. Both
+// prompts are deliberate -- the second is unskippable by a stray Enter.
 bool simple_wallet::reset(const std::vector<std::string> &args) {
-  {
-    std::unique_lock<std::mutex> lock(m_walletSynchronizedMutex);
-    m_walletSynchronized = false;
+  fail_msg_writer() << "WARNING: reset deletes the recipient addresses and payment proofs stored in this wallet.";
+  fail_msg_writer() << "Transaction history may then show (n/a), and the removed details cannot be reconstructed";
+  fail_msg_writer() << "from the blockchain or from your seed.";
+  fail_msg_writer() << "This is logical deletion, not forensic erasure: backups, exports and storage remnants may keep copies.";
+  success_msg_writer() << "Account keys, tracking credentials and deposit configuration are retained.";
+  success_msg_writer() << "If you only want to re-scan the chain, use 'rescan' instead -- it keeps all of the above.";
+
+  std::cout << "Continue with destructive reset? (y/N): ";
+  std::string answer;
+  std::getline(std::cin, answer);
+  if (answer != "y" && answer != "Y") {
+    success_msg_writer() << "Reset cancelled.";
+    return true;
   }
 
-  m_wallet->reset();
-  success_msg_writer(true) << "Reset completed successfully.";
+  std::cout << "Type ERASE to confirm: ";
+  std::string confirmation;
+  std::getline(std::cin, confirmation);
+  if (confirmation != "ERASE") {
+    success_msg_writer() << "Reset cancelled.";
+    return true;
+  }
 
+  armSynchronizationWait();
+  m_wallet->reset();
+  success_msg_writer(true) << "Reset completed; local recipient and payment-proof metadata was removed.";
+  waitForSynchronization();
+  return true;
+}
+
+// Clear the flag BEFORE the rebuild is started, never after: the observer that
+// sets it can fire as soon as the rebuild is under way, and clearing it
+// afterwards would discard that notification and wait for one that never comes.
+void simple_wallet::armSynchronizationWait() {
+  std::unique_lock<std::mutex> lock(m_walletSynchronizedMutex);
+  m_walletSynchronized = false;
+}
+
+// Both operations restart synchronization from scratch; block until it settles
+// so the prompt does not come back over a half-scanned wallet.
+void simple_wallet::waitForSynchronization() {
   std::unique_lock<std::mutex> lock(m_walletSynchronizedMutex);
   while (!m_walletSynchronized) {
     m_walletSynchronizedCV.wait(lock);
   }
-
   std::cout << std::endl;
-
-  return true;
 }
 
 bool simple_wallet::change_password(const std::vector<std::string>& args) {
@@ -2516,6 +2561,7 @@ int main(int argc, char* argv[]) {
   command_line::add_arg(desc_params, arg_log_level);
   command_line::add_arg(desc_params, arg_testnet);
   command_line::add_arg(desc_params, arg_reset);
+  command_line::add_arg(desc_params, arg_rescan);
   command_line::add_arg(desc_params, arg_scan_height);
   Tools::wallet_rpc_server::init_options(desc_params);
 

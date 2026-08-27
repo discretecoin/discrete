@@ -25,6 +25,7 @@
 #include <cassert>
 #include <fstream>
 #include <future>
+#include <limits>
 #include <numeric>
 #include <set>
 #include <tuple>
@@ -2326,11 +2327,20 @@ void WalletGreen::restorePqStateBlob() {
     return;
   }
   std::stringstream in(m_pqState);
-  auto readSection = [&in](std::string& s) -> bool {
+  auto readSection = [&in, this](std::string& s) -> bool {
     uint64_t len = 0;
     in.read(reinterpret_cast<char*>(&len), sizeof(len));
     if (!in) return false;
-    s.resize(len);
+    const std::streampos position = in.tellg();
+    if (position < 0) return false;
+    const uint64_t consumed = static_cast<uint64_t>(position);
+    if (consumed > m_pqState.size()) return false;
+    const uint64_t remaining = static_cast<uint64_t>(m_pqState.size()) - consumed;
+    if (len > remaining ||
+        len > static_cast<uint64_t>((std::numeric_limits<std::streamsize>::max)())) {
+      return false;
+    }
+    s.resize(static_cast<std::size_t>(len));
     if (len) in.read(&s[0], static_cast<std::streamsize>(len));
     return static_cast<bool>(in);
   };
@@ -2351,11 +2361,15 @@ void WalletGreen::restorePqStateBlob() {
     if (readSection(sentPaymentsBlob) && !sentPaymentsBlob.empty()) {
       std::stringstream sent(sentPaymentsBlob);
       SentPaymentsStore cached;
-      cached.load(sent);
-      for (const auto& item : cached.records()) {
-        if (!m_sentPayments.recordChecked(item.first, item.second))
-          m_logger(WARNING) << "Conflicting cached payment-proof record ignored for "
-                            << Common::podToHex(item.first);
+      std::string sentPaymentsError;
+      if (!cached.load(sent, &sentPaymentsError)) {
+        m_logger(WARNING) << "Rejected sent-payments cache: " << sentPaymentsError;
+      } else {
+        for (const auto& item : cached.records()) {
+          if (!m_sentPayments.recordChecked(item.first, item.second))
+            m_logger(WARNING) << "Conflicting cached payment-proof record ignored for "
+                              << Common::podToHex(item.first);
+        }
       }
     }
 

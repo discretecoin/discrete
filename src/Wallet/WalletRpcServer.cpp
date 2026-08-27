@@ -259,6 +259,7 @@ void wallet_rpc_server::processRequest(const CryptoNote::HttpRequest& request, C
             { "store"             , makeMemberMethod(&wallet_rpc_server::on_store)             },
             { "stop_wallet"       , makeMemberMethod(&wallet_rpc_server::on_stop_wallet)       },
             { "reset"             , makeMemberMethod(&wallet_rpc_server::on_reset)             },
+            { "rescan"            , makeMemberMethod(&wallet_rpc_server::on_rescan)            },
             { "get_payments"      , makeMemberMethod(&wallet_rpc_server::on_get_payments)      },
             { "get_transfers"     , makeMemberMethod(&wallet_rpc_server::on_get_transfers)     },
             { "get_last_transfers", makeMemberMethod(&wallet_rpc_server::on_get_last_transfers)},
@@ -670,10 +671,29 @@ bool wallet_rpc_server::on_query_key(const wallet_rpc::COMMAND_RPC_QUERY_KEY::re
   return true;
 }
 
-bool wallet_rpc_server::on_reset(const wallet_rpc::COMMAND_RPC_RESET::request& req, 
+bool wallet_rpc_server::on_reset(const wallet_rpc::COMMAND_RPC_RESET::request& req,
   wallet_rpc::COMMAND_RPC_RESET::response& res)
 {
+  // Fail closed. Over RPC there is nobody to warn, so an unqualified "reset"
+  // must not be the request that deletes a wallet's payment proofs -- and a
+  // caller that meant the harmless operation has `rescan` for it. Older callers
+  // sent no field at all, so they land here and are told what to do rather than
+  // silently getting either behaviour.
+  if (!req.confirm_destructive) {
+    throw JsonRpc::JsonRpcError(JsonRpc::errInvalidParams,
+      "reset deletes this wallet's recipient addresses and payment proofs, which cannot be "
+      "recovered from the blockchain or the seed. Pass \"confirm_destructive\": true if that "
+      "is what you want, or call \"rescan\" to re-scan the chain and keep them.");
+  }
+
   m_wallet.reset();
+  return true;
+}
+
+bool wallet_rpc_server::on_rescan(const wallet_rpc::COMMAND_RPC_RESCAN::request& req,
+  wallet_rpc::COMMAND_RPC_RESCAN::response& res)
+{
+  m_wallet.rescan();
   return true;
 }
 

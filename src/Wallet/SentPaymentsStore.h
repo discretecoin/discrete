@@ -19,7 +19,9 @@
 
 #include <cstdint>
 #include <istream>
+#include <limits>
 #include <ostream>
+#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -75,6 +77,22 @@ public:
                                      std::hash<Crypto::Hash>, HashEqual>;
   // Legacy cache helper. Evidence-bearing paths use recordChecked() below.
   void record(const Crypto::Hash& txid, SentPaymentRecord record) {
+    auto existing = m_records.find(txid);
+    uint64_t oldRecipients = 0;
+    uint64_t oldStringBytes = 0;
+    if (existing != m_records.end()) {
+      measure(existing->second, oldRecipients, oldStringBytes);
+    }
+    uint64_t newRecipients = 0;
+    uint64_t newStringBytes = 0;
+    if ((existing == m_records.end() && m_records.size() >= kMaxRecords) ||
+        !measure(record, newRecipients, newStringBytes) ||
+        newRecipients > kMaxTotalRecipients - (m_totalRecipients - oldRecipients) ||
+        newStringBytes > kMaxTotalStringBytes - (m_totalStringBytes - oldStringBytes)) {
+      throw std::runtime_error("sent-payment record exceeds persistence limits");
+    }
+    m_totalRecipients = m_totalRecipients - oldRecipients + newRecipients;
+    m_totalStringBytes = m_totalStringBytes - oldStringBytes + newStringBytes;
     m_records[txid] = std::move(record);
   }
 
@@ -83,7 +101,17 @@ public:
   bool recordChecked(const Crypto::Hash& txid, const SentPaymentRecord& record) {
     auto it = m_records.find(txid);
     if (it == m_records.end()) {
+      uint64_t recipients = 0;
+      uint64_t stringBytes = 0;
+      if (m_records.size() >= kMaxRecords ||
+          !measure(record, recipients, stringBytes) ||
+          recipients > kMaxTotalRecipients - m_totalRecipients ||
+          stringBytes > kMaxTotalStringBytes - m_totalStringBytes) {
+        return false;
+      }
       m_records.emplace(txid, record);
+      m_totalRecipients += recipients;
+      m_totalStringBytes += stringBytes;
       return true;
     }
     return equal(it->second, record);
@@ -92,13 +120,18 @@ public:
   bool remove(const Crypto::Hash& txid) {
     auto it = m_records.find(txid);
     if (it == m_records.end()) return false;
+    uint64_t recipients = 0;
+    uint64_t stringBytes = 0;
+    measure(it->second, recipients, stringBytes);
+    m_totalRecipients -= recipients;
+    m_totalStringBytes -= stringBytes;
     m_records.erase(it);
     return true;
   }
   const Records& records() const { return m_records; }
 
-  // The recipients we recorded for txid, or nullptr if none (incoming tx, a send made
-  // before this feature existed, or a send whose record was dropped by a reset).
+  // The recipients we recorded for txid, or nullptr if none (incoming tx or a send
+  // made before this feature existed).
   const SentPaymentRecord* find(const Crypto::Hash& txid) const {
     auto it = m_records.find(txid);
     return it == m_records.end() ? nullptr : &it->second;
@@ -106,12 +139,21 @@ public:
 
   bool empty() const { return m_records.empty(); }
   std::size_t size() const { return m_records.size(); }
-  void clear() { m_records.clear(); }
+  void clear() {
+    m_records.clear();
+    m_totalRecipients = 0;
+    m_totalStringBytes = 0;
+  }
 
   // Versioned binary form for the wallet's encrypted cache section. The caller frames
   // the blob (length-prefixed), so no magic is needed here.
   void save(std::ostream& os) const {
     const uint8_t version = kVersion;
+    if (m_records.size() > kMaxRecords ||
+        m_totalRecipients > kMaxTotalRecipients ||
+        m_totalStringBytes > kMaxTotalStringBytes) {
+      throw std::runtime_error("sent-payments store exceeds persistence limits");
+    }
     os.write(reinterpret_cast<const char*>(&version), sizeof(version));
     const uint64_t count = m_records.size();
     os.write(reinterpret_cast<const char*>(&count), sizeof(count));
@@ -127,40 +169,78 @@ public:
     }
   }
 
-  // Restore from a section written by save(). Unknown/absent/corrupt input leaves the
-  // store empty rather than throwing — a missing recipient label is recoverable, a
-  // failed wallet load is not.
-  void load(std::istream& is) {
-    m_records.clear();
+  // Restore from a section written by save(). Parsing is transactional: malformed,
+  // oversized, duplicate, or trailing input is rejected without changing the
+  // existing evidence store. The caller decides whether a rejected cache section
+  // should abort the wallet load or be logged and skipped.
+  bool load(std::istream& is, std::string* error = nullptr) {
+    auto fail = [error](const char* message) {
+      if (error != nullptr) *error = message;
+      return false;
+    };
+
     uint8_t version = 0;
     is.read(reinterpret_cast<char*>(&version), sizeof(version));
     if (!is || version == 0 || version > kVersion) {
-      return;
+      return fail("unsupported or missing sent-payments version");
     }
     uint64_t count = 0;
     is.read(reinterpret_cast<char*>(&count), sizeof(count));
-    if (!is) return;
+    if (!is) return fail("truncated sent-payments record count");
+    if (count > kMaxRecords) return fail("sent-payments record count exceeds limit");
+
+    Records decoded;
+    uint64_t totalRecipients = 0;
+    uint64_t totalStringBytes = 0;
     for (uint64_t i = 0; i < count; ++i) {
       Crypto::Hash txid{};
       is.read(reinterpret_cast<char*>(txid.data), sizeof(txid.data));
       uint32_t n = 0;
       is.read(reinterpret_cast<char*>(&n), sizeof(n));
-      if (!is) { m_records.clear(); return; }
+      if (!is) return fail("truncated sent-payments record header");
+      if (n > kMaxRecipientsPerRecord ||
+          totalRecipients > kMaxTotalRecipients - n) {
+        return fail("sent-payments recipient count exceeds limit");
+      }
+      totalRecipients += n;
+
       SentPaymentRecord rec;
       rec.recipients.reserve(n);
       for (uint32_t j = 0; j < n; ++j) {
         SentPaymentEntry e;
-        if (!readString(is, e.address)) { m_records.clear(); return; }
+        if (!readString(is, e.address, kMaxAddressBytes, totalStringBytes)) {
+          return fail("invalid sent-payments address");
+        }
         is.read(reinterpret_cast<char*>(&e.amount), sizeof(e.amount));
-        if (!readString(is, e.proof)) { m_records.clear(); return; }
+        if (!is) return fail("truncated sent-payments amount");
+        if (!readString(is, e.proof, kMaxProofBytes, totalStringBytes)) {
+          return fail("invalid sent-payments proof");
+        }
         rec.recipients.push_back(std::move(e));
       }
-      m_records.emplace(txid, std::move(rec));
+      if (!decoded.emplace(txid, std::move(rec)).second) {
+        return fail("duplicate sent-payments transaction id");
+      }
     }
+    if (is.peek() != std::char_traits<char>::eof()) {
+      return fail("trailing sent-payments data");
+    }
+
+    m_records.swap(decoded);
+    m_totalRecipients = totalRecipients;
+    m_totalStringBytes = totalStringBytes;
+    if (error != nullptr) error->clear();
+    return true;
   }
 
 private:
   static constexpr uint8_t kVersion = 1;
+  static constexpr uint64_t kMaxRecords = 100000;
+  static constexpr uint32_t kMaxRecipientsPerRecord = 64;
+  static constexpr uint64_t kMaxTotalRecipients = 1000000;
+  static constexpr uint64_t kMaxAddressBytes = 16 * 1024;
+  static constexpr uint64_t kMaxProofBytes = 1024 * 1024;
+  static constexpr uint64_t kMaxTotalStringBytes = 64 * 1024 * 1024;
 
   static void writeString(std::ostream& os, const std::string& s) {
     const uint64_t len = s.size();
@@ -168,16 +248,20 @@ private:
     if (len) os.write(s.data(), static_cast<std::streamsize>(len));
   }
 
-  static bool readString(std::istream& is, std::string& s) {
+  static bool readString(std::istream& is, std::string& s, uint64_t maxBytes,
+                         uint64_t& totalStringBytes) {
     uint64_t len = 0;
     is.read(reinterpret_cast<char*>(&len), sizeof(len));
     if (!is) return false;
-    // Bound the allocation so a corrupt length cannot exhaust memory. Addresses and
-    // proof blobs are kilobytes at most; 16 MiB is far above any legitimate value.
-    if (len > (16ull << 20)) return false;
+    if (len > maxBytes || len > kMaxTotalStringBytes - totalStringBytes ||
+        len > static_cast<uint64_t>(std::numeric_limits<std::streamsize>::max())) {
+      return false;
+    }
     s.resize(static_cast<std::size_t>(len));
     if (len) is.read(&s[0], static_cast<std::streamsize>(len));
-    return static_cast<bool>(is);
+    if (!is) return false;
+    totalStringBytes += len;
+    return true;
   }
 
   static bool equal(const SentPaymentRecord& a, const SentPaymentRecord& b) {
@@ -190,7 +274,31 @@ private:
     return true;
   }
 
+  static bool measure(const SentPaymentRecord& record, uint64_t& recipients,
+                      uint64_t& stringBytes) {
+    recipients = record.recipients.size();
+    stringBytes = 0;
+    if (recipients > kMaxRecipientsPerRecord) {
+      return false;
+    }
+    for (const auto& entry : record.recipients) {
+      if (entry.address.size() > kMaxAddressBytes ||
+          entry.proof.size() > kMaxProofBytes ||
+          entry.address.size() > kMaxTotalStringBytes - stringBytes) {
+        return false;
+      }
+      stringBytes += entry.address.size();
+      if (entry.proof.size() > kMaxTotalStringBytes - stringBytes) {
+        return false;
+      }
+      stringBytes += entry.proof.size();
+    }
+    return true;
+  }
+
   Records m_records;
+  uint64_t m_totalRecipients = 0;
+  uint64_t m_totalStringBytes = 0;
 };
 
 }  // namespace CryptoNote

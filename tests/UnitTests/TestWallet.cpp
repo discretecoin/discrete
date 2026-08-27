@@ -2143,8 +2143,9 @@ TEST(WalletLegacySmoke, FailedProtectedMigrationCanRestoreDetachedSeed) {
 
 // DiscreteWallet uses WalletLegacy rather than WalletGreen. Exercise the exact
 // GUI send/history backend and prove that its original recipient label and
-// payment proof survive a full cache-backed wallet save and reload.
-TEST(WalletLegacySmoke, StoredRecipientAndPaymentProofSurviveCacheReload) {
+// payment proof survive a full cache-backed wallet save, reload, and safe rescan,
+// while an explicitly destructive reset removes only that local payer evidence.
+TEST(WalletLegacySmoke, RescanPreservesAndResetDiscardsStoredRecipientAndPaymentProof) {
   System::Dispatcher dispatcher;
   (void)dispatcher;  // WalletLegacy manages its own threads
   Logging::ConsoleLogger logger(Logging::ERROR);
@@ -2208,6 +2209,72 @@ TEST(WalletLegacySmoke, StoredRecipientAndPaymentProofSurviveCacheReload) {
   }
   wallet.shutdown();
 
+  // Corrupt only the recoverable scan cursor while leaving the later payer
+  // evidence section valid. Loading must fall back to rescan without skipping
+  // recipient/proof metadata that the blockchain cannot reconstruct.
+  CryptoNote::AccountBase serializedAccount;
+  CryptoNote::WalletLegacySerializer cacheReader(serializedAccount);
+  std::string cache;
+  {
+    std::stringstream encoded(serialized.str());
+    ASSERT_NO_THROW(cacheReader.deserialize(encoded, "pass", cache));
+  }
+  ASSERT_GE(cache.size(), 8u);
+  std::array<std::string, 6> cacheSections;
+  std::size_t cacheOffset = 8;
+  for (std::string& section : cacheSections) {
+    ASSERT_LE(sizeof(uint64_t), cache.size() - cacheOffset);
+    uint64_t length = 0;
+    std::memcpy(&length, cache.data() + cacheOffset, sizeof(length));
+    cacheOffset += sizeof(length);
+    ASSERT_LE(length, static_cast<uint64_t>(cache.size() - cacheOffset));
+    section.assign(cache.data() + cacheOffset, static_cast<std::size_t>(length));
+    cacheOffset += static_cast<std::size_t>(length);
+  }
+  ASSERT_EQ(cacheOffset, cache.size());
+  ASSERT_FALSE(cacheSections[4].empty());
+
+  cacheSections[1].assign(1, static_cast<char>(0x80));  // unterminated varint
+  {
+    CryptoNote::SynchronizationState invalidState(currency.genesisBlockHash());
+    std::stringstream invalidConsumerState(cacheSections[1]);
+    EXPECT_ANY_THROW(invalidState.load(invalidConsumerState));
+  }
+
+  std::stringstream corruptedCache;
+  corruptedCache.write(cache.data(), 8);
+  for (const std::string& section : cacheSections) {
+    const uint64_t length = section.size();
+    corruptedCache.write(reinterpret_cast<const char*>(&length), sizeof(length));
+    corruptedCache.write(section.data(), static_cast<std::streamsize>(section.size()));
+  }
+  std::stringstream corruptedWallet;
+  CryptoNote::WalletLegacySerializer cacheWriter(
+      serializedAccount, cacheReader.loadedVersion());
+  ASSERT_NO_THROW(cacheWriter.serialize(
+      corruptedWallet, "pass", true, corruptedCache.str()));
+
+  corruptedWallet.seekg(0);
+  CryptoNote::WalletLegacy recoveredFromBadScanCache(currency, node, logger);
+  CryptoNote::WalletHelper::InitWalletResultObserver badCacheInitObserver;
+  {
+    CryptoNote::WalletHelper::IWalletRemoveObserverGuard guard(
+        recoveredFromBadScanCache, badCacheInitObserver);
+    std::future<std::error_code> loaded =
+        badCacheInitObserver.initResult.get_future();
+    recoveredFromBadScanCache.initAndLoad(corruptedWallet, "pass");
+    ASSERT_FALSE(loaded.get());
+  }
+  CryptoNote::SentPaymentRecord recoveredEvidence;
+  ASSERT_TRUE(recoveredFromBadScanCache.copyPaymentProofs(
+      transaction.hash, recoveredEvidence));
+  ASSERT_EQ(recoveredEvidence.recipients.size(), 1u);
+  EXPECT_EQ(recoveredEvidence.recipients[0].address, recipient);
+  EXPECT_EQ(recoveredEvidence.recipients[0].amount, 300000u);
+  EXPECT_EQ(recoveredEvidence.recipients[0].proof,
+            stored.recipients[0].proof);
+  recoveredFromBadScanCache.shutdown();
+
   serialized.seekg(0);
   CryptoNote::WalletLegacy reloaded(currency, node, logger);
   CryptoNote::WalletHelper::InitWalletResultObserver initObserver;
@@ -2233,7 +2300,53 @@ TEST(WalletLegacySmoke, StoredRecipientAndPaymentProofSurviveCacheReload) {
   EXPECT_EQ(restoredTransfer.address, recipient);
   EXPECT_EQ(restoredTransfer.amount, 300000);
 
+  reloaded.rescan();
+  CryptoNote::SentPaymentRecord rescanned;
+  ASSERT_TRUE(reloaded.copyPaymentProofs(transaction.hash, rescanned));
+  ASSERT_EQ(rescanned.recipients.size(), 1u);
+  EXPECT_EQ(rescanned.recipients[0].address, recipient);
+  EXPECT_EQ(rescanned.recipients[0].amount, 300000u);
+  EXPECT_EQ(rescanned.recipients[0].proof, stored.recipients[0].proof);
+
+  CryptoNote::AccountKeys rescannedKeys;
+  reloaded.getAccountKeys(rescannedKeys);
+  EXPECT_EQ(rescannedKeys.viewSecretKey, accountKeys.viewSecretKey);
+  EXPECT_EQ(rescannedKeys.spendSecretKey, accountKeys.spendSecretKey);
+
+  reloaded.reset();
+  CryptoNote::SentPaymentRecord discarded;
+  EXPECT_FALSE(reloaded.copyPaymentProofs(transaction.hash, discarded));
+
+  CryptoNote::AccountKeys resetKeys;
+  reloaded.getAccountKeys(resetKeys);
+  EXPECT_EQ(resetKeys.viewSecretKey, accountKeys.viewSecretKey);
+  EXPECT_EQ(resetKeys.spendSecretKey, accountKeys.spendSecretKey);
+
+  std::stringstream afterReset;
+  CryptoNote::WalletHelper::SaveWalletResultObserver afterResetSaveObserver;
+  {
+    CryptoNote::WalletHelper::IWalletRemoveObserverGuard guard(reloaded, afterResetSaveObserver);
+    std::future<std::error_code> saved = afterResetSaveObserver.saveResult.get_future();
+    reloaded.save(afterReset, true, true);
+    ASSERT_FALSE(saved.get());
+  }
   reloaded.shutdown();
+
+  afterReset.seekg(0);
+  CryptoNote::WalletLegacy reopenedAfterReset(currency, node, logger);
+  CryptoNote::WalletHelper::InitWalletResultObserver afterResetInitObserver;
+  {
+    CryptoNote::WalletHelper::IWalletRemoveObserverGuard guard(reopenedAfterReset, afterResetInitObserver);
+    std::future<std::error_code> loaded = afterResetInitObserver.initResult.get_future();
+    reopenedAfterReset.initAndLoad(afterReset, "pass");
+    ASSERT_FALSE(loaded.get());
+  }
+  EXPECT_FALSE(reopenedAfterReset.copyPaymentProofs(transaction.hash, discarded));
+  CryptoNote::AccountKeys reopenedKeys;
+  reopenedAfterReset.getAccountKeys(reopenedKeys);
+  EXPECT_EQ(reopenedKeys.viewSecretKey, accountKeys.viewSecretKey);
+  EXPECT_EQ(reopenedKeys.spendSecretKey, accountKeys.spendSecretKey);
+  reopenedAfterReset.shutdown();
 }
 
 // Full Index (H-I-A-T-C) receive + spend addressed by the account-number STRING: register,

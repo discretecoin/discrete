@@ -65,11 +65,13 @@ add_executable(PqSerializationBoundsTests test_serialization_bounds.cpp)
 add_executable(PqDaemonTrustTests test_daemon_trust.cpp)
 add_executable(PqMinerKeyTests test_miner_keys.cpp)
 add_executable(PqWalletLegacyEnvelopeTests test_wallet_legacy_envelope.cpp)
+add_executable(SentPaymentsStoreTests test_sent_payments_store.cpp)
 
 target_link_libraries(IntegrationTests IntegrationTestLibrary Wallet NodeRpcProxy InProcessNode P2P Rpc Http CryptoNoteProtocol Transfers Serialization System CryptoNoteCore Logging Common Crypto BlockchainExplorer Checkpoints gtest Mnemonics upnpc-static ${Boost_LIBRARIES})
 target_link_libraries(NodeRpcProxyTests NodeRpcProxy CryptoNoteCore Rpc Http Serialization System Logging Common Crypto ${Boost_LIBRARIES})
 target_link_libraries(SystemTests System gtest_main ${Boost_LIBRARIES})
 target_link_libraries(UnitTests gtest_main PaymentGate JsonRpcServer Wallet TestGenerator InProcessNode NodeRpcProxy Rpc Http Transfers Serialization System Logging BlockchainExplorer CryptoNoteCore Checkpoints Common Crypto Mnemonics ${Boost_LIBRARIES})
+target_link_libraries(SentPaymentsStoreTests Crypto gtest ${Boost_LIBRARIES})
 target_link_libraries(HashTargetTests CryptoNoteCore Crypto)
 target_link_libraries(HashTests Crypto)
 
@@ -234,6 +236,7 @@ set_property(TARGET PqSerializationBoundsTests PROPERTY OUTPUT_NAME "pq_serializ
 set_property(TARGET PqDaemonTrustTests PROPERTY OUTPUT_NAME "pq_daemon_trust_tests")
 set_property(TARGET PqMinerKeyTests PROPERTY OUTPUT_NAME "pq_miner_key_tests")
 set_property(TARGET PqWalletLegacyEnvelopeTests PROPERTY OUTPUT_NAME "pq_wallet_legacy_envelope_tests")
+set_property(TARGET SentPaymentsStoreTests PROPERTY OUTPUT_NAME "sent_payments_store_tests")
 
 add_test(HashTests hash_tests)
 add_test(HashTargetTests hash_target_tests)
@@ -275,6 +278,7 @@ add_test(PqSerializationBoundsTests pq_serialization_bounds_tests)
 add_test(PqDaemonTrustTests pq_daemon_trust_tests)
 add_test(PqMinerKeyTests pq_miner_key_tests)
 add_test(PqWalletLegacyEnvelopeTests pq_wallet_legacy_envelope_tests)
+add_test(SentPaymentsStoreTests sent_payments_store_tests)
 # Wallet-sync E2E lives in unit_tests; expose just the PQ integration case under a
 # Pq* name so it joins the regression gate (ctest -R "Pq|Denomination") without
 # pulling in the runtime-broken classical UnitTests suites.
