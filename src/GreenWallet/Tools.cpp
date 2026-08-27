@@ -152,13 +152,16 @@ bool confirm(std::string msg, bool defaultReturn)
         std::string answer;
         std::getline(std::cin, answer);
 
-        const char c = ::tolower(answer[0]);
+        if (answer.empty())
+        {
+            return defaultReturn;
+        }
+
+        const char c = static_cast<char>(::tolower(static_cast<unsigned char>(answer.front())));
 
         switch (c)
         {
             /* Lets people spam enter / choose default value */
-        case '\0':
-            return defaultReturn;
         case 'y':
             return true;
         case 'n':

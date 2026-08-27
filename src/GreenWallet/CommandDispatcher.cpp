@@ -79,6 +79,10 @@ bool handleCommand(const std::string command,
     {
         listTransfers(false, true, walletInfo->wallet, node);
     }
+    else if (command == "rescan")
+    {
+        rescan(node, walletInfo);
+    }
     else if (command == "reset")
     {
         reset(node, walletInfo);

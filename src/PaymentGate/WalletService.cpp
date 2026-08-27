@@ -22,6 +22,7 @@
 #include "WalletService.h"
 
 
+#include <exception>
 #include <future>
 #include <assert.h>
 #include <sstream>
@@ -584,10 +585,59 @@ void WalletService::loadWallet() {
 }
 
 void WalletService::loadTransactionIdIndex() {
-  transactionIdIndex.clear();
+  std::map<std::string, size_t> rebuiltIndex;
 
   for (size_t i = 0; i < wallet.getTransactionCount(); ++i) {
-    transactionIdIndex.emplace(Common::podToHex(wallet.getTransaction(i).hash), i);
+    rebuiltIndex.emplace(Common::podToHex(wallet.getTransaction(i).hash), i);
+  }
+
+  transactionIdIndex.swap(rebuiltIndex);
+}
+
+void WalletService::recoverWalletAfterRebuildFailure() {
+  bool walletInitialized = false;
+
+  try {
+    wallet.start();
+
+    try {
+      wallet.getTransactionCount();
+      walletInitialized = true;
+    } catch (const std::system_error& x) {
+      if (x.code() != make_error_code(CryptoNote::error::NOT_INITIALIZED)) {
+        throw;
+      }
+
+      // rebuildFromBlockchain() can fail in its final load() after shutdown().
+      // Restore the persisted wallet before recreating service-owned state.
+      loadWallet();
+      walletInitialized = true;
+    }
+
+    loadTransactionIdIndex();
+    refreshContext.spawn([this] { refresh(); });
+  } catch (const std::exception& x) {
+    logger(Logging::ERROR, Logging::BRIGHT_RED)
+      << "Failed to restore wallet after rebuild error: " << x.what();
+
+    if (walletInitialized) {
+      try {
+        wallet.stop();
+        refreshContext.wait();
+        wallet.shutdown();
+      } catch (const std::exception& shutdownError) {
+        logger(Logging::ERROR, Logging::BRIGHT_RED)
+          << "Failed to close wallet after rebuild recovery error: " << shutdownError.what();
+      }
+    }
+
+    transactionIdIndex.clear();
+    inited = false;
+  } catch (...) {
+    logger(Logging::ERROR, Logging::BRIGHT_RED)
+      << "Failed to restore wallet after rebuild error: unknown error";
+    transactionIdIndex.clear();
+    inited = false;
   }
 }
 
@@ -614,28 +664,49 @@ std::error_code WalletService::saveWalletNoThrow() {
   return std::error_code();
 }
 
-std::error_code WalletService::resetWallet() {
+std::error_code WalletService::rescanWallet() {
+  return rescanWallet(0);
+}
+
+std::error_code WalletService::rescanWallet(const uint32_t scanHeight) {
   try {
     System::EventLock lk(readyEvent);
 
-    logger(Logging::INFO, Logging::BRIGHT_WHITE) << "Resetting wallet";
+    logger(Logging::INFO, Logging::BRIGHT_WHITE) << "Rescanning wallet";
 
     if (!inited) {
-      logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Reset impossible: Wallet Service is not initialized";
+      logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Rescan impossible: Wallet Service is not initialized";
       return make_error_code(CryptoNote::error::NOT_INITIALIZED);
     }
 
-    reset();
-    logger(Logging::INFO, Logging::BRIGHT_WHITE) << "Wallet has been reset";
+    // rescan() stops the wallet internally, which also terminates the service's
+    // event loop. Quiesce it first, then rebuild the index and start a fresh loop.
+    wallet.stop();
+    refreshContext.wait();
+    wallet.start();
+    try {
+      wallet.rescan(scanHeight);
+      loadTransactionIdIndex();
+    } catch (...) {
+      std::exception_ptr rebuildError = std::current_exception();
+      recoverWalletAfterRebuildFailure();
+      std::rethrow_exception(rebuildError);
+    }
+    refreshContext.spawn([this] { refresh(); });
+    logger(Logging::INFO, Logging::BRIGHT_WHITE) << "Wallet has been rescanned starting from height " << scanHeight;
   } catch (std::system_error& x) {
-    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while resetting wallet: " << x.what();
+    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while rescanning wallet: " << x.what();
     return x.code();
   } catch (std::exception& x) {
-    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while resetting wallet: " << x.what();
+    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while rescanning wallet: " << x.what();
     return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
   }
 
   return std::error_code();
+}
+
+std::error_code WalletService::resetWallet() {
+  return resetWallet(0);
 }
 
 std::error_code WalletService::resetWallet(const uint32_t scanHeight) {
@@ -649,7 +720,20 @@ std::error_code WalletService::resetWallet(const uint32_t scanHeight) {
       return make_error_code(CryptoNote::error::NOT_INITIALIZED);
     }
 
-    wallet.reset(scanHeight);
+    // reset() has the same stop/load lifecycle as rescan(). Do not leave walletd
+    // without an event loop or with transaction indexes from erased history.
+    wallet.stop();
+    refreshContext.wait();
+    wallet.start();
+    try {
+      wallet.reset(scanHeight);
+      loadTransactionIdIndex();
+    } catch (...) {
+      std::exception_ptr rebuildError = std::current_exception();
+      recoverWalletAfterRebuildFailure();
+      std::rethrow_exception(rebuildError);
+    }
+    refreshContext.spawn([this] { refresh(); });
     logger(Logging::INFO, Logging::BRIGHT_WHITE) << "Wallet has been reset starting scanning from height " << scanHeight;
   }
   catch (std::system_error& x) {
@@ -2007,17 +2091,6 @@ void WalletService::refresh() {
   } catch (std::exception& e) {
     logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "exception thrown in refresh(): " << e.what();
   }
-}
-
-void WalletService::reset() {
-  wallet.save(CryptoNote::WalletSaveLevel::SAVE_KEYS_ONLY);
-  wallet.stop();
-  wallet.shutdown();
-  inited = false;
-  refreshContext.wait();
-
-  wallet.start();
-  init();
 }
 
 void WalletService::replaceWithNewWallet(const Crypto::SecretKey& viewSecretKey, const uint32_t scanHeight) {

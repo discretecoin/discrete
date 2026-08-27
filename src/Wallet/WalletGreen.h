@@ -189,6 +189,7 @@ public:
 
   virtual void changePassword(const std::string& oldPassword, const std::string& newPassword) override;
   virtual void save(WalletSaveLevel saveLevel = WalletSaveLevel::SAVE_ALL, const std::string& extra = "") override;
+  virtual void rescan(const uint64_t scanHeight) override;
   virtual void reset(const uint64_t scanHeight) override;
   virtual void exportWallet(const std::string& path, bool encrypt = true, WalletSaveLevel saveLevel = WalletSaveLevel::SAVE_ALL, const std::string& extra = "") override;
 
@@ -378,7 +379,7 @@ private:
   void initPqConsumerForPrimary();
   // Serialize the PQ consumer's sync cursor + WalletLedger into m_pqState (for
   // save), and restore them from m_pqState into a live consumer (after load).
-  void buildPqStateBlob();
+  void buildPqStateBlob(bool includeSentPayments = true);
   void restorePqStateBlob();
   // Push the current deposit scheme + count into the live WalletLedger so its
   // scanner attributes incoming deposits. Safe no-op without a PQ consumer.
@@ -408,7 +409,9 @@ private:
   void loadSpendKeys();
   void loadContainerStorage(const std::string& path, const std::string& password);
   void loadWalletCache(std::unordered_set<Crypto::PublicKey>& addedKeys, std::unordered_set<Crypto::PublicKey>& deletedKeys, std::string& extra);
-  void saveWalletCache(ContainerStorage& storage, const Crypto::chacha8_key& key, WalletSaveLevel saveLevel, const std::string& extra);
+  void saveWalletCache(ContainerStorage& storage, const Crypto::chacha8_key& key, WalletSaveLevel saveLevel,
+                       const std::string& extra, bool includeSentPayments = true);
+  void rebuildFromBlockchain(uint64_t scanHeight, bool preserveSentPayments);
 
   enum class WalletState {
     INITIALIZED,

@@ -45,7 +45,9 @@ jobs:
           # Build ONLY the PoW KAT target (not the full test suite).
           cmake --build build/powkat --config Release --target PqPowTests -- -j"$(nproc)"
 
-          # Run only the dedicated PoW KAT from the full CTest registry.
+          # Run only the dedicated PoW KAT from the full CTest registry. The
+          # wallet-service rebuild cases #25 added run in the security-suites job
+          # below, which already builds UnitTests here and runs the whole binary.
           ctest --test-dir build/powkat -C Release -R PqPowTests --output-on-failure
 
   security-suites-linux:

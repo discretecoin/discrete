@@ -47,6 +47,19 @@ struct Reset {
   struct Request {
     std::string viewSecretKey;
     uint32_t scanHeight = std::numeric_limits<uint32_t>::max();
+    bool confirmDestructive = false;
+
+    void serialize(CryptoNote::ISerializer& serializer);
+  };
+
+  struct Response {
+    void serialize(CryptoNote::ISerializer& serializer);
+  };
+};
+
+struct Rescan {
+  struct Request {
+    uint32_t scanHeight = std::numeric_limits<uint32_t>::max();
 
     void serialize(CryptoNote::ISerializer& serializer);
   };
