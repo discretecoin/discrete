@@ -87,6 +87,7 @@ private:
   bool on_gen_paymentid(const wallet_rpc::COMMAND_RPC_GET_ADDRESS::request& req, wallet_rpc::COMMAND_RPC_GEN_PAYMENT_ID::response& res);
   bool on_validate_address(const wallet_rpc::COMMAND_RPC_VALIDATE_ADDRESS::request& req, wallet_rpc::COMMAND_RPC_VALIDATE_ADDRESS::response& res);
   bool on_reset(const wallet_rpc::COMMAND_RPC_RESET::request& req, wallet_rpc::COMMAND_RPC_RESET::response& res);
+  bool on_rescan(const wallet_rpc::COMMAND_RPC_RESCAN::request& req, wallet_rpc::COMMAND_RPC_RESCAN::response& res);
   bool on_register_pq_account(const wallet_rpc::COMMAND_RPC_REGISTER_PQ_ACCOUNT::request& req, wallet_rpc::COMMAND_RPC_REGISTER_PQ_ACCOUNT::response& res);
 
   bool handle_command_line(const boost::program_options::variables_map& vm);

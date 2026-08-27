@@ -261,7 +261,38 @@ using CryptoNote::ISerializer;
   };
 
   /* Command: reset */
+  /* Command: reset
+   *
+   * Rescans the chain AND deletes the recipient addresses and payment proofs
+   * held in this wallet. Those are local: neither the chain nor the seed can
+   * supply them again. Because a caller cannot be prompted over RPC, the
+   * deletion has to be asked for in the request itself -- the same contract
+   * walletd uses (Reset::Request::confirmDestructive).
+   *
+   * Callers that only want to re-scan should call `rescan`.
+   */
   struct COMMAND_RPC_RESET
+  {
+    struct request
+    {
+      bool confirm_destructive = false;
+
+      void serialize(ISerializer& s)
+      {
+        KV_MEMBER(confirm_destructive)
+      }
+    };
+
+    typedef CryptoNote::EMPTY_STRUCT response;
+  };
+
+  /* Command: rescan
+   *
+   * Rebuilds blockchain-derived state from scratch. Everything the chain cannot
+   * supply -- recipient addresses, payment proofs, keys, deposit configuration
+   * -- is kept. Safe to call unprompted.
+   */
+  struct COMMAND_RPC_RESCAN
   {
     typedef CryptoNote::EMPTY_STRUCT request;
     typedef CryptoNote::EMPTY_STRUCT response;
