@@ -63,7 +63,13 @@ enum WalletErrorCodes {
   // misleading generic failures ("wrong password") when a file of the other
   // format is opened.
   CONTAINER_WALLET_FILE,
-  SIMPLE_WALLET_FILE
+  SIMPLE_WALLET_FILE,
+  // Account-number publication. An account number is a locator the wallet gets
+  // from a daemon and then hands to payers, so whoever answers the lookup picks
+  // the recipient. Both of these are refusals to publish, not failures to
+  // compute: the wallet's full address is unaffected and always safe to use.
+  UNTRUSTED_DAEMON,
+  ACCOUNT_NUMBER_UNCONFIRMED
 };
 
 // custom category:
@@ -115,6 +121,8 @@ public:
     case ACCOUNT_NOT_REGISTERED:        return "The account is not registered yet; run registerAccount and wait for it to confirm";
     case CONTAINER_WALLET_FILE:         return "This file is a greenwallet/walletd wallet container; open it with greenwallet or walletd, or restore the address in simplewallet from its mnemonic seed";
     case SIMPLE_WALLET_FILE:            return "This file is a simplewallet wallet file; open it with simplewallet, or restore it in greenwallet/walletd from its mnemonic seed";
+    case UNTRUSTED_DAEMON:              return "The connected daemon is not trusted to say where this account is registered, and whatever it answered would decide who gets paid; connect to your own daemon or start with --trusted-daemon, or use the full address";
+    case ACCOUNT_NUMBER_UNCONFIRMED:    return "This account's number could not be confirmed against the chain; it may not be buried deep enough for payers to resolve it yet. Use the full address for now";
     default:                            return "Unknown error";
     }
   }

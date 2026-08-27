@@ -66,8 +66,14 @@ bool decodePqPaymentProof(const std::string& encoded, PqPaymentProof& proof);
 bool decodePqPaymentProof(const std::string& encoded, bool testnet, PqPaymentProof& proof);
 
 // Verify that every listed on-chain output commits to recipient.spendPub under
-// the supplied rho and return their public amount total. This deliberately does
-// not claim ML-KEM/view-key delivery or SingleKeyIndex T attribution.
+// the supplied rho and return their public amount total.
+//
+// This is a SPEND-AUTHORITY proof and nothing more. It does not claim ML-KEM /
+// view-key delivery, and it does not attribute the payment to a SingleKeyIndex
+// routing index T: recipient.subaddrIndexT is not read here and no field of the
+// proof commits to it, so the same proof verifies identically for every T of the
+// same account. Callers that need the route — invoice and deposit crediting —
+// must establish it by decrypting the output with the recipient's view key.
 uint64_t verifyPqPaymentProof(
     const PqPaymentProof& proof,
     const CryptoPQ::Hash256& expectedGenesisId,

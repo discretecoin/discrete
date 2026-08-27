@@ -161,4 +161,21 @@ bool getPowTagFromExtra(const std::vector<uint8_t>& tx_extra, TransactionExtraPo
 // (so the nonce is the final 8 bytes). Required for free-reg validity (spec §11.2).
 bool isPowTagLastField(const std::vector<uint8_t>& tx_extra);
 
+// Byte-exact grammar check for a TX_FREE_REG tx_extra:
+//
+//   0x05 | viewPub(1184) | spendPub(1952) | 0x06 | refBlockHash(32) | LE64(nonce)
+//
+// and nothing else, with the input fully consumed.
+//
+// parseTransactionExtra() skips a tag it does not know, one byte at a time, and
+// produces no field for it. That makes trailing or interleaved unknown bytes
+// invisible to the field-level checks, so the same registration proof can be
+// re-wrapped into unlimited transactions with different ids. This scanner reads
+// the raw bytes instead and accepts only the canonical encoding.
+//
+// This is a RELAY AND MEMPOOL POLICY, not a block-validity rule: applying it to
+// blocks would make upgraded and old nodes disagree about a block. Block
+// validation is unchanged until a scheduled protocol upgrade adopts it.
+bool isCanonicalFreeRegExtra(const std::vector<uint8_t>& tx_extra);
+
 }

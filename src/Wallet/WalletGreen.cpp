@@ -35,18 +35,21 @@
 #include <System/RemoteContext.h>
 #ifdef USE_LITE_WALLET
 #include <boost/date_time/posix_time/posix_time.hpp>
+#include <boost/filesystem.hpp>
 #endif
 
 #include "ITransaction.h"
 
 #include "Common/Base58.h"
 #include "Common/ScopeExit.h"
+#include "Common/SecureMemory.h"
 #include "Common/ShuffleGenerator.h"
 #include "Common/StdInputStream.h"
 #include "Common/StdOutputStream.h"
 #include "Common/StreamTools.h"
 #include "Common/StringOutputStream.h"
 #include "Common/StringTools.h"
+#include "crypto/crypto-util.h"
 #include "CryptoNoteCore/Account.h"
 #include "CryptoNoteCore/Currency.h"
 #include "CryptoNoteCore/CryptoNoteBasicImpl.h"
@@ -170,6 +173,10 @@ WalletGreen::~WalletGreen() {
   if (m_state == WalletState::INITIALIZED) {
     doShutdown();
   }
+  // Also covers the half-open cases: load() derives the container key before the
+  // state flips, so a load that threw part-way would otherwise leave the key
+  // resident for the rest of the process's life.
+  wipeSecrets();
 
   m_dispatcher.yield(); //let remote spawns finish
 }
@@ -238,6 +245,10 @@ void WalletGreen::doShutdown() {
   m_blockchainSynchronizer.removeObserver(this);
 
   m_containerStorage.close();
+  // Scrub before dropping: the container key, the password, and the master seeds
+  // in the address records would otherwise stay in freed heap (and in swap) for
+  // the rest of the process's life.
+  wipeSecrets();
   m_walletsContainer.clear();
   m_addressGenerationMode = AddressGenerationMode::INDEPENDENT_SPEND_KEYS;
   m_deterministicSeed = NULL_SECRET_KEY;
@@ -274,22 +285,18 @@ void WalletGreen::clearCaches(bool /*clearTransactions*/, bool clearCachedData) 
   }
 }
 
+const ContainerStoragePrefix& WalletGreen::containerHeader() const {
+  return *reinterpret_cast<const ContainerStoragePrefix*>(m_containerStorage.prefix());
+}
+
 bool WalletGreen::decryptSeed(const EncryptedWalletRecord& cipher, CryptoPQ::SeedMaster& seedMaster,
-  uint64_t& creationTimestamp, const Crypto::chacha8_key& key) {
-  return decryptSeedRecord(cipher, seedMaster, creationTimestamp, key);
+                              uint64_t& creationTimestamp) const {
+  return decryptSeedRecord(cipher, seedMaster, creationTimestamp, m_key, containerHeader());
 }
 
-bool WalletGreen::decryptSeed(const EncryptedWalletRecord& cipher, CryptoPQ::SeedMaster& seedMaster, uint64_t& creationTimestamp) const {
-  return decryptSeedRecord(cipher, seedMaster, creationTimestamp, m_key);
-}
-
-EncryptedWalletRecord WalletGreen::encryptSeed(const CryptoPQ::SeedMaster& seedMaster, uint64_t creationTimestamp,
-  const Crypto::chacha8_key& key, const Crypto::chacha8_iv& iv) {
-  return encryptSeedRecord(seedMaster, creationTimestamp, key, iv);
-}
-
-EncryptedWalletRecord WalletGreen::encryptSeed(const CryptoPQ::SeedMaster& seedMaster, uint64_t creationTimestamp) const {
-  return encryptSeed(seedMaster, creationTimestamp, m_key, getNextIv());
+EncryptedWalletRecord WalletGreen::encryptSeed(const CryptoPQ::SeedMaster& seedMaster,
+                                               uint64_t creationTimestamp) const {
+  return encryptSeedRecord(seedMaster, creationTimestamp, m_key, containerHeader());
 }
 
 CryptoPQ::SeedMaster WalletGreen::primarySeedMaster() const {
@@ -300,26 +307,8 @@ CryptoPQ::SeedMaster WalletGreen::primarySeedMaster() const {
   return index.front().seedMaster;
 }
 
-Crypto::chacha8_iv WalletGreen::getNextIv() const {
-  const auto* prefix = reinterpret_cast<const ContainerStoragePrefix*>(m_containerStorage.prefix());
-  return prefix->nextIv;
-}
 
-void WalletGreen::incIv(Crypto::chacha8_iv& iv) {
-  static_assert(sizeof(uint64_t) == sizeof(Crypto::chacha8_iv), "Bad Crypto::chacha8_iv size");
-  uint64_t* i = reinterpret_cast<uint64_t*>(&iv);
-  if (*i < std::numeric_limits<uint64_t>::max()) {
-    ++(*i);
-  } else {
-    *i = 0;
-  }
-}
 
-void WalletGreen::incNextIv() {
-  static_assert(sizeof(uint64_t) == sizeof(Crypto::chacha8_iv), "Bad Crypto::chacha8_iv size");
-  auto* prefix = reinterpret_cast<ContainerStoragePrefix*>(m_containerStorage.prefix());
-  incIv(prefix->nextIv);
-}
 
 void WalletGreen::initContainer(const std::string& path, const std::string& password) {
   if (m_state != WalletState::NOT_INITIALIZED) {
@@ -331,11 +320,15 @@ void WalletGreen::initContainer(const std::string& path, const std::string& pass
 
   ContainerStorage newStorage(path, Common::FileMappedVectorOpenMode::CREATE, sizeof(ContainerStoragePrefix));
   ContainerStoragePrefix* prefix = reinterpret_cast<ContainerStoragePrefix*>(newStorage.prefix());
-  prefix->version = static_cast<uint8_t>(WalletSerializerV2::SERIALIZATION_VERSION);
-  prefix->nextIv = Crypto::randomChachaIV();
+  // A fresh salt per wallet, so this container's key is unrelated to the key any
+  // other wallet derives from the same password.
+  *prefix = makeContainerHeader();
 
-  Crypto::cn_context cnContext;
-  Crypto::generate_chacha8_key(cnContext, password, m_key);
+  if (!deriveContainerKey(password, *prefix, m_key)) {
+    m_logger(ERROR, BRIGHT_RED) << "Failed to initialize: password key derivation failed";
+    throw std::system_error(make_error_code(error::INTERNAL_WALLET_ERROR),
+                            "Password key derivation failed");
+  }
 
   newStorage.flush();
   m_containerStorage.swap(newStorage);
@@ -389,19 +382,24 @@ void WalletGreen::exportWallet(const std::string& path, bool encrypt, WalletSave
       }
     });
 
-    ContainerStorage newStorage(path, FileMappedVectorOpenMode::CREATE, m_containerStorage.prefixSize());
+    ContainerStorage newStorage(path, FileMappedVectorOpenMode::CREATE, sizeof(ContainerStoragePrefix));
     storageCreated = true;
 
-    chacha8_key newStorageKey;
-    if (encrypt) {
-      newStorageKey = m_key;
-    } else {
-      cn_context cnContext;
-      generate_chacha8_key(cnContext, "", newStorageKey);
-    }
+    // The export is a container in its own right: its own salt, so its key is
+    // unrelated to this wallet's even when the password is the same, and its own
+    // header, which every record and the cache blob are authenticated against.
+    ContainerStoragePrefix* exportHeader =
+        reinterpret_cast<ContainerStoragePrefix*>(newStorage.prefix());
+    *exportHeader = makeContainerHeader();
 
-    copyContainerStoragePrefix(m_containerStorage, m_key, newStorage, newStorageKey);
-    copyContainerStorageKeys(m_containerStorage, m_key, newStorage, newStorageKey);
+    chacha8_key newStorageKey;
+    if (!deriveContainerKey(encrypt ? m_password : std::string(), *exportHeader, newStorageKey)) {
+      throw std::system_error(make_error_code(error::INTERNAL_WALLET_ERROR),
+                              "Password key derivation failed");
+    }
+    Tools::SecretLock scrubExportKey(&newStorageKey, sizeof(newStorageKey));
+
+    copyContainerStorageKeys(m_containerStorage, m_key, newStorage, newStorageKey, *exportHeader);
     saveWalletCache(newStorage, newStorageKey, saveLevel, extra);
 
     failExitHandler.cancel();
@@ -429,8 +427,9 @@ void WalletGreen::load(const std::string& path, const std::string& password, std
 
   stopBlockchainSynchronizer();
 
-  Crypto::cn_context cnContext;
-  generate_chacha8_key(cnContext, password, m_key);
+  // Armed once the container is open (below); until then nothing secret exists
+  // and the early failures have nothing to clean up.
+  std::unique_ptr<Tools::ScopeExit> loadGuard;
 
   std::ifstream walletFileStream(path, std::ios_base::binary);
   int version = walletFileStream.peek();
@@ -458,7 +457,34 @@ void WalletGreen::load(const std::string& path, const std::string& password, std
       throw std::system_error(make_error_code(error::WRONG_VERSION), "Unsupported wallet version");
     }
 
-    loadContainerStorage(path);
+    // A version-9 file has no salt and no authentication tags. Rewrite it in the
+    // current format first; the original is kept until the rewritten file has
+    // been reopened and its records have authenticated.
+    if (version == WALLET_CONTAINER_VERSION_LEGACY) {
+      try {
+        migrateLegacyContainer(path, password);
+      } catch (const std::exception& e) {
+        m_logger(ERROR, BRIGHT_RED) << "Failed to upgrade wallet file: " << e.what();
+        // Deliberately no startBlockchainSynchronizer() here: no wallet is loaded
+        // at this point, so there is nothing for it to synchronize, and starting
+        // it would leave a thread running against a NOT_INITIALIZED object.
+        throw;
+      }
+    }
+
+    loadContainerStorage(path, password);
+
+    // From here on the container key and the master seeds are resident. Every
+    // remaining step can throw — restoring the cache, building the PQ consumer,
+    // seeding the blockchain, starting the synchronizer — and until the very end
+    // of this function the wallet is still NOT_INITIALIZED, so nothing else would
+    // ever clean it up. One guard covers all of it; it is dismissed only once the
+    // state invariants are actually established.
+    loadGuard.reset(new Tools::ScopeExit([this] { abortLoad(); }));
+
+    if (loadFaultInjector()) {
+      loadFaultInjector()();  // test-only; never set in production
+    }
 
     if (m_containerStorage.suffixSize() > 0) {
       try {
@@ -511,6 +537,9 @@ void WalletGreen::load(const std::string& path, const std::string& password, std
   m_extra = extra;
 
   m_state = WalletState::INITIALIZED;
+  if (loadGuard) {
+    loadGuard->cancel();
+  }
   m_logger(INFO, BRIGHT_WHITE) << "Container loaded, wallet count " << m_walletsContainer.size() <<
     ", balance " << m_currency.formatAmount(getActualBalance());
 }
@@ -520,22 +549,326 @@ void WalletGreen::load(const std::string& path, const std::string& password) {
   load(path, password, extra);
 }
 
-void WalletGreen::loadContainerStorage(const std::string& path) {
+void WalletGreen::migrateLegacyContainer(const std::string& path, const std::string& password) {
+  m_logger(INFO, BRIGHT_WHITE) << "Upgrading wallet file to the authenticated format";
+
+  // 1. Read the old container with the legacy unsalted key. Nothing is written
+  //    until the password has been shown to be right, so a wrong password never
+  //    touches the file.
+  Crypto::chacha8_key legacyKey;
+  {
+    Crypto::cn_context cnContext;
+    if (!Crypto::generate_chacha8_key(cnContext, password, legacyKey)) {
+      throw std::system_error(make_error_code(error::INTERNAL_WALLET_ERROR),
+                              "Password key derivation failed");
+    }
+  }
+  Tools::SecretLock scrubLegacyKey(&legacyKey, sizeof(legacyKey));
+
+  struct LegacyRecord {
+    CryptoPQ::SeedMaster seed{};
+    uint64_t creationTimestamp = 0;
+  };
+  std::vector<LegacyRecord> records;
+  BinaryArray cache;
+
+  {
+    ContainerStorageV1 legacy;
+    legacy.open(path, FileMappedVectorOpenMode::OPEN, sizeof(ContainerStoragePrefixV1));
+
+    const auto* legacyPrefix =
+        reinterpret_cast<const ContainerStoragePrefixV1*>(legacy.prefix());
+    if (legacyPrefix->version != WALLET_CONTAINER_VERSION_LEGACY) {
+      throw std::system_error(make_error_code(error::WRONG_VERSION), "Unsupported wallet version");
+    }
+
+    records.reserve(legacy.size());
+    for (size_t i = 0; i < legacy.size(); ++i) {
+      LegacyRecord record;
+      if (!decryptSeedRecordV1(legacy[i], record.seed, record.creationTimestamp, legacyKey)) {
+        throw std::system_error(make_error_code(error::WRONG_PASSWORD), "Wrong password");
+      }
+      records.push_back(record);
+    }
+
+    if (legacy.suffixSize() > 0) {
+      Common::MemoryInputStream suffixStream(legacy.suffix(), legacy.suffixSize());
+      BinaryInputStreamSerializer suffixSerializer(suffixStream);
+      Crypto::chacha8_iv suffixIv;
+      BinaryArray encryptedCache;
+      suffixSerializer(suffixIv, "suffixIv");
+      suffixSerializer(encryptedCache, "encryptedContainer");
+
+      cache.resize(encryptedCache.size());
+      if (!cache.empty()) {
+        chacha8(encryptedCache.data(), encryptedCache.size(), legacyKey, suffixIv,
+                reinterpret_cast<char*>(cache.data()));
+      }
+    }
+    legacy.close();
+  }
+
+  Tools::ScopeExit scrubRecords([&records, &cache] {
+    for (auto& record : records) {
+      sodium_memzero(record.seed.data(), record.seed.size());
+    }
+    if (!cache.empty()) {
+      sodium_memzero(cache.data(), cache.size());
+    }
+  });
+
+  // 2. Write the upgraded container beside the original, never over it.
+  const std::string upgradedPath = path + ".upgraded";
+  boost::system::error_code ignore;
+  boost::filesystem::remove(upgradedPath, ignore);
+  // How many pre-upgrade copies we will keep alongside a wallet before refusing
+  // to make another. Generous: each is small, and the cost of one too many is a
+  // message, while the cost of one too few is a destroyed seed.
+  constexpr unsigned kMaxWalletBackupCopies = 64;
+
+  const ContainerStoragePrefix header = makeContainerHeader();
+  Crypto::chacha8_key newKey;
+  if (!deriveContainerKey(password, header, newKey)) {
+    throw std::system_error(make_error_code(error::INTERNAL_WALLET_ERROR),
+                            "Password key derivation failed");
+  }
+  Tools::SecretLock scrubNewKey(&newKey, sizeof(newKey));
+
+  Tools::ScopeExit removeUpgraded([&upgradedPath] {
+    boost::system::error_code ec;
+    boost::filesystem::remove(upgradedPath, ec);
+  });
+
+  {
+    ContainerStorage upgraded(upgradedPath, FileMappedVectorOpenMode::CREATE,
+                              sizeof(ContainerStoragePrefix));
+    *reinterpret_cast<ContainerStoragePrefix*>(upgraded.prefix()) = header;
+
+    upgraded.reserve(records.size());
+    for (const auto& record : records) {
+      upgraded.push_back(
+          encryptSeedRecord(record.seed, record.creationTimestamp, newKey, header));
+    }
+    if (!cache.empty()) {
+      encryptAndSaveContainerData(upgraded, newKey, cache.data(), cache.size());
+    }
+    upgraded.flush();
+    upgraded.close();
+  }
+
+  // 3. Reopen and authenticate before the original is allowed to go away. If the
+  //    upgraded file does not read back correctly the wallet is untouched.
+  {
+    ContainerStorage verify;
+    verify.open(upgradedPath, FileMappedVectorOpenMode::OPEN, sizeof(ContainerStoragePrefix));
+
+    const ContainerStoragePrefix& verifyHeader =
+        *reinterpret_cast<const ContainerStoragePrefix*>(verify.prefix());
+    if (verifyHeader.version != WALLET_CONTAINER_VERSION || verify.size() != records.size()) {
+      throw std::system_error(make_error_code(error::INTERNAL_WALLET_ERROR),
+                              "Upgraded wallet file did not read back correctly");
+    }
+
+    for (size_t i = 0; i < verify.size(); ++i) {
+      CryptoPQ::SeedMaster seed{};
+      uint64_t creationTimestamp = 0;
+      if (!decryptSeedRecord(verify[i], seed, creationTimestamp, newKey, verifyHeader)) {
+        throw std::system_error(make_error_code(error::INTERNAL_WALLET_ERROR),
+                                "Upgraded wallet file failed authentication");
+      }
+      const bool matches = seed == records[i].seed &&
+                           creationTimestamp == records[i].creationTimestamp;
+      sodium_memzero(seed.data(), seed.size());
+      if (!matches) {
+        throw std::system_error(make_error_code(error::INTERNAL_WALLET_ERROR),
+                                "Upgraded wallet file does not match the original");
+      }
+    }
+
+    if (!cache.empty()) {
+      BinaryArray roundTripped;
+      loadAndDecryptContainerData(verify, newKey, roundTripped);
+      const bool matches = roundTripped == cache;
+      if (!roundTripped.empty()) {
+        sodium_memzero(roundTripped.data(), roundTripped.size());
+      }
+      if (!matches) {
+        throw std::system_error(make_error_code(error::INTERNAL_WALLET_ERROR),
+                                "Upgraded wallet cache does not match the original");
+      }
+    }
+    verify.close();
+  }
+
+  // 4. Only now replace the original, keeping it as a backup.
+  //
+  // Never over an existing backup. The v9 format authenticates nothing beyond a
+  // four-byte magic, so a single flipped ciphertext bit yields a different seed
+  // that still migrates successfully and still "verifies" in step 3 -- every
+  // check above compares the upgraded copy against what was read, not against
+  // what was originally written. The older .v9 may therefore be the only intact
+  // copy of the real seed, and deleting it to make room is the one action that
+  // turns a recoverable corruption into an unrecoverable one.
+  //
+  // So: take the first free name, and if every name is taken, refuse and let the
+  // operator decide. An existing backup is evidence of an earlier migration --
+  // something worth a person looking at, not something to tidy away.
+  std::string backupPath = path + ".v9";
+  if (boost::filesystem::exists(backupPath)) {
+    backupPath.clear();
+    for (unsigned n = 1; n <= kMaxWalletBackupCopies; ++n) {
+      const std::string candidate = path + ".v9." + std::to_string(n);
+      if (!boost::filesystem::exists(candidate)) {
+        backupPath = candidate;
+        break;
+      }
+    }
+    if (backupPath.empty()) {
+      throw std::system_error(
+          make_error_code(error::INTERNAL_WALLET_ERROR),
+          "Refusing to upgrade: " + path + ".v9 and its numbered copies all exist. "
+          "Move them somewhere safe first -- they may hold the only intact copy of "
+          "this wallet's seed, and none of them will be overwritten.");
+    }
+    m_logger(WARNING, BRIGHT_YELLOW)
+        << "A previous wallet backup already exists; keeping it and writing this one to "
+        << backupPath;
+  }
+  boost::filesystem::rename(path, backupPath);
+
+  boost::system::error_code renameError;
+  boost::filesystem::rename(upgradedPath, path, renameError);
+  if (renameError) {
+    boost::filesystem::rename(backupPath, path, ignore);
+    throw std::system_error(make_error_code(error::INTERNAL_WALLET_ERROR),
+                            "Failed to replace the wallet file with its upgraded copy");
+  }
+
+  removeUpgraded.cancel();
+  m_logger(INFO, BRIGHT_WHITE) << "Wallet file upgraded; the previous file is kept at "
+                               << backupPath;
+}
+
+bool WalletGreen::hasResidentSecrets() const {
+  const auto* keyBytes = reinterpret_cast<const uint8_t*>(&m_key);
+  if (std::any_of(keyBytes, keyBytes + sizeof(m_key), [](uint8_t b) { return b != 0; })) {
+    return true;
+  }
+  if (!m_password.empty()) {
+    return true;
+  }
+  for (const auto& record : m_walletsContainer.get<RandomAccessIndex>()) {
+    if (std::any_of(record.seedMaster.begin(), record.seedMaster.end(),
+                    [](uint8_t b) { return b != 0; })) {
+      return true;
+    }
+  }
+  return false;
+}
+
+std::function<void()>& WalletGreen::loadFaultInjector() {
+  static std::function<void()> injector;
+  return injector;
+}
+
+void WalletGreen::abortLoad() {
+  // Order mirrors doShutdown(): stop anything running, detach from the
+  // synchronizer, close the file, and only then scrub. Each step is written to
+  // be a no-op if that stage was never reached, because this runs for failures
+  // anywhere between opening the container and the final state assignment.
+  try {
+    stopBlockchainSynchronizer();
+  } catch (const std::exception& e) {
+    m_logger(DEBUGGING) << "Ignoring synchronizer stop failure during load cleanup: " << e.what();
+  }
+
+  try {
+    if (m_pqConsumer) {
+      m_blockchainSynchronizer.removeConsumer(m_pqConsumer.get());
+    }
+    m_blockchainSynchronizer.removeObserver(this);
+  } catch (const std::exception& e) {
+    m_logger(DEBUGGING) << "Ignoring synchronizer detach failure during load cleanup: " << e.what();
+  }
+  m_pqConsumer.reset();
+
+  try {
+    m_containerStorage.close();
+  } catch (const std::exception& e) {
+    m_logger(DEBUGGING) << "Ignoring container close failure during load cleanup: " << e.what();
+  }
+
+  // Secrets last, so nothing above can fault and leave them behind.
+  wipeSecrets();
+  m_walletsContainer.clear();
+  m_addressGenerationMode = AddressGenerationMode::INDEPENDENT_SPEND_KEYS;
+  m_deterministicSeed = NULL_SECRET_KEY;
+  m_nextDeterministicIndex = 0;
+  m_pqTrackingKeys.reset();
+  m_pqState.clear();
+  m_sentPayments.clear();
+  m_blockchain.clear();
+  m_pqNotifiedTxCount = 0;
+  m_extra.clear();
+  m_path.clear();
+
+  std::queue<WalletEvent> noEvents;
+  std::swap(m_events, noEvents);
+
+  m_state = WalletState::NOT_INITIALIZED;
+}
+
+void WalletGreen::wipeSecrets() {
+  sodium_memzero(&m_key, sizeof(m_key));
+  if (!m_password.empty()) {
+    sodium_memzero(&m_password[0], m_password.size());
+  }
+  m_password.clear();
+
+  sodium_memzero(&m_deterministicSeed, sizeof(m_deterministicSeed));
+
+  // The address records hold master seeds. multi_index gives out const
+  // references, so scrub through modify() rather than dropping the container and
+  // trusting the allocator.
+  auto& index = m_walletsContainer.get<RandomAccessIndex>();
+  for (auto it = index.begin(); it != index.end(); ++it) {
+    index.modify(it, [](WalletRecord& record) {
+      sodium_memzero(record.seedMaster.data(), record.seedMaster.size());
+    });
+  }
+}
+
+void WalletGreen::loadContainerStorage(const std::string& path, const std::string& password) {
   try {
     m_containerStorage.open(path, FileMappedVectorOpenMode::OPEN, sizeof(ContainerStoragePrefix));
 
     ContainerStoragePrefix* prefix = reinterpret_cast<ContainerStoragePrefix*>(m_containerStorage.prefix());
-    if (prefix->version < WalletSerializerV2::MIN_VERSION) {
+    if (prefix->version != WALLET_CONTAINER_VERSION) {
       throw std::system_error(make_error_code(error::WRONG_VERSION), "Unsupported wallet version");
     }
+    if (prefix->kdf != WALLET_KDF_YESPOWER_SALTED) {
+      throw std::system_error(make_error_code(error::WRONG_VERSION), "Unsupported wallet key derivation");
+    }
 
-    // The password is verified inside loadSpendKeys via the record-0 seed magic.
+    // The key comes from THIS file's salt, so the same password opens different
+    // wallets with different keys. Deriving it here also means a header edited
+    // on disk changes the key and fails every record's tag.
+    if (!deriveContainerKey(password, *prefix, m_key)) {
+      throw std::system_error(make_error_code(error::INTERNAL_WALLET_ERROR),
+                              "Password key derivation failed");
+    }
+
+    // The password is verified inside loadSpendKeys: a wrong one fails record 0's
+    // authentication tag.
     loadSpendKeys();
 
     m_logger(DEBUGGING) << "Container keys were successfully loaded";
   } catch (const std::exception& e) {
     m_logger(ERROR, BRIGHT_RED) << "Failed to load container keys: " << e.what();
 
+    // A wrong password still derived a key, and a partially loaded container
+    // still holds master seeds. Neither may outlive the failed open.
+    wipeSecrets();
     m_walletsContainer.clear();
     m_containerStorage.close();
 
@@ -593,12 +926,14 @@ void WalletGreen::saveWalletCache(ContainerStorage& storage, const Crypto::chach
 
   s.save(containerStream, saveLevel);
 
-  // Upgrade the prefix version if the storage was created/loaded with an older format.
-  ContainerStoragePrefix* pfx = reinterpret_cast<ContainerStoragePrefix*>(storage.prefix());
-  if (pfx->version < WalletSerializerV2::SERIALIZATION_VERSION) {
-    m_logger(INFO) << "Upgrading wallet file format from v" << static_cast<int>(pfx->version)
-                   << " to v" << static_cast<int>(WalletSerializerV2::SERIALIZATION_VERSION);
-    pfx->version = WalletSerializerV2::SERIALIZATION_VERSION;
+  // The header is authenticated, so it must not be edited behind the body's
+  // back: an older container is converted by migrateLegacyContainer() during
+  // load, and by the time anything is saved the header already says v10.
+  const ContainerStoragePrefix* pfx =
+      reinterpret_cast<const ContainerStoragePrefix*>(storage.prefix());
+  if (pfx->version != WALLET_CONTAINER_VERSION) {
+    throw std::system_error(make_error_code(error::WRONG_VERSION),
+                            "Refusing to save into a container that was not upgraded");
   }
 
   encryptAndSaveContainerData(storage, key, containerData.data(), containerData.size());
@@ -609,7 +944,9 @@ void WalletGreen::saveWalletCache(ContainerStorage& storage, const Crypto::chach
   m_logger(DEBUGGING) << "Container saving finished";
 }
 
-void WalletGreen::copyContainerStorageKeys(ContainerStorage& src, const chacha8_key& srcKey, ContainerStorage& dst, const chacha8_key& dstKey) {
+void WalletGreen::copyContainerStorageKeys(ContainerStorage& src, const chacha8_key& srcKey,
+                                           ContainerStorage& dst, const chacha8_key& dstKey,
+                                           const ContainerStoragePrefix& dstHeader) {
   dst.reserve(src.size());
 
   dst.setAutoFlush(false);
@@ -618,63 +955,51 @@ void WalletGreen::copyContainerStorageKeys(ContainerStorage& src, const chacha8_
     dst.flush();
   });
 
-  size_t counter = 0;
+  const ContainerStoragePrefix& srcHeader =
+      *reinterpret_cast<const ContainerStoragePrefix*>(src.prefix());
 
   for (auto& encryptedSeed : src) {
     CryptoPQ::SeedMaster seed{};
     uint64_t creationTimestamp = 0;
-    if (!decryptSeed(encryptedSeed, seed, creationTimestamp, srcKey)) {
+    if (!decryptSeedRecord(encryptedSeed, seed, creationTimestamp, srcKey, srcHeader)) {
       throw std::system_error(make_error_code(error::WRONG_PASSWORD), "Wrong password");
     }
+    Tools::SecretLock scrubSeed(seed.data(), seed.size());
 
-    // push_back() can resize container, and dstPrefix address can be changed, so it is requested for each record
-    ContainerStoragePrefix* dstPrefix = reinterpret_cast<ContainerStoragePrefix*>(dst.prefix());
-    Crypto::chacha8_iv recordIv = dstPrefix->nextIv;
-    incIv(dstPrefix->nextIv);
-
-    dst.push_back(encryptSeed(seed, creationTimestamp, dstKey, recordIv));
+    // Re-encrypted under the DESTINATION header, so a record cannot be lifted
+    // from one container into another.
+    dst.push_back(encryptSeedRecord(seed, creationTimestamp, dstKey, dstHeader));
   }
 }
 
-void WalletGreen::copyContainerStoragePrefix(ContainerStorage& src, const chacha8_key& /*srcKey*/, ContainerStorage& dst, const chacha8_key& /*dstKey*/) {
-  // The prefix holds no key material on a PQ container (just version + IV); the
-  // master seed lives in the body records, copied by copyContainerStorageKeys.
-  ContainerStoragePrefix* srcPrefix = reinterpret_cast<ContainerStoragePrefix*>(src.prefix());
-  ContainerStoragePrefix* dstPrefix = reinterpret_cast<ContainerStoragePrefix*>(dst.prefix());
-  dstPrefix->version = srcPrefix->version;
-  dstPrefix->nextIv = Crypto::randomChachaIV();
+void WalletGreen::encryptAndSaveContainerData(ContainerStorage& storage,
+                                              const Crypto::chacha8_key& key,
+                                              const void* containerData, size_t containerDataSize) {
+  const ContainerStoragePrefix& header =
+      *reinterpret_cast<const ContainerStoragePrefix*>(storage.prefix());
+
+  // nonce || ciphertext || tag, with the header as associated data. The nonce is
+  // drawn fresh on every save; the cache is rewritten under an unchanged key
+  // constantly, and a repeat would leak plaintext.
+  const std::vector<uint8_t> sealed =
+      encryptContainerBlob(containerData, containerDataSize, key, header);
+
+  storage.resizeSuffix(sealed.size());
+  std::copy(sealed.begin(), sealed.end(), storage.suffix());
 }
 
-void WalletGreen::encryptAndSaveContainerData(ContainerStorage& storage, const Crypto::chacha8_key& key, const void* containerData, size_t containerDataSize) {
-  ContainerStoragePrefix* prefix = reinterpret_cast<ContainerStoragePrefix*>(storage.prefix());
+void WalletGreen::loadAndDecryptContainerData(ContainerStorage& storage,
+                                              const Crypto::chacha8_key& key,
+                                              BinaryArray& containerData) {
+  const ContainerStoragePrefix& header =
+      *reinterpret_cast<const ContainerStoragePrefix*>(storage.prefix());
 
-  Crypto::chacha8_iv suffixIv = prefix->nextIv;
-  incIv(prefix->nextIv);
-
-  BinaryArray encryptedContainer;
-  encryptedContainer.resize(containerDataSize);
-  chacha8(containerData, containerDataSize, key, suffixIv, reinterpret_cast<char*>(encryptedContainer.data()));
-
-  std::string suffix;
-  Common::StringOutputStream suffixStream(suffix);
-  BinaryOutputStreamSerializer suffixSerializer(suffixStream);
-  suffixSerializer(suffixIv, "suffixIv");
-  suffixSerializer(encryptedContainer, "encryptedContainer");
-
-  storage.resizeSuffix(suffix.size());
-  std::copy(suffix.begin(), suffix.end(), storage.suffix());
-}
-
-void WalletGreen::loadAndDecryptContainerData(ContainerStorage& storage, const Crypto::chacha8_key& key, BinaryArray& containerData) {
-  Common::MemoryInputStream suffixStream(storage.suffix(), storage.suffixSize());
-  BinaryInputStreamSerializer suffixSerializer(suffixStream);
-  Crypto::chacha8_iv suffixIv;
-  BinaryArray encryptedContainer;
-  suffixSerializer(suffixIv, "suffixIv");
-  suffixSerializer(encryptedContainer, "encryptedContainer");
-
-  containerData.resize(encryptedContainer.size());
-  chacha8(encryptedContainer.data(), encryptedContainer.size(), key, suffixIv, reinterpret_cast<char*>(containerData.data()));
+  std::vector<uint8_t> plain;
+  if (!decryptContainerBlob(storage.suffix(), storage.suffixSize(), key, header, plain)) {
+    throw std::system_error(make_error_code(error::WRONG_PASSWORD),
+                            "Wallet cache failed authentication");
+  }
+  containerData.assign(plain.begin(), plain.end());
 }
 
 void WalletGreen::deleteOrphanTransactions(const std::unordered_set<Crypto::PublicKey>& /*deletedKeys*/) {
@@ -731,22 +1056,38 @@ void WalletGreen::changePassword(const std::string& oldPassword, const std::stri
     return;
   }
 
-  Crypto::cn_context cnContext;
-  Crypto::chacha8_key newKey;
-  Crypto::generate_chacha8_key(cnContext, newPassword, newKey);
+  // A new password gets a new salt, so the rewritten container shares no derived
+  // material with the old one.
+  const ContainerStoragePrefix newHeader = makeContainerHeader();
 
-  m_containerStorage.atomicUpdate([this, newKey](ContainerStorage& newStorage) {
-    copyContainerStoragePrefix(m_containerStorage, m_key, newStorage, newKey);
-    copyContainerStorageKeys(m_containerStorage, m_key, newStorage, newKey);
+  Crypto::chacha8_key newKey;
+  // Derive before touching the container: a KDF failure must leave the existing
+  // wallet file untouched rather than half-rewritten under an unusable key.
+  if (!deriveContainerKey(newPassword, newHeader, newKey)) {
+    m_logger(ERROR, BRIGHT_RED) << "Failed to change password: password key derivation failed";
+    throw std::system_error(make_error_code(error::INTERNAL_WALLET_ERROR),
+                            "Password key derivation failed");
+  }
+  Tools::SecretLock scrubNewKey(&newKey, sizeof(newKey));
+
+  m_containerStorage.atomicUpdate([this, &newKey, &newHeader](ContainerStorage& newStorage) {
+    // atomicUpdate copies the old prefix in first; overwrite it with the new
+    // header before anything is authenticated against it.
+    *reinterpret_cast<ContainerStoragePrefix*>(newStorage.prefix()) = newHeader;
+
+    copyContainerStorageKeys(m_containerStorage, m_key, newStorage, newKey, newHeader);
 
     if (m_containerStorage.suffixSize() > 0) {
       BinaryArray containerData;
       loadAndDecryptContainerData(m_containerStorage, m_key, containerData);
       encryptAndSaveContainerData(newStorage, newKey, containerData.data(), containerData.size());
+      sodium_memzero(containerData.data(), containerData.size());
     }
   });
 
+  sodium_memzero(&m_key, sizeof(m_key));
   m_key = newKey;
+  sodium_memzero(&m_password[0], m_password.size());
   m_password = newPassword;
 
   m_logger(INFO, BRIGHT_WHITE) << "Container password changed";
@@ -762,13 +1103,16 @@ bool WalletGreen::pqRegistrationCoords(uint32_t& height, uint32_t& txIndex) cons
   if (!getPqRegistrationKeysHex(viewHex, spendHex)) {
     return false;  // tracking wallet
   }
-  bool registered = false;
+  // These coordinates are not internal bookkeeping: every caller turns them into
+  // an H-I-A-T-C deposit number for someone else to pay. A daemon that answers
+  // with coordinates of its own choosing therefore chooses who gets paid, so the
+  // same trust boundary applies here as on the payer side. Failure is not fatal
+  // anywhere -- callers fall back to the full address, which needs no daemon.
   uint32_t h = 0, i = 0;
-  std::promise<std::error_code> promise;
-  auto future = promise.get_future();
-  m_node.getPqAccount(viewHex, spendHex, registered, h, i,
-                      [&promise](std::error_code ec) { promise.set_value(ec); });
-  if (future.get() || !registered) {
+  const PqAccountPublication status = lookupOwnPqAccount(m_node, viewHex, spendHex, h, i);
+  if (status != PqAccountPublication::Ok) {
+    m_logger(DEBUGGING) << "Account-number coordinates unavailable: "
+                        << pqAccountPublicationMessage(status);
     return false;
   }
   m_pqRegResolved = true;
@@ -1065,10 +1409,14 @@ std::vector<std::string> WalletGreen::doCreateAddressList(const std::vector<NewA
       const bool depositSchemeChosen = m_pqDepositSchemeChosen;
       const uint32_t nextDepositIndex = m_pqNextDepositIndex;
 
+      // shutdown() scrubs m_password, so take the reopen credentials first.
+      const std::string reopenPath = m_path;
+      const std::string reopenPassword = m_password;
+
       save(WalletSaveLevel::SAVE_KEYS_AND_TRANSACTIONS, m_extra);
       shutdown();
       m_pqTrackingKeys = std::move(trackingKeys);
-      load(m_path, m_password);
+      load(reopenPath, reopenPassword);
 
       // Only reinstate what the reloaded blob did not already carry, so a container
       // that DID persist its deposit metadata keeps the on-disk truth.
@@ -1096,7 +1444,6 @@ std::string WalletGreen::addWallet(const CryptoPQ::SeedMaster& seedMaster, bool 
 
   // Persist the encrypted seed record, then register the in-memory record.
   m_containerStorage.push_back(encryptSeed(seedMaster, creationTimestamp));
-  incNextIv();
 
   try {
     WalletRecord wallet;
@@ -1248,6 +1595,10 @@ void WalletGreen::reset(const uint64_t scanHeight)
     /* Stop and shutdown */
     stop();
 
+    /* shutdown() scrubs m_password, so take the reopen credentials first. */
+    const std::string reopenPath = m_path;
+    const std::string reopenPassword = m_password;
+
     /* Shutdown the wallet */
     shutdown();
 
@@ -1255,7 +1606,7 @@ void WalletGreen::reset(const uint64_t scanHeight)
     start();
 
     /* Reopen from truncated storage */
-    load(m_path, m_password);
+    load(reopenPath, reopenPassword);
 }
 
 void WalletGreen::deleteAddress(const std::string& address) {
@@ -1338,8 +1689,20 @@ bool WalletGreen::pqResolveAddressBucket(const std::string& address, uint32_t& d
   return false;
 }
 
+uint32_t WalletGreen::pqSigningHeight() const {
+  return m_node.getLocalBlockCount();
+}
+
 std::string WalletGreen::pqBucketAddress(uint32_t bucket) const {
   if (bucket == PQ_PRIMARY_DEPOSIT) {
+    return getPqAddress();
+  }
+  // The sentinel is not a deposit index and must never be fed to the deposit
+  // address derivation: doing so would mint a well-formed address for a deposit
+  // 4294967294 that does not exist, and a history row or API response carrying it
+  // would be indistinguishable from a real one. The funds are the wallet's own,
+  // so the wallet's own identity is the honest thing to show.
+  if (bucket == PQ_UNATTRIBUTED_DEPOSIT) {
     return getPqAddress();
   }
   // Deliberately NOT getAddress(): that bounds the index to the deposits THIS
@@ -2153,6 +2516,7 @@ PqSendResult WalletGreen::sendPqTransfer(const std::vector<PqSendOutput>& recipi
   req.extra = extra;
   std::memcpy(req.genesisId.data(), m_currency.genesisBlockHash().data,
               req.genesisId.size());
+  req.signingHeight = pqSigningHeight();
   // The scheme drives per-input key selection inside buildPqSend (the one key vs a
   // per-deposit derived key for AggregatedMultikey deposit inputs).
   req.scheme = m_pqDepositScheme;
@@ -2289,6 +2653,7 @@ PqSendResult WalletGreen::preparePqTransfer(const std::vector<PqSendOutput>& rec
   req.extra = extra;
   std::memcpy(req.genesisId.data(), m_currency.genesisBlockHash().data,
               req.genesisId.size());
+  req.signingHeight = pqSigningHeight();
   req.scheme = m_pqDepositScheme;
   for (const auto& address : sourceAddresses) {
     uint32_t bucket = 0;

@@ -1421,22 +1421,23 @@ std::error_code WalletService::getPqAccountStatus(bool& registered, std::string&
       return std::error_code();
     }
 
-    auto statusCompleted = std::promise<std::error_code>();
-    auto statusFuture = statusCompleted.get_future();
-    node.getPqAccount(viewHex, spendHex, registered, blockHeight, txIndex,
-                      [&statusCompleted](std::error_code error) {
-                        auto detached = std::move(statusCompleted);
-                        detached.set_value(error);
-                      });
-    std::error_code statusError = statusFuture.get();
-    if (statusError) {
-      logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Failed to query account: " << statusError.message();
-      return statusError;
+    // The number reported here is what the operator publishes to payers, so the
+    // coordinates come through the trusted-daemon gate. walletd is trusted when
+    // it was started against a daemon the operator vouched for; otherwise this
+    // field is simply left empty rather than filled from an unvouched answer.
+    const CryptoNote::PqAccountPublication status =
+        CryptoNote::lookupOwnPqAccount(node, viewHex, spendHex, blockHeight, txIndex);
+    if (status == CryptoNote::PqAccountPublication::QueryFailed) {
+      logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Failed to query account number";
+      return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
     }
-
+    registered = (status == CryptoNote::PqAccountPublication::Ok);
     if (registered) {
       accountNumber = CryptoNote::AccountNumber{blockHeight, txIndex}
                           .toString(greenWallet->pqAccountFingerprint());
+    } else {
+      logger(Logging::DEBUGGING) << "Account number not reported: "
+                                 << CryptoNote::pqAccountPublicationMessage(status);
     }
   } catch (std::system_error& x) {
     logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while getting account status: " << x.what();
@@ -1456,7 +1457,21 @@ const char* depositSchemeName(CryptoNote::PqDepositScheme s) {
 }
 
 // Resolve this wallet's OWN PQ account registration coords (H, I) via the node.
-// `registered` is false (with H=I=0) when the wallet has no PQ identity or is unregistered.
+// `registered` is false (with H=I=0) when the wallet has no PQ identity or is
+// unregistered.
+//
+// These coordinates are not internal bookkeeping. Both deposit endpoints render
+// them as H-I-A-T-C and hand that to payers, so a daemon answering with
+// coordinates of its choosing chooses who gets paid -- and A is only 20 bits, so
+// a registration ground to collide with it redirects payers who resolve through
+// an honest node. Hence lookupOwnPqAccount rather than a bare getPqAccount: it
+// refuses on a daemon the operator has not trusted, and confirms the coordinates
+// resolve back to this wallet's own full keys.
+//
+// Every outcome that is not "confirmed" and not "plainly unregistered" is an
+// error here. Returning it as "unregistered" would read to a caller as a normal
+// empty state, and the list endpoint would answer an empty list rather than
+// saying it declined -- a silent failure exactly where silence is dangerous.
 std::error_code resolveOwnPqRegistration(CryptoNote::INode& node, CryptoNote::WalletGreen& gw,
                                          bool& registered, uint32_t& blockHeight, uint32_t& txIndex) {
   registered = false;
@@ -1466,14 +1481,24 @@ std::error_code resolveOwnPqRegistration(CryptoNote::INode& node, CryptoNote::Wa
   if (!gw.getPqRegistrationKeysHex(viewHex, spendHex)) {
     return std::error_code();  // no spend authority: nothing registered
   }
-  auto completed = std::promise<std::error_code>();
-  auto fut = completed.get_future();
-  node.getPqAccount(viewHex, spendHex, registered, blockHeight, txIndex,
-                    [&completed](std::error_code e) {
-                      auto detached = std::move(completed);
-                      detached.set_value(e);
-                    });
-  return fut.get();
+
+  const CryptoNote::PqAccountPublication status =
+      CryptoNote::lookupOwnPqAccount(node, viewHex, spendHex, blockHeight, txIndex);
+  switch (status) {
+    case CryptoNote::PqAccountPublication::Ok:
+      registered = true;
+      return std::error_code();
+    case CryptoNote::PqAccountPublication::NotRegistered:
+      return std::error_code();  // nothing to publish, and nothing wrong
+    case CryptoNote::PqAccountPublication::UntrustedResolver:
+      return make_error_code(CryptoNote::error::UNTRUSTED_DAEMON);
+    case CryptoNote::PqAccountPublication::NotYetPayable:
+    case CryptoNote::PqAccountPublication::Mismatch:
+      return make_error_code(CryptoNote::error::ACCOUNT_NUMBER_UNCONFIRMED);
+    case CryptoNote::PqAccountPublication::QueryFailed:
+      break;
+  }
+  return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
 }
 
 }  // namespace
@@ -1532,6 +1557,8 @@ std::error_code WalletService::createPqDepositAddress(std::string& address, uint
       bool registered = false;
       std::error_code rc = resolveOwnPqRegistration(node, *gw, registered, regH, regI);
       if (rc) {
+        logger(Logging::WARNING, Logging::BRIGHT_YELLOW)
+            << "Refusing to issue a deposit address: " << rc.message();
         return rc;
       }
       if (!registered) {
@@ -1576,6 +1603,8 @@ std::error_code WalletService::listPqDepositAddresses(std::vector<std::string>& 
       bool registered = false;
       std::error_code rc = resolveOwnPqRegistration(node, *gw, registered, regH, regI);
       if (rc) {
+        logger(Logging::WARNING, Logging::BRIGHT_YELLOW)
+            << "Refusing to list deposit addresses: " << rc.message();
         return rc;
       }
       // If unregistered we simply cannot render H-I-A-T-C; return the empty list.
@@ -1637,8 +1666,11 @@ std::error_code WalletService::createTransaction(const SendTransaction::Request&
         CryptoPQ::DsaPublicKey spendPub;
         uint64_t subaddrT = 0;
         const std::string recipient = canonicalizeAddressSelector(wallet, t.address);
-        if (!CryptoNote::resolvePqRecipient(node, currency.isTestnet(), recipient, viewPub, spendPub, subaddrT)) {
-          logger(Logging::WARNING) << "Invalid recipient: " << recipient;
+        std::string resolveError;
+        if (!CryptoNote::resolvePqRecipient(node, currency.isTestnet(), recipient, viewPub, spendPub,
+                                            subaddrT, &resolveError)) {
+          logger(Logging::WARNING) << "Invalid recipient: " << recipient
+                                   << (resolveError.empty() ? "" : " - " + resolveError);
           return make_error_code(CryptoNote::error::BAD_ADDRESS);
         }
         recipients.push_back(CryptoNote::PqSendOutput{viewPub, spendPub, t.amount, subaddrT});

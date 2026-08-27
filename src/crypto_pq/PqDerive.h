@@ -59,6 +59,7 @@ constexpr char kDomainAeadKey[]     = "discrete-pq-aead-key-v1";
 constexpr char kDomainSpendCommit[] = "discrete-pq-spend-commit-v1";
 constexpr char kDomainNullifier[]   = "discrete-pq-nullifier-v1";
 constexpr char kDomainTxSign[]      = "discrete-pq-tx-sign-v1";
+constexpr char kDomainTxSignV2[]    = "discrete-pq-tx-sign-v2";
 constexpr char kDomainCoinbaseRho[] = "discrete-coinbase-rho-v1";
 
 // RESERVED for Phase 2 (KDSK-CT) — MUST NOT be used by any v1-plain code.
@@ -184,5 +185,33 @@ Rho coinbaseRho(const DsaPublicKey& spendPub, uint32_t height,
 //    inputs || outputs || LE32(extra_len) || extra || LE64(fee). Each input's
 //    authPub is the long-term spend public key revealed at spend time.
 Hash256 txSigningDigest(const UnsignedTx& tx) noexcept;
+
+// 6b. txSigningDigestV2 -- the next-version transcript. Same body as v1, wrapped
+//     in a new domain and prefixed with the chain identity, suffixed with the
+//     index of the input this signature authorizes:
+//
+//       SHA3-256(domainV2 || chainId || <v1 body> || LE32(inputIndex))
+//
+//     It closes two holes in v1 that cannot be fixed without changing what is
+//     signed:
+//
+//     * v1 says nothing about which chain the transaction belongs to. The
+//       outpoints it names are just (txid, index), so if two networks ever hold
+//       the same live outpoint, a signature made for one verifies on the other.
+//       chainId is the genesis block id, which is immutable and distinct per
+//       network.
+//
+//     * v1 gives every input of a transaction the same digest, so two inputs
+//       spending under the SAME key carry interchangeable signatures. Swapping
+//       them leaves the transaction valid but changes its id -- a third party
+//       can mutate an unconfirmed payment's id without touching what it does.
+//       Binding the input index makes each signature usable in exactly one
+//       position.
+//
+//     This is a consensus change: an activation height gates which transcript is
+//     required, and both paths exist around it. Nothing is scheduled yet -- see
+//     parameters::PQ_TRANSCRIPT_V2_HEIGHT.
+Hash256 txSigningDigestV2(const UnsignedTx& tx, const Hash256& chainId,
+                          uint32_t inputIndex) noexcept;
 
 }  // namespace CryptoPQ

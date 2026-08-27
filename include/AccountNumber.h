@@ -41,9 +41,12 @@ namespace CryptoNote {
 // change who a payment resolves to. A binds the number to the actual keys: a
 // resolver recomputes A from the on-chain keys (pqAccountFingerprint(), see
 // PqAddress.h) and refuses the payment if it does not match the A the payer typed.
-// A is short by design — decisive against accidental/reorg mismatch (~1/1,048,576),
-// a mere speed bump against a deliberate collider; the real barrier to a targeted
-// substitution is first-seen finality (resolution is gated on it), not A's length.
+//
+// A is short by design: decisive against an accidental or reorg mismatch
+// (~1/1,048,576), but a failsafe rather than an authentication of the party that
+// answers the lookup. Wallets therefore resolve a compact number only through a
+// daemon the user has trusted; see Common/DaemonTrust.h. Full Bech32m addresses
+// carry both keys and are safe through any daemon.
 //
 // The whole number uses only Crockford-Base32-safe symbols (digits plus letters,
 // excluding the ambiguous I, L, O, U), so 0/O and 1/I/L can never be confused. The
@@ -247,5 +250,19 @@ private:
     return true;
   }
 };
+
+// Whether a destination string names one specific deposit route, i.e. is in the
+// H-I-A-T-C form rather than a base H-I-A-C number or a full address.
+//
+// Anything that verifies a payment has to know this: a payment proof establishes
+// spend authority over an account and commits to nothing about T, so a caller
+// that named a route has asked a question the proof cannot answer, and must be
+// told no rather than yes. See COMMAND_RPC_CHECK_TRANSACTION_PROOF.
+inline bool namesDepositRoute(const std::string& destination) {
+  AccountNumber account;
+  uint32_t subaddrIndex = 0;
+  uint32_t fingerprint = 0;
+  return AccountNumber::fromStringWithIndex(destination, account, subaddrIndex, fingerprint);
+}
 
 }  // namespace CryptoNote

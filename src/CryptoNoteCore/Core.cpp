@@ -372,8 +372,22 @@ bool Core::check_tx_semantic(const Transaction& tx, const Crypto::Hash& txHash, 
       }
       return true;
     } else if (tx.txType == TX_FREE_REG) {
-      if (!checkFreeRegTransactionSemantic(tx, &pqErr, m_currency.freeRegPowTarget())) {
+      // Shape only. Verifying the memory-hard anti-spam proof is the most
+      // expensive step in admission, so it runs last, in checkFreeRegInputs(),
+      // once every cheaper check has passed.
+      if (!checkFreeRegTransactionShape(tx, &pqErr)) {
         logger(ERROR) << "free-reg tx semantic check failed (" << pqErr << ") for tx id= " << Common::podToHex(txHash);
+        return false;
+      }
+      // RELAY POLICY, deliberately not applied to transactions arriving inside a
+      // block: block validity must stay exactly as it was, or upgraded and old
+      // nodes would disagree about a block.
+      //
+      // The field-level checks above run on parsed fields, which do not capture
+      // the exact byte encoding. Requiring the canonical form keeps one
+      // registration proof to one transaction id.
+      if (!keeped_by_block && !isCanonicalFreeRegExtra(tx.extra)) {
+        logger(INFO) << "free-reg tx has non-canonical extra, not relayed: " << Common::podToHex(txHash);
         return false;
       }
       return true;
@@ -1295,6 +1309,25 @@ bool Core::handleIncomingTransaction(const Transaction& tx, const Crypto::Hash& 
     logger(INFO) << "WRONG TRANSACTION BLOB, Failed to check tx " << txHash << " semantic, rejected";
     tvc.m_verification_failed = true;
     return false;
+  }
+
+  // Phase one of TX_FREE_REG admission, deliberately BEFORE add_new_tx(), which
+  // takes the mempool lock and the recursive blockchain lock and holds both for
+  // the entire insertion. The registration proof is memory-hard -- milliseconds
+  // of CPU and 16 MiB apiece -- so evaluating it under those locks lets one peer
+  // stall every unrelated transaction, block, and template on the node for as
+  // long as it takes. Phase two (Blockchain::checkFreeRegInputs) re-checks the
+  // chain state under the locks and reuses this verdict.
+  //
+  // Skipped for transactions arriving inside a block: those are not admission
+  // decisions, the caller may already hold the chain lock, and phase two still
+  // performs the full check.
+  if (!keptByBlock && tx.version >= TRANSACTION_VERSION_1 && tx.txType == TX_FREE_REG) {
+    if (!m_blockchain.precheckFreeRegPow(tx)) {
+      logger(INFO) << "free-reg registration proof rejected for tx " << txHash;
+      tvc.m_verification_failed = true;
+      return false;
+    }
   }
 
   bool r = add_new_tx(tx, txHash, blobSize, tvc, keptByBlock);

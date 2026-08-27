@@ -44,6 +44,18 @@ struct PqSendRequest {
   std::vector<uint8_t> extra;            // tx.extra (e.g. a PQ account registration tag)
   CryptoPQ::Hash256 genesisId{};         // network binding embedded in every proof
 
+  // The block index this transaction is expected to be validated at, which is the
+  // NEXT block index (the chain height), not the current tip: consensus judges a
+  // transaction at the height of the block carrying it. It selects the signing
+  // transcript via pqSigningContextForHeight — the same helper consensus uses.
+  //
+  // Left at 0 the transaction signs under transcript v1, which is what consensus
+  // requires until parameters::PQ_TRANSCRIPT_V2_HEIGHT activates. Every wallet
+  // front-end sets it; the default keeps direct callers (tests, tools) on the
+  // pre-activation transcript rather than silently signing for height 0 of a
+  // chain they did not mean.
+  uint32_t signingHeight = 0;
+
   // Deposit scheme: decides each input's signing key. Under SingleKeyIndex the one
   // ML-DSA key authorizes every input; under AggregatedMultikey a deposit input is
   // signed with deriveDepositSpendKeys(seedMaster, depositIndex). `keys` must carry a

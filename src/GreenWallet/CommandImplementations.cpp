@@ -846,10 +846,10 @@ void pqBalance(std::shared_ptr<WalletInfo> walletInfo)
 // its view + spend public keys, querying the node for an account number.
 static bool resolvePqRecipientGreen(CryptoNote::INode &node, bool testnet, const std::string &s,
                                     CryptoPQ::KemPublicKey &viewPub, CryptoPQ::DsaPublicKey &spendPub,
-                                    uint64_t &subaddrIndexT)
+                                    uint64_t &subaddrIndexT, std::string &error)
 {
     // Delegate to the shared resolver so every front-end parses addresses identically.
-    return CryptoNote::resolvePqRecipient(node, testnet, s, viewPub, spendPub, subaddrIndexT);
+    return CryptoNote::resolvePqRecipient(node, testnet, s, viewPub, spendPub, subaddrIndexT, &error);
 }
 
 void pqTransfer(std::shared_ptr<WalletInfo> walletInfo, CryptoNote::INode &node)
@@ -867,9 +867,14 @@ void pqTransfer(std::shared_ptr<WalletInfo> walletInfo, CryptoNote::INode &node)
     CryptoPQ::KemPublicKey destView;
     CryptoPQ::DsaPublicKey destSpend;
     uint64_t destSubaddrT = 0;  // non-zero only for an H-I-A-T-C deposit subaddress
-    if (!resolvePqRecipientGreen(node, wallet.isTestnet(), addrStr, destView, destSpend, destSubaddrT))
+    std::string resolveError;
+    if (!resolvePqRecipientGreen(node, wallet.isTestnet(), addrStr, destView, destSpend,
+                                 destSubaddrT, resolveError))
     {
-        std::cout << WarningMsg("Not a valid address or account number.") << std::endl;
+        std::cout << WarningMsg(resolveError.empty()
+                                    ? std::string("Not a valid address or account number.")
+                                    : resolveError)
+                  << std::endl;
         return;
     }
 
@@ -988,9 +993,24 @@ void pqRegisterPaid(std::shared_ptr<WalletInfo> walletInfo, CryptoNote::INode &n
     }
     if (registered)
     {
-        CryptoNote::AccountNumber acct{blockHeight, txIndex};
-        std::cout << WarningMsg("This identity already has account number: ")
-                  << SuccessMsg(acct.toString(wallet.pqAccountFingerprint())) << std::endl;
+        // Naming the number is publication: confirm the coordinates through the
+        // trusted-daemon gate before printing them. Refusing to register again
+        // does not depend on that.
+        uint32_t confirmedH = 0, confirmedI = 0;
+        const CryptoNote::PqAccountPublication status =
+            CryptoNote::lookupOwnPqAccount(node, viewHex, spendHex, confirmedH, confirmedI);
+        if (status == CryptoNote::PqAccountPublication::Ok)
+        {
+            CryptoNote::AccountNumber acct{confirmedH, confirmedI};
+            std::cout << WarningMsg("This identity already has account number: ")
+                      << SuccessMsg(acct.toString(wallet.pqAccountFingerprint())) << std::endl;
+        }
+        else
+        {
+            std::cout << WarningMsg("This identity is already registered. ")
+                      << InformationMsg(CryptoNote::pqAccountPublicationMessage(status))
+                      << std::endl;
+        }
         return;
     }
 
@@ -1058,23 +1078,12 @@ void pqAccount(std::shared_ptr<WalletInfo> walletInfo, CryptoNote::INode &node)
         return;
     }
 
-    bool registered = false;
     uint32_t blockHeight = 0, txIndex = 0;
-    std::promise<std::error_code> promise;
-    auto future = promise.get_future();
-    node.getPqAccount(viewHex, spendHex, registered, blockHeight, txIndex,
-                      [&promise](std::error_code ec) { promise.set_value(ec); });
-    std::error_code ec = future.get();
-    if (ec)
+    const CryptoNote::PqAccountPublication status =
+        CryptoNote::lookupOwnPqAccount(node, viewHex, spendHex, blockHeight, txIndex);
+    if (status != CryptoNote::PqAccountPublication::Ok)
     {
-        std::cout << WarningMsg("Failed to query account: " + ec.message()) << std::endl;
-        return;
-    }
-    if (!registered)
-    {
-        std::cout << InformationMsg("No account number registered yet. Use 'register', then "
-                                    "re-check with 'account' once confirmed.")
-                  << std::endl;
+        std::cout << InformationMsg(CryptoNote::pqAccountPublicationMessage(status)) << std::endl;
         return;
     }
     CryptoNote::AccountNumber acct{blockHeight, txIndex};

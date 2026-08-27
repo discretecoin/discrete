@@ -20,6 +20,7 @@
 
 #include "IWallet.h"
 
+#include <functional>
 #include <map>
 #include <memory>
 #include <queue>
@@ -267,18 +268,46 @@ protected:
   void doShutdown();
   void clearCaches(bool clearTransactions, bool clearCachedData);
   void convertAndLoadWalletFile(const std::string& path, std::ifstream&& walletFileStream);
-  // Encrypt/decrypt a wallet record = magic || PQ master seed || creation timestamp.
-  // decryptSeed returns false if the magic doesn't match (i.e. wrong password).
-  static bool decryptSeed(const EncryptedWalletRecord& cipher, CryptoPQ::SeedMaster& seedMaster,
-    uint64_t& creationTimestamp, const Crypto::chacha8_key& key);
-  bool decryptSeed(const EncryptedWalletRecord& cipher, CryptoPQ::SeedMaster& seedMaster, uint64_t& creationTimestamp) const;
-  static EncryptedWalletRecord encryptSeed(const CryptoPQ::SeedMaster& seedMaster, uint64_t creationTimestamp,
-    const Crypto::chacha8_key& key, const Crypto::chacha8_iv& iv);
-  EncryptedWalletRecord encryptSeed(const CryptoPQ::SeedMaster& seedMaster, uint64_t creationTimestamp) const;
-  Crypto::chacha8_iv getNextIv() const;
-  static void incIv(Crypto::chacha8_iv& iv);
-  void incNextIv();
-  // Set up a fresh (empty) PQ wallet container: the prefix holds only {version,nextIv}
+  // Encrypt/decrypt a wallet record (PQ master seed + creation timestamp) under
+  // this container's key and header. decryptSeed returns false for a wrong
+  // password and for a tampered record alike.
+  bool decryptSeed(const EncryptedWalletRecord& cipher, CryptoPQ::SeedMaster& seedMaster,
+                   uint64_t& creationTimestamp) const;
+  EncryptedWalletRecord encryptSeed(const CryptoPQ::SeedMaster& seedMaster,
+                                    uint64_t creationTimestamp) const;
+  // The container's authenticated header.
+  const ContainerStoragePrefix& containerHeader() const;
+  // Open a version-9 container, decrypt it with the legacy unsalted key, and
+  // rewrite it in the current format under a fresh salt. The original file is
+  // only replaced once the rewritten one has been reopened and authenticated.
+  void migrateLegacyContainer(const std::string& path, const std::string& password);
+  // Wipe every secret this wallet holds: the container key, the password, and
+  // the master seeds in the address records.
+  void wipeSecrets();
+
+  // Return the object to a clean NOT_INITIALIZED state after a load that failed
+  // at any point. Safe to call however far the attempt got, including when a
+  // component was never created, and safe to call more than once.
+  void abortLoad();
+
+public:
+  // True while any secret is still resident. Never exposes a secret; it lets the
+  // daemon report state and lets tests assert that closing a wallet, or failing
+  // to open one, leaves nothing behind.
+  bool hasResidentSecrets() const;
+
+  // Test-only fault injection, in the same spirit as Crypto::kdf_forced_failure().
+  //
+  // The steps that run after the container has been opened — building the PQ
+  // consumer, seeding the blockchain, starting the synchronizer — fail only under
+  // conditions a unit test cannot practically create, yet they are exactly the
+  // window in which the container key and the master seeds are already resident.
+  // Setting this makes load() throw at that point so the cleanup can be checked.
+  // Production never sets it; load() only reads it.
+  static std::function<void()>& loadFaultInjector();
+
+private:
+  // Set up a fresh (empty) PQ wallet container: the prefix holds only the version
   // — there is no classical view key. The primary seed lands as record 0 via the
   // first createAddress()/doCreateAddress().
   void initContainer(const std::string& path, const std::string& password);
@@ -366,13 +395,18 @@ protected:
   void addUnconfirmedTransaction(const ITransactionReader& transaction);
   void removeUnconfirmedTransaction(const Crypto::Hash& transactionHash);
 
-  void copyContainerStorageKeys(ContainerStorage& src, const Crypto::chacha8_key& srcKey, ContainerStorage& dst, const Crypto::chacha8_key& dstKey);
-  static void copyContainerStoragePrefix(ContainerStorage& src, const Crypto::chacha8_key& srcKey, ContainerStorage& dst, const Crypto::chacha8_key& dstKey);
+  // Re-encrypt every seed record from src into dst. dst carries its own header,
+  // so the records are bound to it and cannot be moved back.
+  void copyContainerStorageKeys(ContainerStorage& src, const Crypto::chacha8_key& srcKey,
+                                ContainerStorage& dst, const Crypto::chacha8_key& dstKey,
+                                const ContainerStoragePrefix& dstHeader);
   void deleteOrphanTransactions(const std::unordered_set<Crypto::PublicKey>& deletedKeys);
-  static void encryptAndSaveContainerData(ContainerStorage& storage, const Crypto::chacha8_key& key, const void* containerData, size_t containerDataSize);
-  static void loadAndDecryptContainerData(ContainerStorage& storage, const Crypto::chacha8_key& key, BinaryArray& containerData);
+  static void encryptAndSaveContainerData(ContainerStorage& storage, const Crypto::chacha8_key& key,
+                                          const void* containerData, size_t containerDataSize);
+  static void loadAndDecryptContainerData(ContainerStorage& storage, const Crypto::chacha8_key& key,
+                                          BinaryArray& containerData);
   void loadSpendKeys();
-  void loadContainerStorage(const std::string& path);
+  void loadContainerStorage(const std::string& path, const std::string& password);
   void loadWalletCache(std::unordered_set<Crypto::PublicKey>& addedKeys, std::unordered_set<Crypto::PublicKey>& deletedKeys, std::string& extra);
   void saveWalletCache(ContainerStorage& storage, const Crypto::chacha8_key& key, WalletSaveLevel saveLevel, const std::string& extra);
 
@@ -397,6 +431,20 @@ protected:
   System::Dispatcher& m_dispatcher;
   const Currency& m_currency;
   INode& m_node;
+
+  // The block index a transaction built now expects to be validated at.
+  //
+  // Consensus judges a TX_PQ at the height of the block that carries it, and the
+  // earliest such block is the one after the current tip. getLocalBlockCount() is
+  // that index (tip + 1) and is the same quantity the node reports as its chain
+  // height, so the wallet and the verifier read the activation boundary off the
+  // same number.
+  //
+  // A transaction left in the mempool across the activation height is therefore
+  // signed for a height it may no longer be mined at. Scheduling an activation
+  // has to account for that window; see PQ_TRANSCRIPT_V2_HEIGHT, which is
+  // deliberately unscheduled.
+  uint32_t pqSigningHeight() const;
   mutable Logging::LoggerRef m_logger;
   bool m_stopped;
 

@@ -96,7 +96,10 @@ namespace CryptoNote {
   bool Currency::generateGenesisBlock() {
     m_genesisBlock = boost::value_initialized<Block>();
 
-    std::string genesisCoinbaseTxHex = GENESIS_COINBASE_TX_HEX;
+    // The frozen hex is the MAINNET artifact. Testnet always builds its own, so
+    // the two networks never share a genesis transaction id -- and so never share
+    // an outpoint that one chain's signature could spend on the other.
+    std::string genesisCoinbaseTxHex = m_testnet ? std::string() : GENESIS_COINBASE_TX_HEX;
     BinaryArray minerTxBlob;
 
     bool r =
@@ -109,7 +112,7 @@ namespace CryptoNote {
       // frozen, so a node with the hex and a node regenerating agree. The genesis
       // block signature is skipped at height 0 (validate_block_signature).
       try {
-        m_genesisBlock.baseTransaction = buildGenesisTreasuryReserveCoinbase();
+        m_genesisBlock.baseTransaction = buildGenesisTreasuryReserveCoinbase(m_testnet);
       } catch (const std::exception& e) {
         logger(ERROR, BRIGHT_RED) << "Failed to create PQ genesis coinbase: " << e.what();
         return false;
@@ -123,6 +126,9 @@ namespace CryptoNote {
     m_genesisBlock.timestamp = GENESIS_BLOCK_TIMESTAMP;
     m_genesisBlock.nonce = 70;
     if (m_testnet) {
+      // Cosmetic. The separation that matters is in the coinbase transaction
+      // above: the block nonce does not reach the transaction id, so it cannot
+      // keep the two networks' outpoints apart on its own.
       ++m_genesisBlock.nonce;
     }
     // Genesis signature validation is skipped (height 0), but the wire format
@@ -502,7 +508,10 @@ namespace CryptoNote {
     // Deterministic Treasury Reserve coinbase. Used by `discreted --print-genesis-tx` to
     // emit GENESIS_COINBASE_TX_HEX. (The legacy ECC constructMinerTx path is dead
     // in Discrete.)
-    return buildGenesisTreasuryReserveCoinbase();
+    //
+    // Follows the builder's own testnet flag, so printing on a testnet build
+    // emits that network's genesis transaction rather than mainnet's.
+    return buildGenesisTreasuryReserveCoinbase(m_currency.m_testnet);
   }
   CurrencyBuilder& CurrencyBuilder::emissionSpeedFactor(unsigned int val) {
     if (val <= 0 || val > 8 * sizeof(uint64_t)) {

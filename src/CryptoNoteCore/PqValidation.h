@@ -25,6 +25,7 @@
 #include "CryptoNote.h"
 #include "CryptoTypes.h"
 #include "../CryptoNoteConfig.h"
+#include "crypto_pq/PqDerive.h"
 #include "crypto_pq/PqHash.h"
 
 // Consensus validation for PQ Phase 1 transactions (TRANSACTION_VERSION_1,
@@ -68,6 +69,22 @@ bool checkPqTransactionSemantic(const Transaction& tx, std::string* error);
 // per-block count) are enforced by the Blockchain layer.
 // powTarget defaults to parameters::FREE_REG_POW_TARGET; pass a custom value
 // (e.g. UINT64_MAX) in tests to bypass PoW grinding.
+//
+// The check is split so callers can run the cheap half first. Verifying the PoW
+// costs a full memory-hard yespower evaluation (16 MiB, milliseconds), which a
+// peer can trigger for free by replaying a blob, so the expensive half must only
+// run once everything a node can decide cheaply — shape, whether the transaction
+// is already known, whether the reference block is in the window, whether the
+// identity is already registered — has already passed.
+bool checkFreeRegTransactionShape(const Transaction& tx, std::string* error);
+
+// How many registration-proof evaluations the calling thread has run. Node-local
+// instrumentation, not consensus: the relay layer samples the delta across one
+// transaction admission to charge the peer that caused the work, and tests use
+// it to assert that cheap rejections never reach the proof at all.
+uint64_t freeRegPowEvaluationCount();
+bool checkFreeRegTransactionPow(const Transaction& tx, std::string* error,
+                                uint64_t powTarget = parameters::FREE_REG_POW_TARGET);
 bool checkFreeRegTransactionSemantic(const Transaction& tx, std::string* error,
                                      uint64_t powTarget = parameters::FREE_REG_POW_TARGET);
 
@@ -93,6 +110,30 @@ uint64_t grindFreeRegPow(const std::array<uint8_t, 1184>& viewPub,
                          const Crypto::Hash& refBlockHash,
                          uint64_t powTarget = parameters::FREE_REG_POW_TARGET);
 
+// Which signing transcript a transaction is judged against.
+//
+// Before parameters::PQ_TRANSCRIPT_V2_HEIGHT every input signs one shared digest
+// (version 1). From that height each input signs a digest that also binds the
+// chain identity and the input's own index (version 2). Both paths exist so the
+// activation boundary can be crossed, and reorgs across it re-evaluate at the
+// height the block actually lands on.
+struct PqSigningContext {
+  bool useV2 = false;
+  CryptoPQ::Hash256 chainId{};  // genesis block id; only read when useV2
+};
+
+// The signing context for a transaction being validated at `height` on the chain
+// whose genesis block id is `genesisId`.
+//
+// `height` is the index of the BLOCK THE TRANSACTION WILL BE IN, not the index of
+// the current tip. Consensus judges a transaction at the height of the block that
+// carries it, so a wallet building one has to pass the same thing: the next block
+// index, i.e. the chain height. Both overloads exist because the chain holds the
+// genesis id as a Crypto::Hash and wallets carry it as a CryptoPQ::Hash256; they
+// share one activation comparison so the two sides cannot drift apart.
+PqSigningContext pqSigningContextForHeight(uint32_t height, const Crypto::Hash& genesisId);
+PqSigningContext pqSigningContextForHeight(uint32_t height, const CryptoPQ::Hash256& genesisId);
+
 // Context-free input/balance/signature checks given resolved referenced outputs
 // (resolved[i] corresponds to tx.inputs[i]). On success, *outNullifiers (if not
 // null) is filled with each input's nullifier so the caller can test them
@@ -111,7 +152,8 @@ bool checkPqTransactionInputs(const Transaction& tx,
                              const std::vector<PqResolvedInput>& resolved,
                              uint64_t minFee,
                              std::vector<Crypto::Hash>* outNullifiers,
-                             std::string* error);
+                             std::string* error,
+                             const PqSigningContext& signing = PqSigningContext());
 
 // Helper: recompute one PQ input's nullifier. Returns a zero hash if the input
 // fields are malformed (wrong sizes).
@@ -125,5 +167,8 @@ Crypto::KeyImage pqInputNullifierAsKeyImage(const PqInput& in);
 // (fee = sum(referenced amounts) - sum(output amounts)). The spender signs this
 // with its ML-DSA spend secret; the validator recomputes and verifies it.
 CryptoPQ::Hash256 pqSigningDigest(const Transaction& tx, uint64_t fee);
+
+// The transaction body both transcript versions are computed over.
+CryptoPQ::UnsignedTx pqUnsignedTx(const Transaction& tx, uint64_t fee);
 
 }  // namespace CryptoNote

@@ -32,6 +32,11 @@
 #include "Wallet/WalletErrors.h"
 #include "Wallet/WalletUtils.h"
 #include "WalletLegacy/KeysStorage.h"
+#include "Common/ScopeExit.h"
+#include "Common/SecureMemory.h"
+#include "crypto/crypto-util.h"
+#include "crypto/random.h"
+#include "crypto_pq/PqAead.h"
 
 using namespace Common;
 
@@ -90,21 +95,134 @@ void WalletLegacySerializer::serialize(std::ostream& stream, const std::string& 
 
   serializer.binary(const_cast<std::string&>(cache), "cache");
 
-  std::string plain = plainArchive.str();
-  std::string cipher;
+  // The payload carries its own content version, so the outer marker only has to
+  // say which envelope this is.
+  std::string payload;
+  {
+    std::stringstream payloadStream;
+    StdOutputStream payloadOut(payloadStream);
+    CryptoNote::BinaryOutputStreamSerializer payloadSerializer(payloadOut);
+    uint32_t contentVersion = walletSerializationVersion;
+    payloadSerializer(contentVersion, "content_version");
+    payload = payloadStream.str() + plainArchive.str();
+  }
 
-  Crypto::chacha8_iv iv = encrypt(plain, password, cipher);
+  Crypto::Hash salt{};
+  Random::randomBytes(sizeof(salt.data), salt.data);
 
-  uint32_t version = walletSerializationVersion;
+  Crypto::chacha8_key key;
+  if (!Crypto::generate_chacha8_key_salted(password, salt, key)) {
+    throw std::system_error(make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR),
+                            "Password key derivation failed");
+  }
+  Tools::SecretLock scrubKey(&key, sizeof(key));
+
+  CryptoPQ::AeadNonce nonce{};
+  Random::randomBytes(nonce.size(), nonce.data());
+
+  CryptoPQ::AeadKey aeadKey{};
+  std::memcpy(aeadKey.data(), key.data, aeadKey.size());
+
+  // The salt is associated data: swapping it for another wallet's changes the
+  // key the reader derives and, independently, fails the tag.
+  const std::vector<uint8_t> sealed =
+      CryptoPQ::aead_encrypt(aeadKey, nonce, salt.data, sizeof(salt.data),
+                             payload.data(), payload.size());
+  sodium_memzero(aeadKey.data(), aeadKey.size());
+  sodium_memzero(&payload[0], payload.size());
+
+  std::string saltField(reinterpret_cast<const char*>(salt.data), sizeof(salt.data));
+  std::string nonceField(reinterpret_cast<const char*>(nonce.data()), nonce.size());
+  std::string dataField(reinterpret_cast<const char*>(sealed.data()), sealed.size());
+
+  uint32_t envelope = AUTHENTICATED_ENVELOPE;
   StdOutputStream output(stream);
   CryptoNote::BinaryOutputStreamSerializer s(output);
   s.beginObject("wallet");
-  s(version, "version");
-  s(iv, "iv");
-  s(cipher, "data");
+  s(envelope, "version");
+  s(saltField, "salt");
+  s(nonceField, "nonce");
+  s(dataField, "data");
   s.endObject();
 
   stream.flush();
+}
+
+void WalletLegacySerializer::readPayload(std::istream& stream, const std::string& password,
+                                         std::string& payload, uint32_t& contentVersion) {
+  StdInputStream stdStream(stream);
+  CryptoNote::BinaryInputStreamSerializer envelopeSerializer(stdStream);
+
+  envelopeSerializer.beginObject("wallet");
+
+  uint32_t envelope = 0;
+  envelopeSerializer(envelope, "version");
+
+  if (envelope == AUTHENTICATED_ENVELOPE) {
+    std::string saltField, nonceField, dataField;
+    envelopeSerializer(saltField, "salt");
+    envelopeSerializer(nonceField, "nonce");
+    envelopeSerializer(dataField, "data");
+    envelopeSerializer.endObject();
+
+    if (saltField.size() != sizeof(Crypto::Hash) ||
+        nonceField.size() != CryptoPQ::kAeadNonceBytes ||
+        dataField.size() < CryptoPQ::kAeadTagBytes) {
+      throw std::system_error(make_error_code(CryptoNote::error::WRONG_PASSWORD));
+    }
+
+    Crypto::Hash salt{};
+    std::memcpy(salt.data, saltField.data(), sizeof(salt.data));
+
+    Crypto::chacha8_key key;
+    if (!Crypto::generate_chacha8_key_salted(password, salt, key)) {
+      throw std::system_error(make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR),
+                              "Password key derivation failed");
+    }
+    Tools::SecretLock scrubKey(&key, sizeof(key));
+
+    CryptoPQ::AeadNonce nonce{};
+    std::memcpy(nonce.data(), nonceField.data(), nonce.size());
+    CryptoPQ::AeadKey aeadKey{};
+    std::memcpy(aeadKey.data(), key.data, aeadKey.size());
+
+    auto plain = CryptoPQ::aead_decrypt(aeadKey, nonce, salt.data, sizeof(salt.data),
+                                        dataField.data(), dataField.size());
+    sodium_memzero(aeadKey.data(), aeadKey.size());
+    if (!plain) {
+      throw std::system_error(make_error_code(CryptoNote::error::WRONG_PASSWORD));
+    }
+
+    payload.assign(plain->begin(), plain->end());
+    sodium_memzero(plain->data(), plain->size());
+
+    // The content version is the first field of the authenticated payload, so it
+    // cannot be edited on disk to change how the rest is read. It is a varint, so
+    // strip exactly the bytes the reader consumed.
+    MemoryInputStream payloadStream(payload.data(), payload.size());
+    CryptoNote::BinaryInputStreamSerializer payloadSerializer(payloadStream);
+    payloadSerializer(contentVersion, "content_version");
+    if (contentVersion < 1 || contentVersion > PROTECTED_SPEND_VERSION) {
+      throw std::runtime_error("unsupported wallet serialization version");
+    }
+    // Hand back the remainder: what the old envelope used to hold verbatim.
+    payload.erase(0, payloadStream.getPosition());
+    return;
+  }
+
+  // Old envelope: version | iv | data, ChaCha8 with no tag.
+  contentVersion = envelope;
+  if (contentVersion < 1 || contentVersion > PROTECTED_SPEND_VERSION) {
+    throw std::runtime_error("unsupported wallet serialization version");
+  }
+
+  Crypto::chacha8_iv iv;
+  std::string cipher;
+  envelopeSerializer(iv, "iv");
+  envelopeSerializer(cipher, "data");
+  envelopeSerializer.endObject();
+
+  decrypt(cipher, payload, iv, password);
 }
 
 void WalletLegacySerializer::saveKeys(CryptoNote::ISerializer& serializer) {
@@ -158,7 +276,10 @@ void WalletLegacySerializer::loadProtectedSpendCompatibilityGuard(
 Crypto::chacha8_iv WalletLegacySerializer::encrypt(const std::string& plain, const std::string& password, std::string& cipher) {
   Crypto::chacha8_key key;
   Crypto::cn_context context;
-  Crypto::generate_chacha8_key(context, password, key);
+  if (!Crypto::generate_chacha8_key(context, password, key)) {
+    throw std::system_error(make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR),
+                            "Password key derivation failed");
+  }
 
   cipher.resize(plain.size());
 
@@ -172,30 +293,21 @@ Crypto::chacha8_iv WalletLegacySerializer::encrypt(const std::string& plain, con
 void WalletLegacySerializer::deserialize(std::istream& stream, const std::string& password, std::string& cache) {
   throwIfContainerFile(stream);
 
-  StdInputStream stdStream(stream);
-  CryptoNote::BinaryInputStreamSerializer serializerEncrypted(stdStream);
+  uint32_t version = 0;
+  std::string plain;
+  readPayload(stream, password, plain, version);
 
-  serializerEncrypted.beginObject("wallet");
-
-  uint32_t version;
-  serializerEncrypted(version, "version");
-  if (version < 1 || version > PROTECTED_SPEND_VERSION) {
-    throw std::runtime_error("unsupported wallet serialization version");
-  }
   loadedWalletSerializationVersion = version;
   // set serialization version global variable
   CryptoNote::WALLET_LEGACY_SERIALIZATION_VERSION = version;
 
-  Crypto::chacha8_iv iv;
-  serializerEncrypted(iv, "iv");
-
-  std::string cipher;
-  serializerEncrypted(cipher, "data");
-
-  serializerEncrypted.endObject();
-
-  std::string plain;
-  decrypt(cipher, plain, iv, password);
+  // The decrypted wallet holds the master seed. Scrub it before the buffer is
+  // returned to the heap, whether this function succeeds or throws.
+  Tools::ScopeExit scrubPlain([&plain] {
+    if (!plain.empty()) {
+      sodium_memzero(&plain[0], plain.size());
+    }
+  });
 
   MemoryInputStream decryptedStream(plain.data(), plain.size()); 
   CryptoNote::BinaryInputStreamSerializer serializer(decryptedStream);
@@ -235,30 +347,19 @@ void WalletLegacySerializer::deserialize(std::istream& stream, const std::string
 // used for password check
 bool WalletLegacySerializer::deserialize(std::istream& stream, const std::string& password) {
   try {
-    StdInputStream stdStream(stream);
-    CryptoNote::BinaryInputStreamSerializer serializerEncrypted(stdStream);
+    uint32_t version = 0;
+    std::string plain;
+    readPayload(stream, password, plain, version);
 
-    serializerEncrypted.beginObject("wallet");
-
-    uint32_t version;
-    serializerEncrypted(version, "version");
-    if (version < 1 || version > PROTECTED_SPEND_VERSION) {
-      return false;
-    }
     loadedWalletSerializationVersion = version;
     // set serialization version global variable
     CryptoNote::WALLET_LEGACY_SERIALIZATION_VERSION = version;
 
-    Crypto::chacha8_iv iv;
-    serializerEncrypted(iv, "iv");
-
-    std::string cipher;
-    serializerEncrypted(cipher, "data");
-
-    serializerEncrypted.endObject();
-
-    std::string plain;
-    decrypt(cipher, plain, iv, password);
+    Tools::ScopeExit scrubPlain([&plain] {
+      if (!plain.empty()) {
+        sodium_memzero(&plain[0], plain.size());
+      }
+    });
 
     MemoryInputStream decryptedStream(plain.data(), plain.size());
     CryptoNote::BinaryInputStreamSerializer serializer(decryptedStream);
@@ -294,7 +395,10 @@ bool WalletLegacySerializer::deserialize(std::istream& stream, const std::string
 void WalletLegacySerializer::decrypt(const std::string& cipher, std::string& plain, Crypto::chacha8_iv iv, const std::string& password) {
   Crypto::chacha8_key key;
   Crypto::cn_context context;
-  Crypto::generate_chacha8_key(context, password, key);
+  if (!Crypto::generate_chacha8_key(context, password, key)) {
+    throw std::system_error(make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR),
+                            "Password key derivation failed");
+  }
 
   plain.resize(cipher.size());
 

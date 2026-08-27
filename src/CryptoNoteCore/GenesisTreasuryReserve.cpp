@@ -56,7 +56,7 @@ std::array<uint8_t, N> decodeFixedHex(const std::string& hex, const char* what) 
 
 }  // namespace
 
-Transaction buildGenesisTreasuryReserveCoinbase() {
+Transaction buildGenesisTreasuryReserveCoinbase(bool testnet) {
   Transaction tx;
   tx.version = TRANSACTION_VERSION_1;
   tx.txType = TX_COINBASE;
@@ -95,6 +95,15 @@ Transaction buildGenesisTreasuryReserveCoinbase() {
   std::vector<uint8_t> genesisMessage(
       kGenesisMessage, kGenesisMessage + sizeof(kGenesisMessage) - 1);
   addExtraNonceToTransactionExtra(tx.extra, genesisMessage);
+
+  // Testnet marker, so the two networks do not share a genesis transaction id and
+  // therefore do not share genesis outpoints. Written before the identity tag so
+  // the mainnet byte layout is untouched.
+  if (testnet) {
+    std::vector<uint8_t> marker(
+        GENESIS_TESTNET_MARKER, GENESIS_TESTNET_MARKER + sizeof(GENESIS_TESTNET_MARKER) - 1);
+    addExtraNonceToTransactionExtra(tx.extra, marker);
+  }
 
   // Coinbase identity tag. Genesis is trusted (block signature skipped at height
   // 0), so a fixed all-zero ML-DSA spend pub is used — there is no miner.

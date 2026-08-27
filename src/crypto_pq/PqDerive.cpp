@@ -127,9 +127,11 @@ Rho coinbaseRho(const DsaPublicKey& spendPub, uint32_t height,
   return sha3_256(buf.data(), buf.size());
 }
 
-Hash256 txSigningDigest(const UnsignedTx& tx) noexcept {
-  std::vector<uint8_t> buf;
-  appendDomain(buf, kDomainTxSign);
+namespace {
+
+// The transcript body shared by both versions: everything the transaction commits
+// to except the per-input signatures.
+void appendUnsignedTxBody(std::vector<uint8_t>& buf, const UnsignedTx& tx) {
   buf.push_back(tx.version);
   buf.push_back(tx.txType);
   appendLe64(buf, tx.unlockHeight);
@@ -152,6 +154,24 @@ Hash256 txSigningDigest(const UnsignedTx& tx) noexcept {
   appendLe32(buf, static_cast<uint32_t>(tx.extra.size()));
   appendBytes(buf, tx.extra.data(), tx.extra.size());
   appendLe64(buf, tx.fee);
+}
+
+}  // namespace
+
+Hash256 txSigningDigest(const UnsignedTx& tx) noexcept {
+  std::vector<uint8_t> buf;
+  appendDomain(buf, kDomainTxSign);
+  appendUnsignedTxBody(buf, tx);
+  return sha3_256(buf.data(), buf.size());
+}
+
+Hash256 txSigningDigestV2(const UnsignedTx& tx, const Hash256& chainId,
+                          uint32_t inputIndex) noexcept {
+  std::vector<uint8_t> buf;
+  appendDomain(buf, kDomainTxSignV2);
+  appendBytes(buf, chainId.data(), chainId.size());
+  appendUnsignedTxBody(buf, tx);
+  appendLe32(buf, inputIndex);
   return sha3_256(buf.data(), buf.size());
 }
 

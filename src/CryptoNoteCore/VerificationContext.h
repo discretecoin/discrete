@@ -28,6 +28,10 @@ namespace CryptoNote
     bool m_verifivation_impossible; //the transaction is related with an alternative blockchain
     bool m_added_to_pool; 
     bool m_tx_fee_too_small;
+    // Set when admitting this transaction actually ran a memory-hard proof
+    // check. The relay layer meters it per peer so a peer cannot spend our CPU
+    // for free by replaying registration proofs.
+    bool m_ran_expensive_verification;
   };
 
   struct block_verification_context

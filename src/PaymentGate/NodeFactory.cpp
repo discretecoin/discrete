@@ -142,8 +142,13 @@ NodeFactory::~NodeFactory() {
 CryptoNote::INode* NodeFactory::createNode(const std::string& daemonAddress,
                                            uint16_t daemonPort,
                                            const std::string &daemonPath,
-                                           const bool &daemonSSL) {
-  std::unique_ptr<CryptoNote::INode> node(new CryptoNote::NodeRpcProxy(daemonAddress, daemonPort, daemonPath, daemonSSL));
+                                           const bool &daemonSSL,
+                                           bool trustedResolver) {
+  std::unique_ptr<CryptoNote::NodeRpcProxy> proxy(new CryptoNote::NodeRpcProxy(daemonAddress, daemonPort, daemonPath, daemonSSL));
+  if (trustedResolver) {
+    proxy->setTrustedResolver(true);
+  }
+  std::unique_ptr<CryptoNote::INode> node(std::move(proxy));
 
   NodeInitObserver initObserver;
   node->init(std::bind(&NodeInitObserver::initCompleted, &initObserver, std::placeholders::_1));

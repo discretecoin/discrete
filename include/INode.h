@@ -189,6 +189,15 @@ public:
                                 std::string& viewPubHex, std::string& spendPubHex, const Callback& callback) {
     callback(std::make_error_code(std::errc::not_supported));
   }
+
+  // Whether this connection may be trusted to answer a Compact Account Number
+  // lookup. Resolving one means asking the daemon which keys (H, I) points at
+  // and then paying whatever comes back, so the daemon picks the recipient. Full
+  // Bech32m addresses carry both keys and never go through this.
+  // See Common/DaemonTrust.h.
+  //
+  // Defaults to untrusted: an implementation has to opt in.
+  virtual bool isTrustedResolver() const { return false; }
 };
 
 }

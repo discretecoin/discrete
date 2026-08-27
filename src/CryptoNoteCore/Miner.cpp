@@ -18,6 +18,7 @@
 
 #include "Miner.h"
 
+#include <algorithm>
 #include <future>
 #include <numeric>
 #include <sstream>
@@ -32,6 +33,7 @@
 
 #include "crypto/crypto.h"
 #include "crypto/random.h"
+#include "crypto/crypto-util.h"  // sodium_memzero
 #include "Common/CommandLine.h"
 #include "Common/StringTools.h"
 #include "Serialization/SerializationTools.h"
@@ -72,6 +74,19 @@ namespace CryptoNote
   //-----------------------------------------------------------------------------------------------------
   miner::~miner() {
     stop();
+    clearPqKeys();
+  }
+  //-----------------------------------------------------------------------------------------------------
+  bool miner::pqSpendSecretCleared() const {
+    return std::all_of(m_pq_spend_sk.begin(), m_pq_spend_sk.end(),
+                       [](uint8_t b) { return b == 0; });
+  }
+  //-----------------------------------------------------------------------------------------------------
+  void miner::clearPqKeys() {
+    sodium_memzero(m_pq_spend_sk.data(), m_pq_spend_sk.size());
+    m_pq_spend_pub.fill(0);
+    m_pq_view_pub.fill(0);
+    m_pq_keys_set = false;
   }
   //-----------------------------------------------------------------------------------------------------
   bool miner::set_block_template(const Block& bl, const Difficulty& di) {
@@ -247,7 +262,12 @@ namespace CryptoNote
     m_pq_spend_sk   = spendSk;
     m_pq_keys_set   = true;
     // Delegate to the common threading setup (with a dummy ECC account).
-    return start(AccountKeys{}, threads_count);
+    if (!start(AccountKeys{}, threads_count)) {
+      // Nothing is mining, so nothing needs the secret. Do not leave it behind.
+      clearPqKeys();
+      return false;
+    }
+    return true;
   }
 
   bool miner::startPqWhenSynchronized(const CryptoPQ::KemPublicKey& viewPub,
@@ -258,6 +278,8 @@ namespace CryptoNote
       logger(ERROR) << "Starting miner but it's already started";
       return false;
     }
+    // Arming keeps the secret resident until on_synchronized() starts the
+    // workers; stop(false) is what releases it again.
 
     m_pq_view_pub  = viewPub;
     m_pq_spend_pub = spendPub;
@@ -338,6 +360,9 @@ namespace CryptoNote
     if (!mining)
     {
       logger(TRACE) << "Not mining - nothing to stop";
+      if (!keepMiningRequested) {
+        clearPqKeys();
+      }
       return false;
     }
 
@@ -350,6 +375,11 @@ namespace CryptoNote
     m_threads.clear();
     m_current_hash_rate = 0;
     m_last_hash_rates.clear();
+    // keepMiningRequested means a pause we intend to resume from (a desync), so
+    // the credentials have to survive it. Any other stop is the end of mining.
+    if (!keepMiningRequested) {
+      clearPqKeys();
+    }
     logger(INFO) << "Mining has been stopped, " << m_threads.size() << " finished" ;
     return true;
   }

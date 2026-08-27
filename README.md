@@ -45,6 +45,28 @@ For exchange and service wallet operation, including the two `walletd` deposit
 modes and the recommended H-I-A-T-C workflow, see the
 [walletd exchange integration guide](https://docs.discrete.cash/#/wallets/walletd-exchange-guide).
 
+### Account numbers and daemon trust
+
+An account number (`H-I-A-C`, or `H-I-A-T-C` for a deposit subaddress) is a short
+locator: it points at a registration on chain, and the wallet asks a daemon to look
+up the keys it names. A full Bech32m address carries the recipient's keys directly
+and needs no lookup.
+
+Wallets treat the two accordingly. Paying a full address asks nothing of the daemon
+beyond relaying the transaction, so it works through any node. Paying an account
+number depends on the lookup, so wallets only do it through a daemon you trust:
+
+| Daemon | Trusted |
+|---|---|
+| Your own daemon (loopback) | yes |
+| An official Discrete endpoint | yes |
+| Any other remote daemon | no, until you say so |
+
+Sending to an account number through an untrusted daemon is refused before the
+transaction is built. To allow it, say so explicitly with `--trusted-daemon` on
+`simplewallet`, `greenwallet`, or `walletd`, and only for a daemon you run or
+otherwise trust. If in doubt, use the recipient's full address.
+
 ## Building (Windows / Visual Studio 2022, x64)
 
 Discrete vendors [liboqs](https://github.com/open-quantum-safe/liboqs) (ML-KEM /

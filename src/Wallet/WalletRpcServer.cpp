@@ -41,6 +41,7 @@
 #include "WalletRpcServer.h"
 #include "AccountNumber.h"
 #include "CryptoNoteCore/TransactionExtra.h"
+#include "Wallet/PqRecipient.h"
 #include "Wallet/PqWallet.h"
 
 #undef ERROR
@@ -789,12 +790,23 @@ bool wallet_rpc_server::on_register_pq_account(const wallet_rpc::COMMAND_RPC_REG
         "Failed to check existing account: " + ec.message());
     }
     if (registered) {
-      CryptoNote::AccountNumber acct{blockHeight, txIndex};
-      uint32_t fp = CryptoNote::pqAccountFingerprint(
-          m_currency.isTestnet(), pq.spendPub.data(), pq.spendPub.size(),
-          pq.viewPub.data(), pq.viewPub.size());
+      // Reporting the number is publication: confirm the coordinates through the
+      // trusted-daemon gate before returning them. The refusal to register a
+      // second time stands regardless.
+      uint32_t confirmedH = 0, confirmedI = 0;
+      const CryptoNote::PqAccountPublication status =
+          CryptoNote::lookupOwnPqAccount(m_node, viewHex, spendHex, confirmedH, confirmedI);
+      if (status == CryptoNote::PqAccountPublication::Ok) {
+        CryptoNote::AccountNumber acct{confirmedH, confirmedI};
+        uint32_t fp = CryptoNote::pqAccountFingerprint(
+            m_currency.isTestnet(), pq.spendPub.data(), pq.spendPub.size(),
+            pq.viewPub.data(), pq.viewPub.size());
+        throw JsonRpc::JsonRpcError(WALLET_RPC_ERROR_CODE_GENERIC_TRANSFER_ERROR,
+          "This identity already has account number: " + acct.toString(fp));
+      }
       throw JsonRpc::JsonRpcError(WALLET_RPC_ERROR_CODE_GENERIC_TRANSFER_ERROR,
-        "This identity already has account number: " + acct.toString(fp));
+        std::string("This identity is already registered. ") +
+        CryptoNote::pqAccountPublicationMessage(status));
     }
   }
 

@@ -520,6 +520,344 @@ bool runCoroutineStack() {
   return ok;
 }
 
+// Registration admission ordering: verifying the anti-spam proof costs a
+// memory-hard yespower evaluation, and a peer can ask for one by replaying a
+// blob. Everything a node can decide cheaply — is the transaction already known,
+// is the reference block in the window, is the identity already registered —
+// must therefore be settled before the proof is touched. The proof-evaluation
+// counter makes "did this cost us real work?" directly observable.
+bool runFreeRegAdmissionOrder() {
+  using namespace CryptoNote;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+
+  const Currency currency = CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(11).upgradeHeightV6(12)
+      .freeRegPowTarget(UINT64_MAX)
+      .currency();
+
+  std::filesystem::path dataDir("pq_freereg_order_test_data");
+  std::error_code ec;
+  std::filesystem::remove_all(dataDir, ec);
+  std::filesystem::create_directories(dataDir, ec);
+
+  System::Dispatcher dispatcher;
+  Core core(currency, nullptr, logger, dispatcher);
+  CoreConfig coreConfig; coreConfig.configFolder = dataDir.string();
+  MinerConfig minerConfig;
+  if (!expect(core.init(coreConfig, minerConfig, false), "order: core.init")) return false;
+
+  test_generator gen(currency);
+  gen.setBlockchain(&core.get_blockchain_storage());
+  AccountBase miner; miner.generate();
+
+  Crypto::Hash genesisHash = core.getBlockIdByHeight(0);
+  Block genesis;
+  if (!expect(core.getBlockByHash(genesisHash, genesis), "order: load genesis")) {
+    core.deinit(); return false;
+  }
+  std::vector<size_t> emptySizes;
+  gen.addBlock(genesis, 0, 0, emptySizes, 0);
+
+  uint64_t ts = static_cast<uint64_t>(std::time(nullptr)) - 24 * 60 * 60;
+  const uint64_t step = currency.difficultyTarget() * 10;
+  for (int i = 0; i < 13; ++i) {
+    if (!expect(mineBlock(core, currency, gen, miner, ts), "order: mine " + std::to_string(i + 1))) {
+      core.deinit(); std::filesystem::remove_all(dataDir, ec); return false;
+    }
+    ts += step;
+  }
+
+  bool ok = true;
+  const Crypto::Hash refHash = core.get_tail_id();
+
+  // Submit `tx` and report both the verdict and how many proof evaluations it cost.
+  struct Outcome { bool accepted; bool failed; uint64_t proofWork; };
+  auto submit = [&](const Transaction& tx) -> Outcome {
+    Crypto::Hash txHash = getObjectHash(tx);
+    BinaryArray blob = toBinaryArray(tx);
+    tx_verification_context tvc{};
+    const uint64_t before = freeRegPowEvaluationCount();
+    core.handleIncomingTransaction(tx, txHash, blob.size(), tvc, false,
+                                   core.getCurrentBlockchainHeight());
+    return { tvc.m_added_to_pool, tvc.m_verification_failed,
+             freeRegPowEvaluationCount() - before };
+  };
+
+  // 1. A reference block that is not on the main chain is rejected for free.
+  Crypto::Hash bogusRef{};
+  for (size_t i = 0; i < sizeof(bogusRef.data); ++i) bogusRef.data[i] = static_cast<uint8_t>(i + 200);
+  Outcome stale = submit(makeFastFreeRegTx(bogusRef, 51));
+  ok &= expect(!stale.accepted, "order: stale reference rejected");
+  ok &= expect(stale.proofWork == 0, "order: stale reference cost no proof work");
+
+  // 2. A genuinely new registration does reach the proof and is accepted.
+  Transaction fresh = makeFastFreeRegTx(refHash, 52);
+  Outcome first = submit(fresh);
+  ok &= expect(first.accepted, "order: fresh registration accepted");
+  ok &= expect(first.proofWork >= 1, "order: fresh registration reached the proof");
+
+  // 3. Replaying the very same transaction costs nothing more.
+  Outcome replay = submit(fresh);
+  ok &= expect(!replay.accepted, "order: exact replay not re-added");
+  ok &= expect(replay.proofWork == 0, "order: exact replay cost no further proof work");
+
+  // 4. Once the identity is registered on-chain, further attempts are refused
+  //    before the proof, even when the transaction id is one we have not seen.
+  std::list<Transaction> block = { fresh };
+  ok &= expect(mineBlockWithTxs(core, currency, gen, miner, ts, block),
+               "order: registration mined");
+  ts += step;
+
+  Transaction sameIdentity = makeFastFreeRegTx(refHash, 52, /*nonce=*/7);
+  ok &= expect(getObjectHash(sameIdentity) != getObjectHash(fresh),
+               "order: competitor has a different transaction id");
+  Outcome registered = submit(sameIdentity);
+  ok &= expect(!registered.accepted, "order: already-registered identity rejected");
+  ok &= expect(registered.proofWork == 0,
+               "order: already-registered identity cost no proof work");
+
+  // 5. A registration padded with an unknown tx_extra tag has a different
+  //    transaction id but carries the very same proof. It must not be relayed,
+  //    or one proof buys unlimited fresh-looking transactions.
+  {
+    Transaction padded = makeFastFreeRegTx(refHash, 54);
+    Transaction canonical = padded;
+    // A tag the parser does not know. It is skipped one byte at a time and
+    // yields no field, so the field-level checks never see it.
+    padded.extra.push_back(0x7F);
+    ok &= expect(getObjectHash(padded) != getObjectHash(canonical),
+                 "order: padded registration has a different id");
+    ok &= expect(!isCanonicalFreeRegExtra(padded.extra),
+                 "order: padded extra is not canonical");
+    ok &= expect(isCanonicalFreeRegExtra(canonical.extra),
+                 "order: unpadded extra is canonical");
+
+    Outcome relayed = submit(padded);
+    ok &= expect(!relayed.accepted, "order: padded registration not relayed");
+    ok &= expect(relayed.proofWork == 0, "order: padded registration cost no proof work");
+
+    // The canonical form of the same registration is still fine.
+    Outcome clean = submit(canonical);
+    ok &= expect(clean.accepted, "order: canonical registration still accepted");
+  }
+
+  // 6. An invalid proof is remembered, so replaying it is free the second time.
+  const Currency strict = CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(11).upgradeHeightV6(12)
+      .freeRegPowTarget(0)  // nothing can satisfy this
+      .currency();
+  {
+    Transaction bad = makeFastFreeRegTx(refHash, 53);
+    std::string err;
+    const uint64_t before = freeRegPowEvaluationCount();
+    bool firstVerdict = checkFreeRegTransactionPow(bad, &err, strict.freeRegPowTarget());
+    const uint64_t spent = freeRegPowEvaluationCount() - before;
+    ok &= expect(!firstVerdict, "order: unsatisfiable proof rejected");
+    ok &= expect(spent == 1, "order: proof check is metered");
+  }
+
+  // 7. The phase split. The memory-hard proof is evaluated once, in phase one,
+  //    before any lock is taken; the admission that follows -- which runs with
+  //    the mempool lock and the recursive blockchain lock held for its whole
+  //    duration -- evaluates nothing. Before the split, that second evaluation
+  //    happened under both locks, so one peer's proof stalled every unrelated
+  //    transaction, block and template on the node for as long as it took.
+  {
+    Transaction split = makeFastFreeRegTx(refHash, 55);
+    const uint64_t before = freeRegPowEvaluationCount();
+    const bool precheck = core.get_blockchain_storage().precheckFreeRegPow(split);
+    const uint64_t phaseOneWork = freeRegPowEvaluationCount() - before;
+    ok &= expect(precheck, "split: phase one accepted the proof");
+    ok &= expect(phaseOneWork == 1, "split: phase one evaluated the proof exactly once");
+
+    Outcome admitted = submit(split);
+    ok &= expect(admitted.accepted, "split: registration still admitted");
+    ok &= expect(admitted.proofWork == 0,
+                 "split: admission under the locks evaluated no proof");
+  }
+
+  //    And admission really does route through phase one. The step above proves
+  //    the mechanism; this proves the wiring, which is the part that decides
+  //    whether the proof runs before Core::add_new_tx takes the mempool and
+  //    blockchain locks or inside them.
+  {
+    Transaction wired = makeFastFreeRegTx(refHash, 58);
+    const uint64_t prechecksBefore = core.get_blockchain_storage().freeRegPrecheckCount();
+    Outcome admitted = submit(wired);
+    const uint64_t prechecks =
+        core.get_blockchain_storage().freeRegPrecheckCount() - prechecksBefore;
+    ok &= expect(admitted.accepted, "wiring: registration accepted");
+    ok &= expect(prechecks == 1, "wiring: admission went through phase one");
+  }
+
+  // 8. Phase two revalidates. The remembered verdict says only "this proof is
+  //    good"; it must never carry a transaction past chain state that has moved
+  //    since phase one looked at it. Verify a proof while its identity is still
+  //    free, register that identity with a different transaction, and the first
+  //    one must then be refused on admission despite its cached verdict.
+  {
+    Transaction first = makeFastFreeRegTx(refHash, 57, /*nonce=*/1);
+    Transaction second = makeFastFreeRegTx(refHash, 57, /*nonce=*/2);
+    ok &= expect(getObjectHash(first) != getObjectHash(second),
+                 "revalidate: the two registrations are distinct transactions");
+
+    ok &= expect(core.get_blockchain_storage().precheckFreeRegPow(second),
+                 "revalidate: second proof verified while the identity was free");
+
+    Outcome firstOut = submit(first);
+    ok &= expect(firstOut.accepted, "revalidate: first registration accepted");
+    std::list<Transaction> claimed = { first };
+    ok &= expect(mineBlockWithTxs(core, currency, gen, miner, ts, claimed),
+                 "revalidate: first registration mined");
+    ts += step;
+
+    Outcome secondOut = submit(second);
+    ok &= expect(!secondOut.accepted,
+                 "revalidate: a cached-good proof is still refused once the identity is taken");
+    ok &= expect(secondOut.proofWork == 0,
+                 "revalidate: and the refusal cost no proof work");
+  }
+
+  core.deinit();
+  std::filesystem::remove_all(dataDir, ec);
+  return ok;
+}
+
+// Finality-fork recovery state must only be armed by a competing block that is
+// actually valid on a branch we already store. It is what an operator-confirmed
+// resync_to_majority rolls back to, and the height it records used to come
+// straight out of the candidate's own coinbase, so any peer could aim a rollback
+// wherever it liked with an unsigned, proof-of-work-free block.
+bool runFinalityForkArming() {
+  using namespace CryptoNote;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+
+  const Currency currency = CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(11).upgradeHeightV6(12)
+      .currency();
+
+  std::filesystem::path dataDir("pq_finality_arm_test_data");
+  std::error_code ec;
+  std::filesystem::remove_all(dataDir, ec);
+  std::filesystem::create_directories(dataDir, ec);
+
+  System::Dispatcher dispatcher;
+  Core core(currency, nullptr, logger, dispatcher);
+  CoreConfig coreConfig; coreConfig.configFolder = dataDir.string();
+  MinerConfig minerConfig;
+  if (!expect(core.init(coreConfig, minerConfig, false), "arm: core.init")) return false;
+
+  test_generator gen(currency);
+  gen.setBlockchain(&core.get_blockchain_storage());
+  AccountBase miner; miner.generate();
+
+  Crypto::Hash genesisHash = core.getBlockIdByHeight(0);
+  Block genesis;
+  if (!expect(core.getBlockByHash(genesisHash, genesis), "arm: load genesis")) {
+    core.deinit(); return false;
+  }
+  std::vector<size_t> emptySizes;
+  gen.addBlock(genesis, 0, 0, emptySizes, 0);
+
+  // Deep enough that a fork near the bottom is past CRYPTONOTE_FINALITY_DEPTH.
+  uint64_t ts = static_cast<uint64_t>(std::time(nullptr)) - 24 * 60 * 60;
+  const uint64_t step = currency.difficultyTarget() * 10;
+  const uint32_t chainBlocks = parameters::CRYPTONOTE_FINALITY_DEPTH + 8;
+  for (uint32_t i = 0; i < chainBlocks; ++i) {
+    if (!expect(mineBlock(core, currency, gen, miner, ts), "arm: mine " + std::to_string(i + 1))) {
+      core.deinit(); std::filesystem::remove_all(dataDir, ec); return false;
+    }
+    ts += step;
+  }
+
+  bool ok = true;
+  ok &= expect(!core.getFinalityForkState().active, "arm: no fork flagged on a clean chain");
+
+  // Take a real early block and mutate it. Its coinbase still claims a deep
+  // height, which is all the old code looked at.
+  const uint32_t forkHeight = 3;
+  Block realEarly;
+  if (!expect(core.getBlockByHash(core.getBlockIdByHeight(forkHeight), realEarly),
+              "arm: load early block")) {
+    core.deinit(); std::filesystem::remove_all(dataDir, ec); return false;
+  }
+
+  auto submitBlock = [&](Block blk, const std::string& lbl) {
+    block_verification_context bvc{};
+    core.handle_incoming_block(blk, bvc, false, false);
+    ok &= expect(!bvc.m_added_to_main_chain, "arm: " + lbl + " not added");
+    ok &= expect(!core.getFinalityForkState().active,
+                 "arm: " + lbl + " did not arm finality recovery");
+  };
+
+  // 1. Valid ancestry, but the block signature is garbage.
+  {
+    Block forged = realEarly;
+    forged.timestamp += 1;                       // change the id
+    forged.signature.assign(forged.signature.size(), 0x00);
+    submitBlock(forged, "unsigned block");
+  }
+
+  // 2. Correctly signed, but by an identity the coinbase does not commit to, so
+  //    the block carries no authorization for the reward it claims.
+  {
+    AccountBase stranger; stranger.generate();
+    Block forged = realEarly;
+    forged.timestamp += 2;
+    signBlockForTest(forged, stranger);
+    submitBlock(forged, "block signed by a stranger");
+  }
+
+  // 3. A parent we have never seen: there is no branch to diverge from.
+  {
+    Block forged = realEarly;
+    forged.timestamp += 3;
+    for (size_t i = 0; i < sizeof(forged.previousBlockHash.data); ++i) {
+      forged.previousBlockHash.data[i] = static_cast<uint8_t>(i + 77);
+    }
+    signBlockForTest(forged, miner);
+    submitBlock(forged, "block with an unknown parent");
+  }
+
+  // 4. A genuine competing block on a branch we store still arms recovery, and
+  //    the divergence it records comes from the stored parent.
+  {
+    const Crypto::Hash parentHash = core.getBlockIdByHeight(forkHeight - 1);
+    uint64_t generated = 0;
+    std::vector<size_t> sizes;
+    ok &= expect(core.getAlreadyGeneratedCoins(parentHash, generated), "arm: generated coins");
+    ok &= expect(core.getBackwardBlocksSizes(forkHeight - 1, sizes, currency.rewardBlocksWindow()),
+                 "arm: backward sizes");
+
+    gen.defaultMajorVersion = core.getBlockMajorVersionForHeight(forkHeight);
+    Block competitor;
+    std::list<Transaction> none;
+    ok &= expect(gen.constructBlock(competitor, forkHeight, parentHash, miner,
+                                    realEarly.timestamp + 4, generated, sizes, none),
+                 "arm: build competitor");
+    ok &= expect(signBlockForTest(competitor, miner), "arm: sign competitor");
+
+    block_verification_context bvc{};
+    core.handle_incoming_block(competitor, bvc, false, false);
+    ok &= expect(!bvc.m_added_to_main_chain, "arm: competitor refused by the finality rule");
+
+    const FinalityForkState state = core.getFinalityForkState();
+    ok &= expect(state.active, "arm: valid competitor arms finality recovery");
+    ok &= expect(state.divergenceHeight == forkHeight - 1,
+                 "arm: divergence taken from the stored parent");
+  }
+
+  core.deinit();
+  std::filesystem::remove_all(dataDir, ec);
+  return ok;
+}
+
 // Free-reg per-block cap: verifies that a block is rejected when it carries more
 // than freeRegPerBlock(2) TX_FREE_REG transactions.
 bool runFreeRegCap() {
@@ -1253,6 +1591,14 @@ int main() {
   }
   if (!runFreeRegCap()) {
     std::cerr << "[FAIL] PQ free-reg per-block cap test" << std::endl;
+    return 1;
+  }
+  if (!runFreeRegAdmissionOrder()) {
+    std::cerr << "[FAIL] PQ free-reg admission ordering test" << std::endl;
+    return 1;
+  }
+  if (!runFinalityForkArming()) {
+    std::cerr << "[FAIL] PQ finality-fork arming test" << std::endl;
     return 1;
   }
   if (!runStaleRegTemplate()) {

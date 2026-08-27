@@ -83,7 +83,8 @@ PqTransactionBuildResult buildPqTransactionWithProof(
     const std::vector<PqSendOutput>& outputs,
     const std::vector<PqInputAuth>& inputAuth,
     uint64_t unlockHeight,
-    const std::vector<uint8_t>& extra) {
+    const std::vector<uint8_t>& extra,
+    const PqSigningContext& signing) {
   if (inputs.empty()) {
     throw std::runtime_error("buildPqTransaction: no inputs");
   }
@@ -168,12 +169,24 @@ PqTransactionBuildResult buildPqTransactionWithProof(
   }
   const uint64_t fee = sumIn - sumOut;
 
-  // Sign every input over the canonical digest with ITS authorizing secret key; sigs
-  // go to Transaction.pqSignatures. Consensus verifies sig[i] against in[i].authPub.
-  CryptoPQ::Hash256 digest = pqSigningDigest(tx, fee);
+  // Sign every input with ITS authorizing secret key; sigs go to
+  // Transaction.pqSignatures, and consensus verifies sig[i] against in[i].authPub.
+  //
+  // Under transcript v1 there is one digest for the whole transaction. Under v2
+  // each input gets its own, binding the chain identity and the input's index, so
+  // a signature cannot be moved to another position or another network.
+  const CryptoPQ::UnsignedTx unsigned_ = pqUnsignedTx(tx, fee);
+  const CryptoPQ::Hash256 sharedDigest =
+      signing.useV2 ? CryptoPQ::Hash256{} : CryptoPQ::txSigningDigest(unsigned_);
+
   tx.pqSignatures.resize(tx.inputs.size());
-  for (size_t i = 0; i < tx.inputs.size(); ++i)
+  for (size_t i = 0; i < tx.inputs.size(); ++i) {
+    const CryptoPQ::Hash256 digest =
+        signing.useV2
+            ? CryptoPQ::txSigningDigestV2(unsigned_, signing.chainId, static_cast<uint32_t>(i))
+            : sharedDigest;
     tx.pqSignatures[i] = CryptoPQ::dsa_sign(inputAuth[i].spendSk, digest.data(), digest.size());
+  }
 
   return result;
 }
@@ -182,9 +195,10 @@ Transaction buildPqTransaction(const std::vector<PqSpendInput>& inputs,
                                const std::vector<PqSendOutput>& outputs,
                                const std::vector<PqInputAuth>& inputAuth,
                                uint64_t unlockHeight,
-                               const std::vector<uint8_t>& extra) {
+                               const std::vector<uint8_t>& extra,
+                               const PqSigningContext& signing) {
   PqTransactionBuildResult result = buildPqTransactionWithProof(
-      inputs, outputs, inputAuth, unlockHeight, extra);
+      inputs, outputs, inputAuth, unlockHeight, extra, signing);
   Transaction tx = std::move(result.tx);
   result.clearWitnesses();
   return tx;
@@ -198,13 +212,14 @@ Transaction buildPqTransaction(const std::vector<PqSpendInput>& inputs,
                                const CryptoPQ::DsaPublicKey& spendPub,
                                const CryptoPQ::DsaSecretKey& spendSk,
                                uint64_t unlockHeight,
-                               const std::vector<uint8_t>& extra) {
+                               const std::vector<uint8_t>& extra,
+                               const PqSigningContext& signing) {
   std::vector<PqInputAuth> auth(inputs.size());
   for (auto& a : auth) {
     a.spendPub = spendPub;
     a.spendSk = spendSk;
   }
-  return buildPqTransaction(inputs, outputs, auth, unlockHeight, extra);
+  return buildPqTransaction(inputs, outputs, auth, unlockHeight, extra, signing);
 }
 
 PqTransactionBuildResult buildPqTransactionWithProof(

@@ -22,6 +22,7 @@
 #include <chrono>
 #include <fstream>
 #include <numeric>
+#include <set>
 #include <sstream>
 #include <system_error>
 #include <thread>
@@ -38,6 +39,7 @@
 #include "Wallet/MiningKeyLoader.h"
 #include "Wallet/WalletErrors.h"
 #include "Wallet/WalletGreen.h"
+#include "Wallet/WalletIndices.h"
 #include "Wallet/PqWallet.h"
 #include "Wallet/PqTransactionBuilder.h"
 #include "crypto_pq/PqAead.h"
@@ -252,6 +254,185 @@ static CryptoNote::PqWalletKeys pqKeysFromWalletSeed(const Crypto::SecretKey& se
   CryptoPQ::SeedMaster sm{};
   std::memcpy(sm.data(), seed.data, sm.size());
   return CryptoNote::derivePqWalletKeys(sm);
+}
+
+// --- Failed loads leave nothing behind -------------------------------------
+//
+// Once the container has opened, the container key and the master seeds are
+// resident. Everything after that point can still fail, and until load() reaches
+// its end the wallet is NOT_INITIALIZED, so no later shutdown would ever clean it
+// up. These assert the post-failure invariant directly rather than merely that
+// nothing crashed.
+
+namespace {
+
+struct LoadFixture {
+  System::Dispatcher dispatcher;
+  Logging::ConsoleLogger logger{Logging::ERROR};
+  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(1000000).upgradeHeightV6(1000000)
+      .currency();
+  TestBlockchainGenerator generator{currency};
+  INodeTrivialRefreshStub node{generator};
+};
+
+// Create a real container at `path` and close it.
+void makeWallet(LoadFixture& f, const std::string& path, const std::string& password) {
+  boost::filesystem::remove(path);
+  CryptoNote::WalletGreen wallet(f.dispatcher, f.currency, f.node, f.logger);
+  wallet.initialize(path, password);
+  wallet.createAddress();
+  wallet.save(CryptoNote::WalletSaveLevel::SAVE_ALL);
+  wallet.shutdown();
+}
+
+// Clears any injected fault however the test leaves.
+struct FaultInjectorGuard {
+  ~FaultInjectorGuard() { CryptoNote::WalletGreen::loadFaultInjector() = nullptr; }
+};
+
+}  // namespace
+
+TEST(PqWalletLoadFailure, WrongPasswordLeavesNoResidentSecrets) {
+  LoadFixture f;
+  const std::string path = "pq_loadfail_password.wallet";
+  makeWallet(f, path, "right");
+
+  CryptoNote::WalletGreen wallet(f.dispatcher, f.currency, f.node, f.logger);
+  EXPECT_ANY_THROW(wallet.load(path, "wrong"));
+  EXPECT_FALSE(wallet.hasResidentSecrets());
+
+  boost::filesystem::remove(path);
+}
+
+TEST(PqWalletLoadFailure, CorruptedRecordLeavesNoResidentSecrets) {
+  LoadFixture f;
+  const std::string path = "pq_loadfail_corrupt.wallet";
+  makeWallet(f, path, "pass");
+
+  // Flip a byte inside the first encrypted seed record, past the header, so the
+  // password is right but the authentication tag is not.
+  {
+    // Rewrite the file at exactly its original length, so the failure is the
+    // record's authentication tag and not a size or structural check.
+    std::vector<char> bytes;
+    {
+      std::ifstream in(path, std::ios::binary);
+      ASSERT_TRUE(in.is_open());
+      bytes.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+    }
+    // FileMappedVector lays the file out as: prefix, capacity(u64), size(u64),
+    // then the records. Land inside the first record's ciphertext, past its
+    // nonce, so the tag is what rejects this and not a structural check.
+    const std::size_t offset = sizeof(CryptoNote::ContainerStoragePrefix) +
+                               2 * sizeof(uint64_t) + CryptoPQ::kAeadNonceBytes + 4;
+    ASSERT_GT(bytes.size(), offset);
+    const std::size_t original = bytes.size();
+    bytes[offset] = static_cast<char>(bytes[offset] ^ 0x5A);
+    {
+      std::ofstream out(path, std::ios::binary | std::ios::trunc);
+      ASSERT_TRUE(out.is_open());
+      out.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+    }
+    ASSERT_EQ(original, static_cast<std::size_t>(boost::filesystem::file_size(path)));
+  }
+
+  CryptoNote::WalletGreen wallet(f.dispatcher, f.currency, f.node, f.logger);
+  EXPECT_ANY_THROW(wallet.load(path, "pass"));
+  EXPECT_FALSE(wallet.hasResidentSecrets());
+
+  boost::filesystem::remove(path);
+}
+
+// The gap this covers: the container opened, the records authenticated, the key
+// and the seeds are resident — and then a later initialization step throws.
+TEST(PqWalletLoadFailure, FailureAfterRecordsLoadLeavesNoResidentSecrets) {
+  LoadFixture f;
+  const std::string path = "pq_loadfail_late.wallet";
+  makeWallet(f, path, "pass");
+
+  FaultInjectorGuard restore;
+  CryptoNote::WalletGreen wallet(f.dispatcher, f.currency, f.node, f.logger);
+
+  bool secretsWereResident = false;
+  CryptoNote::WalletGreen::loadFaultInjector() = [&wallet, &secretsWereResident] {
+    // Establishes that this fires in the window that matters: had the load
+    // succeeded to here and then thrown, these secrets would have stayed.
+    secretsWereResident = wallet.hasResidentSecrets();
+    throw std::runtime_error("injected post-container load failure");
+  };
+
+  EXPECT_ANY_THROW(wallet.load(path, "pass"));
+  EXPECT_TRUE(secretsWereResident) << "fault injected too early to be meaningful";
+  EXPECT_FALSE(wallet.hasResidentSecrets());
+
+  boost::filesystem::remove(path);
+}
+
+// After the cleanup the object must be genuinely reusable, not merely scrubbed:
+// the synchronizer detached, the consumer dropped, the state reset.
+TEST(PqWalletLoadFailure, ObjectIsReusableAfterAFailedLoad) {
+  LoadFixture f;
+  const std::string path = "pq_loadfail_reuse.wallet";
+  makeWallet(f, path, "pass");
+
+  CryptoNote::WalletGreen wallet(f.dispatcher, f.currency, f.node, f.logger);
+  {
+    FaultInjectorGuard restore;
+    CryptoNote::WalletGreen::loadFaultInjector() = [] {
+      throw std::runtime_error("injected post-container load failure");
+    };
+    EXPECT_ANY_THROW(wallet.load(path, "pass"));
+  }
+  ASSERT_FALSE(wallet.hasResidentSecrets());
+
+  // The same object now loads the same file normally.
+  ASSERT_NO_THROW(wallet.load(path, "pass"));
+  EXPECT_TRUE(wallet.hasResidentSecrets());
+  EXPECT_GE(wallet.getAddressCount(), 1u);
+
+  wallet.shutdown();
+  EXPECT_FALSE(wallet.hasResidentSecrets());
+
+  boost::filesystem::remove(path);
+}
+
+TEST(PqWalletLoadFailure, ShutdownAfterFailedLoadIsSafe) {
+  LoadFixture f;
+  const std::string path = "pq_loadfail_shutdown.wallet";
+  makeWallet(f, path, "pass");
+
+  CryptoNote::WalletGreen wallet(f.dispatcher, f.currency, f.node, f.logger);
+  EXPECT_ANY_THROW(wallet.load(path, "wrong"));
+
+  // The wallet never reached INITIALIZED, so shutdown() is expected to refuse
+  // rather than tear down a second time. Either way it must not leave secrets.
+  try {
+    wallet.shutdown();
+  } catch (const std::exception&) {
+  }
+  EXPECT_FALSE(wallet.hasResidentSecrets());
+
+  boost::filesystem::remove(path);
+}
+
+TEST(PqWalletLoadFailure, SuccessfulLoadStillRetainsItsSecrets) {
+  LoadFixture f;
+  const std::string path = "pq_loadfail_success.wallet";
+  makeWallet(f, path, "pass");
+
+  CryptoNote::WalletGreen wallet(f.dispatcher, f.currency, f.node, f.logger);
+  ASSERT_NO_THROW(wallet.load(path, "pass"));
+  // The guard must be dismissed on success, not merely not fire.
+  EXPECT_TRUE(wallet.hasResidentSecrets());
+  EXPECT_GE(wallet.getAddressCount(), 1u);
+
+  wallet.shutdown();
+  EXPECT_FALSE(wallet.hasResidentSecrets());
+
+  boost::filesystem::remove(path);
 }
 
 TEST(PqWalletIntegration, IncomingTransactionCreditsNativeBalance) {
@@ -1689,8 +1870,12 @@ TEST(WalletLegacySmoke, DetachedSeedNeverReturnsToSavedTrackingWallet) {
   }
   const std::string protectedWalletBytes = serialized.str();
   ASSERT_FALSE(protectedWalletBytes.empty());
+  // The first byte is the envelope marker now, not the content version: the
+  // content version moved inside the authenticated payload so it cannot be edited
+  // on disk. inspectWalletSnapshot below reads it back out and is what pins that
+  // this is still a protected-spend wallet.
   EXPECT_EQ(static_cast<unsigned char>(protectedWalletBytes.front()),
-            CryptoNote::WalletLegacySerializer::PROTECTED_SPEND_VERSION);
+            CryptoNote::WalletLegacySerializer::AUTHENTICATED_ENVELOPE);
 
   CryptoNote::WalletSnapshotInfo snapshotInfo;
   std::string snapshotError;
@@ -2010,5 +2195,459 @@ TEST(PqWalletIntegration, AggregatedPerSubaddressMessageSigning) {
   EXPECT_TRUE(wallet.verifyMessage(msg, primary, sigEmpty));
 
   wallet.shutdown();
+  boost::filesystem::remove(path);
+}
+
+// Every ciphertext in the container must carry its own nonce. Reusing one
+// (key, nonce) pair across two plaintexts leaks their XOR, and the wallet cache
+// is largely predictable, so a collision between a seed record and the cache
+// blob exposes the master seed. reset() is the path that rewrites every seed
+// record and then immediately rewrites the cache, so it is where a shared
+// counter shows up.
+namespace {
+// Collect every IV the container file holds: one per live seed record, plus the
+// one that prefixes the encrypted cache blob. Read straight off disk (the file
+// layout is prefix | size | capacity | records | suffix) because the wallet keeps
+// an exclusive mapping open while it is loaded.
+std::vector<std::string> collectContainerNonces(const std::string& path) {
+  std::ifstream in(path, std::ios::binary);
+  std::string bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+
+  const size_t prefixSize = sizeof(CryptoNote::ContainerStoragePrefix);
+  const size_t recordSize = sizeof(CryptoNote::EncryptedWalletRecord);
+  const size_t nonceSize = CryptoPQ::kAeadNonceBytes;
+
+  uint64_t capacity = 0, count = 0;
+  std::memcpy(&capacity, bytes.data() + prefixSize, sizeof(capacity));
+  std::memcpy(&count, bytes.data() + prefixSize + sizeof(capacity), sizeof(count));
+
+  std::vector<std::string> ivs;
+  const size_t recordsAt = prefixSize + 2 * sizeof(uint64_t);
+  for (uint64_t i = 0; i < count; ++i) {
+    ivs.emplace_back(bytes.data() + recordsAt + i * recordSize, nonceSize);
+  }
+
+  // The cache blob is nonce || ciphertext || tag, so its nonce is at the front.
+  const size_t suffixAt = recordsAt + static_cast<size_t>(capacity) * recordSize;
+  if (bytes.size() >= suffixAt + nonceSize) {
+    ivs.emplace_back(bytes.data() + suffixAt, nonceSize);
+  }
+  return ivs;
+}
+}  // namespace
+
+TEST(PqWalletIntegration, ResetNeverReusesAnIv) {
+  System::Dispatcher dispatcher;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(1000000).upgradeHeightV6(1000000)
+      .currency();
+  TestBlockchainGenerator generator(currency);
+  INodeTrivialRefreshStub node(generator);
+  CryptoNote::WalletGreen wallet(dispatcher, currency, node, logger);
+
+  const std::string path = "pq_reset_iv.wallet";
+  boost::filesystem::remove(path);
+  wallet.initialize(path, "pass");
+  wallet.createAddress();
+  wallet.save(CryptoNote::WalletSaveLevel::SAVE_ALL);
+  wallet.shutdown();
+
+  std::vector<std::string> before = collectContainerNonces(path);
+  ASSERT_GE(before.size(), 2u) << "expected at least one seed record plus a cache blob";
+  EXPECT_EQ(before.size(), std::set<std::string>(before.begin(), before.end()).size());
+
+  // reset() re-encrypts every seed record and then saves the cache.
+  wallet.load(path, "pass");
+  wallet.reset(0);
+  wallet.save(CryptoNote::WalletSaveLevel::SAVE_ALL);
+  wallet.shutdown();
+
+  std::vector<std::string> after = collectContainerNonces(path);
+  ASSERT_EQ(before.size(), after.size());
+  EXPECT_EQ(after.size(), std::set<std::string>(after.begin(), after.end()).size())
+      << "an IV was reused inside the container after reset";
+
+  // The rewrite must also not reuse the IVs the previous ciphertexts were under.
+  std::set<std::string> seen(before.begin(), before.end());
+  for (const std::string& iv : after) {
+    EXPECT_EQ(0u, seen.count(iv)) << "reset reused a pre-reset IV";
+  }
+
+  boost::filesystem::remove(path);
+}
+
+// A wallet written in the pre-upgrade format must still open, and opening it
+// must convert it: unlock with the old unsalted key, rewrite under a fresh salt
+// with authenticated records, and come back with the same identity and the same
+// balance. The original file is kept alongside as a backup.
+namespace {
+
+// The version-9 writer, kept here rather than in production code: nothing ships
+// that writes this format any more, but the reader has to keep working.
+CryptoNote::EncryptedWalletRecordV1 encryptSeedRecordLegacy(
+    const CryptoPQ::SeedMaster& seedMaster, uint64_t creationTimestamp,
+    const Crypto::chacha8_key& key) {
+  CryptoNote::EncryptedWalletRecordV1 result{};
+  unsigned char buffer[sizeof(result.data)];
+  std::memcpy(buffer, CryptoNote::SEED_RECORD_MAGIC_V1, sizeof(CryptoNote::SEED_RECORD_MAGIC_V1));
+  std::memcpy(buffer + sizeof(CryptoNote::SEED_RECORD_MAGIC_V1), seedMaster.data(),
+              seedMaster.size());
+  std::memcpy(buffer + sizeof(CryptoNote::SEED_RECORD_MAGIC_V1) + seedMaster.size(),
+              &creationTimestamp, sizeof(uint64_t));
+  result.iv = Crypto::randomChachaIV();
+  Crypto::chacha8(buffer, sizeof(buffer), key, result.iv, reinterpret_cast<char*>(result.data));
+  return result;
+}
+
+// Write a minimal but genuine version-9 container holding one seed record.
+void writeLegacyWallet(const std::string& path, const std::string& password,
+                       const CryptoPQ::SeedMaster& seed, uint64_t creationTimestamp) {
+  Crypto::chacha8_key key;
+  Crypto::cn_context context;
+  ASSERT_TRUE(Crypto::generate_chacha8_key(context, password, key));
+
+  CryptoNote::ContainerStorageV1 storage(path, Common::FileMappedVectorOpenMode::CREATE,
+                                         sizeof(CryptoNote::ContainerStoragePrefixV1));
+  auto* prefix = reinterpret_cast<CryptoNote::ContainerStoragePrefixV1*>(storage.prefix());
+  prefix->version = CryptoNote::WALLET_CONTAINER_VERSION_LEGACY;
+  prefix->nextIv = Crypto::randomChachaIV();
+
+  storage.push_back(encryptSeedRecordLegacy(seed, creationTimestamp, key));
+  storage.flush();
+  storage.close();
+}
+
+uint8_t walletFileVersion(const std::string& path) {
+  std::ifstream in(path, std::ios::binary);
+  return static_cast<uint8_t>(in.peek());
+}
+
+}  // namespace
+
+TEST(PqWalletIntegration, LegacyContainerIsUpgradedOnOpen) {
+  System::Dispatcher dispatcher;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(1000000).upgradeHeightV6(1000000)
+      .currency();
+  TestBlockchainGenerator generator(currency);
+  INodeTrivialRefreshStub node(generator);
+
+  const std::string path = "pq_legacy_upgrade.wallet";
+  const std::string backup = path + ".v9";
+  boost::filesystem::remove(path);
+  boost::filesystem::remove(backup);
+
+  CryptoPQ::SeedMaster seed{};
+  for (std::size_t i = 0; i < seed.size(); ++i) {
+    seed[i] = static_cast<uint8_t>(i * 3 + 7);
+  }
+  writeLegacyWallet(path, "pass", seed, 1700000000);
+  ASSERT_EQ(CryptoNote::WALLET_CONTAINER_VERSION_LEGACY, walletFileVersion(path));
+
+  const std::string expectedAddress = [&]() {
+    CryptoNote::WalletGreen wallet(dispatcher, currency, node, logger);
+    wallet.load(path, "pass");
+
+    // The identity survives the rewrite untouched.
+    EXPECT_EQ(1u, wallet.getAddressCount());
+    Crypto::SecretKey spend = wallet.getAddressSpendKey(0).secretKey;
+    EXPECT_EQ(0, std::memcmp(spend.data, seed.data(), sizeof(spend.data)));
+
+    std::string address = wallet.getAddress(0);
+    wallet.shutdown();
+    return address;
+  }();
+
+  // The file on disk is now the current format, and the original is kept.
+  EXPECT_EQ(CryptoNote::WALLET_CONTAINER_VERSION, walletFileVersion(path));
+  EXPECT_TRUE(boost::filesystem::exists(backup));
+  EXPECT_EQ(CryptoNote::WALLET_CONTAINER_VERSION_LEGACY, walletFileVersion(backup));
+
+  // Reopening the upgraded file gives the same wallet back, and the old password
+  // still opens it (the password did not change, only the salt it is used with).
+  {
+    CryptoNote::WalletGreen wallet(dispatcher, currency, node, logger);
+    wallet.load(path, "pass");
+    EXPECT_EQ(expectedAddress, wallet.getAddress(0));
+    wallet.shutdown();
+  }
+
+  // A wrong password is still refused after the upgrade.
+  {
+    CryptoNote::WalletGreen wallet(dispatcher, currency, node, logger);
+    EXPECT_ANY_THROW(wallet.load(path, "not the password"));
+  }
+
+  boost::filesystem::remove(path);
+  boost::filesystem::remove(backup);
+}
+
+// An existing backup is never overwritten.
+//
+// The v9 format authenticates nothing beyond a four-byte magic, so a single
+// flipped ciphertext bit produces a different seed that still migrates and still
+// passes every read-back check -- those compare the new file against what was
+// read, not against what was originally written. An older .v9 may therefore hold
+// the only intact copy of the real seed, and removing it to make room is the one
+// step that turns a recoverable corruption into a permanent loss.
+TEST(PqWalletIntegration, MigrationNeverOverwritesAnExistingBackup) {
+  System::Dispatcher dispatcher;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(1000000).upgradeHeightV6(1000000)
+      .currency();
+  TestBlockchainGenerator generator(currency);
+  INodeTrivialRefreshStub node(generator);
+
+  const std::string path = "pq_legacy_noclobber.wallet";
+  const std::string firstBackup = path + ".v9";
+  const std::string secondBackup = path + ".v9.1";
+  boost::filesystem::remove(path);
+  boost::filesystem::remove(firstBackup);
+  boost::filesystem::remove(secondBackup);
+
+  // An earlier migration already left a backup. Stand in for it with a file
+  // whose exact bytes we can check afterwards.
+  const std::string sentinel = "the older backup, which must survive";
+  {
+    std::ofstream existing(firstBackup, std::ios::binary);
+    existing << sentinel;
+  }
+
+  CryptoPQ::SeedMaster seed{};
+  for (std::size_t i = 0; i < seed.size(); ++i) {
+    seed[i] = static_cast<uint8_t>(i * 5 + 2);
+  }
+  writeLegacyWallet(path, "pass", seed, 1700000000);
+  ASSERT_EQ(CryptoNote::WALLET_CONTAINER_VERSION_LEGACY, walletFileVersion(path));
+
+  {
+    CryptoNote::WalletGreen wallet(dispatcher, currency, node, logger);
+    wallet.load(path, "pass");
+    EXPECT_EQ(1u, wallet.getAddressCount());
+    wallet.shutdown();
+  }
+
+  // The upgrade happened...
+  EXPECT_EQ(CryptoNote::WALLET_CONTAINER_VERSION, walletFileVersion(path));
+
+  // ...the older backup is byte-for-byte untouched...
+  ASSERT_TRUE(boost::filesystem::exists(firstBackup));
+  {
+    std::ifstream kept(firstBackup, std::ios::binary);
+    std::string contents((std::istreambuf_iterator<char>(kept)),
+                         std::istreambuf_iterator<char>());
+    EXPECT_EQ(sentinel, contents)
+        << "the pre-existing backup was overwritten by this migration";
+  }
+
+  // ...and this migration's own backup went to the next free name.
+  ASSERT_TRUE(boost::filesystem::exists(secondBackup));
+  EXPECT_EQ(CryptoNote::WALLET_CONTAINER_VERSION_LEGACY, walletFileVersion(secondBackup));
+
+  boost::filesystem::remove(path);
+  boost::filesystem::remove(firstBackup);
+  boost::filesystem::remove(secondBackup);
+}
+
+// Numbered copies accumulate rather than replacing one another, so a wallet that
+// has been through several migrations still has every earlier state.
+TEST(PqWalletIntegration, EachMigrationTakesTheNextFreeBackupName) {
+  System::Dispatcher dispatcher;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(1000000).upgradeHeightV6(1000000)
+      .currency();
+  TestBlockchainGenerator generator(currency);
+  INodeTrivialRefreshStub node(generator);
+
+  const std::string path = "pq_legacy_backupnames.wallet";
+  std::vector<std::string> names = { path + ".v9", path + ".v9.1", path + ".v9.2" };
+  boost::filesystem::remove(path);
+  for (const std::string& name : names) {
+    boost::filesystem::remove(name);
+  }
+
+  // Three migrations of three different legacy wallets at the same path.
+  for (std::size_t round = 0; round < names.size(); ++round) {
+    CryptoPQ::SeedMaster seed{};
+    for (std::size_t i = 0; i < seed.size(); ++i) {
+      seed[i] = static_cast<uint8_t>(i + round * 40 + 1);
+    }
+    writeLegacyWallet(path, "pass", seed, 1700000000 + static_cast<uint64_t>(round));
+
+    CryptoNote::WalletGreen wallet(dispatcher, currency, node, logger);
+    wallet.load(path, "pass");
+    Crypto::SecretKey spend = wallet.getAddressSpendKey(0).secretKey;
+    EXPECT_EQ(0, std::memcmp(spend.data, seed.data(), sizeof(spend.data)))
+        << "round " << round;
+    wallet.shutdown();
+
+    // Every backup made so far still exists, this round's included.
+    for (std::size_t made = 0; made <= round; ++made) {
+      EXPECT_TRUE(boost::filesystem::exists(names[made]))
+          << names[made] << " disappeared during round " << round;
+    }
+    boost::filesystem::remove(path);
+  }
+
+  boost::filesystem::remove(path);
+  for (const std::string& name : names) {
+    boost::filesystem::remove(name);
+  }
+}
+
+TEST(PqWalletIntegration, LegacyContainerWithAWrongPasswordIsLeftAlone) {
+  System::Dispatcher dispatcher;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(1000000).upgradeHeightV6(1000000)
+      .currency();
+  TestBlockchainGenerator generator(currency);
+  INodeTrivialRefreshStub node(generator);
+
+  const std::string path = "pq_legacy_badpass.wallet";
+  boost::filesystem::remove(path);
+  boost::filesystem::remove(path + ".v9");
+
+  CryptoPQ::SeedMaster seed{};
+  for (std::size_t i = 0; i < seed.size(); ++i) {
+    seed[i] = static_cast<uint8_t>(i + 1);
+  }
+  writeLegacyWallet(path, "pass", seed, 1700000000);
+
+  {
+    CryptoNote::WalletGreen wallet(dispatcher, currency, node, logger);
+    EXPECT_ANY_THROW(wallet.load(path, "wrong"));
+  }
+
+  // Nothing was rewritten: a failed unlock must never touch the wallet file.
+  EXPECT_EQ(CryptoNote::WALLET_CONTAINER_VERSION_LEGACY, walletFileVersion(path));
+  EXPECT_FALSE(boost::filesystem::exists(path + ".v9"));
+
+  // And the right password still works afterwards.
+  {
+    CryptoNote::WalletGreen wallet(dispatcher, currency, node, logger);
+    wallet.load(path, "pass");
+    EXPECT_EQ(1u, wallet.getAddressCount());
+    wallet.shutdown();
+  }
+
+  boost::filesystem::remove(path);
+  boost::filesystem::remove(path + ".v9");
+}
+
+// Secrets must not outlive the wallet that holds them. Closing a wallet, and
+// failing to open one, both have to leave the container key, the password and
+// the master seeds zeroed rather than sitting in freed heap (and in swap) until
+// the process ends.
+TEST(PqWalletIntegration, ClosingAWalletScrubsItsSecrets) {
+  System::Dispatcher dispatcher;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(1000000).upgradeHeightV6(1000000)
+      .currency();
+  TestBlockchainGenerator generator(currency);
+  INodeTrivialRefreshStub node(generator);
+  CryptoNote::WalletGreen wallet(dispatcher, currency, node, logger);
+
+  const std::string path = "pq_scrub.wallet";
+  boost::filesystem::remove(path);
+
+  wallet.initialize(path, "pass");
+  wallet.createAddress();
+  EXPECT_TRUE(wallet.hasResidentSecrets());
+
+  wallet.shutdown();
+  EXPECT_FALSE(wallet.hasResidentSecrets())
+      << "a closed wallet is still holding its key, password or master seed";
+
+  // Reopening and closing again behaves the same way.
+  wallet.load(path, "pass");
+  EXPECT_TRUE(wallet.hasResidentSecrets());
+  wallet.shutdown();
+  EXPECT_FALSE(wallet.hasResidentSecrets());
+
+  boost::filesystem::remove(path);
+}
+
+TEST(PqWalletIntegration, AFailedOpenLeavesNoSecretsBehind) {
+  System::Dispatcher dispatcher;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(1000000).upgradeHeightV6(1000000)
+      .currency();
+  TestBlockchainGenerator generator(currency);
+  INodeTrivialRefreshStub node(generator);
+
+  const std::string path = "pq_scrub_badpass.wallet";
+  boost::filesystem::remove(path);
+
+  {
+    CryptoNote::WalletGreen wallet(dispatcher, currency, node, logger);
+    wallet.initialize(path, "pass");
+    wallet.createAddress();
+    wallet.save(CryptoNote::WalletSaveLevel::SAVE_ALL);
+    wallet.shutdown();
+  }
+
+  // A wrong password still derives a key before it fails. That key must not
+  // survive the failure.
+  CryptoNote::WalletGreen wallet(dispatcher, currency, node, logger);
+  EXPECT_ANY_THROW(wallet.load(path, "wrong"));
+  EXPECT_FALSE(wallet.hasResidentSecrets())
+      << "a failed open left the derived container key resident";
+
+  boost::filesystem::remove(path);
+}
+
+TEST(PqWalletIntegration, ChangingThePasswordDoesNotStrandTheOldKey) {
+  System::Dispatcher dispatcher;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(1000000).upgradeHeightV6(1000000)
+      .currency();
+  TestBlockchainGenerator generator(currency);
+  INodeTrivialRefreshStub node(generator);
+  CryptoNote::WalletGreen wallet(dispatcher, currency, node, logger);
+
+  const std::string path = "pq_scrub_chpass.wallet";
+  boost::filesystem::remove(path);
+
+  wallet.initialize(path, "old pass");
+  wallet.createAddress();
+  const std::string address = wallet.getAddress(0);
+
+  wallet.changePassword("old pass", "new pass");
+  wallet.save(CryptoNote::WalletSaveLevel::SAVE_ALL);
+  wallet.shutdown();
+  EXPECT_FALSE(wallet.hasResidentSecrets());
+
+  // The new password opens it and the old one does not.
+  wallet.load(path, "new pass");
+  EXPECT_EQ(address, wallet.getAddress(0));
+  wallet.shutdown();
+
+  CryptoNote::WalletGreen stale(dispatcher, currency, node, logger);
+  EXPECT_ANY_THROW(stale.load(path, "old pass"));
+
   boost::filesystem::remove(path);
 }

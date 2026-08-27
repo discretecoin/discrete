@@ -72,7 +72,7 @@ bool fail(std::string* error, const char* msg) {
 
 }  // namespace
 
-CryptoPQ::Hash256 pqSigningDigest(const Transaction& tx, uint64_t fee) {
+CryptoPQ::UnsignedTx pqUnsignedTx(const Transaction& tx, uint64_t fee) {
   CryptoPQ::UnsignedTx u;
   u.version = tx.version;
   u.txType = tx.txType;
@@ -99,7 +99,11 @@ CryptoPQ::Hash256 pqSigningDigest(const Transaction& tx, uint64_t fee) {
     std::memcpy(dou.spendCommit.data(), po.spendCommit.data, 32);
     u.outputs.push_back(dou);
   }
-  return CryptoPQ::txSigningDigest(u);
+  return u;
+}
+
+CryptoPQ::Hash256 pqSigningDigest(const Transaction& tx, uint64_t fee) {
+  return CryptoPQ::txSigningDigest(pqUnsignedTx(tx, fee));
 }
 
 Crypto::Hash pqNullifier(const PqInput& in) {
@@ -246,7 +250,7 @@ uint64_t grindFreeRegPow(const std::array<uint8_t, 1184>& viewPub,
   return winner.load(std::memory_order_relaxed);
 }
 
-bool checkFreeRegTransactionSemantic(const Transaction& tx, std::string* error, uint64_t powTarget) {
+bool checkFreeRegTransactionShape(const Transaction& tx, std::string* error) {
   if (tx.txType != TX_FREE_REG) {
     return fail(error, "not a TX_FREE_REG subtype");
   }
@@ -259,6 +263,10 @@ bool checkFreeRegTransactionSemantic(const Transaction& tx, std::string* error, 
   if (tx.unlockHeight != 0) {
     return fail(error, "TX_FREE_REG must have unlockHeight == 0");
   }
+
+  // A registration's extra is a fixed grammar, so its size is pinned by
+  // isCanonicalFreeRegExtra() at relay and pool admission rather than by a
+  // separate byte cap here.
 
   // tx_extra must contain EXACTLY one PQ registration tag + one PoW tag, nothing else.
   std::vector<TransactionExtraField> fields;
@@ -279,10 +287,24 @@ bool checkFreeRegTransactionSemantic(const Transaction& tx, std::string* error, 
     return fail(error, "TX_FREE_REG: PoW tag is not the final tx_extra field");
   }
 
+  return true;
+}
+
+namespace {
+thread_local uint64_t g_freeRegPowEvaluations = 0;
+}  // namespace
+
+uint64_t freeRegPowEvaluationCount() {
+  return g_freeRegPowEvaluations;
+}
+
+bool checkFreeRegTransactionPow(const Transaction& tx, std::string* error, uint64_t powTarget) {
+  ++g_freeRegPowEvaluations;
   TransactionExtraPqAccountRegistration reg;
   TransactionExtraPow pow;
-  getPqAccountRegistrationFromExtra(tx.extra, reg);
-  getPowTagFromExtra(tx.extra, pow);
+  if (!getPqAccountRegistrationFromExtra(tx.extra, reg) || !getPowTagFromExtra(tx.extra, pow)) {
+    return fail(error, "TX_FREE_REG: missing registration or PoW tag");
+  }
 
   if (!checkFreeRegPow(reg.viewPub, reg.spendPub, pow.refBlockHash, pow.nonce, powTarget)) {
     return fail(error, "TX_FREE_REG: anti-spam PoW not satisfied");
@@ -290,11 +312,33 @@ bool checkFreeRegTransactionSemantic(const Transaction& tx, std::string* error, 
   return true;
 }
 
+bool checkFreeRegTransactionSemantic(const Transaction& tx, std::string* error, uint64_t powTarget) {
+  return checkFreeRegTransactionShape(tx, error) &&
+         checkFreeRegTransactionPow(tx, error, powTarget);
+}
+
+PqSigningContext pqSigningContextForHeight(uint32_t height, const CryptoPQ::Hash256& genesisId) {
+  PqSigningContext ctx;
+  // The one activation comparison. Every caller — consensus and wallet alike —
+  // reaches the transcript choice through here, so there is no second copy of
+  // this test to fall out of step.
+  ctx.useV2 = height >= parameters::PQ_TRANSCRIPT_V2_HEIGHT;
+  ctx.chainId = genesisId;
+  return ctx;
+}
+
+PqSigningContext pqSigningContextForHeight(uint32_t height, const Crypto::Hash& genesisId) {
+  CryptoPQ::Hash256 chainId{};
+  std::memcpy(chainId.data(), genesisId.data, chainId.size());
+  return pqSigningContextForHeight(height, chainId);
+}
+
 bool checkPqTransactionInputs(const Transaction& tx,
                              const std::vector<PqResolvedInput>& resolved,
                              uint64_t minFee,
                              std::vector<Crypto::Hash>* outNullifiers,
-                             std::string* error) {
+                             std::string* error,
+                             const PqSigningContext& signing) {
   if (resolved.size() != tx.inputs.size()) {
     return fail(error, "resolved inputs size mismatch");
   }
@@ -370,12 +414,26 @@ bool checkPqTransactionInputs(const Transaction& tx,
   }
 
   // ML-DSA signature verification over the recomputed digest.
-  CryptoPQ::Hash256 digest = pqSigningDigest(tx, fee);
+  //
+  // Version 1 gives every input the same digest, so two inputs spending under one
+  // key have interchangeable signatures. Version 2 folds the chain identity and
+  // the input's index in, which makes each signature valid in exactly one
+  // position on exactly one network.
+  const CryptoPQ::UnsignedTx unsigned_ = pqUnsignedTx(tx, fee);
+  const CryptoPQ::Hash256 sharedDigest =
+      signing.useV2 ? CryptoPQ::Hash256{} : CryptoPQ::txSigningDigest(unsigned_);
+
   for (size_t i = 0; i < tx.inputs.size(); ++i) {
     const PqInput& in = boost::get<PqInput>(tx.inputs[i]);
     CryptoPQ::DsaPublicKey pub = toDsaPub(in.authPub);
     CryptoPQ::DsaSignature sig;
     std::memcpy(sig.data(), tx.pqSignatures[i].data(), sig.size());
+
+    const CryptoPQ::Hash256 digest =
+        signing.useV2
+            ? CryptoPQ::txSigningDigestV2(unsigned_, signing.chainId, static_cast<uint32_t>(i))
+            : sharedDigest;
+
     if (!CryptoPQ::dsa_verify(pub, digest.data(), digest.size(), sig)) {
       return fail(error, "ML-DSA signature verification failed");
     }

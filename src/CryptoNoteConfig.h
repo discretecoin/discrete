@@ -91,6 +91,15 @@ const uint64_t MINIMUM_FEE                                   = UINT64_C(1);
 const uint64_t MAXIMUM_FEE                                   = UINT64_C(100);
 
 const uint64_t DEFAULT_DUST_THRESHOLD                        = UINT64_C(1);
+// tx_extra caps. Each is scoped to one kind of transaction; neither is a general
+// "no transaction may carry more extra than this" rule.
+//
+//   MAX_EXTRA_SIZE     coinbase, via maxExtraSize() in prevalidate_miner_transaction
+//   MAX_EXTRA_SIZE_PQ  TX_PQ, via checkPqTransactionSemantic
+//
+// A TX_PQ's extra is also priced: bytes past TX_EXTRA_FEE_FREE_BYTES are
+// surcharged (pqTxExtraSurcharge). TX_FREE_REG carries a fixed registration
+// grammar instead, pinned by isCanonicalFreeRegExtra().
 const uint64_t MAX_EXTRA_SIZE                                = 4096;
 const uint64_t MAX_EXTRA_SIZE_PQ                             = 4096;
 
@@ -157,6 +166,37 @@ const uint64_t FREE_REG_POW_TARGET                          = UINT64_C(0x00007FF
 // capacity (FREE_REG_PER_BLOCK * 20) so miners always have a full block to draw
 // from while bounding pool occupancy (~20*100*3.2KB ~= 6.4 MB worst case).
 const uint64_t FREE_REG_POOL_LIMIT                          = FREE_REG_PER_BLOCK * 20;
+
+// ---- Scheduled consensus changes -----------------------------------------
+//
+// Height at which the version-2 TX_PQ signing transcript becomes required, and
+// at which a TX_FREE_REG must carry a canonical tx_extra. Both are consensus
+// changes and both are implemented and tested, but NOTHING IS SCHEDULED: the
+// value is UINT32_MAX, so no height ever reaches it and every node keeps
+// applying the version-1 rules. Setting a real height is a hard fork and belongs
+// with the rest of the next planned upgrade, not on its own.
+//
+// What activation changes:
+//   * TX_PQ input signatures verify against CryptoPQ::txSigningDigestV2, which
+//     binds the genesis block id and the input's index, so a signature is valid
+//     in exactly one position on exactly one network.
+//   * TX_FREE_REG tx_extra must match the exact registration grammar, which is
+//     relay policy until then (isCanonicalFreeRegExtra): applying it to blocks
+//     early would make upgraded and old nodes disagree about a block.
+const uint32_t PQ_TRANSCRIPT_V2_HEIGHT                      = UINT32_MAX;
+
+// Node-local anti-DoS, not consensus. Verifying a registration proof costs a
+// memory-hard yespower evaluation, so a proof that has already failed is
+// remembered and replays of it are rejected without re-running the work. The
+// cache is keyed by (identity, refBlockHash, nonce) rather than transaction id,
+// so re-wrapping the same proof in a differently-padded transaction does not
+// buy a fresh evaluation. Bounded and FIFO-evicted: ~32 bytes per entry.
+const size_t   FREE_REG_BAD_PROOF_CACHE_SIZE                = 8192;
+
+// How many memory-hard registration-proof evaluations one peer may cause before
+// the connection is dropped. A well-behaved peer relays proofs that verify, and
+// verified proofs do not count against the budget — only wasted work does.
+const size_t   FREE_REG_PEER_WORK_BUDGET                    = 32;
 
 // ─── DiscretePower (signature-tape proof of work) ────────────────────────────
 // Consensus PoW. Every candidate carries exactly one ML-DSA-65 signature which is
@@ -366,6 +406,8 @@ const uint8_t  BLOCK_MAJOR_VERSION_6                         =  6;  // reserved
 const uint8_t  BLOCK_MAJOR_VERSION_7                         =  7;  // reserved
 const uint8_t  BLOCK_MAJOR_VERSION_8                         =  8;  // reserved
 
+// COINBASE extra cap: applied to Block::baseTransaction only. Ordinary
+// transactions are bounded by their own type's rules.
 inline uint64_t maxExtraSize(uint8_t /*blockMajorVersion*/) {
   return parameters::MAX_EXTRA_SIZE_PQ;
 }
@@ -434,6 +476,26 @@ const char     P2P_STAT_TRUSTED_PUB_KEY[]                    = "0000000000000000
 const char* const SEED_NODES[] = {
   "seed1.discrete.cash:9330",
   "seed2.discrete.cash:9330",
+};
+
+// Remote wallet endpoints the project itself operates. A wallet trusts these,
+// and its own local daemon, to resolve Compact Account Numbers; any other remote
+// daemon has to be trusted explicitly by the user first (see
+// Common/DaemonTrust.h for why resolution is a trust decision at all).
+//
+// Trust is automatic here ONLY over TLS with certificate verification enabled,
+// because what is being trusted is the endpoint's identity and nothing else
+// establishes it. Each of these serves RPC over HTTPS on 9332 under a
+// certificate covering its own name; a connection to one of them on the plain
+// HTTP port is not automatically trusted and needs an explicit --trusted-daemon.
+//
+// Only the host is matched (isOfficialRemoteHost strips the port), so the port
+// shown is documentation of where each endpoint answers, not part of the trust
+// decision.
+const char* const OFFICIAL_REMOTE_NODES[] = {
+  "node.discrete.cash:9332",
+  "seed1.discrete.cash:9332",
+  "seed2.discrete.cash:9332",
 };
 
 } // CryptoNote

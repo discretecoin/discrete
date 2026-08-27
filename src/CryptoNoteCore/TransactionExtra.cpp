@@ -429,6 +429,23 @@ bool isPowTagLastField(const std::vector<uint8_t>& tx_extra) {
   return powCount == 1 && extraFields.back().type() == typeid(TransactionExtraPow);
 }
 
+bool isCanonicalFreeRegExtra(const std::vector<uint8_t>& tx_extra) {
+  constexpr size_t kRegPayload = TX_EXTRA_PQ_VIEW_PUBKEY_SIZE + TX_EXTRA_PQ_SPEND_PUBKEY_SIZE;
+  constexpr size_t kPowPayload = sizeof(Crypto::Hash) + 8;
+  constexpr size_t kExpected = 1 + kRegPayload + 1 + kPowPayload;
+
+  if (tx_extra.size() != kExpected) {
+    return false;
+  }
+  if (tx_extra[0] != TX_EXTRA_TAG_PQ_ACCOUNT_REGISTRATION) {
+    return false;
+  }
+  if (tx_extra[1 + kRegPayload] != TX_EXTRA_TAG_POW) {
+    return false;
+  }
+  return true;
+}
+
 bool addPqMinerSpendPubToExtra(std::vector<uint8_t>& tx_extra,
                                const std::array<uint8_t, TX_EXTRA_PQ_SPEND_PUBKEY_SIZE>& spendPub) {
   tx_extra.push_back(TX_EXTRA_TAG_PQ_MINER_SPEND_PUB);

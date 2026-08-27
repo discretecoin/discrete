@@ -1404,8 +1404,16 @@ bool Blockchain::handle_alternative_block(const Block& b, const Crypto::Hash& id
     // block is still refused — this only records why, it does not change the
     // decision. The peer-split hint and the WARNING with peer counts are added
     // by the protocol layer via bvc.m_finality_fork.
-    if (m_checkpoints.is_finality_violation(chainLen, block_height)) {
-      recordFinalityFork(chainLen, block_height, id);
+    //
+    // The snapshot is what resync_to_majority rolls back to, so it is armed only
+    // by a block that survives the same structural validation any competing
+    // block has to pass, on a branch whose ancestry we already store. The
+    // divergence is derived from that stored ancestry, not from the height the
+    // candidate's own coinbase claims.
+    uint32_t validatedHeight = 0;
+    if (m_checkpoints.is_finality_violation(chainLen, block_height) &&
+        validateCompetingBlock(b, id, validatedHeight)) {
+      recordFinalityFork(chainLen, validatedHeight, id);
       bvc.m_finality_fork = true;
     }
     bvc.m_verification_failed = true;
@@ -1973,7 +1981,12 @@ bool Blockchain::checkPqInputs(const Transaction& tx, uint32_t* pmax_used_block_
 
   std::vector<Crypto::Hash> nullifiers;
   std::string err;
-  if (!checkPqTransactionInputs(tx, resolved, parameters::MINIMUM_FEE, &nullifiers, &err)) {
+  // Which signing transcript applies is a function of the height this
+  // transaction is being judged at, so a reorg across the activation boundary
+  // re-evaluates against the rules of the height the block actually lands on.
+  const PqSigningContext signing =
+      pqSigningContextForHeight(getCurrentBlockchainHeight(), m_currency.genesisBlockHash());
+  if (!checkPqTransactionInputs(tx, resolved, parameters::MINIMUM_FEE, &nullifiers, &err, signing)) {
     logger(INFO, BRIGHT_WHITE) << "PQ input check failed (" << err << ") for tx " << getObjectHash(tx);
     return false;
   }
@@ -2027,21 +2040,57 @@ bool Blockchain::getPqTransactionFee(const Transaction& tx, uint64_t& fee) {
   return true;
 }
 
-bool Blockchain::checkFreeRegInputs(const Transaction& tx, uint32_t* pmax_used_block_height) {
-  std::lock_guard<decltype(m_blockchain_lock)> lk(m_blockchain_lock);
-  if (pmax_used_block_height) *pmax_used_block_height = 0;
-  // Discrete: free-reg is active from genesis.
+// Identity of a registration proof, independent of the transaction that carries
+// it: two transactions differing only in padding share this value.
+Crypto::Hash Blockchain::freeRegProofTuple(const Crypto::Hash& identity,
+                                           const Crypto::Hash& refBlockHash, uint64_t nonce) {
+  std::vector<uint8_t> buf;
+  buf.reserve(sizeof(identity.data) + sizeof(refBlockHash.data) + sizeof(nonce));
+  buf.insert(buf.end(), identity.data, identity.data + sizeof(identity.data));
+  buf.insert(buf.end(), refBlockHash.data, refBlockHash.data + sizeof(refBlockHash.data));
+  for (int i = 0; i < 8; ++i) buf.push_back(static_cast<uint8_t>((nonce >> (8 * i)) & 0xFF));
+  return Crypto::cn_fast_hash(buf.data(), buf.size());
+}
 
+bool Blockchain::freeRegProofTupleOf(const Transaction& tx, Crypto::Hash& proofTuple) {
   TransactionExtraPqAccountRegistration reg;
   TransactionExtraPow pow;
+  if (!getPqAccountRegistrationFromExtra(tx.extra, reg) || !getPowTagFromExtra(tx.extra, pow)) {
+    return false;
+  }
+  proofTuple = freeRegProofTuple(getPqAccountIdentityHash(reg), pow.refBlockHash, pow.nonce);
+  return true;
+}
+
+bool Blockchain::freeRegChainStateOk(const Transaction& tx, Crypto::Hash& identity,
+                                     TransactionExtraPow& pow, uint32_t& refHeight) {
+  refHeight = 0;
+
+  TransactionExtraPqAccountRegistration reg;
   if (!getPqAccountRegistrationFromExtra(tx.extra, reg) ||
       !getPowTagFromExtra(tx.extra, pow)) {
     return false;  // semantic check should have caught this
   }
+  identity = getPqAccountIdentityHash(reg);
+
+  // From the scheduled upgrade onwards a registration's tx_extra must match the
+  // exact grammar, which is what stops one proof from being re-wrapped into
+  // unlimited transactions with different ids. Before activation this is relay
+  // policy only (Core::check_tx_semantic): applying it to blocks early would make
+  // upgraded and old nodes disagree about a block.
+  if (getCurrentBlockchainHeight() >= parameters::PQ_TRANSCRIPT_V2_HEIGHT &&
+      !isCanonicalFreeRegExtra(tx.extra)) {
+    logger(INFO, BRIGHT_WHITE) << "free-reg tx_extra is not canonical, rejected";
+    return false;
+  }
+
+  // Everything decidable from chain state, under the chain lock and nothing else
+  // under it. Two database lookups; the memory-hard proof is deliberately not
+  // among them.
+  std::lock_guard<decltype(m_blockchain_lock)> lk(m_blockchain_lock);
 
   // refBlockHash must be a main-chain block within the last FREE_REG_REF_WINDOW.
   const uint32_t curHeight = getCurrentBlockchainHeight();
-  uint32_t refHeight = 0;
   if (!m_db.getHashHeight(pow.refBlockHash, refHeight)) {
     logger(INFO, BRIGHT_WHITE) << "free-reg refBlockHash not on the main chain, rejected";
     return false;
@@ -2055,13 +2104,136 @@ bool Blockchain::checkFreeRegInputs(const Transaction& tx, uint32_t* pmax_used_b
   // First-registration-wins: reject if the full PQ identity is already registered.
   // (checkTransactionInputs runs the same check for every registration-carrying tx
   // type; repeated here so this entry point stands on its own.)
-  if (isPqAccountAlreadyRegistered(tx)) {
+  if (m_db.hasPqAcctReg(identity)) {
     logger(INFO, BRIGHT_WHITE) << "free-reg account already registered, rejected";
     return false;
+  }
+  return true;
+}
+
+bool Blockchain::checkFreeRegInputs(const Transaction& tx, uint32_t* pmax_used_block_height) {
+  if (pmax_used_block_height) *pmax_used_block_height = 0;
+  // Discrete: free-reg is active from genesis.
+
+  // Phase two. The caller (Core::add_new_tx) holds the mempool lock and the
+  // recursive blockchain lock around this whole call, so anything expensive here
+  // is expensive for every other transaction, block and template on the node.
+  //
+  // Re-check the chain state -- it may have moved since phase one -- and then
+  // reuse phase one's verdict on the proof rather than evaluating it again. The
+  // fallback evaluation below is for callers that never went through phase one,
+  // notably transactions arriving inside a block, where there is no admission
+  // decision to make and the full check must still happen.
+  TransactionExtraPow pow;
+  Crypto::Hash identity;
+  uint32_t refHeight = 0;
+  if (!freeRegChainStateOk(tx, identity, pow, refHeight)) {
+    return false;
+  }
+
+  // A proof that already failed is remembered, so replaying it — including under
+  // a mutated transaction id — costs a lookup instead of a fresh evaluation.
+  const Crypto::Hash proofTuple = freeRegProofTuple(identity, pow.refBlockHash, pow.nonce);
+  if (isKnownBadFreeRegProof(proofTuple)) {
+    logger(DEBUGGING) << "free-reg proof already known to be invalid, rejected";
+    return false;
+  }
+
+  // Already verified in phase one, outside the locks. Same tuple, same proof:
+  // this is the memoized result of the identical evaluation, not a weaker check.
+  if (!isKnownGoodFreeRegProof(proofTuple)) {
+    std::string powError;
+    if (!checkFreeRegTransactionPow(tx, &powError, m_currency.freeRegPowTarget())) {
+      rememberBadFreeRegProof(proofTuple);
+      logger(INFO, BRIGHT_WHITE) << "free-reg rejected: " << powError;
+      return false;
+    }
+    rememberGoodFreeRegProof(proofTuple);
   }
 
   if (pmax_used_block_height) *pmax_used_block_height = refHeight;
   return true;
+}
+
+bool Blockchain::precheckFreeRegPow(const Transaction& tx) {
+  // Phase one, with NO lock held on entry and none held across the proof.
+  //
+  // Order matters as much as the locking does. Everything cheap comes first --
+  // the two remembered-proof caches, then the chain-state checks under a short
+  // lock of their own -- so that a stale reference block, an identity that is
+  // already registered, or a proof we have seen fail before all cost a lookup
+  // rather than a 16 MiB evaluation. Only a registration that is new, current
+  // and unseen gets to spend real work.
+  ++m_freeRegPrechecks;
+
+  Crypto::Hash proofTuple;
+  if (!freeRegProofTupleOf(tx, proofTuple)) {
+    return false;  // shape check should have caught this
+  }
+  if (isKnownBadFreeRegProof(proofTuple)) {
+    logger(DEBUGGING) << "free-reg proof already known to be invalid, rejected";
+    return false;
+  }
+  if (isKnownGoodFreeRegProof(proofTuple)) {
+    return true;
+  }
+
+  TransactionExtraPow pow;
+  Crypto::Hash identity;
+  uint32_t refHeight = 0;
+  if (!freeRegChainStateOk(tx, identity, pow, refHeight)) {
+    return false;  // the short lock is released before we return
+  }
+
+  // No lock is held here, and none may be taken: this is the whole point of the
+  // phase split. Phase two re-checks the state afterwards, so nothing is trusted
+  // across this gap.
+  std::string powError;
+  if (!checkFreeRegTransactionPow(tx, &powError, m_currency.freeRegPowTarget())) {
+    rememberBadFreeRegProof(proofTuple);
+    logger(INFO, BRIGHT_WHITE) << "free-reg rejected: " << powError;
+    return false;
+  }
+  rememberGoodFreeRegProof(proofTuple);
+  return true;
+}
+
+bool Blockchain::isKnownBadFreeRegProof(const Crypto::Hash& proofTuple) {
+  std::lock_guard<std::mutex> lk(m_badFreeRegProofsLock);
+  return m_badFreeRegProofs.count(proofTuple) != 0;
+}
+
+void Blockchain::rememberBadFreeRegProof(const Crypto::Hash& proofTuple) {
+  std::lock_guard<std::mutex> lk(m_badFreeRegProofsLock);
+  if (m_badFreeRegProofs.count(proofTuple) != 0) {
+    return;
+  }
+  // Bounded and FIFO-evicted: the cache saves work, it must never become the
+  // memory sink it is there to prevent.
+  if (m_badFreeRegProofsOrder.size() >= parameters::FREE_REG_BAD_PROOF_CACHE_SIZE) {
+    m_badFreeRegProofs.erase(m_badFreeRegProofsOrder.front());
+    m_badFreeRegProofsOrder.pop_front();
+  }
+  m_badFreeRegProofs.insert(proofTuple);
+  m_badFreeRegProofsOrder.push_back(proofTuple);
+}
+
+bool Blockchain::isKnownGoodFreeRegProof(const Crypto::Hash& proofTuple) {
+  std::lock_guard<std::mutex> lk(m_goodFreeRegProofsLock);
+  return m_goodFreeRegProofs.count(proofTuple) != 0;
+}
+
+void Blockchain::rememberGoodFreeRegProof(const Crypto::Hash& proofTuple) {
+  std::lock_guard<std::mutex> lk(m_goodFreeRegProofsLock);
+  if (m_goodFreeRegProofs.count(proofTuple) != 0) {
+    return;
+  }
+  if (m_goodFreeRegProofsOrder.size() >= parameters::FREE_REG_BAD_PROOF_CACHE_SIZE) {
+    m_goodFreeRegProofs.erase(m_goodFreeRegProofsOrder.front());
+    m_goodFreeRegProofsOrder.pop_front();
+  }
+  m_goodFreeRegProofs.insert(proofTuple);
+  m_goodFreeRegProofsOrder.push_back(proofTuple);
 }
 
 bool Blockchain::isPqAccountAlreadyRegistered(const Transaction& tx) {
@@ -2876,6 +3048,66 @@ void Blockchain::rollbackBlockchainTo(uint32_t height) {
 }
 
 // ─── first-seen finality: fork detection state + operator recovery ───────────
+
+bool Blockchain::validateCompetingBlock(const Block& b, const Crypto::Hash& id,
+                                        uint32_t& validatedHeight) {
+  // Caller holds m_blockchain_lock.
+
+  // Ancestry first: the parent has to be a block we already store, either on the
+  // main chain or in an alternative chain we have previously validated. Without
+  // it there is no branch to diverge from and nothing to roll back to.
+  uint32_t parentHeight = 0;
+  const auto altParent = m_alternative_chains.find(b.previousBlockHash);
+  if (altParent != m_alternative_chains.end()) {
+    parentHeight = altParent->second.height;
+  } else if (!m_db.getHashHeight(b.previousBlockHash, parentHeight)) {
+    logger(DEBUGGING) << "Refused deep-fork block " << id
+                      << " has an unknown parent; not arming finality recovery";
+    return false;
+  }
+
+  // Height comes from the stored parent, never from the candidate's coinbase.
+  validatedHeight = parentHeight + 1;
+
+  // Nothing new to learn if the snapshot already covers a divergence at least
+  // this deep with a competing tip at least this high. Skipping keeps a peer from
+  // replaying near-identical candidates to make us re-verify proofs of work.
+  if (m_finalityForkState.active &&
+      m_finalityForkState.divergenceHeight <= validatedHeight - 1 &&
+      m_finalityForkState.competingTipHeight >= validatedHeight) {
+    return false;
+  }
+
+  if (!checkBlockVersion(b)) {
+    return false;
+  }
+  if (!checkParentBlockSize(b, id)) {
+    return false;
+  }
+  if (!prevalidate_miner_transaction(b, validatedHeight)) {
+    logger(DEBUGGING) << "Refused deep-fork block " << id
+                      << " has an invalid miner transaction; not arming finality recovery";
+    return false;
+  }
+  if (!validate_block_signature(b, id, validatedHeight)) {
+    logger(DEBUGGING) << "Refused deep-fork block " << id
+                      << " has an invalid block signature; not arming finality recovery";
+    return false;
+  }
+
+  const Difficulty diff = getDifficultyForNextBlock(b.previousBlockHash);
+  if (!diff) {
+    return false;
+  }
+  Crypto::Hash proofOfWork = NULL_HASH;
+  if (!checkProofOfWork(m_cn_context, b, diff, proofOfWork)) {
+    logger(DEBUGGING) << "Refused deep-fork block " << id
+                      << " does not carry enough proof of work; not arming finality recovery";
+    return false;
+  }
+
+  return true;
+}
 
 void Blockchain::recordFinalityFork(uint32_t chainLen, uint32_t altBlockHeight,
                                     const Crypto::Hash& altBlockId) {

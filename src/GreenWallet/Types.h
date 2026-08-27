@@ -99,6 +99,12 @@ struct Config
     /* Use testnet currency parameters/address HRP */
     bool testnet = false;
 
+    /* Let a custom remote daemon resolve account numbers. Only meaningful for a
+       daemon that is not local and not one of the official endpoints, both of
+       which are trusted already. Whoever resolves an account number decides
+       where the payment lands, so this is an explicit user decision. */
+    bool trustedDaemon = false;
+
     /* The wallet file path */
     std::string walletFile = "";
 

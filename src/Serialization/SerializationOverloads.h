@@ -21,6 +21,7 @@
 
 #include "ISerializer.h"
 
+#include <algorithm>
 #include <array>
 #include <cstring>
 #include <list>
@@ -96,6 +97,23 @@ serializeAsBinary(std::list<T>& value, Common::StringView name, CryptoNote::ISer
   }
 }
 
+// Upper bound on how much a wire-supplied element count may pre-allocate. It is
+// only a hint: containers still grow to whatever the input actually decodes to,
+// so no valid object is rejected or truncated. Element counts arrive from the
+// wire, so the memory they can commit is kept proportional to the bytes actually
+// received rather than to the number claimed.
+constexpr size_t SERIALIZATION_MAX_PREALLOC_ELEMENTS = 4096;
+
+template<typename T, typename A>
+void reserveBoundedByInput(std::vector<T, A>& value, size_t declaredCount) {
+  value.reserve(std::min(declaredCount, SERIALIZATION_MAX_PREALLOC_ELEMENTS));
+}
+
+// Containers without reserve() (std::list, std::map, ...) simply grow.
+template<typename Cont>
+void reserveBoundedByInput(Cont&, size_t) {
+}
+
 template <typename Cont>
 bool serializeContainer(Cont& value, Common::StringView name, CryptoNote::ISerializer& serializer) {
   size_t size = value.size();
@@ -107,10 +125,22 @@ bool serializeContainer(Cont& value, Common::StringView name, CryptoNote::ISeria
     return false;
   }
 
-  value.resize(size);
+  if (serializer.type() == ISerializer::INPUT) {
+    // Grow as elements decode rather than sizing to the declared count up front,
+    // so peak allocation tracks the bytes actually supplied. A count the input
+    // cannot back runs the stream dry and throws.
+    value.clear();
+    reserveBoundedByInput(value, size);
 
-  for (auto& item : value) {
-    serializer(const_cast<typename Cont::value_type&>(item), "");
+    for (size_t i = 0; i < size; ++i) {
+      typename Cont::value_type item{};
+      serializer(item, "");
+      value.push_back(std::move(item));
+    }
+  } else {
+    for (auto& item : value) {
+      serializer(const_cast<typename Cont::value_type&>(item), "");
+    }
   }
 
   serializer.endArray();
@@ -158,7 +188,8 @@ bool serializeMap(MapT& value, Common::StringView name, CryptoNote::ISerializer&
   }
 
   if (serializer.type() == CryptoNote::ISerializer::INPUT) {
-    reserve(size);
+    value.clear();
+    reserve(std::min(size, SERIALIZATION_MAX_PREALLOC_ELEMENTS));
 
     for (size_t i = 0; i < size; ++i) {
       typename MapT::key_type key;
@@ -197,6 +228,7 @@ bool serializeSet(SetT& value, Common::StringView name, CryptoNote::ISerializer&
   }
 
   if (serializer.type() == CryptoNote::ISerializer::INPUT) {
+    value.clear();
     for (size_t i = 0; i < size; ++i) {
       typename SetT::value_type key;
       serializer(key, "");

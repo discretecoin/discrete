@@ -360,6 +360,12 @@ bool bytes_to_words(const Crypto::SecretKey& src, std::string& words, const std:
 * \brief Gets a list of seed languages that are supported.
 * \param languages The vector is set to the list of languages.
 */
+const std::vector<std::string>& english_word_list()
+{
+	static const std::shared_ptr<Language::Base> english = std::make_shared<Language::English>();
+	return english->get_word_list();
+}
+
 void get_language_list(std::vector<std::string> &languages)
 {
     languages.clear();

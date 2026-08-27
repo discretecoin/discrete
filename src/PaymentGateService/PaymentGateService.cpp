@@ -287,7 +287,8 @@ void PaymentGateService::runRpcProxy(Logging::LoggerRef& log) {
       config.remoteNodeConfig.m_daemon_host,
       config.remoteNodeConfig.m_daemon_port,
       _daemon_path,
-      _daemon_ssl));
+      _daemon_ssl,
+      config.remoteNodeConfig.m_trusted_daemon));
 
   runWalletServiceOr(currency, *node);
 }

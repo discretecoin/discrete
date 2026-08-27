@@ -38,6 +38,7 @@
 #include "CryptoNoteCore/CryptoNoteBasicImpl.h"
 #include "CryptoNoteCore/CryptoNoteFormatUtils.h"
 #include "CryptoNoteCore/CryptoNoteTools.h"
+#include "CryptoNoteCore/PqValidation.h"
 #include "CryptoNoteCore/Currency.h"
 #include "CryptoNoteCore/VerificationContext.h"
 #include "CryptoNoteProtocol/SyncPowThreadCount.h"
@@ -421,9 +422,25 @@ int CryptoNoteProtocolHandler::handle_notify_new_transactions(int command, NOTIF
       logger(DEBUGGING) << "Transaction " << transactionHash << " came in NOTIFY_NEW_TRANSACTIONS"
                         << " as " << (arg.stem ? "stem" : "fluff");
       CryptoNote::tx_verification_context tvc = boost::value_initialized<decltype(tvc)>();
+      const uint64_t proofWorkBefore = CryptoNote::freeRegPowEvaluationCount();
       m_core.handle_incoming_tx(transactionBinary, tvc, false);
+      const uint64_t proofWorkSpent = CryptoNote::freeRegPowEvaluationCount() - proofWorkBefore;
       if (tvc.m_verification_failed) {
         logger(Logging::DEBUGGING) << context << "Transaction verification failed";
+      }
+
+      // Charge the peer for memory-hard proof work that produced nothing — an
+      // invalid proof, or one we already had. Work that lands a new pool entry is
+      // useful and free.
+      if (proofWorkSpent != 0 && !tvc.m_added_to_pool) {
+        context.m_wasted_proof_work += proofWorkSpent;
+        if (context.m_wasted_proof_work > CryptoNote::parameters::FREE_REG_PEER_WORK_BUDGET) {
+          logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << context
+            << "peer spent " << context.m_wasted_proof_work
+            << " registration-proof verifications with nothing to show for them, dropping";
+          m_p2p->drop_connection(context, true);
+          return 1;
+        }
       }
       if (!tvc.m_verification_failed && tvc.m_should_be_relayed) {
         if (!arg.stem) {

@@ -629,6 +629,152 @@ TEST(WalletLedger, SingleKeyIndexAutomaticallyCreditsLegacyNonzeroT) {
     EXPECT_EQ(st.outputs()[0].depositIndex, 44u);
 }
 
+// T is 64 bits on the wire; the ledger's deposit buckets are 32. The SENDER
+// picks T, so narrowing it with a cast would let a payer choose which of our
+// deposits their payment is credited to — T = 2^32 + n would land on bucket n,
+// and T = 0xFFFFFFFF would land on the primary-address sentinel. Out-of-range
+// values must be recorded as unattributed instead, with the funds still owned.
+TEST(WalletLedger, HugeRoutingIndexDoesNotAliasADepositBucket) {
+    // The pure mapping, over the boundary cases.
+    EXPECT_EQ(PQ_PRIMARY_DEPOSIT, pqDepositIndexForRoute(0));
+    EXPECT_EQ(1u, pqDepositIndexForRoute(1));
+    EXPECT_EQ(7u, pqDepositIndexForRoute(7));
+
+    EXPECT_EQ(PQ_UNATTRIBUTED_DEPOSIT, pqDepositIndexForRoute(1ull << 32));
+    EXPECT_NE(0u, pqDepositIndexForRoute(1ull << 32));
+
+    EXPECT_EQ(PQ_UNATTRIBUTED_DEPOSIT, pqDepositIndexForRoute((1ull << 32) + 5));
+    EXPECT_NE(5u, pqDepositIndexForRoute((1ull << 32) + 5));
+
+    EXPECT_EQ(PQ_UNATTRIBUTED_DEPOSIT, pqDepositIndexForRoute(0xFFFFFFFFull));
+    EXPECT_NE(PQ_PRIMARY_DEPOSIT, pqDepositIndexForRoute(0xFFFFFFFFull));
+
+    EXPECT_EQ(PQ_UNATTRIBUTED_DEPOSIT, pqDepositIndexForRoute(0xFFFFFFFFFFFFFFFFull));
+
+    // The last attributable index still maps to itself.
+    EXPECT_EQ(static_cast<uint32_t>(PQ_MAX_DEPOSIT_ROUTE),
+              pqDepositIndexForRoute(PQ_MAX_DEPOSIT_ROUTE));
+}
+
+TEST(WalletLedger, OutOfRangeRoutingIndexIsOwnedButUnattributed) {
+    PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
+    PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
+
+    WalletLedger st(me);
+    st.setDepositConfig(PqDepositScheme::SingleKeyIndex, 8);
+
+    // A payer aiming at deposit 3 by way of 2^32 + 3.
+    Funded f = payToPub(them, me.viewPub, me.spendPub, 1000000, 750000, 0xB8,
+                        (1ull << 32) + 3);
+    ASSERT_TRUE(st.processTransaction(f.tx, f.txid, 100));
+
+    // The money is ours and spendable...
+    EXPECT_EQ(750000u, st.balance());
+    ASSERT_EQ(1u, st.outputs().size());
+    EXPECT_EQ(1u, st.spendableInputs().size());
+
+    // ...but it did not land in deposit 3, nor on the primary address.
+    EXPECT_EQ(PQ_UNATTRIBUTED_DEPOSIT, st.outputs()[0].depositIndex);
+    EXPECT_EQ(0u, st.depositBalance(3));
+    EXPECT_EQ(0u, st.depositBalance(PQ_PRIMARY_DEPOSIT));
+}
+
+// The sentinel keeps an unroutable payment off a real deposit, but it must not
+// then be published AS a deposit: 4294967294 in a balance map or a history row
+// reads to a caller exactly like a customer deposit that does not exist.
+TEST(WalletLedger, UnattributedOutputIsNotPublishedAsADeposit) {
+    PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
+    PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
+
+    WalletLedger st(me);
+    st.setDepositConfig(PqDepositScheme::SingleKeyIndex, 8);
+
+    // The payer aimed at deposit 3 via 2^32 + 3.
+    Funded f = payToPub(them, me.viewPub, me.spendPub, 1000000, 750000, 0xC1,
+                        (1ull << 32) + 3);
+    ASSERT_TRUE(st.processTransaction(f.tx, f.txid, 100));
+    ASSERT_EQ(1u, st.outputs().size());
+    ASSERT_EQ(PQ_UNATTRIBUTED_DEPOSIT, st.outputs()[0].depositIndex);
+
+    // Not under the sentinel, and not under the deposit the payer aimed at.
+    const auto balances = st.depositBalances();
+    EXPECT_EQ(0u, balances.count(PQ_UNATTRIBUTED_DEPOSIT));
+    EXPECT_EQ(0u, balances.count(3u));
+    EXPECT_TRUE(balances.empty());
+
+    // Nor by asking for the sentinel directly, which walletd exposes over RPC.
+    EXPECT_EQ(0u, st.depositBalance(PQ_UNATTRIBUTED_DEPOSIT));
+    EXPECT_EQ(0u, st.depositSpendableBalance(PQ_UNATTRIBUTED_DEPOSIT));
+
+    // The funds are still the wallet's, still counted, still spendable.
+    EXPECT_EQ(750000u, st.balance());
+    EXPECT_EQ(750000u, st.unattributedBalance());
+    EXPECT_EQ(1u, st.spendableInputs().size());
+    EXPECT_EQ(PQ_UNATTRIBUTED_DEPOSIT, st.spendableInputs()[0].depositIndex);
+}
+
+// Real deposits must be unaffected by the exclusion: only the sentinel is held
+// back, and an unattributed output must not disturb the deposits around it.
+TEST(WalletLedger, RealDepositsSurviveAlongsideAnUnattributedOutput) {
+    PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
+    PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
+
+    WalletLedger st(me);
+    st.setDepositConfig(PqDepositScheme::SingleKeyIndex, 8);
+
+    Funded good = payToPub(them, me.viewPub, me.spendPub, 1000000, 400000, 0xC2, 3);
+    ASSERT_TRUE(st.processTransaction(good.tx, good.txid, 100));
+    Funded bad = payToPub(them, me.viewPub, me.spendPub, 1000000, 750000, 0xC3,
+                          (1ull << 32) + 3);
+    ASSERT_TRUE(st.processTransaction(bad.tx, bad.txid, 101));
+
+    const auto balances = st.depositBalances();
+    ASSERT_EQ(1u, balances.size());
+    EXPECT_EQ(400000u, balances.at(3u));  // exactly the real payment, not 1150000
+    EXPECT_EQ(0u, balances.count(PQ_UNATTRIBUTED_DEPOSIT));
+
+    EXPECT_EQ(400000u, st.depositBalance(3));
+    EXPECT_EQ(750000u, st.unattributedBalance());
+    EXPECT_EQ(1150000u, st.balance());  // the wallet still owns both
+}
+
+TEST(WalletLedger, UnattributedTransferKeepsItsOwnBucketInHistory) {
+    PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
+    PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
+
+    WalletLedger st(me);
+    st.setDepositConfig(PqDepositScheme::SingleKeyIndex, 8);
+
+    Funded f = payToPub(them, me.viewPub, me.spendPub, 1000000, 750000, 0xC4,
+                        (1ull << 32) + 9);
+    ASSERT_TRUE(st.processTransaction(f.tx, f.txid, 100));
+
+    // transfersByDeposit keeps the sentinel as its own key so the row is not
+    // merged into a real deposit. Rendering it as an address is WalletGreen's
+    // job, and pqBucketAddress refuses to derive a deposit address from it.
+    const auto byBucket = st.transfersByDeposit(f.txid);
+    ASSERT_EQ(1u, byBucket.size());
+    EXPECT_EQ(PQ_UNATTRIBUTED_DEPOSIT, byBucket.begin()->first);
+    EXPECT_EQ(0u, byBucket.count(9u));
+    EXPECT_EQ(0u, byBucket.count(PQ_PRIMARY_DEPOSIT));
+}
+
+TEST(WalletLedger, RoutingIndexAtTheSentinelDoesNotBecomeThePrimaryAddress) {
+    PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
+    PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
+
+    WalletLedger st(me);
+    st.setDepositConfig(PqDepositScheme::SingleKeyIndex, 8);
+
+    Funded f = payToPub(them, me.viewPub, me.spendPub, 1000000, 750000, 0xB9,
+                        0xFFFFFFFFull);
+    ASSERT_TRUE(st.processTransaction(f.tx, f.txid, 100));
+
+    ASSERT_EQ(1u, st.outputs().size());
+    EXPECT_EQ(PQ_UNATTRIBUTED_DEPOSIT, st.outputs()[0].depositIndex);
+    EXPECT_EQ(0u, st.depositBalance(PQ_PRIMARY_DEPOSIT));
+}
+
 TEST(WalletLedger, SingleKeyIndexDoesNotCreditLegacyTOutsideIssuedWindow) {
     PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
     PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));

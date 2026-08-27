@@ -65,6 +65,17 @@ namespace CryptoNote {
     uint64_t get_speed();
     void send_stop_signal();
     bool stop(bool keepMiningRequested = false);
+
+    // Zero the ML-DSA spend secret and clear the armed flag. Called from stop()
+    // when mining is not meant to resume, from a failed start, and from the
+    // destructor.
+    void clearPqKeys();
+
+    // Mining-credential state. Neither ever exposes the secret; they let the
+    // daemon report whether credentials are loaded and let tests assert that the
+    // spend secret does not outlive mining.
+    bool pqKeysLoaded() const { return m_pq_keys_set; }
+    bool pqSpendSecretCleared() const;
     bool is_mining();
     bool on_idle();
     void on_synchronized();
@@ -103,7 +114,11 @@ namespace CryptoNote {
     std::mutex m_threads_lock;
     IMinerHandler& m_handler;
     AccountKeys m_mine_account;  // Kept for ABI; unused in Discrete (ECC path is dead).
-    // PQ miner credentials set by startPq().
+    // PQ miner credentials set by startPq(). m_pq_spend_sk is the wallet's
+    // long-lived ML-DSA spend secret: it can sign spends, not just blocks, so it
+    // is wiped by clearPqKeys() as soon as mining is not running rather than left
+    // sitting in the daemon's address space (and its swap) until the process
+    // ends.
     CryptoPQ::KemPublicKey  m_pq_view_pub{};
     CryptoPQ::DsaPublicKey  m_pq_spend_pub{};
     CryptoPQ::DsaSecretKey  m_pq_spend_sk{};

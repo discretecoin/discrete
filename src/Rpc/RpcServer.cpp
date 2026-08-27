@@ -2035,6 +2035,11 @@ bool RpcServer::on_check_transaction_proof(
         CORE_RPC_ERROR_CODE_WRONG_PARAM, "Failed to parse transaction ID"};
   }
 
+  // True when the caller named a deposit subaddress (H-I-A-T-C) rather than a
+  // base account or a full address. That is a claim about routing, and nothing
+  // in the proof commits to T -- see below.
+  const bool destinationAssertsRoute = namesDepositRoute(req.destination_address);
+
   ResolvedRecipient recipient;
   PqAddress address;
   if (decodePqAddress(req.destination_address, m_core.currency().isTestnet(), address)) {
@@ -2066,7 +2071,11 @@ bool RpcServer::on_check_transaction_proof(
           CORE_RPC_ERROR_CODE_WRONG_PARAM,
           "Destination account fingerprint does not match the on-chain keys"};
     }
-    recipient.subaddrIndexT = hasSubaddress ? subaddressIndex : 0;
+    // Parsed for address validation only. verifyPqPaymentProof does not check it
+    // and could not: nothing in the proof commits to T.
+    (void)hasSubaddress;
+    (void)subaddressIndex;
+    recipient.subaddrIndexT = 0;
   }
 
   PqPaymentProof proof;
@@ -2086,6 +2095,11 @@ bool RpcServer::on_check_transaction_proof(
   }
 
   res.signature_valid = false;
+  res.spend_authority_valid = false;
+  // The proof binds spend authority, never the routing index. A caller that
+  // supplied a deposit subaddress gets no confirmation that the payment went to
+  // THAT subaddress, because T is not part of what the payer signed.
+  res.route_verified = false;
   res.received_amount = 0;
   res.outputs.clear();
   res.output_indices.clear();
@@ -2105,7 +2119,17 @@ bool RpcServer::on_check_transaction_proof(
 
     res.received_amount = verifyPqPaymentProof(
         proof, expectedGenesis, proofTransaction, recipient);
-    res.signature_valid = true;
+    res.spend_authority_valid = true;
+    // Fail closed on the legacy field when the caller asserted a deposit route.
+    //
+    // signature_valid exists for clients written before route_verified did, and
+    // those clients credit an invoice on this one boolean. The proof establishes
+    // spend authority over the account and says nothing about T -- the identical
+    // proof verifies against H-I-A-1-C and H-I-A-2-C alike -- so answering
+    // "valid" to a request that named one specific deposit would let such a
+    // client settle the wrong invoice. A modern client still gets the whole
+    // picture from spend_authority_valid, route_verified, and the amount.
+    res.signature_valid = !destinationAssertsRoute;
     res.output_indices.reserve(proof.entries.size());
     res.outputs.reserve(proof.entries.size());
     for (const PqPaymentProofEntry& entry : proof.entries) {

@@ -48,6 +48,57 @@ jobs:
           # Run ONLY the PoW KAT.
           ctest --test-dir build/powkat -C Release -R PqPowTests --output-on-failure
 
+  security-suites-linux:
+    name: Security suites (Linux)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@master
+        with:
+          fetch-depth: 0
+          ref: ${{ github.ref }}
+
+      - name: Build and run the security-boundary test suites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake git libboost-all-dev libssl-dev pkg-config
+
+          # The suites that stand on a security boundary rather than on a feature,
+          # so that a change which quietly reopens one fails here rather than in
+          # review. They are named individually instead of running the whole gate
+          # because the full ctest run is long, and a gate nobody waits for is not
+          # a gate:
+          #
+          #   PqChainTests          free-registration admission -- proof ordering,
+          #                         and that the memory-hard work stays outside the
+          #                         mempool and blockchain locks
+          #   PqDaemonTrustTests    account numbers as locators: resolution and
+          #                         publication both refused on an untrusted daemon
+          #   PqPaymentProofTests   what a payment proof does and does not
+          #                         establish, including the legacy verdict field
+          #   UnitTests             walletd's deposit endpoints under an untrusted
+          #                         daemon, wallet load/migration integrity, and
+          #                         container backup no-clobber
+          #   PqWalletSyncE2E       the wallet lifecycle end to end
+          #
+          # DISCRETE_BOOST_PREFER_MODULE: see the PoW KAT job -- Ubuntu's apt Boost
+          # advertises a CMake config package whose static libraries mislink.
+          cmake -S . -B build/security \
+            -D ARCH=default -D CMAKE_BUILD_TYPE=Release \
+            -D BUILD_TESTS=ON \
+            -D OQS_BUILD_ONLY_LIB=ON \
+            -D BOOST_IGNORE_SYSTEM_PATHS_DEFAULT=ON \
+            -D BOOST_ROOT=/usr \
+            -D DISCRETE_BOOST_PREFER_MODULE=ON
+
+          cmake --build build/security --config Release \
+            --target PqChainTests PqDaemonTrustTests PqPaymentProofTests UnitTests \
+            -- -j"$(nproc)"
+
+          # PqWalletSyncE2E is a filtered run of the UnitTests binary, so it needs
+          # no target of its own.
+          ctest --test-dir build/security -C Release --output-on-failure \
+            -R '^(PqChainTests|PqDaemonTrustTests|PqPaymentProofTests|UnitTests|PqWalletSyncE2E)$'
+
   build-windows:
     name: Windows
     runs-on: windows-2022

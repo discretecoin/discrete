@@ -140,7 +140,8 @@ FittingBuild buildFitting(const std::vector<PqSpendInput>& selected,
                           const std::vector<PqInputAuth>& inputAuth,
                           const std::vector<PqSendOutput>& recipients, uint64_t change,
                           const PqSendOutput& changeTmpl,
-                          const std::vector<uint8_t>& extra) {
+                          const std::vector<uint8_t>& extra,
+                          const PqSigningContext& signing) {
   std::size_t numDest = recipients.size() + (change > 0 ? 1 : 0);
   std::size_t maxOut = P::MAX_PQ_OUTPUTS_PER_TX;
   for (;;) {
@@ -154,8 +155,12 @@ FittingBuild buildFitting(const std::vector<PqSpendInput>& selected,
       outputs.push_back(std::move(output.output));
       recipientIndexes.push_back(output.recipientIndex);
     }
+    // Every rebuild of the shrinking loop signs under the SAME context. The loop
+    // varies only the output count, so re-deriving or defaulting the transcript
+    // here would let a resized draft be signed under different rules from the one
+    // the caller asked for.
     PqTransactionBuildResult draft =
-        buildPqTransactionWithProof(selected, outputs, inputAuth, 0, extra);
+        buildPqTransactionWithProof(selected, outputs, inputAuth, 0, extra, signing);
     if (toBinaryArray(draft.tx).size() <= P::MAX_PQ_TX_SIZE) {
       FittingBuild accepted;
       accepted.transaction = std::move(draft);
@@ -222,8 +227,12 @@ PqSendResult buildPqSend(const std::vector<PqSpendInput>& available,
     for (const auto& si : sel) {
       auth.emplace_back();
       PqInputAuth& entry = auth.back();
+      // An unattributed output is ours but has no deposit; like the primary
+      // bucket it is authorized by the wallet's own spend key, never by a
+      // per-deposit key derived from the sentinel value.
       if (req.scheme == PqDepositScheme::SingleKeyIndex ||
-          si.depositIndex == PQ_PRIMARY_DEPOSIT) {
+          si.depositIndex == PQ_PRIMARY_DEPOSIT ||
+          si.depositIndex == PQ_UNATTRIBUTED_DEPOSIT) {
         entry.spendPub = keys.spendPub;
         entry.spendSk = keys.spendSk;
       } else {
@@ -290,9 +299,14 @@ PqSendResult buildPqSend(const std::vector<PqSpendInput>& available,
   std::vector<PqInputAuth> inputAuth = authForSelection(selected);
   Tools::SecretLock scrubAuth(
       inputAuth.data(), inputAuth.size() * sizeof(PqInputAuth));
+  // One context for the whole transaction, derived once through the shared
+  // consensus helper, so every input of this transaction signs under the same
+  // transcript and under the same rule the verifier will apply.
+  const PqSigningContext signing =
+      pqSigningContextForHeight(req.signingHeight, req.genesisId);
   FittingBuild finalBuild = buildFitting(
       selected, inputAuth, req.recipients, change,
-      changeTmpl, req.extra);
+      changeTmpl, req.extra, signing);
 
   if (finalBuild.recipientIndexes.size() != finalBuild.transaction.tx.outputs.size() ||
       finalBuild.transaction.outputRhos.size() != finalBuild.transaction.tx.outputs.size()) {

@@ -3,8 +3,10 @@
 
 #include "gtest/gtest.h"
 
+#include "AccountNumber.h"
 #include "crypto_pq/PqOutputBuilder.h"
 #include "crypto_pq/PqPaymentProof.h"
+#include "Rpc/CoreRpcServerCommandsDefinitions.h"
 
 #include <cstring>
 
@@ -109,6 +111,89 @@ TEST(PqPaymentProof, DoesNotClaimViewKeyOrSubaddressDelivery) {
   EXPECT_EQ(CryptoNote::verifyPqPaymentProof(
                 f.proof, f.genesisId, f.tx, sameAuthority),
             1000u);
+}
+
+// The proof is authority-only, so it cannot distinguish one deposit subaddress
+// of an account from another: every routing index verifies identically. Anything
+// that credits an invoice from this result alone is crediting the wrong thing.
+TEST(PqPaymentProof, VerdictIsIdenticalForEveryRoutingIndex) {
+  ProofFixture f;
+  const uint64_t routes[] = { 0, 1, 2, 17, 4294967295ULL, 4294967296ULL,
+                              18446744073709551615ULL };
+  for (uint64_t t : routes) {
+    auto recipient = f.recipient;
+    recipient.subaddrIndexT = t;
+    EXPECT_EQ(1000u, CryptoNote::verifyPqPaymentProof(f.proof, f.genesisId, f.tx, recipient))
+        << "routing index " << t << " changed the verdict, which the proof cannot support";
+  }
+}
+
+TEST(PqPaymentProof, RpcResultDoesNotClaimTheRoute) {
+  CryptoNote::COMMAND_RPC_CHECK_TRANSACTION_PROOF::response res;
+  // The default must be the safe one: a caller that forgets to look still does
+  // not read a route confirmation that was never established.
+  EXPECT_FALSE(res.route_verified);
+  EXPECT_FALSE(res.spend_authority_valid);
+}
+
+// --- the legacy verdict field --------------------------------------------
+//
+// check_transaction_proof answers three fields, but settlement software written
+// before route_verified existed reads only signature_valid, and credits an
+// invoice on it. Because the proof verifies identically for every T, answering
+// "valid" to a request that named ONE deposit would let such a client settle a
+// different invoice than the one that was paid. So a request that asserts a
+// route gets a negative legacy verdict, while a current client still reads the
+// whole picture from spend_authority_valid and route_verified.
+//
+// This is the predicate the handler uses to make that call.
+
+TEST(PqPaymentProof, DepositFormIsRecognisedAsARouteAssertion) {
+  const uint32_t fp = 0x5A3C1;
+  const CryptoNote::AccountNumber account{1234, 7};
+
+  // H-I-A-T-C asserts one specific deposit.
+  for (uint32_t t : {0u, 1u, 2u, 99u, 4294967295u}) {
+    const std::string deposit = account.toStringWithIndex(t, fp);
+    EXPECT_TRUE(CryptoNote::namesDepositRoute(deposit)) << deposit;
+  }
+}
+
+TEST(PqPaymentProof, BaseNumbersAndAddressesAssertNoRoute) {
+  const uint32_t fp = 0x5A3C1;
+  const CryptoNote::AccountNumber account{1234, 7};
+
+  // H-I-A-C names an account, not a deposit within it. Nothing was claimed about
+  // routing, so the legacy field stays meaningful.
+  EXPECT_FALSE(CryptoNote::namesDepositRoute(account.toString(fp)));
+
+  // A full address carries both keys and never goes through the registry.
+  EXPECT_FALSE(CryptoNote::namesDepositRoute(
+      "disc1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"));
+
+  // Malformed input asserts nothing either; it is refused earlier for being
+  // unparseable, and must not be mistaken for a route claim on the way there.
+  for (const char* junk : {"", "-", "1-2-3", "1-2-ABCD", "not a destination",
+                           "1-2-ABCD-9-", "1-2-ABCD-9-Z9"}) {
+    EXPECT_FALSE(CryptoNote::namesDepositRoute(junk)) << "[" << junk << "]";
+  }
+}
+
+// A checksum failure must not flip the answer to "no route asserted" in a way
+// that would make a deposit-form request look like a base-account one.
+TEST(PqPaymentProof, ACorruptedDepositNumberStillDoesNotVerifyAsABaseAccount) {
+  const uint32_t fp = 0x5A3C1;
+  const CryptoNote::AccountNumber account{1234, 7};
+  std::string deposit = account.toStringWithIndex(3, fp);
+  ASSERT_TRUE(CryptoNote::namesDepositRoute(deposit));
+
+  // Break the check character. It is now not a valid destination at all, and the
+  // handler rejects it before reaching the proof.
+  deposit.back() = (deposit.back() == 'Z') ? 'Y' : 'Z';
+  CryptoNote::AccountNumber parsed;
+  uint32_t parsedFp = 0;
+  EXPECT_FALSE(CryptoNote::namesDepositRoute(deposit));
+  EXPECT_FALSE(CryptoNote::AccountNumber::fromString(deposit, parsed, parsedFp));
 }
 
 TEST(PqPaymentProof, RejectsChangedCommitment) {

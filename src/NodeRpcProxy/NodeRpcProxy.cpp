@@ -17,6 +17,8 @@
 // along with Karbo.  If not, see <http://www.gnu.org/licenses/>.
 
 #include "NodeRpcProxy.h"
+
+#include "Common/DaemonTrust.h"
 #include "NodeErrors.h"
 
 #include <system_error>
@@ -106,11 +108,25 @@ NodeRpcProxy::~NodeRpcProxy() {
   }
 }
 
+bool NodeRpcProxy::hasAutomaticResolverTrust() const {
+  // Certificate verification is what turns "we reached this name" into "this is
+  // the endpoint the project operates". Without TLS, or with verification
+  // disabled, an official host is just a name that whoever is positioned to
+  // answer for it can claim, and they would then be choosing the recipient keys
+  // returned for an account number. Such a daemon remains usable; it just needs
+  // the user's explicit --trusted-daemon.
+  const bool authenticatedTransport = m_daemon_ssl && !m_daemon_no_verify;
+  return Common::isTrustedByDefault(m_nodeHost, authenticatedTransport);
+}
+
 void NodeRpcProxy::setRootCert(const std::string &path) {
   if (m_daemon_cert.empty()) m_daemon_cert = path;
 }
 
 void NodeRpcProxy::disableVerify() {
+  // Also withdraws automatic trust in a project-operated endpoint, because
+  // isTrustedResolver() re-derives it and this is one of its inputs. An explicit
+  // --trusted-daemon is a separate decision and is left alone.
   if (!m_daemon_no_verify) m_daemon_no_verify = true;
 }
 
