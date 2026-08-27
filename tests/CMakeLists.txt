@@ -239,6 +239,11 @@ add_test(HashTests hash_tests)
 add_test(HashTargetTests hash_target_tests)
 add_test(SystemTests system_tests)
 add_test(UnitTests unit_tests)
+add_test(
+  NAME SynchronizationActivityTests
+  COMMAND $<TARGET_FILE:UnitTests>
+    --gtest_filter=BcSTest.synchronizationActivity*:BcSTest.firstPoolSynchronizationCheckNonActual:WalletLegacySmoke.ForwardsSynchronizationActivityState)
+set_tests_properties(SynchronizationActivityTests PROPERTIES TIMEOUT 30)
 add_test(PqPrimitivesTests pq_primitives_tests)
 add_test(PqDomainsTests pq_domains_tests)
 add_test(PqDeriveTests pq_derive_tests)

@@ -36,6 +36,11 @@ struct CompleteBlock;
 
 class IBlockchainSynchronizerObserver {
 public:
+  // Brackets one continuous synchronizer cycle. `true` is delivered before
+  // any consumer mutation in the remove-old/block/pool phases; `false` is
+  // delivered before completion on success/error, or when stop abandons work.
+  // Phase transitions inside one cycle do not emit duplicate state changes.
+  virtual void synchronizationActivityChanged(bool active) {}
   virtual void synchronizationProgressUpdated(uint32_t processedBlockCount, uint32_t totalBlockCount) {}
   virtual void synchronizationCompleted(std::error_code result) {}
   virtual ~IBlockchainSynchronizerObserver() {}

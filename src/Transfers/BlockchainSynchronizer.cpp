@@ -354,8 +354,31 @@ void BlockchainSynchronizer::workingProcedure() {
   }
 
   actualizeFutureState();
+  endSynchronizationActivity();
 
   m_logger(DEBUGGING) << "Working thread stopped";
+}
+
+void BlockchainSynchronizer::beginSynchronizationActivity() {
+  if (!m_synchronizationActive) {
+    m_synchronizationActive = true;
+    m_observerManager.notify(
+        &IBlockchainSynchronizerObserver::synchronizationActivityChanged, true);
+  }
+}
+
+void BlockchainSynchronizer::endSynchronizationActivity() {
+  if (m_synchronizationActive) {
+    m_synchronizationActive = false;
+    m_observerManager.notify(
+        &IBlockchainSynchronizerObserver::synchronizationActivityChanged, false);
+  }
+}
+
+void BlockchainSynchronizer::notifySynchronizationCompleted(std::error_code result) {
+  endSynchronizationActivity();
+  m_observerManager.notify(
+      &IBlockchainSynchronizerObserver::synchronizationCompleted, result);
 }
 
 void BlockchainSynchronizer::start() {
@@ -470,6 +493,7 @@ BlockchainSynchronizer::GetBlocksRequest BlockchainSynchronizer::getCommonHistor
 }
 
 void BlockchainSynchronizer::startBlockchainSync() {
+  beginSynchronizationActivity();
   m_logger(DEBUGGING) << "Starting blockchain synchronization...";
 
   GetBlocksRequest req = getCommonHistory();
@@ -490,6 +514,7 @@ void BlockchainSynchronizer::startBlockchainSync() {
 
       if (waitForFutureOrStop(future) == WaitOutcome::stopped) {
         m_logger(DEBUGGING) << "Abandoning blockchain sync wait: synchronizer is stopping";
+        endSynchronizationActivity();
         return;
       }
 
@@ -498,7 +523,7 @@ void BlockchainSynchronizer::startBlockchainSync() {
       if (ec) {
         m_logger(ERROR, BRIGHT_RED) << "Failed to query blocks: " << ec << ", " << ec.message();
         setFutureStateIf(State::idle, [this] { return m_futureState != State::stopped; });
-        m_observerManager.notify(&IBlockchainSynchronizerObserver::synchronizationCompleted, ec);
+        notifySynchronizationCompleted(ec);
       } else {
         m_logger(DEBUGGING) << "Blocks received, start index " << state->response.startHeight << ", count " << state->response.newBlocks.size();
         processBlocks(state->response);
@@ -507,7 +532,7 @@ void BlockchainSynchronizer::startBlockchainSync() {
   } catch (const std::exception& e) {
     m_logger(ERROR, BRIGHT_RED) << "Failed to query and process blocks: " << e.what();
     setFutureStateIf(State::idle,  [this] { return m_futureState != State::stopped; });
-    m_observerManager.notify(&IBlockchainSynchronizerObserver::synchronizationCompleted, std::make_error_code(std::errc::invalid_argument));
+    notifySynchronizationCompleted(std::make_error_code(std::errc::invalid_argument));
   }
 }
 
@@ -536,7 +561,7 @@ void BlockchainSynchronizer::processBlocks(GetBlocksResponse& response) {
       } catch (const std::exception& e) {
         m_logger(ERROR, BRIGHT_RED) << "Failed to process blocks: " << e.what();
         setFutureStateIf(State::idle, [this] { return m_futureState != State::stopped; });
-        m_observerManager.notify(&IBlockchainSynchronizerObserver::synchronizationCompleted, std::make_error_code(std::errc::invalid_argument));
+        notifySynchronizationCompleted(std::make_error_code(std::errc::invalid_argument));
         return;
       }
     }
@@ -555,7 +580,7 @@ void BlockchainSynchronizer::processBlocks(GetBlocksResponse& response) {
     switch (result) {
     case UpdateConsumersResult::errorOccurred:
       if (setFutureStateIf(State::idle, [this] { return m_futureState != State::stopped; })) {
-        m_observerManager.notify(&IBlockchainSynchronizerObserver::synchronizationCompleted, std::make_error_code(std::errc::invalid_argument));
+        notifySynchronizationCompleted(std::make_error_code(std::errc::invalid_argument));
       }
       break;
 
@@ -584,7 +609,7 @@ void BlockchainSynchronizer::processBlocks(GetBlocksResponse& response) {
 
   if (checkIfShouldStop()) { //Sic!
     m_logger(WARNING, BRIGHT_YELLOW) << "Block processing is interrupted";
-    m_observerManager.notify(&IBlockchainSynchronizerObserver::synchronizationCompleted, std::make_error_code(std::errc::interrupted));
+    notifySynchronizationCompleted(std::make_error_code(std::errc::interrupted));
   }
 }
 
@@ -675,6 +700,7 @@ BlockchainSynchronizer::UpdateConsumersResult BlockchainSynchronizer::updateCons
 }
 
 void BlockchainSynchronizer::removeOutdatedTransactions() {
+  beginSynchronizationActivity();
   m_logger(DEBUGGING, BRIGHT_WHITE) << "Removing outdated pool transactions...";
 
   std::unordered_set<Crypto::Hash> unionPoolHistory;
@@ -708,7 +734,7 @@ void BlockchainSynchronizer::removeOutdatedTransactions() {
   if (!ec) {
     m_logger(DEBUGGING, BRIGHT_WHITE) << "Outdated pool transactions processed";
   } else {
-    m_observerManager.notify(&IBlockchainSynchronizerObserver::synchronizationCompleted, ec);
+    notifySynchronizationCompleted(ec);
 
     m_logger(DEBUGGING, BRIGHT_WHITE) << "Retry in " << RETRY_TIMEOUT << " seconds...";
     std::unique_lock<std::mutex> lock(m_stateMutex);
@@ -723,6 +749,7 @@ void BlockchainSynchronizer::removeOutdatedTransactions() {
 }
 
 void BlockchainSynchronizer::startPoolSync() {
+  beginSynchronizationActivity();
   m_logger(DEBUGGING) << "Starting pool synchronization...";
 
   std::unordered_set<Crypto::Hash> unionPoolHistory;
@@ -741,7 +768,7 @@ void BlockchainSynchronizer::startPoolSync() {
   if (ec) {
     m_logger(ERROR, BRIGHT_RED) << "Failed to query transaction pool changes: " << ec << ", " << ec.message();
     setFutureStateIf(State::idle, [this] { return m_futureState != State::stopped; });
-    m_observerManager.notify(&IBlockchainSynchronizerObserver::synchronizationCompleted, ec);
+    notifySynchronizationCompleted(ec);
   } else { //get union ok
     if (!unionResponse.isLastKnownBlockActual) { //bc outdated
       m_logger(DEBUGGING) << "Transaction pool changes received, but blockchain has been changed";
@@ -751,7 +778,7 @@ void BlockchainSynchronizer::startPoolSync() {
         ", deleted " << unionResponse.deletedTxIds.size();
 
       if (unionPoolHistory == intersectedPoolHistory) { //usual case, start pool processing
-        m_observerManager.notify(&IBlockchainSynchronizerObserver::synchronizationCompleted, processPoolTxs(unionResponse));
+        notifySynchronizationCompleted(processPoolTxs(unionResponse));
       } else {
         GetPoolRequest intersectionRequest;
         intersectionRequest.knownTxIds.assign(intersectedPoolHistory.begin(), intersectedPoolHistory.end());
@@ -765,7 +792,7 @@ void BlockchainSynchronizer::startPoolSync() {
         if (ec2) {
           m_logger(ERROR, BRIGHT_RED) << "Failed to query transaction pool changes, stage 2: " << ec << ", " << ec.message();
           setFutureStateIf(State::idle, [this] { return m_futureState != State::stopped; });
-          m_observerManager.notify(&IBlockchainSynchronizerObserver::synchronizationCompleted, ec2);
+          notifySynchronizationCompleted(ec2);
         } else { //get intersection ok
           if (!intersectionResponse.isLastKnownBlockActual) { //bc outdated
             m_logger(DEBUGGING) << "Transaction pool changes at stage 2 received, but blockchain has been changed";
@@ -777,7 +804,7 @@ void BlockchainSynchronizer::startPoolSync() {
             std::error_code ec3 = processPoolTxs(intersectionResponse);
 
             //notify about error, or success
-            m_observerManager.notify(&IBlockchainSynchronizerObserver::synchronizationCompleted, ec3);
+            notifySynchronizationCompleted(ec3);
           }
         }
       }

@@ -19,7 +19,7 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.ref }}
 
-      - name: Build and run the yespower-discrete PoW KAT (SIMD build)
+      - name: Build and run focused consensus and synchronizer tests
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential cmake git libboost-all-dev libssl-dev pkg-config
@@ -45,7 +45,7 @@ jobs:
           # Build ONLY the PoW KAT target (not the full test suite).
           cmake --build build/powkat --config Release --target PqPowTests -- -j"$(nproc)"
 
-          # Run ONLY the PoW KAT.
+          # Run only the dedicated PoW KAT from the full CTest registry.
           ctest --test-dir build/powkat -C Release -R PqPowTests --output-on-failure
 
   security-suites-linux:
@@ -78,6 +78,9 @@ jobs:
           #   UnitTests             walletd's deposit endpoints under an untrusted
           #                         daemon, wallet load/migration integrity, and
           #                         container backup no-clobber
+          #   SynchronizationActivityTests
+          #                         the synchronizer's active/idle contract, which
+          #                         is what a client gates Reset and Rescan on
           #   PqWalletSyncE2E       the wallet lifecycle end to end
           #
           # DISCRETE_BOOST_PREFER_MODULE: see the PoW KAT job -- Ubuntu's apt Boost
@@ -97,7 +100,7 @@ jobs:
           # PqWalletSyncE2E is a filtered run of the UnitTests binary, so it needs
           # no target of its own.
           ctest --test-dir build/security -C Release --output-on-failure \
-            -R '^(PqChainTests|PqDaemonTrustTests|PqPaymentProofTests|UnitTests|PqWalletSyncE2E)$'
+            -R '^(PqChainTests|PqDaemonTrustTests|PqPaymentProofTests|SynchronizationActivityTests|UnitTests|PqWalletSyncE2E)$'
 
   build-windows:
     name: Windows

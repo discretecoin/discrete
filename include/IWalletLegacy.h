@@ -87,6 +87,7 @@ public:
 
   virtual void initCompleted(std::error_code result) {}
   virtual void saveCompleted(std::error_code result) {}
+  virtual void synchronizationActivityChanged(bool active) {}
   virtual void synchronizationProgressUpdated(uint32_t current, uint32_t total) {}
   virtual void synchronizationCompleted(std::error_code result) {}
   virtual void actualBalanceUpdated(uint64_t actualBalance) {}

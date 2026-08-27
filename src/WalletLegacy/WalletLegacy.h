@@ -229,6 +229,7 @@ public:
 private:
 
   // IBlockchainSynchronizerObserver
+  virtual void synchronizationActivityChanged(bool active) override;
   virtual void synchronizationProgressUpdated(uint32_t current, uint32_t total) override;
   virtual void synchronizationCompleted(std::error_code result) override;
 

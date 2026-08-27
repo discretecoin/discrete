@@ -15,6 +15,7 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with Karbo.  If not, see <http://www.gnu.org/licenses/>.
 
+#include <atomic>
 #include <thread>
 
 #include "gtest/gtest.h"
@@ -114,12 +115,16 @@ public:
 
 class IBlockchainSynchronizerFunctorialObserver : public IBlockchainSynchronizerObserver {
 public:
-  IBlockchainSynchronizerFunctorialObserver() : updFunc([](uint32_t, uint32_t) {}), syncFunc([](std::error_code) {}) {
+  IBlockchainSynchronizerFunctorialObserver()
+      : activityFunc([](bool) {}), updFunc([](uint32_t, uint32_t) {}),
+        syncFunc([](std::error_code) {}) {
   }
 
+  virtual void synchronizationActivityChanged(bool active) override { activityFunc(active); }
   virtual void synchronizationProgressUpdated(uint32_t current, uint32_t total) override { updFunc(current, total); }
   virtual void synchronizationCompleted(std::error_code result) override { syncFunc(result); }
 
+  std::function<void(bool)> activityFunc;
   std::function<void(uint32_t, uint32_t)> updFunc;
   std::function<void(std::error_code)> syncFunc;
 };
@@ -192,6 +197,24 @@ public:
 private:
   std::unordered_set<Crypto::Hash> m_pool;
   std::vector<Hash> m_blockchain;
+};
+
+class ActivityCheckingConsumerStub : public ConsumerStub {
+public:
+  ActivityCheckingConsumerStub(const Hash& genesisBlockHash,
+                               std::function<void()> onNewBlocksEntered)
+      : ConsumerStub(genesisBlockHash),
+        m_onNewBlocksEntered(std::move(onNewBlocksEntered)) {
+  }
+
+  uint32_t onNewBlocks(const CompleteBlock* blocks, uint32_t startHeight,
+                       uint32_t count) override {
+    m_onNewBlocksEntered();
+    return ConsumerStub::onNewBlocks(blocks, startHeight, count);
+  }
+
+private:
+  std::function<void()> m_onNewBlocksEntered;
 };
 
 class BcSTest : public ::testing::Test, public IBlockchainSynchronizerObserver {
@@ -457,6 +480,148 @@ TEST_F(BcSTest, stopReturnsQuicklyWhenPoolRequestNeverCallsBack) {
   EXPECT_LT(elapsed.count(), 2000);
 }
 
+TEST_F(BcSTest, synchronizationActivityWrapsSuccessfulCycle) {
+  addConsumers();
+  IBlockchainSynchronizerFunctorialObserver observer;
+  EventWaiter completed;
+  std::vector<bool> activityStates;
+
+  observer.activityFunc = [&](bool active) { activityStates.push_back(active); };
+  observer.syncFunc = [&](std::error_code) { completed.notify(); };
+
+  m_sync.addObserver(&observer);
+  m_sync.start();
+  ASSERT_TRUE(completed.wait_for(std::chrono::seconds(10)));
+  m_sync.stop();
+  m_sync.removeObserver(&observer);
+
+  EXPECT_EQ((std::vector<bool>{true, false}), activityStates);
+}
+
+TEST_F(BcSTest, synchronizationActivityBeginsBeforeConsumerMutation) {
+  generator.generateEmptyBlocks(2);
+  std::atomic<bool> activityActive(false);
+  std::atomic<bool> allConsumerCallbacksActive(true);
+  std::atomic<uint32_t> consumerCallbackCount(0);
+  ActivityCheckingConsumerStub consumer(
+      m_currency.genesisBlockHash(),
+      [&]() {
+        ++consumerCallbackCount;
+        if (!activityActive.load()) {
+          allConsumerCallbacksActive = false;
+        }
+      });
+  IBlockchainSynchronizerFunctorialObserver observer;
+  EventWaiter completed;
+
+  observer.activityFunc = [&](bool active) { activityActive = active; };
+  observer.syncFunc = [&](std::error_code) { completed.notify(); };
+
+  m_sync.addConsumer(&consumer);
+  m_sync.addObserver(&observer);
+  m_sync.start();
+  ASSERT_TRUE(completed.wait_for(std::chrono::seconds(10)));
+  m_sync.stop();
+  m_sync.removeObserver(&observer);
+
+  EXPECT_GT(consumerCallbackCount.load(), 0u);
+  EXPECT_TRUE(allConsumerCallbacksActive.load());
+  EXPECT_FALSE(activityActive.load());
+}
+
+TEST_F(BcSTest, synchronizationActivityEndsOnQueryError) {
+  addConsumers();
+  IBlockchainSynchronizerFunctorialObserver observer;
+  EventWaiter completed;
+  std::vector<bool> activityStates;
+  std::error_code completionError;
+
+  m_node.queryBlocksFunctor =
+      [](const std::vector<Hash>&, uint64_t, std::vector<BlockShortEntry>&,
+         uint32_t&, const INode::Callback& callback) -> bool {
+        callback(std::make_error_code(std::errc::invalid_argument));
+        return false;
+      };
+  observer.activityFunc = [&](bool active) { activityStates.push_back(active); };
+  observer.syncFunc = [&](std::error_code error) {
+    completionError = error;
+    completed.notify();
+  };
+
+  m_sync.addObserver(&observer);
+  m_sync.start();
+  ASSERT_TRUE(completed.wait_for(std::chrono::seconds(10)));
+  m_sync.stop();
+  m_sync.removeObserver(&observer);
+
+  EXPECT_EQ(std::make_error_code(std::errc::invalid_argument), completionError);
+  EXPECT_EQ((std::vector<bool>{true, false}), activityStates);
+}
+
+TEST_F(BcSTest, synchronizationActivityRestartsAfterRetryablePoolError) {
+  addConsumers();
+  IBlockchainSynchronizerFunctorialObserver observer;
+  EventWaiter completion;
+  std::vector<bool> activityStates;
+  std::vector<std::error_code> completionResults;
+  std::atomic<uint32_t> poolRequestCount(0);
+
+  m_node.getPoolSymmetricDifferenceFunctor =
+      [&](const std::vector<Hash>&, Hash, bool& isActual,
+          std::vector<std::unique_ptr<ITransactionReader>>&,
+          std::vector<Hash>&, const INode::Callback& callback) -> bool {
+        isActual = true;
+        if (++poolRequestCount == 1) {
+          callback(std::make_error_code(std::errc::invalid_argument));
+        } else {
+          callback(std::error_code());
+        }
+        return false;
+      };
+  observer.activityFunc = [&](bool active) { activityStates.push_back(active); };
+  observer.syncFunc = [&](std::error_code result) {
+    completionResults.push_back(result);
+    completion.notify();
+  };
+
+  m_sync.addObserver(&observer);
+  m_sync.start();
+  ASSERT_TRUE(completion.wait_for(std::chrono::seconds(10)));
+  ASSERT_TRUE(completion.wait_for(std::chrono::seconds(10)));
+  m_sync.stop();
+  m_sync.removeObserver(&observer);
+
+  ASSERT_EQ(2u, completionResults.size());
+  EXPECT_EQ(std::make_error_code(std::errc::invalid_argument), completionResults[0]);
+  EXPECT_FALSE(completionResults[1]);
+  EXPECT_EQ((std::vector<bool>{true, false, true, false}), activityStates);
+}
+
+TEST_F(BcSTest, synchronizationActivityEndsWhenStopAbandonsQuery) {
+  addConsumers();
+  IBlockchainSynchronizerFunctorialObserver observer;
+  EventWaiter queryEntered;
+  std::vector<bool> activityStates;
+
+  m_node.queryBlocksFunctor =
+      [&](const std::vector<Hash>&, uint64_t, std::vector<BlockShortEntry>&,
+          uint32_t&, const INode::Callback&) -> bool {
+        queryEntered.notify();
+        return false;
+      };
+  observer.activityFunc = [&](bool active) {
+    activityStates.push_back(active);
+  };
+
+  m_sync.addObserver(&observer);
+  m_sync.start();
+  ASSERT_TRUE(queryEntered.wait_for(std::chrono::seconds(10)));
+  m_sync.stop();
+  m_sync.removeObserver(&observer);
+
+  EXPECT_EQ((std::vector<bool>{true, false}), activityStates);
+}
+
 TEST_F(BcSTest, syncCompletedError) {
   ConsumerStub c(m_currency.genesisBlockHash());
   m_sync.addConsumer(&c);
@@ -690,6 +855,10 @@ TEST_F(BcSTest, firstPoolSynchronizationCheckNonActual) {
 
   IBlockchainSynchronizerFunctorialObserver o1;
   EventWaiter e;
+  std::vector<bool> activityStates;
+  o1.activityFunc = [&](bool active) {
+    activityStates.push_back(active);
+  };
   o1.syncFunc = [&e](std::error_code) {
     e.notify();
   };
@@ -702,6 +871,7 @@ TEST_F(BcSTest, firstPoolSynchronizationCheckNonActual) {
   o1.syncFunc = [](std::error_code) {};
 
   EXPECT_EQ(4, requestsCount);
+  EXPECT_EQ((std::vector<bool>{true, false}), activityStates);
 }
 
 TEST_F(BcSTest, firstPoolSynchronizationCheckGetPoolErr) {
@@ -1043,6 +1213,33 @@ public:
   std::function<bool(const CompleteBlock*, uint32_t, size_t)> onNewBlocksFunctor;
   std::function<void(uint32_t)> onBlockchainDetachFunctor;
 };
+
+TEST_F(BcSTest, synchronizationActivityEndsOnConsumerError) {
+  FunctorialBlockhainConsumerStub consumer(m_currency.genesisBlockHash());
+  IBlockchainSynchronizerFunctorialObserver observer;
+  EventWaiter completed;
+  std::vector<bool> activityStates;
+  std::error_code completionError;
+
+  generator.generateEmptyBlocks(2);
+  consumer.onNewBlocksFunctor =
+      [](const CompleteBlock*, uint32_t, size_t) -> bool { return false; };
+  observer.activityFunc = [&](bool active) { activityStates.push_back(active); };
+  observer.syncFunc = [&](std::error_code error) {
+    completionError = error;
+    completed.notify();
+  };
+
+  m_sync.addConsumer(&consumer);
+  m_sync.addObserver(&observer);
+  m_sync.start();
+  ASSERT_TRUE(completed.wait_for(std::chrono::seconds(10)));
+  m_sync.stop();
+  m_sync.removeObserver(&observer);
+
+  EXPECT_EQ(std::make_error_code(std::errc::invalid_argument), completionError);
+  EXPECT_EQ((std::vector<bool>{true, false}), activityStates);
+}
 
 TEST_F(BcSTest, checkINodeError) {
   addConsumers(1);
