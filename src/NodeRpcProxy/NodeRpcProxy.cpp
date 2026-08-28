@@ -113,8 +113,8 @@ bool NodeRpcProxy::hasAutomaticResolverTrust() const {
   // the endpoint the project operates". Without TLS, or with verification
   // disabled, an official host is just a name that whoever is positioned to
   // answer for it can claim, and they would then be choosing the recipient keys
-  // returned for an account number. Such a daemon remains usable; it just needs
-  // the user's explicit --trusted-daemon.
+  // returned for an account number. A custom remote daemon additionally needs
+  // the user's explicit --trusted-daemon authorization.
   const bool authenticatedTransport = m_daemon_ssl && !m_daemon_no_verify;
   return Common::isTrustedByDefault(m_nodeHost, authenticatedTransport);
 }
@@ -124,9 +124,9 @@ void NodeRpcProxy::setRootCert(const std::string &path) {
 }
 
 void NodeRpcProxy::disableVerify() {
-  // Also withdraws automatic trust in a project-operated endpoint, because
-  // isTrustedResolver() re-derives it and this is one of its inputs. An explicit
-  // --trusted-daemon is a separate decision and is left alone.
+  // Withdraws resolver trust from every remote endpoint. The explicit
+  // --trusted-daemon preference remains recorded, but it cannot override an
+  // unauthenticated transport.
   if (!m_daemon_no_verify) m_daemon_no_verify = true;
 }
 

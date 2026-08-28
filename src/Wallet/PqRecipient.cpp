@@ -31,9 +31,9 @@ namespace CryptoNote {
 
 const char* const kUntrustedResolverMessage =
     "Account numbers can only be resolved by a trusted daemon. Use the full "
-    "address instead, connect to your own daemon, or pass --trusted-daemon if "
-    "you trust this one. A project endpoint reached over plain HTTP, or with "
-    "certificate verification disabled, is not automatically trusted.";
+    "address instead, connect to your own daemon, or use verified HTTPS and "
+    "pass --trusted-daemon if you trust this one. Remote resolvers reached over "
+    "plain HTTP, or with certificate verification disabled, are not trusted.";
 
 namespace {
 // Both sides are hex, but only one of them is ours; the daemon's casing is not
@@ -205,8 +205,9 @@ const char* pqAccountPublicationMessage(PqAccountPublication status) {
     case PqAccountPublication::UntrustedResolver:
       return "Your account number can only be looked up through a trusted daemon: "
              "whichever daemon answers decides the number you would hand out. "
-             "Connect to your own daemon, or pass --trusted-daemon if you trust "
-             "this one. Your full address is unaffected and always safe to share.";
+             "Connect to your own daemon, or use verified HTTPS and pass "
+             "--trusted-daemon if you trust this one. Your full address is "
+             "unaffected and always safe to share.";
     case PqAccountPublication::Mismatch:
       return "The daemon reported an account number that does not resolve back to "
              "this wallet's keys. Nothing was shown; share your full address and "

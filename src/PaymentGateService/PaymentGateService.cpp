@@ -284,8 +284,8 @@ void PaymentGateService::runRpcProxy(Logging::LoggerRef& log) {
   
   std::unique_ptr<CryptoNote::INode> node(
     PaymentService::NodeFactory::createNode(
-      config.remoteNodeConfig.m_daemon_host,
-      config.remoteNodeConfig.m_daemon_port,
+      _daemon_host,
+      _daemon_port,
       _daemon_path,
       _daemon_ssl,
       config.remoteNodeConfig.m_trusted_daemon));

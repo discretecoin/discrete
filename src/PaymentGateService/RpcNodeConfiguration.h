@@ -32,8 +32,8 @@ public:
 
   std::string m_daemon_host;
   uint16_t m_daemon_port;
-  // Explicit opt-in to let a custom remote daemon resolve account numbers. Local
-  // daemons and the official endpoints are trusted without it.
+  // Explicit opt-in to let a custom remote daemon resolve account numbers. It is
+  // effective only over verified TLS; loopback needs no opt-in.
   bool m_trusted_daemon;
 };
 

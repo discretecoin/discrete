@@ -99,10 +99,10 @@ struct Config
     /* Use testnet currency parameters/address HRP */
     bool testnet = false;
 
-    /* Let a custom remote daemon resolve account numbers. Only meaningful for a
-       daemon that is not local and not one of the official endpoints, both of
-       which are trusted already. Whoever resolves an account number decides
-       where the payment lands, so this is an explicit user decision. */
+    /* Authorize a custom remote daemon over verified HTTPS to resolve account
+       numbers. Loopback and official verified-HTTPS endpoints are trusted
+       automatically. Whoever resolves an account number decides where the
+       payment lands, so transport authentication is also required. */
     bool trustedDaemon = false;
 
     /* The wallet file path */
