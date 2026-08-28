@@ -392,34 +392,63 @@ TEST(ProxyTrust, OfficialHostSuffixAttackIsNotTrusted) {
   EXPECT_FALSE(proxy->isTrustedResolver());
 }
 
-TEST(ProxyTrust, ExplicitTrustWorksForAnArbitraryHost) {
-  auto proxy = makeProxy("node.example.com", false);
+TEST(ProxyTrust, ExplicitTrustWorksForArbitraryHostOverVerifiedTls) {
+  auto proxy = makeProxy("node.example.com", true);
   ASSERT_FALSE(proxy->isTrustedResolver());
   proxy->setTrustedResolver(true);
   EXPECT_TRUE(proxy->isTrustedResolver());
 }
 
-// The user's decision is theirs. A transport policy they also chose must not
-// quietly cancel it, in either application order.
-TEST(ProxyTrust, ExplicitTrustSurvivesDisableVerify) {
+TEST(ProxyTrust, ExplicitTrustDoesNotAuthorizePlainHttp) {
+  auto proxy = makeProxy("node.example.com", false);
+  proxy->setTrustedResolver(true);
+  EXPECT_FALSE(proxy->isTrustedResolver());
+}
+
+// walletd parses --daemon-address before constructing its proxy. Pin that an
+// HTTPS URL reaches the same authenticated explicit-trust path as the CLI
+// wallets, rather than passing the scheme as part of the DNS hostname.
+TEST(ProxyTrust, WalletdStyleHttpsUrlPreservesExplicitTrust) {
+  const std::string configuredHost = "https://node.example.com";
+  const uint16_t configuredPort = 9332;
+  const std::string url = configuredHost + ":" + std::to_string(configuredPort);
+  std::string host, path;
+  uint16_t port = 0;
+  bool ssl = false;
+  ASSERT_TRUE(Common::parseUrlAddress(url, host, port, path, ssl));
+  EXPECT_EQ("node.example.com", host);
+  EXPECT_EQ(9332, port);
+  EXPECT_EQ("/", path);
+  ASSERT_TRUE(ssl);
+
+  CryptoNote::NodeRpcProxy proxy(host, port, path, ssl);
+  ASSERT_FALSE(proxy.isTrustedResolver());
+  proxy.setTrustedResolver(true);
+  EXPECT_TRUE(proxy.isTrustedResolver());
+}
+
+// User authorization cannot replace endpoint authentication, in either
+// application order.
+TEST(ProxyTrust, DisableVerifyWithdrawsExplicitRemoteTrust) {
   auto proxy = makeProxy("node.example.com", true);
   proxy->setTrustedResolver(true);
   proxy->disableVerify();
-  EXPECT_TRUE(proxy->isTrustedResolver());
+  EXPECT_FALSE(proxy->isTrustedResolver());
 
   auto reordered = makeProxy("node.example.com", true);
   reordered->disableVerify();
   reordered->setTrustedResolver(true);
-  EXPECT_TRUE(reordered->isTrustedResolver());
+  EXPECT_FALSE(reordered->isTrustedResolver());
 }
 
-// Same for an official host: explicit trust outlives losing automatic trust.
-TEST(ProxyTrust, ExplicitTrustSurvivesLosingAutomaticOfficialTrust) {
+// Explicit authorization cannot keep an official remote trusted after endpoint
+// authentication is disabled.
+TEST(ProxyTrust, DisableVerifyWithdrawsExplicitOfficialTrust) {
   auto proxy = makeProxy(officialHost(), true);
   proxy->setTrustedResolver(true);
   ASSERT_TRUE(proxy->isTrustedResolver());
   proxy->disableVerify();
-  EXPECT_TRUE(proxy->isTrustedResolver());
+  EXPECT_FALSE(proxy->isTrustedResolver());
 }
 
 TEST(ProxyTrust, ExplicitTrustCanBeWithdrawn) {

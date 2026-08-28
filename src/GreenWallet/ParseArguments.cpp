@@ -190,8 +190,8 @@ std::vector<CLICommand> getCLICommands()
 
         {"--daemon-no-verify", "Disable verification procedure", "", false, false},
 
-        {"--trusted-daemon", "Trust this daemon to resolve account numbers. Only "
-         "needed for a custom remote daemon, and only one you run or otherwise trust",
+        {"--trusted-daemon", "Authorize this daemon to resolve account numbers. Only "
+         "effective for a custom remote daemon over verified HTTPS",
          "", false, false},
 
         {"--wallet-file <file>", "Open the wallet <file>", "", false, true},

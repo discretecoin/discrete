@@ -486,8 +486,9 @@ const char* const SEED_NODES[] = {
 // Trust is automatic here ONLY over TLS with certificate verification enabled,
 // because what is being trusted is the endpoint's identity and nothing else
 // establishes it. Each of these serves RPC over HTTPS on 9332 under a
-// certificate covering its own name; a connection to one of them on the plain
-// HTTP port is not automatically trusted and needs an explicit --trusted-daemon.
+// certificate covering its own name. A connection to one of them on the plain
+// HTTP port is not trusted for account-number resolution, even with
+// --trusted-daemon.
 //
 // Only the host is matched (isOfficialRemoteHost strips the port), so the port
 // shown is documentation of where each endpoint answers, not part of the trust

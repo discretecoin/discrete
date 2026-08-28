@@ -54,10 +54,10 @@ bool isOfficialRemoteHost(const std::string& host);
 // project-operated endpoint is trusted for being that endpoint, so the
 // connection has to establish that much; over plain HTTP, or with verification
 // disabled, the name on its own says nothing about who answers. Loopback needs
-// no transport evidence. Everything else has to be trusted explicitly by the
-// user — and note that an authenticated transport is not by itself a reason to
-// trust an arbitrary host, since any host can present a valid certificate for
-// its own name.
+// no transport evidence. Everything else requires both an authenticated
+// transport and explicit user authorization — an authenticated transport is
+// not by itself a reason to trust an arbitrary host, since any host can present
+// a valid certificate for its own name.
 bool isTrustedByDefault(const std::string& host, bool authenticatedTransport);
 
 }  // namespace Common

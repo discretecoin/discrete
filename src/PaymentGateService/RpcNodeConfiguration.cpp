@@ -31,9 +31,9 @@ RpcNodeConfiguration::RpcNodeConfiguration() {
 
 void RpcNodeConfiguration::initOptions(boost::program_options::options_description& desc) {
   desc.add_options()
-    ("daemon-address", po::value<std::string>()->default_value("127.0.0.1"), "daemon address")
+    ("daemon-address", po::value<std::string>()->default_value("127.0.0.1"), "daemon host, optionally prefixed with http:// or https://")
     ("daemon-port", po::value<uint16_t>()->default_value((uint16_t) CryptoNote::RPC_DEFAULT_PORT), "daemon port")
-    ("trusted-daemon", po::bool_switch(), "trust this daemon to resolve account numbers; only needed for a custom remote daemon, and only one you run or otherwise trust");
+    ("trusted-daemon", po::bool_switch(), "authorize this daemon to resolve account numbers; effective only for a custom remote daemon over verified TLS");
 }
 
 void RpcNodeConfiguration::init(const boost::program_options::variables_map& options) {

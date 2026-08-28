@@ -50,15 +50,14 @@ public:
   NodeRpcProxy(const std::string& nodeHost, unsigned short nodePort, const std::string &daemon_path, const bool &daemon_ssl);
 
   // Compact Account Number resolution is only as honest as the daemon answering
-  // it, so a remote endpoint is untrusted unless it is this machine's own
-  // daemon, one the project operates over an authenticated connection, or one
-  // the user has explicitly trusted.
+  // it. Loopback is trusted locally. Every remote resolver requires an
+  // authenticated transport plus either project ownership or explicit user
+  // authorization.
   //
-  // Trust has two independent sources, kept in separate state so neither can
-  // silently cancel the other:
+  // Trust has two authorization sources:
   //
-  //   explicit   the user passed --trusted-daemon. Their decision; transport
-  //              settings do not revoke it.
+  //   explicit   the user passed --trusted-daemon for this authenticated remote
+  //              endpoint.
   //   automatic  derived from where we connect and how. Recomputed on every
   //              call, so a later disableVerify() withdraws it.
   //
@@ -69,7 +68,9 @@ public:
   // sufficient either — any host can present a valid certificate for its own
   // name — so an arbitrary HTTPS endpoint stays untrusted.
   virtual bool isTrustedResolver() const override {
-    return m_explicitlyTrustedResolver || hasAutomaticResolverTrust();
+    const bool authenticatedTransport = m_daemon_ssl && !m_daemon_no_verify;
+    return hasAutomaticResolverTrust() ||
+           (m_explicitlyTrustedResolver && authenticatedTransport);
   }
   void setTrustedResolver(bool trusted) { m_explicitlyTrustedResolver = trusted; }
   virtual ~NodeRpcProxy();
@@ -134,8 +135,8 @@ public:
   void rpcTimeout(unsigned int val) { m_rpcTimeout = val; }
 
   const std::string m_daemon_path;
-  // The user's own --trusted-daemon decision. Never cleared by transport
-  // settings; see isTrustedResolver().
+  // The user's --trusted-daemon authorization. It is effective for remote
+  // resolution only while the transport authenticates the endpoint.
   bool m_explicitlyTrustedResolver = false;
   const std::string m_nodeHost;
   const unsigned short m_nodePort;
