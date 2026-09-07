@@ -65,6 +65,8 @@ bool checkSwapTransactionSemantic(const Transaction& tx,std::string* error) {
     if(out.amount==0 || out.unlockHeight!=0)return fail(error,"swap output amount/lock");
     if(out.target.type()==typeid(SwapOutput)) {
       if(!funding || !policy(boost::get<SwapOutput>(out.target)))return fail(error,"swap policy/output family");
+      // A conditional spend cannot add fee inputs or create a zero-value payout.
+      if(out.amount<=parameters::MINIMUM_FEE)return fail(error,"swap principal cannot pay exit fee");
       ++contracts;
     } else if(out.target.type()==typeid(PqOutput)) {
       const auto& p=boost::get<PqOutput>(out.target);

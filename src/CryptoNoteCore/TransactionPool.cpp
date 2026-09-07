@@ -480,6 +480,18 @@ bool getPqAccountRegistrationId(const Transaction& tx, Crypto::Hash& accountId) 
 
     BlockTemplate blockTemplate(m_currency.genesisBlockHash());
 
+    // A kept-by-block swap may have entered before its inputs were usable, with
+    // no resolved fee. Refresh it before fee ordering and coinbase construction.
+    // Iterate the hash index: changing the fee can reorder the other index.
+    for (auto i = m_transactions.begin(); i != m_transactions.end(); ++i) {
+      if (isSwapTransaction(i->tx) && i->fee == 0) {
+        uint64_t resolvedFee = 0;
+        if (m_core.getPqTransactionFee(i->tx, resolvedFee)) {
+          m_transactions.modify(i, [resolvedFee](TransactionDetails& item) { item.fee = resolvedFee; });
+        }
+      }
+    }
+
     for (auto i = m_fee_index.begin(); i != m_fee_index.end(); ++i) {
       const auto& txd = *i;
 

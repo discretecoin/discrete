@@ -9,6 +9,7 @@
 #include "Wallet/SwapTransactionBuilder.h"
 #include "Wallet/WalletLedger.h"
 #include "Wallet/PqWallet.h"
+#include "crypto_pq/PqOutputBuilder.h"
 #include "Logging/ConsoleLogger.h"
 #include "System/Dispatcher.h"
 #include "TestGenerator/TestGenerator.h"
@@ -118,6 +119,74 @@ TEST(SwapActivation, MainnetAndDefaultTestnetStayDisabled) {
   auto main=CurrencyBuilder(logger).swapTestActivation(0).currency();
   auto test=CurrencyBuilder(logger).testnet(true).currency();
   for(uint32_t h:{0u,1u,14u,UINT32_MAX}) {EXPECT_FALSE(main.swapsEnabledAt(h));EXPECT_FALSE(test.swapsEnabledAt(h));}
+}
+TEST(SwapChain, ContractPrincipalMustExceedExitFee) {
+  Harness h;
+  for(uint64_t principal:{0u,1u}) {
+    auto tx=h.makeFunding();tx.outputs[0].amount=principal;
+    auto& change=tx.outputs[1];change.amount=h.coinbase.outputs[0].amount-principal-parameters::MINIMUM_FEE;
+    auto built=CryptoPQ::buildPqOutput(h.miner.pqViewPk(),h.miner.pqSpendPk(),pqTransactionInputsHash(tx),1,change.amount,0);
+    PqOutput out;out.kemCt.assign(built.kemCt.begin(),built.kemCt.end());out.encPayload=std::move(built.encPayload);
+    std::memcpy(out.spendCommit.data,built.spendCommit.data(),32);change.target=std::move(out);
+    const std::vector<SwapResolvedInput> resolved{{true,h.coinbase.outputs[0]}};
+    const auto digest=swapSigningDigest(tx,resolved,h.currency.genesisBlockHash(),0);
+    tx.pqSignatures[0]=CryptoPQ::dsa_sign(h.miner.pqSpendSk(),digest.data(),digest.size());
+    ASSERT_TRUE(CryptoPQ::dsa_verify(h.miner.pqSpendPk(),digest.data(),digest.size(),tx.pqSignatures[0]));
+    // These are correctly signed amounts, not mutations masked by an invalid signature.
+    const auto result=h.submit(tx);
+    EXPECT_FALSE(result.m_added_to_pool)<<principal;
+    EXPECT_TRUE(result.m_verification_failed)<<principal;
+  }
+}
+TEST(SwapChain, ImmatureKeptRefundGetsCorrectFeeWhenTemplateBecomesReady) {
+  Harness h;h.fund(17);auto refund=h.spend(true);
+  const auto early=h.submit(refund,true);
+  ASSERT_TRUE(early.m_added_to_pool);ASSERT_TRUE(early.m_verifivation_impossible);
+  h.until(17);
+  auto block=h.blockTemplate();ASSERT_EQ(block.transactionHashes.size(),1u);
+  EXPECT_EQ(block.transactionHashes[0],getObjectHash(refund));
+  // Use the actual template without the forced-block helper's coinbase adjustment.
+  ASSERT_TRUE(h.mine());
+  Transaction stored;ASSERT_TRUE(h.core->getTransaction(getObjectHash(refund),stored,false));
+  h.reopen();EXPECT_TRUE(h.core->get_blockchain_storage().haveSpentKeyImages(refund));
+}
+TEST(SwapChain, MinimumSpendablePrincipalSupportsBothExitBranchesAtBaseFee) {
+  for(bool refund:{false,true}) {
+    Harness h;auto sample=h.makeFunding(17);sample.outputs[0].amount=2;
+    const auto& source=boost::get<PqInput>(sample.inputs[0]);
+    PqSpendInput input;input.prevTxid=source.prevTxid;input.prevOutIndex=source.prevOutIndex;
+    input.amount=h.coinbase.outputs[0].amount;std::copy(source.rhoReveal.begin(),source.rhoReveal.end(),input.rho.begin());
+    const std::vector<SwapResolvedInput> resolved{{true,h.coinbase.outputs[0]}};
+    auto unspendable=sample.outputs[0];unspendable.amount=1;
+    EXPECT_THROW(buildSwapFunding({input},{authority(h.minerKeys)},resolved,unspendable,
+      {PqSendOutput{h.miner.pqViewPk(),h.miner.pqSpendPk(),input.amount-2}},h.currency.genesisBlockHash(),14),std::invalid_argument);
+    h.funding=buildSwapFunding({input},{authority(h.minerKeys)},resolved,sample.outputs[0],
+      {PqSendOutput{h.miner.pqViewPk(),h.miner.pqSpendPk(),input.amount-3}},h.currency.genesisBlockHash(),14);
+    ASSERT_TRUE(h.submit(h.funding).m_added_to_pool);ASSERT_TRUE(h.mine());if(refund)h.until(17);
+    SwapInput spend;spend.prevTxid=getObjectHash(h.funding);spend.prevOutIndex=0;spend.branch=refund?2:1;
+    const auto rho=refund?h.refundRho:h.claimRho;spend.rhoReveal.assign(rho.begin(),rho.end());if(!refund)spend.secret=h.secret;
+    const auto& recipient=refund?h.owner:h.claimant;
+    auto tx=buildSwapSpend(spend,h.funding.outputs[0],authority(recipient),
+      {PqSendOutput{recipient.viewPub,recipient.spendPub,1}},h.currency.genesisBlockHash(),h.core->getCurrentBlockchainHeight());
+    uint64_t fee=0;ASSERT_TRUE(h.core->getPqTransactionFee(tx,fee));EXPECT_EQ(fee,parameters::MINIMUM_FEE);
+    ASSERT_TRUE(h.submit(tx).m_added_to_pool);ASSERT_TRUE(h.mine());
+  }
+}
+TEST(SwapChain, ResignedUnsupportedPoliciesAndExpiredFundingCannotEnterPool) {
+  Harness h;const auto original=h.makeFunding();
+  for(unsigned mode=0;mode<6;++mode) {
+    auto tx=original;auto& contract=boost::get<SwapOutput>(tx.outputs[0].target);
+    switch(mode) {
+      case 0:contract.version=2;break;case 1:contract.hashScheme=2;break;
+      case 2:contract.authScheme=2;break;case 3:contract.amountScheme=2;break;
+      case 4:contract.refundHeight=0;break;case 5:contract.refundHeight=h.core->getCurrentBlockchainHeight();break;
+    }
+    const auto digest=swapSigningDigest(tx,{{true,h.coinbase.outputs[0]}},h.currency.genesisBlockHash(),0);
+    tx.pqSignatures[0]=CryptoPQ::dsa_sign(h.miner.pqSpendSk(),digest.data(),digest.size());
+    ASSERT_TRUE(CryptoPQ::dsa_verify(h.miner.pqSpendPk(),digest.data(),digest.size(),tx.pqSignatures[0]));
+    EXPECT_FALSE(h.submit(tx).m_added_to_pool)<<mode;
+  }
+  ASSERT_TRUE(h.submit(original).m_added_to_pool);ASSERT_TRUE(h.mine());
 }
 TEST(SwapChain, ActualFundingClaimWalletAndNextOrdinarySpend) {
   Harness h;WalletLedger sender(h.minerKeys),recipient(h.claimant),observer(h.owner);
@@ -272,7 +341,7 @@ int main(int argc,char** argv) {
       Harness h;h.fund(32,&externalHash);h.until(h.fundingHeight+11);
       const uint32_t confirmations=h.core->getCurrentBlockchainHeight()-h.fundingHeight;
       require(confirmations>=11,"pair confirmation floor");
-      {std::ofstream ready(prefix.string()+".funded.tmp");ready<<"{\"confirmations\":"<<confirmations<<",\"next_height\":"<<h.core->getCurrentBlockchainHeight()<<",\"refund_height\":32,\"txid\":\""<<Common::podToHex(getObjectHash(h.funding))<<"\",\"vout\":0,\"hashlock\":\""<<Common::podToHex(externalHash)<<"\"}\n";ready.close();require(bool(ready),"fund receipt");}
+      {std::ofstream ready(prefix.string()+".funded.tmp");ready<<"{\"confirmations\":"<<confirmations<<",\"next_height\":"<<h.core->getCurrentBlockchainHeight()<<",\"refund_height\":32,\"txid\":\""<<Common::podToHex(getObjectHash(h.funding))<<"\",\"vout\":0,\"hashlock\":\""<<Common::podToHex(externalHash)<<"\",\"wire\":\""<<Common::toHex(toBinaryArray(h.funding))<<"\"}\n";ready.close();require(bool(ready),"fund receipt");}
       std::filesystem::rename(prefix.string()+".funded.tmp",prefix.string()+".funded.json");
       // No preimage enters this process until the external coordinator observes the funding receipt.
       require(bool(std::getline(std::cin,wire)),"pair settlement command");const bool refund=wire=="REFUND";
