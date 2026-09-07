@@ -33,6 +33,44 @@ using CryptoNote::ISerializer;
 #define WALLET_RPC_STATUS_OK      "OK"
 #define WALLET_RPC_STATUS_BUSY    "BUSY"
 
+  // Lab-only prepare endpoints return signed bytes; the coordinator must durably
+  // record the intent/exposure before any external relay. They never relay here.
+  struct COMMAND_RPC_SWAP_ROLE {
+    struct request { std::string rho; void serialize(ISerializer& s) { KV_MEMBER(rho) } };
+    struct response {
+      std::string commitment, address, genesis_hash;
+      void serialize(ISerializer& s) { KV_MEMBER(commitment) KV_MEMBER(address) KV_MEMBER(genesis_hash) }
+    };
+  };
+  struct SwapPreparedResponse {
+    std::string tx_hash, tx_as_hex;
+    uint64_t fee_atoms = 0, principal_atoms = 0;
+    void serialize(ISerializer& s) { KV_MEMBER(tx_hash) KV_MEMBER(tx_as_hex) KV_MEMBER(fee_atoms) KV_MEMBER(principal_atoms) }
+  };
+  struct COMMAND_RPC_SWAP_PREPARE_FUNDING {
+    struct request {
+      uint64_t principal_atoms = 0;
+      uint32_t refund_height = 0;
+      std::string hashlock, nonce, claim_commitment, refund_rho, genesis_hash;
+      void serialize(ISerializer& s) {
+        KV_MEMBER(principal_atoms) KV_MEMBER(refund_height) KV_MEMBER(hashlock) KV_MEMBER(nonce)
+        KV_MEMBER(claim_commitment) KV_MEMBER(refund_rho) KV_MEMBER(genesis_hash)
+      }
+    };
+    using response = SwapPreparedResponse;
+  };
+  struct COMMAND_RPC_SWAP_PREPARE_SPEND {
+    struct request {
+      std::string funding_txid, rho, secret, genesis_hash;
+      uint32_t output_index = 0, branch = 0;
+      void serialize(ISerializer& s) {
+        KV_MEMBER(funding_txid) KV_MEMBER(output_index) KV_MEMBER(branch)
+        KV_MEMBER(rho) KV_MEMBER(secret) KV_MEMBER(genesis_hash)
+      }
+    };
+    using response = SwapPreparedResponse;
+  };
+
   /* Command: get_balance */
   struct COMMAND_RPC_GET_BALANCE
   {

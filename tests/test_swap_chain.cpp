@@ -14,6 +14,9 @@
 #include "System/Dispatcher.h"
 #include "TestGenerator/TestGenerator.h"
 #include "Common/StringTools.h"
+#include "BlockchainExplorer/BlockchainExplorerDataBuilder.h"
+#include "Serialization/BlockchainExplorerDataSerialization.h"
+#include "Serialization/SerializationTools.h"
 #include <chrono>
 #include <cstring>
 #include <ctime>
@@ -32,6 +35,15 @@ template<size_t N> std::array<uint8_t,N> pattern(uint8_t x) {
 Crypto::Hash toHash(const CryptoPQ::Hash256& h) {Crypto::Hash x{};std::memcpy(x.data,h.data(),32);return x;}
 void require(bool condition,const char* text) {if(!condition)throw std::runtime_error(text);}
 PqInputAuth authority(const PqWalletKeys& k) {PqInputAuth a;a.spendPub=k.spendPub;a.spendSk=k.spendSk;return a;}
+struct ExplorerProtocolQuery final : ICryptoNoteProtocolQuery {
+  bool addObserver(ICryptoNoteProtocolObserver*) override { return true; }
+  bool removeObserver(ICryptoNoteProtocolObserver*) override { return true; }
+  uint32_t getObservedHeight() const override { return 0; }
+  size_t getPeerCount() const override { return 0; }
+  bool isSynchronized() const override { return true; }
+  bool getConnections(std::vector<CryptoNoteConnectionContext>&) const override { return true; }
+  void printDandelions() const override {}
+};
 struct Harness {
   Logging::ConsoleLogger logger{Logging::ERROR};
   Currency currency;
@@ -119,6 +131,43 @@ TEST(SwapActivation, MainnetAndDefaultTestnetStayDisabled) {
   auto main=CurrencyBuilder(logger).swapTestActivation(0).currency();
   auto test=CurrencyBuilder(logger).testnet(true).currency();
   for(uint32_t h:{0u,1u,14u,UINT32_MAX}) {EXPECT_FALSE(main.swapsEnabledAt(h));EXPECT_FALSE(test.swapsEnabledAt(h));}
+}
+TEST(SwapChain, ExplorerDetailsResolveSwapFeesAndStoredBranchWitness) {
+  for(bool refund:{false,true}) {
+    Harness h;ExplorerProtocolQuery protocol;BlockchainExplorerDataBuilder builder(*h.core,protocol);
+    h.fund(17);Transaction loaded;ASSERT_TRUE(h.core->getTransaction(getObjectHash(h.funding),loaded,false));
+    TransactionDetails funded{};ASSERT_TRUE(builder.fillTransactionDetails(loaded,funded));
+    EXPECT_TRUE(funded.inBlockchain);EXPECT_EQ(funded.fee,1u);
+    EXPECT_EQ(funded.totalInputsAmount,h.coinbase.outputs[0].amount);
+    EXPECT_EQ(funded.totalInputsAmount,funded.totalOutputsAmount+1);
+    ASSERT_EQ(funded.inputs.size(),1u);EXPECT_TRUE(funded.inputs[0].type()==typeid(PqInputDetails));
+    ASSERT_EQ(funded.outputs.size(),2u);EXPECT_TRUE(funded.outputs[0].output.target.type()==typeid(SwapOutput));
+    if(refund)h.until(17);auto spend=h.spend(refund);ASSERT_TRUE(h.submit(spend).m_added_to_pool);
+    TransactionDetails pending{};ASSERT_TRUE(builder.fillTransactionDetails(spend,pending));EXPECT_FALSE(pending.inBlockchain);
+    ASSERT_TRUE(h.mine());ASSERT_TRUE(h.core->getTransaction(getObjectHash(spend),loaded,false));
+    TransactionDetails details{};ASSERT_TRUE(builder.fillTransactionDetails(loaded,details));
+    EXPECT_TRUE(details.inBlockchain);EXPECT_EQ(details.fee,1u);EXPECT_EQ(details.totalInputsAmount,1001u);EXPECT_EQ(details.totalOutputsAmount,1000u);
+    ASSERT_EQ(details.inputs.size(),1u);ASSERT_TRUE(details.inputs[0].type()==typeid(SwapInputDetails));
+    const auto& input=boost::get<SwapInputDetails>(details.inputs[0]);
+    EXPECT_EQ(input.amount,1001u);EXPECT_EQ(input.input.branch,refund?2:1);
+    EXPECT_EQ(input.input.secret,boost::get<SwapInput>(loaded.inputs[0]).secret);
+    EXPECT_EQ(input.output.transactionHash,getObjectHash(h.funding));EXPECT_EQ(input.output.number,0u);
+    const auto expected=swapSpendTag(input.input,h.currency.genesisBlockHash());
+    EXPECT_EQ(std::memcmp(input.spendTag.data,expected.data,32),0);
+    const auto json=storeToJson(details);TransactionDetails decoded{};ASSERT_TRUE(loadFromJson(decoded,json));
+    ASSERT_TRUE(decoded.inputs[0].type()==typeid(SwapInputDetails));
+    EXPECT_EQ(boost::get<SwapInputDetails>(decoded.inputs[0]).input.secret,input.input.secret);
+    EXPECT_EQ(storeToJson(decoded),json);
+    Block block;ASSERT_TRUE(h.core->getBlockByHash(details.blockHash,block));BlockDetails blockDetails{};
+    ASSERT_TRUE(builder.fillBlockDetails(block,blockDetails));EXPECT_EQ(blockDetails.totalFeeAmount,1u);
+    EXPECT_EQ(blockDetails.transactions.size(),2u);
+    const auto& recipient=refund?h.owner:h.claimant;WalletLedger ledger(recipient);
+    ASSERT_TRUE(ledger.processTransaction(loaded,getObjectHash(loaded),details.blockHeight));
+    auto ordinary=buildPqTransaction(ledger.spendableInputs(),{PqSendOutput{h.owner.viewPub,h.owner.spendPub,999}},recipient.spendPub,recipient.spendSk);
+    ASSERT_TRUE(h.submit(ordinary).m_added_to_pool);ASSERT_TRUE(h.mine());TransactionDetails adjacent{};
+    ASSERT_TRUE(builder.fillTransactionDetails(ordinary,adjacent));EXPECT_EQ(adjacent.fee,1u);
+    EXPECT_TRUE(adjacent.inputs[0].type()==typeid(PqInputDetails));EXPECT_TRUE(adjacent.inBlockchain);
+  }
 }
 TEST(SwapChain, ContractPrincipalMustExceedExitFee) {
   Harness h;

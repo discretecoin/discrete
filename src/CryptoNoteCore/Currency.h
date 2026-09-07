@@ -119,6 +119,7 @@ public:
   size_t freeRegPoolLimit() const { return m_freeRegPoolLimit; }
 
   bool isTestnet() const { return m_testnet; }
+  bool swapLab() const { return m_testnet && m_swapLab; }
   bool swapsEnabledAt(uint32_t height) const {
     return m_testnet && m_swapTestActivation != UINT32_MAX && height >= m_swapTestActivation;
   }
@@ -225,6 +226,7 @@ private:
   size_t m_freeRegPoolLimit;
 
   bool m_testnet;
+  bool m_swapLab = false;
   uint32_t m_swapTestActivation = UINT32_MAX;
 
   Block m_genesisBlock;
@@ -312,6 +314,7 @@ public:
   CurrencyBuilder& freeRegPoolLimit(size_t val) { m_currency.m_freeRegPoolLimit = val; return *this; }
 
   CurrencyBuilder& swapTestActivation(uint32_t height) { m_currency.m_swapTestActivation = height; return *this; }
+  CurrencyBuilder& swapLab(bool enabled) { m_currency.m_swapLab = enabled; return *this; }
 
   CurrencyBuilder& testnet(bool val) { m_currency.m_testnet = val; return *this; }
 

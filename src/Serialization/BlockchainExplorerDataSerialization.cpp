@@ -29,7 +29,7 @@
 
 namespace CryptoNote {
 
-enum class SerializationTag : uint8_t { Base = 0xff, Key = 0x2, Pq = 0x10, Transaction = 0xcc, Block = 0xbb };
+enum class SerializationTag : uint8_t { Base = 0xff, Key = 0x2, Pq = 0x10, Swap = 0x20, Transaction = 0xcc, Block = 0xbb };
 
 namespace {
 
@@ -37,6 +37,7 @@ struct BinaryVariantTagGetter: boost::static_visitor<uint8_t> {
   uint8_t operator()(const CryptoNote::BaseInputDetails) { return static_cast<uint8_t>(SerializationTag::Base); }
   uint8_t operator()(const CryptoNote::KeyInputDetails) { return static_cast<uint8_t>(SerializationTag::Key); }
   uint8_t operator()(const CryptoNote::PqInputDetails) { return static_cast<uint8_t>(SerializationTag::Pq); }
+  uint8_t operator()(const CryptoNote::SwapInputDetails) { return static_cast<uint8_t>(SerializationTag::Swap); }
 };
 
 struct VariantSerializer : boost::static_visitor<> {
@@ -51,7 +52,8 @@ struct VariantSerializer : boost::static_visitor<> {
 
 void getVariantValue(CryptoNote::ISerializer& serializer, uint8_t tag, boost::variant<CryptoNote::BaseInputDetails,
                                                                                       CryptoNote::KeyInputDetails,
-                                                                                      CryptoNote::PqInputDetails>& in) {
+                                                                                      CryptoNote::PqInputDetails,
+                                                                                      CryptoNote::SwapInputDetails>& in) {
   switch (static_cast<SerializationTag>(tag)) {
   case SerializationTag::Base: {
     CryptoNote::BaseInputDetails v;
@@ -67,6 +69,12 @@ void getVariantValue(CryptoNote::ISerializer& serializer, uint8_t tag, boost::va
   }
   case SerializationTag::Pq: {
     CryptoNote::PqInputDetails v;
+    serializer(v, "data");
+    in = v;
+    break;
+  }
+  case SerializationTag::Swap: {
+    CryptoNote::SwapInputDetails v;
     serializer(v, "data");
     in = v;
     break;
@@ -110,6 +118,12 @@ void serialize(PqInputDetails& inputPq, ISerializer& serializer) {
   serializer(inputPq.amount, "amount");
   serializePod(inputPq.nullifier, "nullifier", serializer);
   serializer(inputPq.output, "output");
+}
+void serialize(SwapInputDetails& inputSwap, ISerializer& serializer) {
+  serializer(inputSwap.input, "input");
+  serializer(inputSwap.amount, "amount");
+  serializePod(inputSwap.spendTag, "spendTag", serializer);
+  serializer(inputSwap.output, "output");
 }
 
 void serialize(transactionInputDetails2& input, ISerializer& serializer) {

@@ -35,6 +35,23 @@
 
 namespace CryptoNote {
 
+struct SwapOutpointInfo {
+  bool found = false;
+  bool inPool = false;
+  bool inChain = false;
+  bool spentKnown = false;
+  bool spent = false;
+  bool spentInPool = false;
+  uint32_t blockHeight = 0;
+  uint32_t height = 0;
+  uint64_t confirmations = 0;
+  uint64_t amount = 0;
+  Crypto::Hash blockHash{};
+  Crypto::Hash tipHash{};
+  Crypto::Hash genesis{};
+  Transaction transaction{};
+};
+
 class INodeObserver {
 public:
   virtual ~INodeObserver() {}
@@ -171,6 +188,12 @@ public:
   virtual void getBlocks(uint64_t timestampBegin, uint64_t timestampEnd, uint32_t blocksNumberLimit, std::vector<BlockDetails>& blocks, uint32_t& blocksNumberWithinTimestamps, const Callback& callback) = 0;
   virtual void getBlock(const uint32_t blockHeight, BlockDetails &block, const Callback& callback) = 0;
   virtual void getTransaction(const Crypto::Hash& transactionHash, CryptoNote::Transaction& transaction, const Callback& callback) = 0;
+  // Lab-only, read-only point-in-time chain/pool observation. A zero spendTag
+  // asks the daemon to derive the conditional-output tag itself.
+  virtual void getSwapOutpoint(const Crypto::Hash& txid, uint32_t index,
+      const Crypto::Hash& spendTag, SwapOutpointInfo& result, const Callback& callback) {
+    callback(std::make_error_code(std::errc::not_supported));
+  }
   virtual void getTransactions(const std::vector<Crypto::Hash>& transactionHashes, std::vector<TransactionDetails>& transactions, const Callback& callback) = 0;
   virtual void getTransactionsByPaymentId(const Crypto::Hash& paymentId, std::vector<TransactionDetails>& transactions, const Callback& callback) = 0;
   virtual void getPoolTransactions(uint64_t timestampBegin, uint64_t timestampEnd, uint32_t transactionsNumberLimit, std::vector<TransactionDetails>& transactions, uint64_t& transactionsNumberWithinTimestamps, const Callback& callback) = 0;

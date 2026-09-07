@@ -75,6 +75,7 @@ namespace
   const command_line::arg_descriptor<bool>        arg_print_genesis_tx          = { "print-genesis-tx", "Prints genesis' block tx hex to insert it to config and exits" };
   const command_line::arg_descriptor<bool>        arg_testnet_on                = { "testnet", "Used to deploy test nets. Checkpoints and hardcoded seeds are ignored, "
     "network id is changed. Use it with --data-dir flag. The wallet must be launched with --testnet flag.", false };
+  const command_line::arg_descriptor<bool> arg_swap_lab = { "swap-lab", "Private loopback swap qualification; requires --testnet and loopback RPC/P2P binds", false };
   const command_line::arg_descriptor<std::string> arg_load_checkpoints          = { "load-checkpoints", "<filename> Load checkpoints from csv file", "" };
   const command_line::arg_descriptor<bool>        arg_disable_checkpoints       = { "without-checkpoints", "Synchronize without checkpoints" };
   const command_line::arg_descriptor<std::string> arg_rollback                  = { "rollback", "Rollback blockchain to <height> (raw, unguarded — dev use)", "", true };
@@ -155,6 +156,7 @@ int main(int argc, char* argv[])
     command_line::add_arg(desc_cmd_sett, arg_log_level);
     command_line::add_arg(desc_cmd_sett, arg_no_console);
     command_line::add_arg(desc_cmd_sett, arg_testnet_on);
+    command_line::add_arg(desc_cmd_sett, arg_swap_lab);
     command_line::add_arg(desc_cmd_sett, arg_print_genesis_tx);
     command_line::add_arg(desc_cmd_sett, arg_load_checkpoints);
     command_line::add_arg(desc_cmd_sett, arg_disable_checkpoints);
@@ -245,6 +247,8 @@ int main(int argc, char* argv[])
       Common::Console::Color::BrightCyan);
 
     bool testnet_mode = command_line::get_arg(vm, arg_testnet_on);
+    const bool swap_lab = command_line::get_arg(vm, arg_swap_lab);
+    if (swap_lab && !testnet_mode) throw std::runtime_error("--swap-lab requires --testnet");
     if (testnet_mode) {
       logger(INFO) << "Starting in testnet mode!";
     }
@@ -260,10 +264,19 @@ int main(int argc, char* argv[])
     boost::filesystem::path data_dir_path(data_dir);
     rpcConfig.setDataDir(data_dir_path.string());
     rpcConfig.init(vm);
+    if (swap_lab) {
+      if (coreConfig.configFolderDefaulted) throw std::runtime_error("--swap-lab requires an explicit --data-dir");
+      if (netNodeConfig.getBindIp() != "127.0.0.1" || rpcConfig.getBindIP() != "127.0.0.1" ||
+          rpcConfig.isEnabledSSL() || !rpcConfig.getCors().empty()) {
+        throw std::runtime_error("--swap-lab requires RPC/P2P binds 127.0.0.1, no SSL listener and no CORS");
+      }
+      netNodeConfig.setSwapLab(true);
+    }
 
     //create objects and link them
     CryptoNote::CurrencyBuilder currencyBuilder(logManager);
     currencyBuilder.testnet(testnet_mode);
+    if (swap_lab) currencyBuilder.swapLab(true).swapTestActivation(14);
     try {
       currencyBuilder.currency();
     }
@@ -282,7 +295,7 @@ int main(int argc, char* argv[])
 
     CryptoNote::Core m_core(currency, nullptr, logManager, dispatcher);
 
-    bool disable_checkpoints = command_line::get_arg(vm, arg_disable_checkpoints);
+    bool disable_checkpoints = swap_lab || command_line::get_arg(vm, arg_disable_checkpoints);
     if (!disable_checkpoints) {
       CryptoNote::Checkpoints checkpoints(logManager);
       for (const auto& cp : CryptoNote::CHECKPOINTS) {
