@@ -23,6 +23,9 @@ enum PqTxType : uint8_t {
   TX_COINBASE = 0x00,
   TX_PQ       = 0x01,
   TX_FREE_REG = 0x03,
+  // Experimental conditional family; chain admission requires explicit test activation.
+  TX_SWAP_FUND = 0x04,
+  TX_SWAP_SPEND = 0x05,
 };
 
 }  // namespace CryptoNote

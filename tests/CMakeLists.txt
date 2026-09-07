@@ -283,3 +283,10 @@ add_test(SentPaymentsStoreTests sent_payments_store_tests)
 # Pq* name so it joins the regression gate (ctest -R "Pq|Denomination") without
 # pulling in the runtime-broken classical UnitTests suites.
 add_test(NAME PqWalletSyncE2E COMMAND unit_tests --gtest_filter=PqWalletIntegration.*)
+
+add_executable(SwapChainTests test_swap_chain.cpp)
+target_link_libraries(SwapChainTests TestGenerator Wallet CryptoNoteCore Serialization System Logging Common Crypto CryptoPq BlockchainExplorer Checkpoints gtest ${Boost_LIBRARIES})
+if(MSVC)
+  target_link_libraries(SwapChainTests legacy_stdio_definitions.lib ws2_32)
+endif()
+add_test(NAME SwapChainTests COMMAND SwapChainTests)

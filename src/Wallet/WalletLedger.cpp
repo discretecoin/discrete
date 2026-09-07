@@ -178,6 +178,10 @@ bool WalletLedger::processTransaction(const TransactionPrefix& tx, const Crypto:
   CryptoPQ::Hash256 ih = pqTransactionInputsHash(tx);
   for (uint32_t i = 0; i < tx.outputs.size(); ++i) {
     const TransactionOutput& out = tx.outputs[i];
+    if (out.target.type() == typeid(SwapOutput)) {
+      allOutputsSum += out.amount; // Funding's locked principal is an output, not a mining fee.
+      continue;
+    }
     if (out.target.type() != typeid(PqOutput)) {
       continue;
     }

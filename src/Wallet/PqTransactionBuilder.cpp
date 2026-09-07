@@ -66,6 +66,11 @@ CryptoPQ::Hash256 pqTransactionInputsHash(const TransactionPrefix& tx) {
       std::memcpy(ref.prevTxid.data(), in.prevTxid.data, 32);
       ref.prevOutIndex = in.prevOutIndex;
       refs.push_back(ref);
+    } else if (input.type() == typeid(SwapInput)) {
+      const auto& in = boost::get<SwapInput>(input);
+      CryptoPQ::InputRef ref{};
+      std::memcpy(ref.prevTxid.data(), in.prevTxid.data, 32); ref.prevOutIndex = in.prevOutIndex;
+      refs.push_back(ref);
     } else if (input.type() == typeid(BaseInput)) {
       // Coinbase: no prior outpoints — inputsHash is zeros, matching constructMinerTxPq.
     } else {

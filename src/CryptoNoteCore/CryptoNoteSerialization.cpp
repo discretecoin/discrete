@@ -37,6 +37,7 @@
 #include "CryptoNoteFormatUtils.h"
 #include "CryptoNoteTools.h"
 #include "TransactionExtra.h"
+#include "PqTxType.h"
 
 using namespace Common;
 
@@ -50,6 +51,8 @@ struct BinaryVariantTagGetter: boost::static_visitor<uint8_t> {
   // KeyInput stub — should never be serialised on Discrete.
   uint8_t operator()(const CryptoNote::KeyInput&) { throw std::runtime_error("KeyInput not allowed in Discrete"); }
   uint8_t operator()(const CryptoNote::PqInput&) { return  0x10; }
+  uint8_t operator()(const CryptoNote::SwapInput&) { return 0x20; }
+  uint8_t operator()(const CryptoNote::SwapOutput&) { return 0x12; }
   // KeyOutput stub — should never be serialised on Discrete.
   uint8_t operator()(const CryptoNote::KeyOutput&) { throw std::runtime_error("KeyOutput not allowed in Discrete"); }
   uint8_t operator()(const CryptoNote::PqOutput&) { return  0x10; }
@@ -86,6 +89,12 @@ void getVariantValue(CryptoNote::ISerializer& serializer, uint8_t tag, CryptoNot
     in = v;
     break;
   }
+  case 0x20: {
+    CryptoNote::SwapInput v;
+    serializer(v, "value");
+    in = v;
+    break;
+  }
   default:
     throw std::runtime_error("Unknown transaction input tag");
   }
@@ -105,6 +114,12 @@ void getVariantValue(CryptoNote::ISerializer& serializer, uint8_t tag, CryptoNot
   case 0x11: {
     // Stripped coinbase output — spendCommit only, no kemCt/encPayload.
     CryptoNote::CoinbaseOutput v;
+    serializer(v, "data");
+    out = v;
+    break;
+  }
+  case 0x12: {
+    CryptoNote::SwapOutput v;
     serializer(v, "data");
     out = v;
     break;
@@ -187,9 +202,27 @@ void serialize(TransactionPrefix& txP, ISerializer& serializer) {
 
   serializer(txP.txType, "tx_type");
   serializer(txP.unlockHeight, "unlock_height");
-  serializer(txP.inputs, "vin");
-  serializer(txP.outputs, "vout");
-  serializeAsBinary(txP.extra, "extra", serializer);
+  if (txP.txType == TX_SWAP_FUND || txP.txType == TX_SWAP_SPEND) {
+    // Bound new-family counts before allocation; historical serializers stay byte-identical.
+    size_t count = txP.inputs.size();
+    if (!serializer.beginArray(count, "vin") || count == 0 ||
+        count > (txP.txType == TX_SWAP_FUND ? 8u : 1u)) throw std::runtime_error("swap input count");
+    txP.inputs.resize(count);
+    for (auto& input : txP.inputs) serializer(input, "");
+    serializer.endArray();
+    count = txP.outputs.size();
+    if (!serializer.beginArray(count, "vout") || count == 0 || count > 2) throw std::runtime_error("swap output count");
+    txP.outputs.resize(count);
+    for (auto& output : txP.outputs) serializer(output, "");
+    serializer.endArray();
+    // This profile has no tx_extra field, eliminating an unbounded auxiliary payload.
+    if (serializer.type() == ISerializer::INPUT) txP.extra.clear();
+    else if (!txP.extra.empty()) throw std::runtime_error("swap extra must be empty");
+  } else {
+    serializer(txP.inputs, "vin");
+    serializer(txP.outputs, "vout");
+    serializeAsBinary(txP.extra, "extra", serializer);
+  }
 }
 
 void serialize(Transaction& tx, ISerializer& serializer) {
@@ -198,7 +231,7 @@ void serialize(Transaction& tx, ISerializer& serializer) {
   // (analogous to CN's per-input ring-sig vectors).
   size_t pqCount = 0;
   for (const auto& in : tx.inputs)
-    if (in.type() == typeid(PqInput)) ++pqCount;
+    if (in.type() == typeid(PqInput) || in.type() == typeid(SwapInput)) ++pqCount;
   if (serializer.type() == ISerializer::OUTPUT) {
     for (auto& sig : tx.pqSignatures)
       serializer.binary(sig.data(), PQ_SIGNATURE_SIZE, "pq_sig");
@@ -252,6 +285,24 @@ void serialize(PqInput& key, ISerializer& serializer) {
   serializePqBlob(key.authPub,   PQ_AUTH_PUB_SIZE, "auth_pub",   serializer);
   serializePqBlob(key.rhoReveal, PQ_RHO_SIZE,      "rho_reveal", serializer);
   // Signature not here — it lives in Transaction.pqSignatures after the prefix.
+}
+
+void serialize(SwapInput& input, ISerializer& serializer) {
+  serializer(input.prevTxid, "prev_txid"); serializer(input.prevOutIndex, "prev_out_index");
+  serializer(input.branch, "branch");
+  if (input.branch != 1 && input.branch != 2) throw std::runtime_error("swap branch");
+  serializePqBlob(input.authPub, PQ_AUTH_PUB_SIZE, "auth_pub", serializer);
+  serializePqBlob(input.rhoReveal, PQ_RHO_SIZE, "rho_reveal", serializer);
+  if (input.branch == 1) serializePqBlob(input.secret, 32, "secret", serializer);
+  else if (serializer.type() == ISerializer::INPUT) input.secret.clear();
+  else if (!input.secret.empty()) throw std::runtime_error("refund must not carry a secret");
+}
+void serialize(SwapOutput& output, ISerializer& serializer) {
+  serializer(output.version, "version"); serializer(output.hashScheme, "hash_scheme");
+  serializer(output.authScheme, "auth_scheme"); serializer(output.amountScheme, "amount_scheme");
+  serializer(output.nonce, "nonce"); serializer(output.hashlock, "hashlock");
+  serializer(output.claimCommit, "claim_commit"); serializer(output.refundCommit, "refund_commit");
+  serializer(output.refundHeight, "refund_height");
 }
 
 void serialize(TransactionInputs & inputs, ISerializer & serializer) {

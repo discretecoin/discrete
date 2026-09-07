@@ -1,3 +1,4 @@
+#include "CryptoNoteCore/SwapValidation.h"
 // Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers, The Monero developers
 // Copyright (c) 2016-2026, The Karbo developers
 //
@@ -134,6 +135,11 @@ bool Blockchain::checkTransactionInputs(const CryptoNote::Transaction& tx, Block
 
 bool Blockchain::checkTransactionInputs(const CryptoNote::Transaction& tx, BlockInfo& maxUsedBlock, BlockInfo& lastFailed) {
   BlockInfo tail;
+  // New validity depends on both activation and refund/funding deadlines. Never reuse an old negative result.
+  if (isSwapTransaction(tx)) {
+    maxUsedBlock.clear(); lastFailed.clear();
+    return checkTransactionInputs(tx, maxUsedBlock.height, maxUsedBlock.id, &tail);
+  }
 
   if (maxUsedBlock.empty()) {
     if (!lastFailed.empty() && getCurrentBlockchainHeight() > lastFailed.height &&
@@ -1883,12 +1889,8 @@ bool Blockchain::checkTransactionInputs(const Transaction& tx, uint32_t& max_use
 
 bool Blockchain::haveTransactionKeyImagesAsSpent(const Transaction& tx) {
   for (const auto& in : tx.inputs) {
-    if (in.type() == typeid(PqInput)) {
-      const auto ki = pqInputNullifierAsKeyImage(boost::get<PqInput>(in));
-      if (have_spend_tag_as_spent(ki)) {
-        return true;
-      }
-    }
+    Crypto::KeyImage ki{};
+    if (transactionSpendTag(in, m_currency.genesisBlockHash(), ki) && have_spend_tag_as_spent(ki)) return true;
   }
   return false;
 }
@@ -1913,6 +1915,9 @@ bool Blockchain::checkTransactionInputs(const Transaction& tx, const Crypto::Has
       logger(INFO, BRIGHT_WHITE) << "Account already registered, rejecting tx " << getObjectHash(tx);
       return false;
     }
+    if (isSwapTransaction(tx)) {
+      return checkSwapInputs(tx, getCurrentBlockchainHeight(), pmax_used_block_height);
+    }
     if (tx.txType == TX_PQ) {
       return checkPqInputs(tx, pmax_used_block_height);
     } else if (tx.txType == TX_FREE_REG) {
@@ -1930,6 +1935,45 @@ bool Blockchain::checkTransactionInputs(const Transaction& tx, const Crypto::Has
   logger(ERROR, BRIGHT_RED) << "Non-PQ transaction version " << (int)tx.version
                              << " rejected in Discrete";
   return false;
+}
+
+std::vector<SwapResolvedInput> Blockchain::resolveSwapInputs(const Transaction& tx, uint32_t height, uint32_t* maxRef) {
+  std::vector<SwapResolvedInput> resolved;
+  if (maxRef) *maxRef = 0;
+  for (const auto& input : tx.inputs) {
+    SwapResolvedInput r;
+    Crypto::Hash id{}; uint32_t index = 0, block = 0; uint16_t slot = 0;
+    if (swapInputReference(input, id, index) && m_db.getTxIndex(id, block, slot) && block < height) {
+      try {
+        const auto entry = transactionByIndex(TransactionIndex{block, slot});
+        if (index < entry.tx.outputs.size()) {
+          const auto& output = entry.tx.outputs[index];
+          const bool ordinary = input.type() == typeid(PqInput) &&
+            (output.target.type() == typeid(PqOutput) || output.target.type() == typeid(CoinbaseOutput));
+          const bool conditional = input.type() == typeid(SwapInput) && output.target.type() == typeid(SwapOutput);
+          // Ordinary maturity matches the existing next-block rule (delta=1); conditional lock is separate.
+          if ((ordinary && is_tx_spendheight_unlocked(output.unlockHeight)) || (conditional && output.unlockHeight == 0)) {
+            r.exists = true; r.output = output;
+            if (maxRef && block > *maxRef) *maxRef = block;
+          }
+        }
+      } catch (const std::exception&) { }
+    }
+    resolved.push_back(std::move(r));
+  }
+  return resolved;
+}
+
+bool Blockchain::checkSwapInputs(const Transaction& tx, uint32_t height, uint32_t* maxRef) {
+  std::lock_guard<decltype(m_blockchain_lock)> lock(m_blockchain_lock);
+  if (!m_currency.swapsEnabledAt(height)) return false;
+  std::string error;
+  if (!checkSwapTransactionSemantic(tx, &error)) return false;
+  auto resolved = resolveSwapInputs(tx, height, maxRef);
+  std::vector<Crypto::KeyImage> tags;
+  if (!checkSwapTransactionInputs(tx, resolved, m_currency.genesisBlockHash(), height, &tags, nullptr, &error)) return false;
+  for (const auto& tag : tags) if (m_db.hasSpentKey(tag)) return false;
+  return true;
 }
 
 bool Blockchain::checkPqInputs(const Transaction& tx, uint32_t* pmax_used_block_height) {
@@ -2031,6 +2075,11 @@ uint64_t Blockchain::pqReferencedInputAmount(const Transaction& tx) {
 
 bool Blockchain::getPqTransactionFee(const Transaction& tx, uint64_t& fee) {
   std::lock_guard<decltype(m_blockchain_lock)> lk(m_blockchain_lock);
+  if (isSwapTransaction(tx)) {
+    std::string error;
+    return checkSwapTransactionSemantic(tx, &error) &&
+      swapResolvedFee(tx, resolveSwapInputs(tx, getCurrentBlockchainHeight(), nullptr), fee, &error);
+  }
   const uint64_t inAmount = pqReferencedInputAmount(tx);
   const uint64_t outAmount = getOutputAmount(tx);
   if (outAmount > inAmount) {
@@ -2565,7 +2614,7 @@ bool Blockchain::pushBlock(const Block& blockData, const std::vector<Transaction
       // TX_PQ inputs carry no amount (value lives in the referenced outputs), so
       // getInputAmount would read 0 and the fee would underflow. Resolve the
       // referenced amounts instead.
-      const bool pqOnlyInputs = curTx.version >= TRANSACTION_VERSION_1 && curTx.txType == TX_PQ;
+      const bool pqOnlyInputs = curTx.version >= TRANSACTION_VERSION_1 && (curTx.txType == TX_PQ || isSwapTransaction(curTx));
       uint64_t fee = 0;
       if (pqOnlyInputs) {
         if (!getPqTransactionFee(curTx, fee)) {
@@ -2786,16 +2835,17 @@ static Crypto::Hash pqInputNullifier(const PqInput& in) {
 // type-agnostic spent-key set: a KeyInput's key image, or a PqInput's nullifier
 // (reinterpreted as a key image — the two value spaces cannot collide). Returns
 // false for inputs that carry no spend tag (e.g. BaseInput).
-static bool spendImageForInput(const TransactionInput& in, Crypto::KeyImage& out) {
-  if (in.type() == typeid(PqInput)) {
-    out = pqInputNullifierAsKeyImage(boost::get<PqInput>(in));
-    return true;
-  }
-  return false;
+static bool spendImageForInput(const TransactionInput& in, Crypto::KeyImage& out, const Crypto::Hash& chain) {
+  return transactionSpendTag(in, chain, out);
 }
 
 bool Blockchain::pushTransaction(BlockEntry& block, const Crypto::Hash& transactionHash,
                                   TransactionIndex transactionIndex) {
+  const auto& candidate = block.transactions[transactionIndex.transaction].tx;
+  bool conditional = isSwapTransaction(candidate);
+  for (const auto& input : candidate.inputs) conditional |= input.type() == typeid(SwapInput);
+  for (const auto& output : candidate.outputs) conditional |= output.target.type() == typeid(SwapOutput);
+  if (conditional && !checkSwapInputs(candidate, block.height, nullptr)) return false;
   // Check for duplicate
   {
     uint32_t existBlock; uint16_t existSlot;
@@ -2813,7 +2863,7 @@ bool Blockchain::pushTransaction(BlockEntry& block, const Crypto::Hash& transact
   // intra-tx duplicate is caught because a put is visible to the next has-check.
   for (size_t i = 0; i < tx.inputs.size(); ++i) {
     Crypto::KeyImage img;
-    if (!spendImageForInput(tx.inputs[i], img)) {
+    if (!spendImageForInput(tx.inputs[i], img, m_currency.genesisBlockHash())) {
       continue;
     }
     if (m_db.hasSpentKey(img)) {
@@ -2821,7 +2871,7 @@ bool Blockchain::pushTransaction(BlockEntry& block, const Crypto::Hash& transact
       // Roll back images already written for this tx.
       for (size_t j = 0; j < i; ++j) {
         Crypto::KeyImage prev;
-        if (spendImageForInput(tx.inputs[j], prev)) {
+        if (spendImageForInput(tx.inputs[j], prev, m_currency.genesisBlockHash())) {
           m_db.removeSpentKey(prev);
         }
       }
@@ -2896,7 +2946,7 @@ void Blockchain::popTransaction(const Transaction& transaction,
   // (auth_pub, rho_reveal) pair may re-enter on the competing chain.
   for (const auto& input : transaction.inputs) {
     Crypto::KeyImage img;
-    if (spendImageForInput(input, img)) {
+    if (spendImageForInput(input, img, m_currency.genesisBlockHash())) {
       if (!m_db.removeSpentKey(img)) {
         logger(ERROR, BRIGHT_RED) << "Blockchain consistency broken - removeSpentKey failed";
       }
