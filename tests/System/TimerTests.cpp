@@ -278,3 +278,48 @@ TEST_F(TimerTests, timerWithZeroTimeIsYielding) {
   Timer(dispatcher).sleep(std::chrono::milliseconds(0));
   ASSERT_TRUE(done);
 }
+
+TEST_F(TimerTests, positiveFractionalSleepDoesNotReturnEarly) {
+  Timer timer(dispatcher);
+  for (const auto duration : {std::chrono::microseconds(1500), std::chrono::microseconds(2500)}) {
+    for (int attempt = 0; attempt < 8; ++attempt) {
+      const auto begin = std::chrono::steady_clock::now();
+      timer.sleep(duration);
+      const auto elapsed = std::chrono::steady_clock::now() - begin;
+      ASSERT_GE(elapsed, duration);
+    }
+  }
+}
+
+TEST_F(TimerTests, millisecondSleepDoesNotReturnEarlyAtFractionalStart) {
+  Timer timer(dispatcher);
+  for (int attempt = 0; attempt < 8; ++attempt) {
+    // Aim at a late millisecond phase where truncating the start loses time.
+    const auto phase = std::chrono::ceil<std::chrono::milliseconds>(std::chrono::steady_clock::now())
+      + std::chrono::microseconds(750);
+    while (std::chrono::steady_clock::now() < phase) {
+      std::this_thread::yield();
+    }
+    const auto begin = std::chrono::steady_clock::now();
+    timer.sleep(std::chrono::milliseconds(2));
+    const auto elapsed = std::chrono::steady_clock::now() - begin;
+    ASSERT_GE(elapsed, std::chrono::milliseconds(2));
+  }
+}
+
+TEST_F(TimerTests, positiveSubMillisecondSleepKeepsMinimumTick) {
+  Timer timer(dispatcher);
+  for (const auto duration : {std::chrono::nanoseconds(1), std::chrono::nanoseconds(999999)}) {
+    const auto begin = std::chrono::steady_clock::now();
+    timer.sleep(duration);
+    const auto elapsed = std::chrono::steady_clock::now() - begin;
+    ASSERT_GE(elapsed, std::chrono::milliseconds(1));
+  }
+}
+
+TEST_F(TimerTests, unrepresentablePositiveDeadlineIsRejectedBeforeScheduling) {
+  Timer timer(dispatcher);
+  ASSERT_THROW(timer.sleep(std::chrono::nanoseconds::max()), std::overflow_error);
+  // Rejection must leave the same timer/dispatcher usable, without a pending deadline.
+  ASSERT_NO_THROW(timer.sleep(std::chrono::milliseconds(1)));
+}
