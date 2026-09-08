@@ -1,0 +1,63 @@
+{
+  "scope": "Isolated, semantics-preserving Rust SBPFv3 candidate for the existing synthetic fixed-profile escrow; no Core or frozen-source edits, remote access or deployment by this subtask.",
+  "baseline": {
+    "directory": "../../swap-localnet-v04",
+    "source_sha256": "c64e6f25aa506565d553c5959c5fc3a7c27895c7b22ecffc643091d8c9bf2123",
+    "profile_sha256": "cc86c7703a1e7edf9b2ec7c1a8bbcaa60788f5f375b9292cef8207eb56666551",
+    "elf_sha256": "91004de413fa707ebd61d743cb01a2bfea80b0077fef3e15bc1f11bdb6100a89",
+    "elf_bytes": 9248,
+    "elf_flags": 0
+  },
+  "candidate": {
+    "source": "src/lib.rs",
+    "source_sha256": "6fa662506bd667f6e510aaa3ea9aea74edaadeebdc829bd82bcfc05325b60eea",
+    "elf": "solana_escrow.so",
+    "elf_sha256": "30c22daccdd194896ddec53543410b1163c27fea378a58942c018033820f50b7",
+    "elf_bytes": 32912,
+    "elf_flags": 3,
+    "named_undefined_symbols": 0,
+    "lock_sha256": "ecb88b8469a190be6c5587f4762eaef619f4e8bdaaa45171821f6ea4c41f2102",
+    "direct_dependency": "solana-program =3.0.0; default-features=false"
+  },
+  "tools": {
+    "provider": "Anza platform-tools 1.57",
+    "archive_url": "https://github.com/anza-xyz/platform-tools/releases/download/v1.57/platform-tools-windows-x86_64.tar.bz2",
+    "local_archive": "../../swap-integration-v03/external-tools/platform-tools-windows-x86_64.tar.bz2",
+    "archive_bytes": 582353576,
+    "archive_sha256": "792bc821f006e2b56aee31640110b449d5dc89f1305f16f24037465ab8cd7d5a",
+    "rust_commit": "ae660768afd467d131776918a1627e18920b230c",
+    "cargo_commit": "bbbd3a76017677319ff85d096a7c9bee9813c3db",
+    "target": "sbpfv3-solana-solana",
+    "wrapper_executed": false,
+    "compiler_target_spec": "rust-sbpfv3-target.json",
+    "exact_binary_and_library_hashes": "source-dependency-audit.json"
+  },
+  "original_build": {
+    "working_directory": "C:/ChatGPT-Knowledge-Migration/knowledge-base/projects/discrete-core/evidence/swap-vps-v05/sbf-v3",
+    "executable": "C:/ChatGPT-Knowledge-Migration/knowledge-base/projects/discrete-core/evidence/swap-integration-v03/external-tools/platform-tools/rust/bin/cargo.exe",
+    "arguments": ["build", "--offline", "--locked", "--target", "sbpfv3-solana-solana", "--release"],
+    "explicit_environment": {
+      "CARGO_HOME": "C:/ChatGPT-Knowledge-Migration/knowledge-base/projects/discrete-core/evidence/swap-vps-v05/sbf-v3/cargo-home",
+      "RUSTC": "C:/ChatGPT-Knowledge-Migration/knowledge-base/projects/discrete-core/evidence/swap-integration-v03/external-tools/platform-tools/rust/bin/rustc.exe"
+    },
+    "log": "build-dev02.log",
+    "copy_source": "target/sbpfv3-solana-solana/release/xds_swap_sbpfv3.so",
+    "copy_destination": "solana_escrow.so",
+    "post_link_patching": false
+  },
+  "reproduction": {
+    "matching_fresh_target_run": "target-repro-02/result.json",
+    "retained_nonmatching_run": "target-repro-01/result.json",
+    "comparison": "repro-comparison.json",
+    "bound": "Whole ELF identity demonstrated on the same host with the same source/cache path spelling, toolchain and lock. Backslash-normalized CARGO_HOME changes embedded panic paths and rodata references. Cross-host and path-independent reproducibility are not qualified."
+  },
+  "tests": {
+    "unchanged_vm_test_sha256": "48187e48a95a1a94f92ba99e4ea6e3755289e0592c8d94d874c4d4d861892c54",
+    "original": {"log": "vm-original13.log", "methods": 13, "passed": 13},
+    "differential": {"log": "vm-differential-dev01.log", "methods": 4, "passed": 4, "fresh_paired_fixture_scenarios": 24},
+    "dependency_identity": {"log": "source-dependency-audit.json", "archives_checked": 158, "unpacked_files_checked": 3872, "failures": 0},
+    "runtime": "In-process solders 0.29.0 LiteSVM with actual compiled program and SPL Token CPI; synthetic mint and keys only."
+  },
+  "unchanged_interface": ["program ID", "synthetic mint ID", "ten account positions", "49/33/1-byte instruction wire", "192-byte state", "PDA seed", "error ordering", "claim after deadline", "tombstone states", "TransferChecked amount and decimals"],
+  "unqualified_here": ["Agave 4.2.2 native deployment/finalization and immutable readback", "six real-RPC cases for this ELF", "two paired XDS/Solana cases for this ELF", "real USDC", "mainnet activation", "independent rebuild on another host", "formal equivalence or exhaustive dependency security review"]
+}

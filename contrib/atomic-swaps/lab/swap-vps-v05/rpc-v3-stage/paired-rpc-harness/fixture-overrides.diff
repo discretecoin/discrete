@@ -1,0 +1,84 @@
+--- frozen-4613ff1-Fixture-methods
++++ paired-PairFixture-methods
+@@ -1,39 +1,52 @@
+-    def __init__(self, payer, relayer):
+-        self.payer, self.relayer = payer, relayer
+-        for name in ("state", "vault", "source", "claim", "refund"):
+-            setattr(self, name, Keypair())
+-        self.authority, self.bump = Pubkey.find_program_address([b"xds-swap-v1", bytes(self.state.pubkey())], PID)
+-        self.deadline = None
++    def __init__(self, bob, alice, hashlock):
++        sol.check(type(hashlock) is bytes and len(hashlock) == 32, "hashlock must be exactly 32 bytes")
++        sol.check(bob.pubkey() != alice.pubkey(), "Solana owners must be distinct")
++        super().__init__(bob, alice)
++        self.hashlock = hashlock
+ 
+-    def ix(self, op, secret=SECRET):
+-        data = b"\0" + u64(AMOUNT) + u64(self.deadline) + hashlib.sha256(SECRET).digest() if op == 0 else b"\x01" + secret if op == 1 else b"\x02"
+-        return Instruction(PID, data, [Meta(k, op == 0 and i in (0, 6), i in (0, 1, 3, 4, 5)) for i, k in enumerate(self.keys())])
++    def ix(self, op, public_preimage=None):
++        sol.check(type(op) is int and op in (0, 1, 2), "unknown escrow instruction")
++        if op == 0:
++            sol.check(public_preimage is None, "funding takes a hashlock only")
++            data = b"\0" + sol.u64(sol.AMOUNT) + sol.u64(self.deadline) + self.hashlock
++        elif op == 1:
++            sol.check(type(public_preimage) is bytes and len(public_preimage) == 32
++                      and hashlib.sha256(public_preimage).digest() == self.hashlock,
++                      "claim requires an explicit matching public preimage")
++            data = b"\1" + public_preimage
++        else:
++            sol.check(public_preimage is None, "refund takes no preimage")
++            data = b"\2"
++        return sol.Instruction(sol.PID, data, [sol.Meta(k, op == 0 and i in (0, 6), i in (0, 1, 3, 4, 5))
++                                             for i, k in enumerate(self.keys())])
+ 
+     def snapshot(self, rpc, min_slot=None):
+-        names = ("state", "vault", "source", "claim", "refund")
+-        result = rpc.call("getMultipleAccounts", [[str(getattr(self, n).pubkey()) for n in names],
+-                                                   {**rpc.config(min_slot), "encoding": "base64"}])
+-        values = dict(zip(names, result["value"]))
+-        state = account_bytes(values["state"])
+-        check(values["state"]["owner"] == str(PID) and not values["state"]["executable"] and len(state) == 192, "state layout changed")
+-        out = {"state_hex": state.hex(), "balances": {}}
+-        owners = {"vault": self.authority, "source": self.payer.pubkey(), "claim": self.relayer.pubkey(), "refund": self.payer.pubkey()}
+-        for name, owner in owners.items():
+-            account, data = values[name], account_bytes(values[name])
+-            check(account["owner"] == str(TOKEN) and not account["executable"] and len(data) == 165 and data[:32] == bytes(MINT)
+-                  and data[32:64] == bytes(owner) and data[108] == 1 and not any(data[109:113]), "token account binding changed")
+-            check(not any(data[72:76]) and not any(data[129:133]), "unexpected token delegate/close authority")
+-            out["balances"][name] = struct.unpack_from("<Q", data, 64)[0]
+-        return out
++        class Capture:
++            def __init__(self):
++                self.context = None
++            def config(self, slot=None):
++                return rpc.config(slot)
++            def call(self, method, params):
++                sol.check(method == "getMultipleAccounts" and self.context is None, "unexpected snapshot call")
++                result = rpc.call(method, params)
++                self.context = result["context"]["slot"]
++                return result
++        capture = Capture()
++        out = super().snapshot(capture, min_slot)
++        sol.check(type(capture.context) is int and capture.context >= (min_slot or 0), "snapshot context below receipt")
++        return {**out, "context_slot": capture.context, "commitment": rpc.commitment}
+ 
+     def expect(self, snap, status, vault, source, claim, refund):
++        # Byte-for-byte frozen Fixture.expect layout; only the global hash is replaced.
+         expected = bytearray(192)
+         if status:
+             expected[:8] = b"XDSV0001"
+             expected[8:10] = bytes([status, self.bump])
+-            expected[16:24], expected[24:32] = u64(AMOUNT), u64(self.deadline)
+-            expected[32:64] = hashlib.sha256(SECRET).digest()
+-            for offset, key in ((64, self.vault.pubkey()), (96, MINT), (128, self.claim.pubkey()), (160, self.refund.pubkey())):
++            expected[16:24], expected[24:32] = sol.u64(sol.AMOUNT), sol.u64(self.deadline)
++            expected[32:64] = self.hashlock
++            for offset, key in ((64, self.vault.pubkey()), (96, sol.MINT),
++                                (128, self.claim.pubkey()), (160, self.refund.pubkey())):
+                 expected[offset:offset + 32] = bytes(key)
+-        check(snap["state_hex"] == expected.hex(), "state bytes differ from immutable terms/tombstone")
+-        check(snap["balances"] == {"vault": vault, "source": source, "claim": claim, "refund": refund}, "exact token accounting mismatch")
++        sol.check(snap["state_hex"] == expected.hex(), "foreign state differs from required immutable terms/status")
++        sol.check(snap["balances"] == {"vault": vault, "source": source, "claim": claim, "refund": refund},
++                  "foreign exact token accounting mismatch")

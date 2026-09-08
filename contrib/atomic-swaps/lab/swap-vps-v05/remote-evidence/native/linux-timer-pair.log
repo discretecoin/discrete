@@ -1,0 +1,9 @@
+test_xds_bitcoin_abandonment_returns_both_owners (test_cross_chain.CrossChain.test_xds_bitcoin_abandonment_returns_both_owners) ... ok
+test_xds_bitcoin_success_preimage_observed_from_mined_xds_claim (test_cross_chain.CrossChain.test_xds_bitcoin_success_preimage_observed_from_mined_xds_claim) ... ok
+test_xds_solana_token_abandonment_returns_both_owners (test_cross_chain.CrossChain.test_xds_solana_token_abandonment_returns_both_owners) ... ok
+test_xds_solana_token_success_uses_observed_xds_preimage (test_cross_chain.CrossChain.test_xds_solana_token_success_uses_observed_xds_preimage) ... ok
+
+----------------------------------------------------------------------
+Ran 4 tests in 2.761s
+
+OK

@@ -1,0 +1,23 @@
+{"intent": "00-create-mint", "txid": "2YZAwxYgpheh6LYkeSGxzKT8xbmP7gP3BeprpZ6Ke2B8vNDXD4r7hnuQSyTGsCJpAriVmX71i6g1evLsxBfQk6Qq", "receipt": "finalized", "slot": 637}
+{"intent": "01-fund-relayer", "txid": "3a6X5quPuGgSgvitaMD5iqUyygLoAsQ2afYY49sw7YW5Ev9rsNgtzbTSBBunqrekdrF7puAQ4PxXdpbLawvUrCm8", "receipt": "finalized", "slot": 669}
+{"intent": "10-accounts", "txid": "62FKRdhq4ETfTDXMpPYkUesEe76YYJhak14Qarfzaj8e8WNh2cHmoV8wowWT13cdgk4o63kaRPypzhu21diPZTLP", "receipt": "finalized", "slot": 701}
+{"intent": "11-accounts", "txid": "66KbmRVfbx2bxx178feYNX5iQ46Apc1CyTC15FjNTRqKcfSBwo2YGYDWkahmUqhqeRHXBdgBb1VeUNBbBVNx2q7u", "receipt": "finalized", "slot": 733}
+{"intent": "12-mint-source", "txid": "5y526wuYtF54Lwi7hdrKr2k15D2Wd6txvJDw2SQWiSiuFoZrmBGpbzjjUute8QGYVZSzqu4DjM4xL6tymZFzYwnW", "receipt": "finalized", "slot": 765}
+{"intent": "13-fund-claim-escrow", "txid": "b3hsbKTP7xrVHBY3oVFCrSNsWxohDKJS2hphPgMyQSJ3ikETBMVsJBR4gP2cj5fCoyy8otitX7AgHwNWEeXsWLF", "receipt": "finalized", "slot": 797}
+{"case": "01-fund", "status": "PASS"}
+{"intent": "14-wrong-secret", "txid": "5K6Jv9c7n8xJcN8My7rSY5ev5VeiDohgjhjmgmMqnodWac1Wf5ZnyFoSrEHiN5ZcPTtwuV9DLvFHnagBTMdyTiUW", "receipt": "finalized", "slot": 830}
+{"case": "02-wrong-secret-rejection", "status": "PASS"}
+{"intent": "15-claim", "txid": "5TXpxgoKXJjRmPXWbYFEUwwW3Z1CdgVTVMJmsHCoUpQ62zAsyyTSUdKAKuSckTNePPAs25GZoubCYmtdCQfCggSM", "receipt": "finalized", "slot": 863}
+{"case": "03-claim-and-identical-duplicate", "status": "PASS"}
+{"intent": "16-next-transfer-after-claim", "txid": "2Bz7EZCweF1PqdpS3h7Qkpc9kEL8uPA2TVdL5javKMQtULYoscjeZkdtLmoSfrF5PCYeLmP3MCpHtwJYim4Hb6k", "receipt": "finalized", "slot": 898}
+{"case": "04-next-transfer-after-claim", "status": "PASS"}
+{"intent": "20-accounts", "txid": "2PoqeMwkKoq1U3cADyYopP2abgKszdyierESadzv2MDmgFHSuWpRLPwCGRuVBwqEsi3sb5nJM74QCGKtWgp2cHRr", "receipt": "finalized", "slot": 930}
+{"intent": "21-accounts", "txid": "T3SHpURmWtx7jKsdujb33ypFfGfwkd7QhcVmfNv1MCrT6nSG4rdaZkWEQepN2qH4fF5rcWBtsHLKnaHBsEBJ25E", "receipt": "finalized", "slot": 962}
+{"intent": "22-mint-source", "txid": "2GWG76riHN9hUTUAKv5AHXgzEz57rkuvwaRR2PvhQAmNh71QWgBw3pu7RW5f6a5knhRP1e3E63qRcp8wTUbtBsZ3", "receipt": "finalized", "slot": 994}
+{"intent": "23-fund-refund-escrow", "txid": "2tohw6yenbHNusFuxHvxk6wpNwaV4nPJmfVHX4AKsdcVjknQkQuZj4hE4stZVaj8TnnmfFpyjD5USFizKeCpwG2u", "receipt": "finalized", "slot": 1026}
+{"intent": "24-early-refund", "txid": "5PGSWKMNayjqsVZcRGPx5spWEU4GUoQHM7rJiHW5YYzz6xxc7dF6dDKi3kV8J5jeGdenzikQxJ84SdjzVafQb5Wj", "receipt": "finalized", "slot": 1058}
+{"case": "05-early-refund-rejection", "status": "PASS"}
+{"intent": "25-refund-after-deadline", "txid": "346vpWnFo3cDWHaXTC8bK5tVUGv46DzBtoHdjQ9FmdiMqruuB9mFJc4Qq7dFM4J4NZRGuvHFxt32dB4BqQ2eQprJ", "receipt": "finalized", "slot": 1186}
+{"intent": "26-next-transfer-after-refund", "txid": "5Y8MGXbpur9Je2Ndyz4AoujbenmhHTXYv5KK4PdqcFWE3jKrycBSk27PFBTssRMBCWLwdCNbNyz3kv4KRj9riQfu", "receipt": "finalized", "slot": 1218}
+{"case": "06-refund-and-next-transfer", "status": "PASS"}
+{"status": "PASS", "cases": 6, "genesis": "H6SXasBhyzMhf5qCmcXwRUGU4UQGzS9Jc5zEjXKxtpxe"}

@@ -1,0 +1,861 @@
+{
+  "schema": 1,
+  "started_utc": "2026-09-08T05:39:00.116177+00:00",
+  "command": [
+    "/var/lib/discrete-swap-lab/venv/bin/python",
+    "-B",
+    "-u",
+    "/var/lib/discrete-swap-lab/rpc-v3-stage/solana-rpc-harness/driver.py",
+    "--endpoint",
+    "http://127.0.0.1:8899",
+    "--expected-genesis",
+    "H6SXasBhyzMhf5qCmcXwRUGU4UQGzS9Jc5zEjXKxtpxe",
+    "--payer-keypair",
+    "/var/lib/discrete-swap-lab/payer.json",
+    "--run-dir",
+    "/var/lib/discrete-swap-lab/escrow-rpc-v3-run01",
+    "--commitment",
+    "finalized"
+  ],
+  "before": {
+    "driver.py": "1d866b3887dfaf0eff56cad2285ff87e8fe29fbecfe8d287e40e2c131ecec6a3",
+    "README.md": "804f48fc73f9f0aac27eeabe831339099923d5d520a7840d98f61b59021d95c8",
+    "requirements.txt": "5662e2cc75609ec896467d4e93309530c879d37b13b48b579fefeb5fb0c16615",
+    "test_guards.py": "5877efa5ef29fe0eb972149fde53b0d6b74d97c6a9ff4f333e660b57a304bcc1",
+    "test-manifest.json": "8e3c3125105cbb337cde2b90d8a48cffc300b31a59d3cb556b478a60226d72a3",
+    "package-hashes.json": "e7bb57d8091aa58aedc2cbcb221bba9faed86f693eb462273ab41f1ea3325140",
+    "runner": "0d2c551b0b8a2a918586dc1f8f52d81c89cec9866f4451905febdfee4833c400",
+    "validator_binary": "d723f3a99fa3f5b3df6841fc04ac0d8b5302837689d43a07222aa2125b6713d1",
+    "sbf_file": "30c22daccdd194896ddec53543410b1163c27fea378a58942c018033820f50b7"
+  },
+  "samples": [
+    {
+      "utc": "2026-09-08T05:39:00.160426+00:00",
+      "monotonic": 11979.987116356,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "558022656",
+      "memory.peak": "641892352",
+      "memory.swap.current": "515907584",
+      "memory.events": "low 0\nhigh 15867\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=0.18 avg60=0.07 avg300=0.01 total=9344300\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=5047266",
+      "cpu.stat": "usage_usec 1617090162\nuser_usec 1554321853\nsystem_usec 62768309"
+    },
+    {
+      "utc": "2026-09-08T05:39:05.161084+00:00",
+      "monotonic": 11984.987788729,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "586555392",
+      "memory.peak": "641892352",
+      "memory.swap.current": "515907584",
+      "memory.events": "low 0\nhigh 15867\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=1.80 avg60=0.49 avg300=0.10 total=9368206\nfull avg10=0.60 avg60=0.15 avg300=0.03 total=5048645",
+      "cpu.stat": "usage_usec 1622082597\nuser_usec 1559106404\nsystem_usec 62976193"
+    },
+    {
+      "utc": "2026-09-08T05:39:10.162108+00:00",
+      "monotonic": 11989.988810354,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "603787264",
+      "memory.peak": "641892352",
+      "memory.swap.current": "515907584",
+      "memory.events": "low 0\nhigh 15867\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=1.20 avg60=0.46 avg300=0.10 total=9370297\nfull avg10=0.40 avg60=0.14 avg300=0.03 total=5048690",
+      "cpu.stat": "usage_usec 1627062890\nuser_usec 1563910490\nsystem_usec 63152399"
+    },
+    {
+      "utc": "2026-09-08T05:39:15.162590+00:00",
+      "monotonic": 11994.989291891,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "623882240",
+      "memory.peak": "641892352",
+      "memory.swap.current": "515907584",
+      "memory.events": "low 0\nhigh 15867\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=0.66 avg60=0.41 avg300=0.09 total=9371105\nfull avg10=0.22 avg60=0.12 avg300=0.03 total=5048739",
+      "cpu.stat": "usage_usec 1632055119\nuser_usec 1568682757\nsystem_usec 63372361"
+    },
+    {
+      "utc": "2026-09-08T05:39:20.163409+00:00",
+      "monotonic": 11999.990110031,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "628850688",
+      "memory.peak": "641892352",
+      "memory.swap.current": "515973120",
+      "memory.events": "low 0\nhigh 15901\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=0.44 avg60=0.39 avg300=0.09 total=9379856\nfull avg10=0.14 avg60=0.11 avg300=0.02 total=5054422",
+      "cpu.stat": "usage_usec 1637047189\nuser_usec 1573530948\nsystem_usec 63516241"
+    },
+    {
+      "utc": "2026-09-08T05:39:25.164110+00:00",
+      "monotonic": 12004.990811793,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "628862976",
+      "memory.peak": "641892352",
+      "memory.swap.current": "508420096",
+      "memory.events": "low 0\nhigh 16167\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=1.13 avg60=0.54 avg300=0.13 total=9523399\nfull avg10=0.82 avg60=0.26 avg300=0.06 total=5175051",
+      "cpu.stat": "usage_usec 1642035637\nuser_usec 1578156005\nsystem_usec 63879631"
+    },
+    {
+      "utc": "2026-09-08T05:39:30.165542+00:00",
+      "monotonic": 12009.99224371,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "629141504",
+      "memory.peak": "641892352",
+      "memory.swap.current": "523636736",
+      "memory.events": "low 0\nhigh 16225\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=0.75 avg60=0.50 avg300=0.13 total=9603035\nfull avg10=0.55 avg60=0.24 avg300=0.06 total=5201886",
+      "cpu.stat": "usage_usec 1646947256\nuser_usec 1582856141\nsystem_usec 64091114"
+    },
+    {
+      "utc": "2026-09-08T05:39:35.166015+00:00",
+      "monotonic": 12014.992711935,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "629010432",
+      "memory.peak": "641892352",
+      "memory.swap.current": "535703552",
+      "memory.events": "low 0\nhigh 16275\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=0.78 avg60=0.55 avg300=0.15 total=9638822\nfull avg10=0.30 avg60=0.22 avg300=0.06 total=5222096",
+      "cpu.stat": "usage_usec 1651938523\nuser_usec 1587607313\nsystem_usec 64331209"
+    },
+    {
+      "utc": "2026-09-08T05:39:40.166426+00:00",
+      "monotonic": 12019.993118232,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "628908032",
+      "memory.peak": "641892352",
+      "memory.swap.current": "552423424",
+      "memory.events": "low 0\nhigh 16322\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=0.70 avg60=0.54 avg300=0.15 total=9681482\nfull avg10=0.20 avg60=0.20 avg300=0.05 total=5245391",
+      "cpu.stat": "usage_usec 1656930146\nuser_usec 1592375017\nsystem_usec 64555128"
+    },
+    {
+      "utc": "2026-09-08T05:39:45.166834+00:00",
+      "monotonic": 12024.993534411,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "628752384",
+      "memory.peak": "641892352",
+      "memory.swap.current": "568623104",
+      "memory.events": "low 0\nhigh 16373\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=0.68 avg60=0.55 avg300=0.16 total=9734405\nfull avg10=0.11 avg60=0.18 avg300=0.05 total=5269832",
+      "cpu.stat": "usage_usec 1661916266\nuser_usec 1597165562\nsystem_usec 64750704"
+    },
+    {
+      "utc": "2026-09-08T05:39:50.167751+00:00",
+      "monotonic": 12029.994451565,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "628617216",
+      "memory.peak": "641892352",
+      "memory.swap.current": "569794560",
+      "memory.events": "low 0\nhigh 16382\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=0.45 avg60=0.52 avg300=0.16 total=9739706\nfull avg10=0.07 avg60=0.17 avg300=0.05 total=5273057",
+      "cpu.stat": "usage_usec 1666908528\nuser_usec 1602021754\nsystem_usec 64886773"
+    },
+    {
+      "utc": "2026-09-08T05:39:55.168234+00:00",
+      "monotonic": 12034.994935189,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "629026816",
+      "memory.peak": "641892352",
+      "memory.swap.current": "573534208",
+      "memory.events": "low 0\nhigh 16431\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=0.25 avg60=0.47 avg300=0.15 total=9767428\nfull avg10=0.03 avg60=0.15 avg300=0.05 total=5283219",
+      "cpu.stat": "usage_usec 1671824001\nuser_usec 1606744929\nsystem_usec 65079071"
+    },
+    {
+      "utc": "2026-09-08T05:40:00.169304+00:00",
+      "monotonic": 12039.996017979,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "629006336",
+      "memory.peak": "641892352",
+      "memory.swap.current": "583360512",
+      "memory.events": "low 0\nhigh 16475\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=0.16 avg60=0.44 avg300=0.15 total=9796192\nfull avg10=0.02 avg60=0.14 avg300=0.05 total=5299803",
+      "cpu.stat": "usage_usec 1676815470\nuser_usec 1611560712\nsystem_usec 65254758"
+    },
+    {
+      "utc": "2026-09-08T05:40:05.169777+00:00",
+      "monotonic": 12044.996478406,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "628912128",
+      "memory.peak": "641892352",
+      "memory.swap.current": "594522112",
+      "memory.events": "low 0\nhigh 16526\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=0.09 avg60=0.39 avg300=0.15 total=9830321\nfull avg10=0.01 avg60=0.13 avg300=0.05 total=5318792",
+      "cpu.stat": "usage_usec 1681806253\nuser_usec 1616411345\nsystem_usec 65394908"
+    },
+    {
+      "utc": "2026-09-08T05:40:10.170718+00:00",
+      "monotonic": 12049.997419429,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "628903936",
+      "memory.peak": "641892352",
+      "memory.swap.current": "601206784",
+      "memory.events": "low 0\nhigh 16569\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=0.06 avg60=0.37 avg300=0.14 total=9853106\nfull avg10=0.00 avg60=0.12 avg300=0.05 total=5331698",
+      "cpu.stat": "usage_usec 1686797863\nuser_usec 1621223266\nsystem_usec 65574596"
+    },
+    {
+      "utc": "2026-09-08T05:40:15.172772+00:00",
+      "monotonic": 12054.999474461,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "628981760",
+      "memory.peak": "641892352",
+      "memory.swap.current": "611205120",
+      "memory.events": "low 0\nhigh 16620\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=0.03 avg60=0.33 avg300=0.14 total=9882225\nfull avg10=0.00 avg60=0.11 avg300=0.05 total=5349223",
+      "cpu.stat": "usage_usec 1691781296\nuser_usec 1626035018\nsystem_usec 65746278"
+    },
+    {
+      "utc": "2026-09-08T05:40:20.173704+00:00",
+      "monotonic": 12060.000406989,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "628969472",
+      "memory.peak": "641892352",
+      "memory.swap.current": "623665152",
+      "memory.events": "low 0\nhigh 16662\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=0.02 avg60=0.31 avg300=0.14 total=9914097\nfull avg10=0.00 avg60=0.10 avg300=0.04 total=5367428",
+      "cpu.stat": "usage_usec 1696773238\nuser_usec 1630815129\nsystem_usec 65958108"
+    },
+    {
+      "utc": "2026-09-08T05:40:25.174127+00:00",
+      "monotonic": 12065.000828015,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "628629504",
+      "memory.peak": "641892352",
+      "memory.swap.current": "727429120",
+      "memory.events": "low 0\nhigh 17059\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=1.09 avg60=0.48 avg300=0.17 total=10142984\nfull avg10=0.90 avg60=0.25 avg300=0.08 total=5531487",
+      "cpu.stat": "usage_usec 1701744365\nuser_usec 1635179161\nsystem_usec 66565203"
+    },
+    {
+      "utc": "2026-09-08T05:40:30.174661+00:00",
+      "monotonic": 12070.001361684,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "628932608",
+      "memory.peak": "641892352",
+      "memory.swap.current": "830693376",
+      "memory.events": "low 0\nhigh 17838\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=4.18 avg60=1.12 avg300=0.32 total=10650088\nfull avg10=2.73 avg60=0.65 avg300=0.17 total=5858686",
+      "cpu.stat": "usage_usec 1706687414\nuser_usec 1639175799\nsystem_usec 67511614"
+    },
+    {
+      "utc": "2026-09-08T05:40:35.175547+00:00",
+      "monotonic": 12075.002242636,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "587399168",
+      "memory.peak": "641892352",
+      "memory.swap.current": "777453568",
+      "memory.events": "low 0\nhigh 18500\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=5.03 avg60=1.61 avg300=0.44 total=10960962\nfull avg10=3.36 avg60=1.00 avg300=0.25 total=6060303",
+      "cpu.stat": "usage_usec 1711629970\nuser_usec 1643260043\nsystem_usec 68369927"
+    },
+    {
+      "utc": "2026-09-08T05:40:40.175990+00:00",
+      "monotonic": 12080.00269174,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "525619200",
+      "memory.peak": "641892352",
+      "memory.swap.current": "703287296",
+      "memory.events": "low 0\nhigh 18776\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=3.99 avg60=1.64 avg300=0.46 total=11037610\nfull avg10=2.55 avg60=1.00 avg300=0.26 total=6107222",
+      "cpu.stat": "usage_usec 1716588341\nuser_usec 1647662200\nsystem_usec 68926141"
+    },
+    {
+      "utc": "2026-09-08T05:40:45.176538+00:00",
+      "monotonic": 12085.003240704,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "365965312",
+      "memory.peak": "641892352",
+      "memory.swap.current": "578244608",
+      "memory.events": "low 0\nhigh 18776\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=2.19 avg60=1.48 avg300=0.45 total=11043224\nfull avg10=1.40 avg60=0.90 avg300=0.26 total=6107424",
+      "cpu.stat": "usage_usec 1721582912\nuser_usec 1652472828\nsystem_usec 69110083"
+    },
+    {
+      "utc": "2026-09-08T05:40:50.177667+00:00",
+      "monotonic": 12090.004368355,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "353247232",
+      "memory.peak": "641892352",
+      "memory.swap.current": "551505920",
+      "memory.events": "low 0\nhigh 18776\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=1.47 avg60=1.38 avg300=0.44 total=11043224\nfull avg10=0.93 avg60=0.84 avg300=0.25 total=6107424",
+      "cpu.stat": "usage_usec 1726476030\nuser_usec 1657210812\nsystem_usec 69265218"
+    },
+    {
+      "utc": "2026-09-08T05:40:55.178507+00:00",
+      "monotonic": 12095.005208136,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "372547584",
+      "memory.peak": "641892352",
+      "memory.swap.current": "550981632",
+      "memory.events": "low 0\nhigh 18776\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=0.80 avg60=1.25 avg300=0.43 total=11043224\nfull avg10=0.51 avg60=0.76 avg300=0.25 total=6107424",
+      "cpu.stat": "usage_usec 1731468937\nuser_usec 1662003833\nsystem_usec 69465104"
+    },
+    {
+      "utc": "2026-09-08T05:41:00.178952+00:00",
+      "monotonic": 12100.005666547,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "390725632",
+      "memory.peak": "641892352",
+      "memory.swap.current": "550719488",
+      "memory.events": "low 0\nhigh 18776\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=0.54 avg60=1.17 avg300=0.43 total=11043224\nfull avg10=0.34 avg60=0.71 avg300=0.24 total=6107424",
+      "cpu.stat": "usage_usec 1736462297\nuser_usec 1666793433\nsystem_usec 69668864"
+    },
+    {
+      "utc": "2026-09-08T05:41:05.180304+00:00",
+      "monotonic": 12105.007006554,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "409038848",
+      "memory.peak": "641892352",
+      "memory.swap.current": "549670912",
+      "memory.events": "low 0\nhigh 18776\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=0.29 avg60=1.06 avg300=0.42 total=11043224\nfull avg10=0.18 avg60=0.64 avg300=0.24 total=6107424",
+      "cpu.stat": "usage_usec 1741449170\nuser_usec 1671580497\nsystem_usec 69868673"
+    },
+    {
+      "utc": "2026-09-08T05:41:10.181072+00:00",
+      "monotonic": 12110.00777335,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "434872320",
+      "memory.peak": "641892352",
+      "memory.swap.current": "548884480",
+      "memory.events": "low 0\nhigh 18776\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=0.19 avg60=0.99 avg300=0.41 total=11043934\nfull avg10=0.12 avg60=0.60 avg300=0.23 total=6107429",
+      "cpu.stat": "usage_usec 1746442891\nuser_usec 1676366482\nsystem_usec 70076409"
+    },
+    {
+      "utc": "2026-09-08T05:41:15.182031+00:00",
+      "monotonic": 12115.008735659,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "443998208",
+      "memory.peak": "641892352",
+      "memory.swap.current": "547311616",
+      "memory.events": "low 0\nhigh 18776\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=0.10 avg60=0.89 avg300=0.40 total=11043934\nfull avg10=0.06 avg60=0.54 avg300=0.23 total=6107429",
+      "cpu.stat": "usage_usec 1751437315\nuser_usec 1681173111\nsystem_usec 70264203"
+    },
+    {
+      "utc": "2026-09-08T05:41:20.182482+00:00",
+      "monotonic": 12120.009182396,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "453382144",
+      "memory.peak": "641892352",
+      "memory.swap.current": "545476608",
+      "memory.events": "low 0\nhigh 18776\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=0.07 avg60=0.83 avg300=0.40 total=11043934\nfull avg10=0.04 avg60=0.51 avg300=0.22 total=6107429",
+      "cpu.stat": "usage_usec 1756431887\nuser_usec 1686023676\nsystem_usec 70408211"
+    },
+    {
+      "utc": "2026-09-08T05:41:25.182871+00:00",
+      "monotonic": 12125.009571147,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "473497600",
+      "memory.peak": "641892352",
+      "memory.swap.current": "545476608",
+      "memory.events": "low 0\nhigh 18776\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=0.03 avg60=0.75 avg300=0.39 total=11043934\nfull avg10=0.02 avg60=0.46 avg300=0.22 total=6107429",
+      "cpu.stat": "usage_usec 1761423126\nuser_usec 1690883026\nsystem_usec 70540099"
+    },
+    {
+      "utc": "2026-09-08T05:41:30.183626+00:00",
+      "monotonic": 12130.010325999,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "491442176",
+      "memory.peak": "641892352",
+      "memory.swap.current": "545214464",
+      "memory.events": "low 0\nhigh 18776\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=0.02 avg60=0.70 avg300=0.38 total=11043934\nfull avg10=0.01 avg60=0.43 avg300=0.21 total=6107429",
+      "cpu.stat": "usage_usec 1766410813\nuser_usec 1695722509\nsystem_usec 70688304"
+    },
+    {
+      "utc": "2026-09-08T05:41:35.184662+00:00",
+      "monotonic": 12135.011362637,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "511184896",
+      "memory.peak": "641892352",
+      "memory.swap.current": "544952320",
+      "memory.events": "low 0\nhigh 18776\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=0.01 avg60=0.64 avg300=0.37 total=11043934\nfull avg10=0.00 avg60=0.39 avg300=0.21 total=6107429",
+      "cpu.stat": "usage_usec 1771405480\nuser_usec 1700545192\nsystem_usec 70860288"
+    },
+    {
+      "utc": "2026-09-08T05:41:40.185120+00:00",
+      "monotonic": 12140.011821252,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "530333696",
+      "memory.peak": "641892352",
+      "memory.swap.current": "544165888",
+      "memory.events": "low 0\nhigh 18776\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=0.00 avg60=0.60 avg300=0.37 total=11043934\nfull avg10=0.00 avg60=0.36 avg300=0.20 total=6107429",
+      "cpu.stat": "usage_usec 1776400124\nuser_usec 1705360180\nsystem_usec 71039944"
+    },
+    {
+      "utc": "2026-09-08T05:41:45.185726+00:00",
+      "monotonic": 12145.01242309,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "549392384",
+      "memory.peak": "641892352",
+      "memory.swap.current": "544165888",
+      "memory.events": "low 0\nhigh 18776\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=0.00 avg60=0.54 avg300=0.36 total=11043934\nfull avg10=0.00 avg60=0.32 avg300=0.20 total=6107429",
+      "cpu.stat": "usage_usec 1781393218\nuser_usec 1710221319\nsystem_usec 71171899"
+    },
+    {
+      "utc": "2026-09-08T05:41:50.186139+00:00",
+      "monotonic": 12150.012830588,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "568111104",
+      "memory.peak": "641892352",
+      "memory.swap.current": "543903744",
+      "memory.events": "low 0\nhigh 18776\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=0.00 avg60=0.50 avg300=0.35 total=11043934\nfull avg10=0.00 avg60=0.30 avg300=0.20 total=6107429",
+      "cpu.stat": "usage_usec 1786312880\nuser_usec 1714949350\nsystem_usec 71363530"
+    },
+    {
+      "utc": "2026-09-08T05:41:55.186561+00:00",
+      "monotonic": 12155.013262709,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "591015936",
+      "memory.peak": "641892352",
+      "memory.swap.current": "543903744",
+      "memory.events": "low 0\nhigh 18776\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=0.00 avg60=0.45 avg300=0.34 total=11043934\nfull avg10=0.00 avg60=0.27 avg300=0.19 total=6107429",
+      "cpu.stat": "usage_usec 1791306484\nuser_usec 1719755028\nsystem_usec 71551455"
+    },
+    {
+      "utc": "2026-09-08T05:42:00.187007+00:00",
+      "monotonic": 12160.013708381,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "599969792",
+      "memory.peak": "641892352",
+      "memory.swap.current": "543641600",
+      "memory.events": "low 0\nhigh 18776\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=0.00 avg60=0.42 avg300=0.34 total=11043934\nfull avg10=0.00 avg60=0.25 avg300=0.19 total=6107429",
+      "cpu.stat": "usage_usec 1796300001\nuser_usec 1724568807\nsystem_usec 71731194"
+    },
+    {
+      "utc": "2026-09-08T05:42:05.187548+00:00",
+      "monotonic": 12165.014249116,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "613462016",
+      "memory.peak": "641892352",
+      "memory.swap.current": "543379456",
+      "memory.events": "low 0\nhigh 18776\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=0.00 avg60=0.38 avg300=0.33 total=11043934\nfull avg10=0.00 avg60=0.23 avg300=0.19 total=6107429",
+      "cpu.stat": "usage_usec 1801292115\nuser_usec 1729409037\nsystem_usec 71883078"
+    },
+    {
+      "utc": "2026-09-08T05:42:10.188724+00:00",
+      "monotonic": 12170.015426526,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "628830208",
+      "memory.peak": "641892352",
+      "memory.swap.current": "543404032",
+      "memory.events": "low 0\nhigh 18792\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=0.00 avg60=0.36 avg300=0.33 total=11049477\nfull avg10=0.00 avg60=0.21 avg300=0.18 total=6109314",
+      "cpu.stat": "usage_usec 1806280496\nuser_usec 1734217538\nsystem_usec 72062958"
+    },
+    {
+      "utc": "2026-09-08T05:42:15.189429+00:00",
+      "monotonic": 12175.016131234,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "629112832",
+      "memory.peak": "641892352",
+      "memory.swap.current": "543141888",
+      "memory.events": "low 0\nhigh 18911\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=0.00 avg60=0.32 avg300=0.32 total=11068352\nfull avg10=0.00 avg60=0.19 avg300=0.18 total=6122282",
+      "cpu.stat": "usage_usec 1811266548\nuser_usec 1738899932\nsystem_usec 72366616"
+    },
+    {
+      "utc": "2026-09-08T05:42:20.189886+00:00",
+      "monotonic": 12180.016587715,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "628764672",
+      "memory.peak": "641892352",
+      "memory.swap.current": "543141888",
+      "memory.events": "low 0\nhigh 18977\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=0.00 avg60=0.30 avg300=0.32 total=11083424\nfull avg10=0.00 avg60=0.18 avg300=0.18 total=6129710",
+      "cpu.stat": "usage_usec 1816253899\nuser_usec 1743683625\nsystem_usec 72570273"
+    },
+    {
+      "utc": "2026-09-08T05:42:25.190327+00:00",
+      "monotonic": 12185.017033485,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "629092352",
+      "memory.peak": "641892352",
+      "memory.swap.current": "543141888",
+      "memory.events": "low 0\nhigh 19014\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=0.00 avg60=0.27 avg300=0.31 total=11095856\nfull avg10=0.00 avg60=0.16 avg300=0.17 total=6134725",
+      "cpu.stat": "usage_usec 1821248481\nuser_usec 1748458274\nsystem_usec 72790206"
+    },
+    {
+      "utc": "2026-09-08T05:42:30.190782+00:00",
+      "monotonic": 12190.017483546,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "629039104",
+      "memory.peak": "641892352",
+      "memory.swap.current": "543141888",
+      "memory.events": "low 0\nhigh 19059\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=0.00 avg60=0.25 avg300=0.30 total=11109914\nfull avg10=0.00 avg60=0.15 avg300=0.17 total=6141055",
+      "cpu.stat": "usage_usec 1826237514\nuser_usec 1753255565\nsystem_usec 72981948"
+    },
+    {
+      "utc": "2026-09-08T05:42:35.192032+00:00",
+      "monotonic": 12195.018732486,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "628916224",
+      "memory.peak": "641892352",
+      "memory.swap.current": "543141888",
+      "memory.events": "low 0\nhigh 19100\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=0.00 avg60=0.23 avg300=0.30 total=11122104\nfull avg10=0.00 avg60=0.13 avg300=0.16 total=6146356",
+      "cpu.stat": "usage_usec 1831233125\nuser_usec 1758063344\nsystem_usec 73169781"
+    },
+    {
+      "utc": "2026-09-08T05:42:40.192482+00:00",
+      "monotonic": 12200.019187231,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "628998144",
+      "memory.peak": "641892352",
+      "memory.swap.current": "543072256",
+      "memory.events": "low 0\nhigh 19136\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=0.00 avg60=0.21 avg300=0.29 total=11133820\nfull avg10=0.00 avg60=0.12 avg300=0.16 total=6152158",
+      "cpu.stat": "usage_usec 1835930753\nuser_usec 1762598014\nsystem_usec 73332738"
+    },
+    {
+      "utc": "2026-09-08T05:42:45.192919+00:00",
+      "monotonic": 12205.019622468,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "628772864",
+      "memory.peak": "641892352",
+      "memory.swap.current": "542810112",
+      "memory.events": "low 0\nhigh 19151\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=0.00 avg60=0.19 avg300=0.28 total=11137725\nfull avg10=0.00 avg60=0.11 avg300=0.16 total=6153946",
+      "cpu.stat": "usage_usec 1840921329\nuser_usec 1767428923\nsystem_usec 73492405"
+    },
+    {
+      "utc": "2026-09-08T05:42:50.194490+00:00",
+      "monotonic": 12210.021192374,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "628826112",
+      "memory.peak": "641892352",
+      "memory.swap.current": "542547968",
+      "memory.events": "low 0\nhigh 19192\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=0.00 avg60=0.18 avg300=0.28 total=11149804\nfull avg10=0.00 avg60=0.10 avg300=0.15 total=6158731",
+      "cpu.stat": "usage_usec 1845915976\nuser_usec 1772243770\nsystem_usec 73672205"
+    },
+    {
+      "utc": "2026-09-08T05:42:55.194938+00:00",
+      "monotonic": 12215.021639303,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "628957184",
+      "memory.peak": "641892352",
+      "memory.swap.current": "542547968",
+      "memory.events": "low 0\nhigh 19247\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=0.00 avg60=0.16 avg300=0.27 total=11163820\nfull avg10=0.00 avg60=0.09 avg300=0.15 total=6164600",
+      "cpu.stat": "usage_usec 1850908450\nuser_usec 1777088452\nsystem_usec 73819997"
+    },
+    {
+      "utc": "2026-09-08T05:43:00.196398+00:00",
+      "monotonic": 12220.023103392,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "628875264",
+      "memory.peak": "641892352",
+      "memory.swap.current": "542547968",
+      "memory.events": "low 0\nhigh 19308\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=0.00 avg60=0.15 avg300=0.27 total=11179474\nfull avg10=0.00 avg60=0.09 avg300=0.15 total=6170981",
+      "cpu.stat": "usage_usec 1855900483\nuser_usec 1781892469\nsystem_usec 74008014"
+    },
+    {
+      "utc": "2026-09-08T05:43:05.197056+00:00",
+      "monotonic": 12225.023762406,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "628559872",
+      "memory.peak": "641892352",
+      "memory.swap.current": "542547968",
+      "memory.events": "low 0\nhigh 19373\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=0.00 avg60=0.13 avg300=0.26 total=11194476\nfull avg10=0.00 avg60=0.08 avg300=0.14 total=6177528",
+      "cpu.stat": "usage_usec 1860893526\nuser_usec 1786753559\nsystem_usec 74139966"
+    },
+    {
+      "utc": "2026-09-08T05:43:10.198791+00:00",
+      "monotonic": 12230.025489708,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "628928512",
+      "memory.peak": "641892352",
+      "memory.swap.current": "542547968",
+      "memory.events": "low 0\nhigh 19411\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=0.00 avg60=0.12 avg300=0.26 total=11206610\nfull avg10=0.00 avg60=0.07 avg300=0.14 total=6183083",
+      "cpu.stat": "usage_usec 1865882175\nuser_usec 1791510369\nsystem_usec 74371805"
+    },
+    {
+      "utc": "2026-09-08T05:43:15.199478+00:00",
+      "monotonic": 12235.026179055,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "628961280",
+      "memory.peak": "641892352",
+      "memory.swap.current": "542285824",
+      "memory.events": "low 0\nhigh 19455\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=0.00 avg60=0.11 avg300=0.25 total=11220526\nfull avg10=0.00 avg60=0.06 avg300=0.14 total=6188787",
+      "cpu.stat": "usage_usec 1870875167\nuser_usec 1796279535\nsystem_usec 74595631"
+    },
+    {
+      "utc": "2026-09-08T05:43:20.200147+00:00",
+      "monotonic": 12240.026843384,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "628867072",
+      "memory.peak": "641892352",
+      "memory.swap.current": "542285824",
+      "memory.events": "low 0\nhigh 19514\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=0.00 avg60=0.10 avg300=0.25 total=11236618\nfull avg10=0.00 avg60=0.06 avg300=0.13 total=6195500",
+      "cpu.stat": "usage_usec 1875865882\nuser_usec 1801106459\nsystem_usec 74759422"
+    },
+    {
+      "utc": "2026-09-08T05:43:25.200728+00:00",
+      "monotonic": 12245.027421905,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "628793344",
+      "memory.peak": "641892352",
+      "memory.swap.current": "543428608",
+      "memory.events": "low 0\nhigh 19563\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=0.00 avg60=0.09 avg300=0.24 total=11258244\nfull avg10=0.00 avg60=0.05 avg300=0.13 total=6204167",
+      "cpu.stat": "usage_usec 1880857449\nuser_usec 1805926326\nsystem_usec 74931123"
+    },
+    {
+      "utc": "2026-09-08T05:43:30.201148+00:00",
+      "monotonic": 12250.027853696,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "624246784",
+      "memory.peak": "641892352",
+      "memory.swap.current": "544026624",
+      "memory.events": "low 0\nhigh 19569\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=0.00 avg60=0.09 avg300=0.24 total=11259485\nfull avg10=0.00 avg60=0.05 avg300=0.13 total=6205003",
+      "cpu.stat": "usage_usec 1885736410\nuser_usec 1810638080\nsystem_usec 75098330"
+    },
+    {
+      "utc": "2026-09-08T05:43:35.201825+00:00",
+      "monotonic": 12255.028525528,
+      "cgroup": "/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice",
+      "memory.current": "628535296",
+      "memory.peak": "641892352",
+      "memory.swap.current": "531705856",
+      "memory.events": "low 0\nhigh 19575\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "memory.pressure": "some avg10=0.00 avg60=0.08 avg300=0.23 total=11261473\nfull avg10=0.00 avg60=0.04 avg300=0.13 total=6205882",
+      "cpu.stat": "usage_usec 1890728965\nuser_usec 1815430955\nsystem_usec 75298009"
+    }
+  ],
+  "python": "3.11.2 (main, May 12 2026, 05:17:27) [GCC 12.2.0]",
+  "solders": "0.29.0",
+  "status": "PASS",
+  "ended_utc": "2026-09-08T05:43:35.202189+00:00",
+  "exit_code": 0,
+  "after": {
+    "driver.py": "1d866b3887dfaf0eff56cad2285ff87e8fe29fbecfe8d287e40e2c131ecec6a3",
+    "README.md": "804f48fc73f9f0aac27eeabe831339099923d5d520a7840d98f61b59021d95c8",
+    "requirements.txt": "5662e2cc75609ec896467d4e93309530c879d37b13b48b579fefeb5fb0c16615",
+    "test_guards.py": "5877efa5ef29fe0eb972149fde53b0d6b74d97c6a9ff4f333e660b57a304bcc1",
+    "test-manifest.json": "8e3c3125105cbb337cde2b90d8a48cffc300b31a59d3cb556b478a60226d72a3",
+    "package-hashes.json": "e7bb57d8091aa58aedc2cbcb221bba9faed86f693eb462273ab41f1ea3325140",
+    "runner": "0d2c551b0b8a2a918586dc1f8f52d81c89cec9866f4451905febdfee4833c400",
+    "validator_binary": "d723f3a99fa3f5b3df6841fc04ac0d8b5302837689d43a07222aa2125b6713d1",
+    "sbf_file": "30c22daccdd194896ddec53543410b1163c27fea378a58942c018033820f50b7"
+  },
+  "log_sha256": "218c6013cf65c3ede650b62c0b80b570b6107ef7bb19ecaa7031b26fad242948",
+  "unchanged": true,
+  "public_run": {
+    "cases": [
+      {
+        "name": "01-fund",
+        "snapshot": {
+          "balances": {
+            "claim": 0,
+            "refund": 0,
+            "source": 8765433,
+            "vault": 1234567
+          },
+          "state_hex": "584453563030303101fd00000000000087d61200000000009d03000000000000f8261a56bbc8efc5675429c512d3b14de7f6a0866c1247fe4865d3968314a1cdb04fd269b4c923921993837827e882df7f10b2a82f83496defc8906b64e41600ca93ac1705187071d67b83c7ff0efe8108e8ec4530575d7726879333dbdabe7c744ad969711e492ad1726aaa44fd84a5f0bbff7f61cbacd013d2fb0e1deb3ca0a0fa5add84c61da90b44322b53d8815e16367fb1e7f7190316868b6afd4a5464"
+        },
+        "status": "PASS"
+      },
+      {
+        "name": "02-wrong-secret-rejection",
+        "receipt": {
+          "compute_units": 7440,
+          "confirmation_status": "finalized",
+          "err": {
+            "InstructionError": [
+              0,
+              {
+                "Custom": 4110
+              }
+            ]
+          },
+          "fee": 5000,
+          "post_balances": [
+            49995000,
+            2227200,
+            2039280,
+            2039280,
+            2039280,
+            2039280,
+            1169280,
+            1141440,
+            1141440,
+            0,
+            499999999937904080,
+            1461600
+          ],
+          "pre_balances": [
+            50000000,
+            2227200,
+            2039280,
+            2039280,
+            2039280,
+            2039280,
+            1169280,
+            1141440,
+            1141440,
+            0,
+            499999999937904080,
+            1461600
+          ],
+          "slot": 830,
+          "wire_sha256": "6f948f5b6484d4b9ede37fe00992a857390a20ba836ab0a5b0e900b8c773bfd0"
+        },
+        "snapshot": {
+          "balances": {
+            "claim": 0,
+            "refund": 0,
+            "source": 8765433,
+            "vault": 1234567
+          },
+          "state_hex": "584453563030303101fd00000000000087d61200000000009d03000000000000f8261a56bbc8efc5675429c512d3b14de7f6a0866c1247fe4865d3968314a1cdb04fd269b4c923921993837827e882df7f10b2a82f83496defc8906b64e41600ca93ac1705187071d67b83c7ff0efe8108e8ec4530575d7726879333dbdabe7c744ad969711e492ad1726aaa44fd84a5f0bbff7f61cbacd013d2fb0e1deb3ca0a0fa5add84c61da90b44322b53d8815e16367fb1e7f7190316868b6afd4a5464"
+        },
+        "status": "PASS"
+      },
+      {
+        "accepted_replay_attempts": [
+          8
+        ],
+        "duplicate_handoff_slot": 864,
+        "name": "03-claim-and-identical-duplicate",
+        "observed_slot": 866,
+        "snapshot": {
+          "balances": {
+            "claim": 1234567,
+            "refund": 0,
+            "source": 8765433,
+            "vault": 0
+          },
+          "state_hex": "584453563030303102fd00000000000087d61200000000009d03000000000000f8261a56bbc8efc5675429c512d3b14de7f6a0866c1247fe4865d3968314a1cdb04fd269b4c923921993837827e882df7f10b2a82f83496defc8906b64e41600ca93ac1705187071d67b83c7ff0efe8108e8ec4530575d7726879333dbdabe7c744ad969711e492ad1726aaa44fd84a5f0bbff7f61cbacd013d2fb0e1deb3ca0a0fa5add84c61da90b44322b53d8815e16367fb1e7f7190316868b6afd4a5464"
+        },
+        "status": "PASS",
+        "txid": "5TXpxgoKXJjRmPXWbYFEUwwW3Z1CdgVTVMJmsHCoUpQ62zAsyyTSUdKAKuSckTNePPAs25GZoubCYmtdCQfCggSM"
+      },
+      {
+        "name": "04-next-transfer-after-claim",
+        "snapshot": {
+          "balances": {
+            "claim": 0,
+            "refund": 1234567,
+            "source": 8765433,
+            "vault": 0
+          },
+          "state_hex": "584453563030303102fd00000000000087d61200000000009d03000000000000f8261a56bbc8efc5675429c512d3b14de7f6a0866c1247fe4865d3968314a1cdb04fd269b4c923921993837827e882df7f10b2a82f83496defc8906b64e41600ca93ac1705187071d67b83c7ff0efe8108e8ec4530575d7726879333dbdabe7c744ad969711e492ad1726aaa44fd84a5f0bbff7f61cbacd013d2fb0e1deb3ca0a0fa5add84c61da90b44322b53d8815e16367fb1e7f7190316868b6afd4a5464"
+        },
+        "status": "PASS"
+      },
+      {
+        "deadline": 1154,
+        "name": "05-early-refund-rejection",
+        "receipt": {
+          "compute_units": 8829,
+          "confirmation_status": "finalized",
+          "err": {
+            "InstructionError": [
+              0,
+              {
+                "Custom": 4111
+              }
+            ]
+          },
+          "fee": 5000,
+          "post_balances": [
+            49980000,
+            2039280,
+            2039280,
+            2039280,
+            2039280,
+            2227200,
+            1169280,
+            1141440,
+            1141440,
+            499999999927469760,
+            1461600,
+            0
+          ],
+          "pre_balances": [
+            49985000,
+            2039280,
+            2039280,
+            2039280,
+            2039280,
+            2227200,
+            1169280,
+            1141440,
+            1141440,
+            499999999927469760,
+            1461600,
+            0
+          ],
+          "slot": 1058,
+          "wire_sha256": "861cf76bd1608c6015fa9f6aaf6243eb2b0e44d4b3cc94a2f8aa486a8490d783"
+        },
+        "status": "PASS"
+      },
+      {
+        "deadline": 1154,
+        "name": "06-refund-and-next-transfer",
+        "next_transfer_snapshot": {
+          "balances": {
+            "claim": 1234567,
+            "refund": 0,
+            "source": 8765433,
+            "vault": 0
+          },
+          "state_hex": "584453563030303103fc00000000000087d61200000000008204000000000000f8261a56bbc8efc5675429c512d3b14de7f6a0866c1247fe4865d3968314a1cd41e326406ee0cc735d485d8ab0a9d2c5aae270837e45d647cc999c2fc57aac6bca93ac1705187071d67b83c7ff0efe8108e8ec4530575d7726879333dbdabe7c1231baecc8f106bfcf613499659efc208c551478ff4e48237ad846a0c545b5238415c218786cddfd6aec4cffcb8da268ed963fb94d8848bbac139355c0760255"
+        },
+        "refunded_snapshot": {
+          "balances": {
+            "claim": 0,
+            "refund": 1234567,
+            "source": 8765433,
+            "vault": 0
+          },
+          "state_hex": "584453563030303103fc00000000000087d61200000000008204000000000000f8261a56bbc8efc5675429c512d3b14de7f6a0866c1247fe4865d3968314a1cd41e326406ee0cc735d485d8ab0a9d2c5aae270837e45d647cc999c2fc57aac6bca93ac1705187071d67b83c7ff0efe8108e8ec4530575d7726879333dbdabe7c1231baecc8f106bfcf613499659efc208c551478ff4e48237ad846a0c545b5238415c218786cddfd6aec4cffcb8da268ed963fb94d8848bbac139355c0760255"
+        },
+        "status": "PASS"
+      }
+    ],
+    "commitment": "finalized",
+    "genesis": "H6SXasBhyzMhf5qCmcXwRUGU4UQGzS9Jc5zEjXKxtpxe",
+    "payer": "3sjBU9ZHSiuu5BoDtKGcSDxjucwf8krku7L7AeWLvTEs",
+    "profile": {
+      "payload_bytes": 32912,
+      "payload_sha256": "30c22daccdd194896ddec53543410b1163c27fea378a58942c018033820f50b7",
+      "program": "cGfHiC6Kgg3FpFZvgwGcswsCRtp4aBP2fzuXRQPizuN",
+      "program_owner": "BPFLoaderUpgradeab1e11111111111111111111111",
+      "version": {
+        "feature-set": 565236538,
+        "solana-core": "4.2.2"
+      },
+      "zero_padding_bytes": 0
+    },
+    "schema": 1,
+    "status": "PASS",
+    "synthetic_mint": "EdmxWPmx2WH6WgFfTdu9xfkYf3k1g5wD1zccTVySEEh1"
+  },
+  "public_run_sha256": "3e38723ee267bb9eff857ad2c669524840e22bbaf541d303ffa35b1de44ad561"
+}

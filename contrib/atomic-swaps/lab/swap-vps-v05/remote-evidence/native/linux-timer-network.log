@@ -1,0 +1,19 @@
+network_run=/var/lib/discrete-swap-lab/qualification-v05/network-runs/1788844900458931739
+test_01_claim_scans_then_existing_ordinary_transfer (test_xds_wallet_network.WalletNetwork.test_01_claim_scans_then_existing_ordinary_transfer) ... ok
+test_02_refund_wrong_secret_role_network_and_height (test_xds_wallet_network.WalletNetwork.test_02_refund_wrong_secret_role_network_and_height) ... ok
+test_03_lost_response_exact_retry_and_pending_conflict (test_xds_wallet_network.WalletNetwork.test_03_lost_response_exact_retry_and_pending_conflict) ... ok
+test_04_partition_competing_branches_rejoin_and_restart (test_xds_wallet_network.WalletNetwork.test_04_partition_competing_branches_rejoin_and_restart) ... ok
+test_05_wallet_saved_backup_and_seed_restore (test_xds_wallet_network.WalletNetwork.test_05_wallet_saved_backup_and_seed_restore) ... ok
+test_06_first_exposure_admission_and_rpc_request_guards (test_xds_wallet_network.WalletNetwork.test_06_first_exposure_admission_and_rpc_request_guards) ... ok
+test_07_live_funding_reorg_gates_secret_then_exact_funding_retry (test_xds_wallet_network.WalletNetwork.test_07_live_funding_reorg_gates_secret_then_exact_funding_retry) ... ok
+test_08_live_claim_reorg_keeps_exposure_and_exact_settlement (test_xds_wallet_network.WalletNetwork.test_08_live_claim_reorg_keeps_exposure_and_exact_settlement) ... ok
+network_run=/var/lib/discrete-swap-lab/qualification-v05/network-runs/1788844995830483392
+test_btc_abandonment_refunds_both_original_owners (test_network_cross_chain.NetworkCrossChain.test_btc_abandonment_refunds_both_original_owners) ... ok
+test_btc_success_uses_public_mined_xds_witness (test_network_cross_chain.NetworkCrossChain.test_btc_success_uses_public_mined_xds_witness) ... ok
+test_sbf_token_abandonment_refunds_both_original_owners (test_network_cross_chain.NetworkCrossChain.test_sbf_token_abandonment_refunds_both_original_owners) ... ok
+test_sbf_token_success_uses_public_mined_xds_witness (test_network_cross_chain.NetworkCrossChain.test_sbf_token_success_uses_public_mined_xds_witness) ... ok
+
+----------------------------------------------------------------------
+Ran 12 tests in 138.558s
+
+OK

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="(empty)"
+	tests="1"
+	failures="0"
+	disabled="0"
+	skipped="0"
+	hostname=""
+	time="2292"
+	timestamp="2026-09-08T06:07:27"
+	>
+	<testcase name="UnitTests" classname="UnitTests" time="2292.65" status="run">
+		<system-out>[==========] Running 676 tests from 64 test cases.
+[----------] Global test environment set-up.
+[----------] 25 tests from ArrayRefTests
+[ RUN      ] ArrayRefTests.representations
+[       OK ] ArrayRefTests.representations (0 ms)
+[ RUN      ] ArrayRefTests.directConstructor
+[       OK ] ArrayRefTests.directConstructor (0 ms)
+[ RUN      ] ArrayRefTests.arrayConstructor
+[       OK ] ArrayRefTests.arrayConstructor (0 ms)
+[ RUN      ] ArrayRefTests.copyConstructor
+[       OK ] ArrayRefTests.copyConstructor (0 ms)
+[ RUN      ] ArrayRefTests.copyAssignment
+[       OK ] ArrayRefTests.copyAssignment (0 ms)
+[ RUN      ] ArrayRefTests.arrayView
+[       OK ] ArrayRefTests.arrayView (0 ms)
+[ RUN      ] ArrayRefTests.emptyNil
+[       OK ] ArrayRefTests.emptyNil (0 ms)
+[ RUN      ] ArrayRefTests.squareBrackets
+[       OK ] ArrayRefTests.squareBrackets (0 ms)
+[ RUN      ] ArrayRefTests.firstLast
+[       OK ] ArrayRefTests.firstLast (0 ms)
+[ RUN      ] ArrayRefTests.beginEnd
+[       OK ] ArrayRefTests.beginEnd (0 ms)
+[ RUN  ...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+</testsuite>

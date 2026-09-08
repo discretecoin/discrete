@@ -1,0 +1,145 @@
+{
+  "target-repro-01": {
+    "original": {
+      "path": "solana_escrow.so",
+      "bytes": 32912,
+      "sha256": "30c22daccdd194896ddec53543410b1163c27fea378a58942c018033820f50b7",
+      "elf_flags": 3,
+      "entrypoint": 4294973120
+    },
+    "rebuilt": {
+      "path": "target-repro-01\\sbpfv3-solana-solana\\release\\xds_swap_sbpfv3.so",
+      "bytes": 32912,
+      "sha256": "e22474092bbc8426b830799ec42735d1ca0b47a05f80e4221302111452d34642",
+      "elf_flags": 3,
+      "entrypoint": 4294973120
+    },
+    "whole_elf_identical": false,
+    "sections": [
+      {
+        "name": ".rodata",
+        "allocatable": true,
+        "size_a": 2088,
+        "size_b": 2088,
+        "sha256_a": "81014d8d14ced3779fb448c1777c00105a50f4f377f25dbbc1380cf00d200cb0",
+        "sha256_b": "1da8222571f78898bc633fc03c699e474ec1d1e9c27997abe17c11874f10bdf7",
+        "different_bytes": 483
+      },
+      {
+        "name": ".text",
+        "allocatable": true,
+        "size_a": 24376,
+        "size_b": 24376,
+        "sha256_a": "a64ad165517a867606839fe13a3d058ba3074ca970978c366c572e386ebbd71c",
+        "sha256_b": "0364cc70e874a080990e145987a1d7dcaaca99152099c867dce878009518a0ae",
+        "different_bytes": 2,
+        "different_instructions": [
+          {
+            "offset": 20224,
+            "virtual_address": 4294987520,
+            "original": "18010000e8010000",
+            "rebuilt": "1801000020010000"
+          },
+          {
+            "offset": 23240,
+            "virtual_address": 4294990536,
+            "original": "18010000c8000000",
+            "rebuilt": "1801000008000000"
+          }
+        ]
+      },
+      {
+        "name": ".symtab",
+        "allocatable": false,
+        "size_a": 1824,
+        "size_b": 1824,
+        "sha256_a": "f12fb55e2ab4a9b5911576f2a4de71498428dab6951c586d8100bd47c18c39cb",
+        "sha256_b": "f12fb55e2ab4a9b5911576f2a4de71498428dab6951c586d8100bd47c18c39cb",
+        "different_bytes": 0
+      },
+      {
+        "name": ".shstrtab",
+        "allocatable": false,
+        "size_a": 41,
+        "size_b": 41,
+        "sha256_a": "0e9634e61ba9529cbec09f3a5a66233de0bf7168f93c2324dcbf2677b96ac2ec",
+        "sha256_b": "0e9634e61ba9529cbec09f3a5a66233de0bf7168f93c2324dcbf2677b96ac2ec",
+        "different_bytes": 0
+      },
+      {
+        "name": ".strtab",
+        "allocatable": false,
+        "size_a": 3967,
+        "size_b": 3967,
+        "sha256_a": "cfcd5a96821486679433203821b6908f28aaafcca662f437dbb3715bd3747764",
+        "sha256_b": "cfcd5a96821486679433203821b6908f28aaafcca662f437dbb3715bd3747764",
+        "different_bytes": 0
+      }
+    ]
+  },
+  "target-repro-02": {
+    "original": {
+      "path": "solana_escrow.so",
+      "bytes": 32912,
+      "sha256": "30c22daccdd194896ddec53543410b1163c27fea378a58942c018033820f50b7",
+      "elf_flags": 3,
+      "entrypoint": 4294973120
+    },
+    "rebuilt": {
+      "path": "target-repro-02\\sbpfv3-solana-solana\\release\\xds_swap_sbpfv3.so",
+      "bytes": 32912,
+      "sha256": "30c22daccdd194896ddec53543410b1163c27fea378a58942c018033820f50b7",
+      "elf_flags": 3,
+      "entrypoint": 4294973120
+    },
+    "whole_elf_identical": true,
+    "sections": [
+      {
+        "name": ".rodata",
+        "allocatable": true,
+        "size_a": 2088,
+        "size_b": 2088,
+        "sha256_a": "81014d8d14ced3779fb448c1777c00105a50f4f377f25dbbc1380cf00d200cb0",
+        "sha256_b": "81014d8d14ced3779fb448c1777c00105a50f4f377f25dbbc1380cf00d200cb0",
+        "different_bytes": 0
+      },
+      {
+        "name": ".text",
+        "allocatable": true,
+        "size_a": 24376,
+        "size_b": 24376,
+        "sha256_a": "a64ad165517a867606839fe13a3d058ba3074ca970978c366c572e386ebbd71c",
+        "sha256_b": "a64ad165517a867606839fe13a3d058ba3074ca970978c366c572e386ebbd71c",
+        "different_bytes": 0,
+        "different_instructions": []
+      },
+      {
+        "name": ".symtab",
+        "allocatable": false,
+        "size_a": 1824,
+        "size_b": 1824,
+        "sha256_a": "f12fb55e2ab4a9b5911576f2a4de71498428dab6951c586d8100bd47c18c39cb",
+        "sha256_b": "f12fb55e2ab4a9b5911576f2a4de71498428dab6951c586d8100bd47c18c39cb",
+        "different_bytes": 0
+      },
+      {
+        "name": ".shstrtab",
+        "allocatable": false,
+        "size_a": 41,
+        "size_b": 41,
+        "sha256_a": "0e9634e61ba9529cbec09f3a5a66233de0bf7168f93c2324dcbf2677b96ac2ec",
+        "sha256_b": "0e9634e61ba9529cbec09f3a5a66233de0bf7168f93c2324dcbf2677b96ac2ec",
+        "different_bytes": 0
+      },
+      {
+        "name": ".strtab",
+        "allocatable": false,
+        "size_a": 3967,
+        "size_b": 3967,
+        "sha256_a": "cfcd5a96821486679433203821b6908f28aaafcca662f437dbb3715bd3747764",
+        "sha256_b": "cfcd5a96821486679433203821b6908f28aaafcca662f437dbb3715bd3747764",
+        "different_bytes": 0
+      }
+    ]
+  }
+}

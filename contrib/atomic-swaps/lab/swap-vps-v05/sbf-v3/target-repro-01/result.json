@@ -1,0 +1,37 @@
+{
+  "startedUtc": "2026-09-08T04:48:43.2482153Z",
+  "finishedUtc": "2026-09-08T04:49:13.4367037Z",
+  "platformTools": "1.57",
+  "commandExecutable": "C:\\ChatGPT-Knowledge-Migration\\knowledge-base\\projects\\discrete-core\\evidence\\swap-integration-v03\\external-tools\\platform-tools\\rust\\bin\\cargo.exe",
+  "commandArguments": [
+    "build",
+    "--offline",
+    "--locked",
+    "--target",
+    "sbpfv3-solana-solana",
+    "--release",
+    "--target-dir",
+    "C:\\ChatGPT-Knowledge-Migration\\knowledge-base\\projects\\discrete-core\\evidence\\swap-vps-v05\\sbf-v3\\target-repro-01"
+  ],
+  "compilerVersion": "rustc 1.95.0-dev (ae660768a 2026-08-17)\r\nbinary: rustc\r\ncommit-hash: ae660768afd467d131776918a1627e18920b230c\r\ncommit-date: 2026-08-17\r\nhost: x86_64-pc-windows-msvc\r\nrelease: 1.95.0-dev\r\nLLVM version: 22.1.2",
+  "cargoVersion": "cargo 1.95.0 (bbbd3a760 2026-07-09)",
+  "toolSha256": {
+    "C:\\ChatGPT-Knowledge-Migration\\knowledge-base\\projects\\discrete-core\\evidence\\swap-integration-v03\\external-tools\\platform-tools\\rust\\bin\\rustc.exe": "8901dc680c791aff34e0744539f5d135b6147b84a105f3487ff6a1d8c1d25e9c",
+    "C:\\ChatGPT-Knowledge-Migration\\knowledge-base\\projects\\discrete-core\\evidence\\swap-integration-v03\\external-tools\\platform-tools\\rust\\lib\\rustlib\\x86_64-pc-windows-msvc\\bin\\rust-lld.exe": "dae2a9c3b35e263e8df4b7c432e2eab60343b65eda7de3dfd092a0c68c3e02ba",
+    "C:\\ChatGPT-Knowledge-Migration\\knowledge-base\\projects\\discrete-core\\evidence\\swap-integration-v03\\external-tools\\platform-tools\\rust\\bin\\cargo.exe": "7f90f84ff2d811caaab060faf69d5221cad01093eb3eeb654d540271048cad03",
+    "C:\\ChatGPT-Knowledge-Migration\\knowledge-base\\projects\\discrete-core\\evidence\\swap-integration-v03\\external-tools\\platform-tools\\llvm\\bin\\llvm-readelf.exe": "9c0ad688a3aa61c28601acae8fa23f6869ad4f1d95e2ea7a77114aae11e1d83a"
+  },
+  "inputSha256": {
+    "src/lib.rs": "6fa662506bd667f6e510aaa3ea9aea74edaadeebdc829bd82bcfc05325b60eea",
+    "Cargo.toml": "95fbea4c3925ab8043baa328dd2bdc0509883841474ee8c811af10356e02e965",
+    "Cargo.lock": "ecb88b8469a190be6c5587f4762eaef619f4e8bdaaa45171821f6ea4c41f2102"
+  },
+  "buildJobs": 1,
+  "cargoHome": "C:\\ChatGPT-Knowledge-Migration\\knowledge-base\\projects\\discrete-core\\evidence\\swap-vps-v05\\sbf-v3\\cargo-home",
+  "artifact": "C:\\ChatGPT-Knowledge-Migration\\knowledge-base\\projects\\discrete-core\\evidence\\swap-vps-v05\\sbf-v3\\target-repro-01\\sbpfv3-solana-solana\\release\\xds_swap_sbpfv3.so",
+  "artifactBytes": 32912,
+  "artifactSha256": "e22474092bbc8426b830799ec42735d1ca0b47a05f80e4221302111452d34642",
+  "candidateSha256": "30c22daccdd194896ddec53543410b1163c27fea378a58942c018033820f50b7",
+  "identicalToCandidate": false,
+  "scope": "Second local build with a fresh target directory and the same locked source/toolchain; no cross-host reproducibility or RPC claim."
+}

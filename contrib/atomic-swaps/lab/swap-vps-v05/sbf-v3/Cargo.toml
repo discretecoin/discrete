@@ -1,0 +1,22 @@
+[package]
+name = "xds-swap-sbpfv3"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[features]
+custom-heap = []
+custom-panic = []
+
+[dependencies]
+solana-program = { version = "=3.0.0", default-features = false }
+
+[profile.release]
+opt-level = 2
+overflow-checks = true
+lto = "fat"
+codegen-units = 1
+panic = "abort"

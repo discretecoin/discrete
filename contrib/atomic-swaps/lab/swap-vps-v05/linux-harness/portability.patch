@@ -1,0 +1,152 @@
+--- v04/run_evidence.py
++++ v05/run_evidence.py
+@@ -1,6 +1,7 @@
+ """Execute a bounded local command with before/after source and binary manifests."""
+ import concurrent.futures,datetime,hashlib,json,pathlib,subprocess,sys
+-ROOT=pathlib.Path(__file__).resolve().parent;CORE=ROOT/'core'
++from runtime_paths import CORE,PATHS,artifact_key,executable_inventory
++ROOT=pathlib.Path(__file__).resolve().parent
+ def sha(path):
+     h=hashlib.sha256()
+     with path.open('rb') as f:
+@@ -14,11 +15,9 @@
+     paths+=list(ROOT.glob('*.py'))+list(ROOT.glob('*.c'))+list(ROOT.glob('*.h'))+list(ROOT.glob('*.cmd'))
+     paths+=list((ROOT/'scripts').rglob('*.py'))+list((ROOT/'scripts').rglob('*.cmd'))
+     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+-        hashes=dict(zip([p.relative_to(ROOT).as_posix() for p in paths],pool.map(sha,paths)))
+-    binary_paths=list((ROOT/'b/src/Release').glob('*.exe'))+list((ROOT/'b/tests/Release').glob('*.exe'))+[ROOT/'solana_escrow.so',ROOT/'external-tools/bitcoin-31.1/bin/bitcoind.exe']
+-    binary_paths+=list((ROOT/'a/src/Release').glob('*.exe'))+list((ROOT/'a/tests/Release').glob('*.exe'))
+-    binaries={p.relative_to(ROOT).as_posix():sha(p) for p in binary_paths if p.is_file()}
+-    return {'head':head,'sources':hashes,'binaries':binaries}
++        hashes=dict(zip([artifact_key(p) for p in paths],pool.map(sha,paths)))
++    binaries={artifact_key(p):sha(p) for p in executable_inventory() if p.is_file()}
++    return {'head':head,'sources':hashes,'binaries':binaries,'runtime_paths':{k:str(v) for k,v in PATHS.items()}}
+ def now():return datetime.datetime.now(datetime.timezone.utc).isoformat()
+ if __name__=='__main__':
+     name=sys.argv[1];command=sys.argv[2:];building=bool(command and command[0]=='--build')
+--- v04/test_bitcoin_regtest.py
++++ v05/test_bitcoin_regtest.py
+@@ -5,6 +5,7 @@
+ from cryptography.hazmat.primitives.asymmetric import ec
+ from bitcoin_adapter import Contract, spend, pubkey, sha
+ from xds_localnet import OPENER
++from runtime_paths import BITCOIND,CREATE_NO_WINDOW
+ 
+ ROOT=pathlib.Path(__file__).resolve().parent
+ 
+@@ -15,10 +16,10 @@
+         self.start()
+     def start(self):
+         self.log=(self.dir/'process.log').open('ab')
+-        self.p=subprocess.Popen([str(ROOT/'external-tools/bitcoin-31.1/bin/bitcoind.exe'),'-regtest',
++        self.p=subprocess.Popen([str(BITCOIND),'-regtest',
+           '-datadir='+str(self.dir),'-server=1','-listen=0','-dnsseed=0','-discover=0','-connect=0',
+           '-rpcbind=127.0.0.1','-rpcallowip=127.0.0.1','-rpcport='+str(self.port),'-fallbackfee=0.0002'],
+-          stdout=self.log,stderr=self.log,creationflags=subprocess.CREATE_NO_WINDOW)
++          stdout=self.log,stderr=self.log,creationflags=CREATE_NO_WINDOW)
+         for _ in range(200):
+             try:
+                 self.auth=(self.dir/'regtest/.cookie').read_text().strip();self.rpc('getblockchaininfo');return
+--- v04/test_cross_chain.py
++++ v05/test_cross_chain.py
+@@ -6,6 +6,7 @@
+ import test_bitcoin_regtest as bitcoin_tests
+ from bitcoin_adapter import spend,sha
+ from test_solana_vm import Fixture
++from runtime_paths import SWAP_CHAIN_TESTS,CREATE_NO_WINDOW
+ ROOT=pathlib.Path(__file__).resolve().parent
+ 
+ class CrossChain(unittest.TestCase):
+@@ -17,8 +18,8 @@
+     def core_leg(self,secret,foreign,refund=False):
+         run=ROOT/'pair-runs'/str(time.time_ns());run.mkdir(parents=True)
+         out=(run/'core.log').open('wb')
+-        p=subprocess.Popen([str(ROOT/'b/tests/Release/SwapChainTests.exe'),'--pair-session','pair'],cwd=run,
+-          stdin=subprocess.PIPE,stdout=out,stderr=out,text=True,creationflags=subprocess.CREATE_NO_WINDOW)
++        p=subprocess.Popen([str(SWAP_CHAIN_TESTS),'--pair-session','pair'],cwd=run,
++          stdin=subprocess.PIPE,stdout=out,stderr=out,text=True,creationflags=CREATE_NO_WINDOW)
+         j=None
+         try:
+             p.stdin.write(sha(secret).hex()+'\n');p.stdin.flush()
+--- v04/test_localnet_boundaries.py
++++ v05/test_localnet_boundaries.py
+@@ -8,6 +8,7 @@
+ import hashlib,http.server,json,os,pathlib,subprocess,threading,time,unittest
+ from unittest.mock import patch
+ import xds_localnet as lab
++from runtime_paths import CORE,CREATE_NO_WINDOW
+ 
+ ROOT=pathlib.Path(__file__).resolve().parent
+ 
+@@ -15,10 +16,10 @@
+ 
+ def require_reviewed_guard_order():
+     """Safety preflight, not evidence that source text alone proves binary behavior."""
+-    daemon=(ROOT/'core/src/Daemon/Daemon.cpp').read_text(encoding='utf-8')
+-    peers=(ROOT/'core/src/P2p/NetNode.cpp').read_text(encoding='utf-8')
+-    wallet=(ROOT/'core/src/Wallet/WalletRpcServer.cpp').read_text(encoding='utf-8')
+-    simple=(ROOT/'core/src/SimpleWallet/SimpleWallet.cpp').read_text(encoding='utf-8')
++    daemon=(CORE/'src/Daemon/Daemon.cpp').read_text(encoding='utf-8')
++    peers=(CORE/'src/P2p/NetNode.cpp').read_text(encoding='utf-8')
++    wallet=(CORE/'src/Wallet/WalletRpcServer.cpp').read_text(encoding='utf-8')
++    simple=(CORE/'src/SimpleWallet/SimpleWallet.cpp').read_text(encoding='utf-8')
+     if daemon.index('if (swap_lab && !testnet_mode)')>=daemon.index('p2psrv.init(netNodeConfig)'):
+         raise RuntimeError('daemon testnet guard order requires source re-review')
+     if daemon.index('netNodeConfig.getBindIp() != "127.0.0.1"')>=daemon.index('p2psrv.init(netNodeConfig)'):
+@@ -71,7 +72,7 @@
+           'core/src/Wallet/WalletRpcServer.cpp','core/src/SimpleWallet/SimpleWallet.cpp',
+           'xds_localnet.py','test_localnet_boundaries.py']
+         evidence={'source_guard_review':'startup rejection before resolver/listener; binaries tested below',
+-          'files':{p:sha(ROOT/p) for p in paths},'binaries':{str(p):sha(p) for p in (lab.DAEMON,lab.WALLET)}}
++          'files':{p:sha(CORE/p[5:] if p.startswith('core/') else ROOT/p) for p in paths},'binaries':{str(p):sha(p) for p in (lab.DAEMON,lab.WALLET)}}
+         (cls.directory/'source-and-binary-identities.json').write_text(json.dumps(evidence,indent=2)+'\n',encoding='utf-8')
+         cls.network=None
+         try:
+@@ -91,7 +92,7 @@
+         log=directory/'process.log'
+         with log.open('wb') as output:
+             process=subprocess.Popen([str(binary),*args],cwd=directory,stdin=subprocess.DEVNULL,
+-              stdout=output,stderr=output,creationflags=subprocess.CREATE_NO_WINDOW)
++              stdout=output,stderr=output,creationflags=CREATE_NO_WINDOW)
+             try:
+                 try:code=process.wait(timeout=timeout)
+                 except subprocess.TimeoutExpired:self.fail(f'unsafe startup did not reject within {timeout}s: {directory}')
+--- v04/xds_localnet.py
++++ v05/xds_localnet.py
+@@ -1,8 +1,7 @@
+ """Owned loopback daemon/wallet processes and controllable TCP links; synthetic coins only."""
+ import base64,hashlib,json,pathlib,secrets,select,socket,socketserver,subprocess,threading,time,urllib.request,urllib.error
++from runtime_paths import DAEMON,WALLET,CREATE_NO_WINDOW
+ ROOT=pathlib.Path(__file__).resolve().parent
+-DAEMON=ROOT/'b/src/Release/discreted.exe'
+-WALLET=ROOT/'b/src/Release/simplewallet.exe'
+ class NoRedirect(urllib.request.HTTPRedirectHandler):
+     def redirect_request(self,*args,**kwargs):raise RuntimeError('local RPC redirect refused')
+ OPENER=urllib.request.build_opener(urllib.request.ProxyHandler({}),NoRedirect())
+@@ -82,7 +81,7 @@
+         for peer in self.peers:args+=['--add-exclusive-node',f'127.0.0.1:{peer}']
+         self.log=(self.directory/'process.log').open('ab')
+         self.process=subprocess.Popen(args,cwd=self.directory,stdin=subprocess.DEVNULL,stdout=self.log,stderr=self.log,
+-          creationflags=subprocess.CREATE_NO_WINDOW)
++          creationflags=CREATE_NO_WINDOW)
+     def ready(self):
+         if self.process.poll() is not None:raise RuntimeError(f'node exited {self.directory}')
+         return self.info()
+@@ -165,7 +164,7 @@
+           '--view-key',hashlib.sha3_256(seed).hexdigest(),'--log-file',str(directory/'create.log')]
+         with (directory/'create-process.log').open('wb') as output:
+             result=subprocess.run(args,cwd=directory,input=b'exit\n',stdout=output,stderr=output,
+-              timeout=60,creationflags=subprocess.CREATE_NO_WINDOW)
++              timeout=60,creationflags=CREATE_NO_WINDOW)
+         if result.returncode!=0 or not self.path.exists():raise RuntimeError(f'wallet creation failed: {directory}')
+         try:self.start()
+         except BaseException:self.stop(kill=True);raise
+@@ -177,7 +176,7 @@
+           '--rpc-user',user,'--rpc-password',password,'--log-file',str(self.directory/'wallet.log')]
+         self.log=(self.directory/'rpc-process.log').open('ab')
+         self.process=subprocess.Popen(args,cwd=self.directory,stdin=subprocess.DEVNULL,stdout=self.log,stderr=self.log,
+-          creationflags=subprocess.CREATE_NO_WINDOW)
++          creationflags=CREATE_NO_WINDOW)
+         wait_for(lambda:self.call('get_height'),'wallet RPC startup')
+     def call(self,method,params=None,**kwargs):
+         r=http(self.rpc,'/json_rpc',{'jsonrpc':'2.0','id':1,'method':method,'params':params or {}},auth=self.auth,**kwargs)

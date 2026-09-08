@@ -1,0 +1,14 @@
+{
+  "profile": "immutable local mint, SPL Token, no upgrade handler",
+  "ids": {
+    "PROGRAM_ID": "cGfHiC6Kgg3FpFZvgwGcswsCRtp4aBP2fzuXRQPizuN",
+    "MINT_ID": "EdmxWPmx2WH6WgFfTdu9xfkYf3k1g5wD1zccTVySEEh1",
+    "TOKEN_ID": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "CLOCK_ID": "SysvarC1ock11111111111111111111111111111111",
+    "SYSVAR_ID": "Sysvar1111111111111111111111111111111111111"
+  },
+  "program_sha256": "91004de413fa707ebd61d743cb01a2bfea80b0077fef3e15bc1f11bdb6100a89",
+  "sdk_tag": "v3.1.10",
+  "sdk_commit": "7bc9c805218ca06769956e2cb61601329f5a0f6c",
+  "compiler_version": "clang version 22.1.2-rust-dev (https://github.com/anza-xyz/llvm-project.git a4135d044fb7a19f2b7e7d04d0373cd2ba190e6e)\nTarget: x86_64-pc-windows-msvc\nThread model: posix\nInstalledDir: C:\\ChatGPT-Knowledge-Migration\\knowledge-base\\projects\\discrete-core\\evidence\\swap-integration-v03\\external-tools\\platform-tools\\llvm\\bin\n"
+}

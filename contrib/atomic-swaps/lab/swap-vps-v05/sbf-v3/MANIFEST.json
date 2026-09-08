@@ -1,0 +1,172 @@
+{
+  "schema": 1,
+  "scope": "Local Rust SBPFv3 source/build/test candidate freeze; no remote qualification",
+  "excluded_bulk_directories": [
+    "cargo-home",
+    "target",
+    "target-repro-01 except selected evidence",
+    "target-repro-02 except selected evidence"
+  ],
+  "files": [
+    {
+      "path": "Cargo.lock",
+      "bytes": 40856,
+      "sha256": "ecb88b8469a190be6c5587f4762eaef619f4e8bdaaa45171821f6ea4c41f2102"
+    },
+    {
+      "path": "Cargo.toml",
+      "bytes": 348,
+      "sha256": "95fbea4c3925ab8043baa328dd2bdc0509883841474ee8c811af10356e02e965"
+    },
+    {
+      "path": "PROVENANCE.json",
+      "bytes": 4356,
+      "sha256": "94845fde2907460cb55445797f47e70286130a560fcdeea6dc96f63cc7537a67"
+    },
+    {
+      "path": "README-pre-build.md",
+      "bytes": 6140,
+      "sha256": "0beec056a6c89b5503eb1121c6820dc007ac19dab1b3ed4d28d5367379a7cbdc"
+    },
+    {
+      "path": "README.md",
+      "bytes": 11254,
+      "sha256": "f2aec2c65a1d007ea831a0591311b4361971df808b86ac5a039899ea3004252d"
+    },
+    {
+      "path": "audit-package.py",
+      "bytes": 4703,
+      "sha256": "132f4a4e98670cf03edd73c8a53ee932d8cc6a6733a095a367f3b4f930d1c35d"
+    },
+    {
+      "path": "build-dev01.log",
+      "bytes": 126,
+      "sha256": "331ea4196e238cc7ae04916e8580f8d687a80b97807e90dedde8d8f2b407a4a4"
+    },
+    {
+      "path": "build-dev02.log",
+      "bytes": 2857,
+      "sha256": "89440dc69acf3560da0036dd57d3b2992717bbbb6cfd0240e47065df0915778a"
+    },
+    {
+      "path": "dependency-fetch-all.log",
+      "bytes": 2054,
+      "sha256": "61837ab157b566f0e9b240b0307046f5d4011e9eb19188b3143d343f970ca3dc"
+    },
+    {
+      "path": "dependency-fetch.log",
+      "bytes": 3479,
+      "sha256": "a66d15c95642e6f7d3b31591569ade8cd984a8b2642ac0b680abe9e8bd9cce3d"
+    },
+    {
+      "path": "dependency-resolution.log",
+      "bytes": 200,
+      "sha256": "082141ac32649e069c59e24d1df9a21a7de3ec80d883f5d91e39094c71ce5319"
+    },
+    {
+      "path": "elf-inspection.log",
+      "bytes": 10326,
+      "sha256": "87e1e277f0cd282e3f066ab3e14e64573c075023f6720cf196f1cd5628ff1eb4"
+    },
+    {
+      "path": "inspect-repro.py",
+      "bytes": 2439,
+      "sha256": "e7ead2b689a1662bec14840545748736314e8b7c07ddfca48ebd02cbc5384ff3"
+    },
+    {
+      "path": "repro-comparison.json",
+      "bytes": 5001,
+      "sha256": "fb0b931f1b2526f0897b7cdd164c06cf217e7badb54f56c3c6cd2ce7c26a663f"
+    },
+    {
+      "path": "reproduce-build-dev01.ps1",
+      "bytes": 4468,
+      "sha256": "e8332e7cc5d3fa58ed3a260a3897738824673cdfd866562ebbb341c4b2ba638e"
+    },
+    {
+      "path": "reproduce-build.ps1",
+      "bytes": 4670,
+      "sha256": "d834b30d20f9f7fa39174c3d187af199f7c63e4cd659e505cf2cac75fadb9e32"
+    },
+    {
+      "path": "rust-sbpfv3-target.json",
+      "bytes": 1621,
+      "sha256": "17348c3d3c4ee84b05bba4ecd102e35c4c8dac7fa5b5a9ded5e1ae2394221945"
+    },
+    {
+      "path": "solana_escrow.so",
+      "bytes": 32912,
+      "sha256": "30c22daccdd194896ddec53543410b1163c27fea378a58942c018033820f50b7"
+    },
+    {
+      "path": "source-dependency-audit.json",
+      "bytes": 52807,
+      "sha256": "8a0b4d10379640ddbf957302789632156a9d6fee1826662be219cf4b219fe082"
+    },
+    {
+      "path": "src/lib.rs",
+      "bytes": 7551,
+      "sha256": "6fa662506bd667f6e510aaa3ea9aea74edaadeebdc829bd82bcfc05325b60eea"
+    },
+    {
+      "path": "target-repro-01/build.log",
+      "bytes": 2857,
+      "sha256": "e4f07064ab5eaa7e5fa5db80e30e8d86d3dfbd8f1316976b0ec929656f648e80"
+    },
+    {
+      "path": "target-repro-01/elf-inspection.log",
+      "bytes": 10326,
+      "sha256": "87e1e277f0cd282e3f066ab3e14e64573c075023f6720cf196f1cd5628ff1eb4"
+    },
+    {
+      "path": "target-repro-01/result.json",
+      "bytes": 2945,
+      "sha256": "f46a95a56472d9f3d693819f7fd97232864578eff1523d12bc1ccd315276ecef"
+    },
+    {
+      "path": "target-repro-01/sbpfv3-solana-solana/release/xds_swap_sbpfv3.so",
+      "bytes": 32912,
+      "sha256": "e22474092bbc8426b830799ec42735d1ca0b47a05f80e4221302111452d34642"
+    },
+    {
+      "path": "target-repro-02/build.log",
+      "bytes": 2857,
+      "sha256": "7e9f5ba195394dbfa09d449de608ec58fa088ef087f837b2cba1e8341a1104d5"
+    },
+    {
+      "path": "target-repro-02/elf-inspection.log",
+      "bytes": 10326,
+      "sha256": "87e1e277f0cd282e3f066ab3e14e64573c075023f6720cf196f1cd5628ff1eb4"
+    },
+    {
+      "path": "target-repro-02/result.json",
+      "bytes": 2936,
+      "sha256": "e9a1f1f5125ea2b6066f8fbf9c9106e7ac92fd76a6ba353a6736134406c5ac90"
+    },
+    {
+      "path": "target-repro-02/sbpfv3-solana-solana/release/xds_swap_sbpfv3.so",
+      "bytes": 32912,
+      "sha256": "30c22daccdd194896ddec53543410b1163c27fea378a58942c018033820f50b7"
+    },
+    {
+      "path": "test_differential.py",
+      "bytes": 9339,
+      "sha256": "35bb09a6fec88e07ec0a71abeb0cef62bbfb08d7f9a48fab3f4e78066ba87e2b"
+    },
+    {
+      "path": "test_solana_vm.py",
+      "bytes": 11661,
+      "sha256": "48187e48a95a1a94f92ba99e4ea6e3755289e0592c8d94d874c4d4d861892c54"
+    },
+    {
+      "path": "vm-differential-dev01.log",
+      "bytes": 755,
+      "sha256": "460122624b5a958b519714fd60d4df23fdae86185ba13deff6c91f141acca99e"
+    },
+    {
+      "path": "vm-original13.log",
+      "bytes": 2101,
+      "sha256": "c79dbd970c257a48bf8955bcdf970b9119be76c6eb64c137fa277d0388b1d420"
+    }
+  ]
+}
