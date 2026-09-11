@@ -428,7 +428,8 @@ namespace CryptoNote
 
     auto seedNodeStrings = config.getSeedNodeStrings();
     for (const auto& seed : seedNodeStrings) {
-      if (!append_net_address(m_seed_nodes, seed)) {
+      // The lab never resolves DNS; configured numeric seeds are unused there.
+      if (!m_swapLab && !append_net_address(m_seed_nodes, seed)) {
         return false;
       }
     }
@@ -481,11 +482,27 @@ namespace CryptoNote
   //-----------------------------------------------------------------------------------
   
   bool NodeServer::init(const NetNodeConfig& config) {
+    m_swapLab = config.getSwapLab();
+    if (m_swapLab) {
+      if (!config.getTestnet() || config.getBindIp() != "127.0.0.1" || config.getExternalPort() != 0) return false;
+      const auto local = [](const NetworkAddress& address) {
+        return Common::ipAddressToString(address.ip) == "127.0.0.1" && address.port > 0 && address.port <= 65535;
+      };
+      for (const auto& peer : config.getPeers()) if (!local(peer.adr)) return false;
+      for (const auto& peer : config.getExclusiveNodes()) if (!local(peer)) return false;
+      for (const auto& peer : config.getPriorityNodes()) if (!local(peer)) return false;
+      for (const auto& peer : config.getSeedNodes()) if (!local(peer)) return false;
+      for (const auto& seed : config.getSeedNodeStrings()) {
+        NetworkAddress address{};
+        if (!Common::parseIpAddressAndPort(address.ip, address.port, seed) || !local(address)) return false;
+      }
+      m_network_id = boost::uuids::uuid{{0x58,0x44,0x53,0x53,0x57,0x41,0x50,0x4c,0x41,0x42,0x30,0x34,0x00,0x00,0x00,0x01}};
+    }
     if (!config.getTestnet()) {
       for (auto seed : CryptoNote::SEED_NODES) {
         append_net_address(m_seed_nodes, seed);
       }
-    } else {
+    } else if (!m_swapLab) {
       m_network_id.data[0] += 1;
     }
 
@@ -542,7 +559,7 @@ namespace CryptoNote
     if(m_external_port)
       logger(INFO) << "External port defined as " << m_external_port;
 
-    addPortMapping(logger, m_listeningPort, m_external_port);
+    if (!m_swapLab) addPortMapping(logger, m_listeningPort, m_external_port);
 
     return true;
   }
@@ -853,6 +870,7 @@ namespace CryptoNote
   }
 
   bool NodeServer::try_to_connect_and_handshake_with_new_peer(const NetworkAddress& na, bool just_take_peerlist, uint64_t last_seen_stamp, PeerType peer_type, uint64_t first_seen_stamp)  {
+    if (m_swapLab && Common::ipAddressToString(na.ip) != "127.0.0.1") return false;
 
     logger(DEBUGGING) << "Connecting to " << na << " (peer_type=" << peer_type << ", last_seen: "
         << (last_seen_stamp ? Common::timeIntervalToString(time(nullptr) - last_seen_stamp) : "never") << ")...";
@@ -1032,6 +1050,9 @@ namespace CryptoNote
     if (!m_exclusive_peers.empty()) {
       return true;
     }
+    // A lab node without explicit peers is an isolated partition. Never dial
+    // persisted anchors, advertised peer lists or seed nodes in this profile.
+    if (m_swapLab) return true;
 
     if (!m_peerlist.get_white_peers_count() && m_seed_nodes.size()) {
       size_t try_count = 0;

@@ -5,6 +5,7 @@
 
 #include <chrono>
 #include <cassert>
+#include <stdexcept>
 #include "Dispatcher.h"
 #include "InterruptedException.h"
 
@@ -33,16 +34,27 @@ namespace System {
         throw InterruptedException();
       }
 
-      // Convert to milliseconds (minimum 1 ms)
+      // Preserve the existing minimum tick and non-positive duration behavior.
       uint64_t durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
       if (durationMs == 0) durationMs = 1;
 
-      uint64_t now = static_cast<uint64_t>(
-        std::chrono::duration_cast<std::chrono::milliseconds>(
-          std::chrono::steady_clock::now().time_since_epoch()
-        ).count()
-        );
-      uint64_t expireTime = now + durationMs;
+      const auto now = std::chrono::steady_clock::now().time_since_epoch();
+      const auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(now);
+      uint64_t expireTime = static_cast<uint64_t>(nowMs.count()) + durationMs;
+      if (duration > std::chrono::nanoseconds::zero()) {
+        // Round the absolute deadline up. Split off whole milliseconds so adding
+        // a large duration to the steady-clock epoch cannot overflow nanoseconds.
+        const auto fraction = duration >= std::chrono::milliseconds(1)
+          ? duration - std::chrono::duration_cast<std::chrono::milliseconds>(duration)
+          : std::chrono::nanoseconds::zero();
+        expireTime += static_cast<uint64_t>(std::chrono::ceil<std::chrono::milliseconds>(
+          now - nowMs + fraction).count());
+        const auto maximumMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::steady_clock::duration::max()).count();
+        if (expireTime > static_cast<uint64_t>(maximumMs)) {
+          throw std::overflow_error("Timer deadline exceeds steady clock range");
+        }
+      }
 
       auto* context = dispatcher->getCurrentContext();
       bool interrupted = false;

@@ -1,0 +1,8 @@
+Internal ctest changing into directory: /var/lib/discrete-swap-lab/qualification-v05/b
+Test project /var/lib/discrete-swap-lab/qualification-v05/b
+    Start 4: UnitTests
+1/1 Test #4: UnitTests ........................   Passed  2292.65 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Total Test time (real) = 2292.65 sec

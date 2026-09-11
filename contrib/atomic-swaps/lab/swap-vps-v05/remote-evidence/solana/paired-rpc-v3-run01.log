@@ -1,0 +1,29 @@
+{"phase": "starting-owned-four-XDS-daemons-and-two-wallets"}
+network_run=/var/lib/discrete-swap-lab/paired-rpc-v3-run01/xds/network-runs/1788846304617097579
+{"intent": "01-fund-alice-fees", "txid": "5zdhzNiAT9Ze1DZYHcW1xEwz9mcDDJ1Wggn1jP7TVjSi5CFUxS4k7R3uMUqmrzWEvo2Sk9v1yFPEHkqKpeEZdRPh", "receipt": "finalized", "slot": 1469}
+{"intent": "10-accounts", "txid": "5ijeCnEfXrvUK8TUUzCoQ3tA7LLdk4N31uwgcCTvpXT9RNvuZ4NgaxBGuxLbDgCDFm3aXq5cMUmF3tndBPCtTv5E", "receipt": "finalized", "slot": 1501}
+{"intent": "11-accounts", "txid": "bgNzc6gBZ9y6Qf3rMrHmhiFBGhLMD4JXTNvoqHFJREGxJpQc9W3q1bytoKaY8VYoncHdYmGsJyydVmA7fAt23dU", "receipt": "finalized", "slot": 1533}
+{"intent": "12-mint-source", "txid": "2UwhommBuajuQ33JhqP6Fg8aYbAiBrmHyDosB7PQQmm9RZk2fhb2cinn857yDmX2N9RuG8tn9SKu7EjiMzeLcEd9", "receipt": "finalized", "slot": 1565}
+{"phase": "foreign-fund", "txid": "64Y78BaaDuKLMatuHLvJff8cChivQ7AAEZETvWiWk2D2RmaKJjoSNN5Vb2SGR2UVpPyQKBaFbmWHbpQHA6K4SB7s", "finalized_slot": 1598}
+{"phase": "foreign-claim", "txid": "21EFTWRv9qJNGJjR7AnYKtrdbWFsSLVfuMzc1AVvsFhzRCfgcHo5K2Ypdhow21RPR9z9MstLNJC6aFcqZzS18ufk", "finalized_slot": 1633}
+{"intent": "15-alice-next-transfer", "txid": "3QgStTwmaZf9HvSzMXffGF1fPXh9a4QzKrs6GtStyYgKZKGrrGMTdNpfx9MSDWmmLbTLB6wLo71NmAfM2PBP5d8g", "receipt": "finalized", "slot": 1665}
+{"phase": "paired-case", "name": "success", "status": "PASS"}
+{"intent": "10-accounts", "txid": "4TKkcB9q1SdPxBy3PfgNw6rL6rBhzsb4zHv1XR9dpA4AAeYiz2YKsnyzom1mHdajBJMRS6YUYWNUu3qwW8RWfUKn", "receipt": "finalized", "slot": 1698}
+{"intent": "11-accounts", "txid": "sRTVHP4uYqHHPEFgr5gPwCqbc6qkNzgsCNqLq2mwddkXbxM2kybGmnjoYmQ8J3T1oKsnYJx1X19G2JdscD2XEn2", "receipt": "finalized", "slot": 1731}
+{"intent": "12-mint-source", "txid": "4h1TiDmyHXDgQdywZn1XURnabQywPxHWd4SYyedq9bWoD6qADPBzUfhcMQG8eFqPf7fv8pGpGwCvs7jjk9Z2GwoX", "receipt": "finalized", "slot": 1763}
+{"phase": "foreign-fund", "txid": "4AMcp4awiDinYztvgPZNnSHYsnueTLGj3fEXfr9gMu3KE67mwUms5ZPHJx2gPFbD48t4M2S42rR2AejBQNXrvwae", "finalized_slot": 1796}
+{"phase": "waiting-actual-slot", "current": 1830, "target": 2434}
+{"phase": "waiting-actual-slot", "current": 1898, "target": 2434}
+{"phase": "waiting-actual-slot", "current": 1966, "target": 2434}
+{"phase": "waiting-actual-slot", "current": 2034, "target": 2434}
+{"phase": "waiting-actual-slot", "current": 2102, "target": 2434}
+{"phase": "waiting-actual-slot", "current": 2170, "target": 2434}
+{"phase": "waiting-actual-slot", "current": 2238, "target": 2434}
+{"phase": "waiting-actual-slot", "current": 2306, "target": 2434}
+{"phase": "waiting-actual-slot", "current": 2374, "target": 2434}
+{"phase": "waiting-actual-slot", "current": 2449, "target": 2562}
+{"phase": "waiting-actual-slot", "current": 2518, "target": 2562}
+{"phase": "foreign-refund", "txid": "X2wnGWzERSg63Fb3yq4qNp6kF5HRg4q5MM7Z7Rn6kgmeywrtebPGdTyaaRD8YEfzc51kt35v8KvyfaXUf6J1gQX", "finalized_slot": 2564}
+{"intent": "15-bob-next-transfer", "txid": "2pu5DodAknSzE8TYMAiDFR4xEYgdpJTUvLXQS6AfAzTNXmC19RV2iBHv8b5U87dGgYo2LoyaNCC66PgPqy4xgRdK", "receipt": "finalized", "slot": 2596}
+{"phase": "paired-case", "name": "abandonment", "status": "PASS"}
+{"phase": "paired-run", "status": "PASS", "cases": 2}

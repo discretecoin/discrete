@@ -226,6 +226,43 @@ struct COMMAND_RPC_START_MINING {
     }
   };
 };
+// Local qualification endpoints; handlers require the isolated swap-lab chain.
+struct COMMAND_RPC_SWAP_LAB_MINE {
+  struct request {
+    uint32_t blocks = 0;
+    std::string miner_seed, expected_tip;
+    void serialize(ISerializer& s) { KV_MEMBER(blocks) KV_MEMBER(miner_seed) KV_MEMBER(expected_tip) }
+  };
+  struct response {
+    std::string status, top_hash;
+    uint32_t height = 0;
+    std::vector<std::string> hashes;
+    void serialize(ISerializer& s) { KV_MEMBER(status) KV_MEMBER(height) KV_MEMBER(top_hash) KV_MEMBER(hashes) }
+  };
+};
+// One bounded, read-only outpoint snapshot; also used by the frozen laboratory alias.
+struct COMMAND_RPC_GET_SWAP_OUTPOINT {
+  struct request {
+    std::string txid, spend_tag;
+    uint32_t index = 0;
+    void serialize(ISerializer& s) { KV_MEMBER(txid) KV_MEMBER(index) KV_MEMBER(spend_tag) }
+  };
+  struct response {
+    std::string status, block_hash, tip_hash, genesis_hash, tx_as_hex, spend_tag;
+    bool found = false, in_pool = false, in_chain = false;
+    bool spent_known = false, spent = false, spent_in_pool = false;
+    uint32_t block_height = 0, height = 0, confirmations = 0;
+    uint64_t amount_atoms = 0;
+    void serialize(ISerializer& s) {
+      KV_MEMBER(status) KV_MEMBER(found) KV_MEMBER(in_pool) KV_MEMBER(in_chain)
+      KV_MEMBER(spent_known) KV_MEMBER(spent) KV_MEMBER(spent_in_pool) KV_MEMBER(spend_tag)
+      KV_MEMBER(block_height) KV_MEMBER(block_hash) KV_MEMBER(height) KV_MEMBER(confirmations)
+      KV_MEMBER(tip_hash) KV_MEMBER(genesis_hash) KV_MEMBER(amount_atoms) KV_MEMBER(tx_as_hex)
+    }
+  };
+};
+
+using COMMAND_RPC_SWAP_LAB_OUTPOINT = COMMAND_RPC_GET_SWAP_OUTPOINT;
 //-----------------------------------------------
 struct COMMAND_HTTP {
   typedef EMPTY_STRUCT request;

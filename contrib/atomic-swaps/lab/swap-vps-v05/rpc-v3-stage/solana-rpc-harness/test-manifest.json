@@ -1,0 +1,67 @@
+{
+  "schema": 1,
+  "status": "SBF_V3_CANDIDATE_RUNTIME_PENDING",
+  "scope": "isolated Linux Agave 4.2.2 JSON RPC, synthetic six-decimal SPL mint only",
+  "dependency": "solders==0.29.0",
+  "program_id": "cGfHiC6Kgg3FpFZvgwGcswsCRtp4aBP2fzuXRQPizuN",
+  "program_id_bytes": "09 repeated 32 times",
+  "program_sha256": "30c22daccdd194896ddec53543410b1163c27fea378a58942c018033820f50b7",
+  "program_bytes": 32912,
+  "mint_id": "EdmxWPmx2WH6WgFfTdu9xfkYf3k1g5wD1zccTVySEEh1",
+  "mint_seed": "04 repeated 32 times; public synthetic fixture",
+  "amount_base_units": 1234567,
+  "source_initial_base_units": 10000000,
+  "required_inputs": [
+    "literal http://127.0.0.1:PORT",
+    "explicit expected genesis hash",
+    "owned private payer key file",
+    "owned fresh run directory"
+  ],
+  "live_cases": [
+    {
+      "id": "01-fund",
+      "expected": "state=1; source=8765433; vault=1234567; claim=refund=0"
+    },
+    {
+      "id": "02-wrong-secret-rejection",
+      "expected": "confirmed/finalized Custom4110; token balances and all 192 state bytes unchanged; only quoted SOL fee debited"
+    },
+    {
+      "id": "03-claim-and-identical-duplicate",
+      "expected": "state=2; claim=1234567; vault=0; exact-wire replay accepted for relay, then at least two new committed slots; original receipt identity and no additional debit"
+    },
+    {
+      "id": "04-next-transfer-after-claim",
+      "expected": "ordinary TransferChecked moves full claimed amount to refund account; state=2 unchanged"
+    },
+    {
+      "id": "05-early-refund-rejection",
+      "expected": "separate funded fixture; confirmed/finalized Custom4111 at receipt slot below stored deadline; token/state unchanged"
+    },
+    {
+      "id": "06-refund-and-next-transfer",
+      "expected": "wait actual committed slot; refund receipt slot >= deadline; state=3; exact amount returned then moved through ordinary TransferChecked"
+    }
+  ],
+  "offline_guard_cases": 11,
+  "evidence": [
+    "run.json case snapshots",
+    "per-intent JSON signed wire/sha256/semantic intent",
+    "persisted send-attempt marker",
+    "confirmed/finalized exact-wire receipts and fee balances",
+    "duplicate observation slots",
+    "source package hashes"
+  ],
+  "recovery": "explicit --recover-intent only replays/reconciles an existing signed wire; no automatic blockhash renewal, replacement, new intent or full-run resume",
+  "excluded": [
+    "public RPC",
+    "Circle USDC",
+    "real funds",
+    "XDS pairing",
+    "mainnet qualification",
+    "slot warping",
+    "production signing/key custody",
+    "restart/crash qualification of this harness"
+  ],
+  "staged_offline_evidence": "separate V05 audit receipt; no historical outcome imported"
+}

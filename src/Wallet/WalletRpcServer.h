@@ -93,6 +93,16 @@ private:
   bool handle_command_line(const boost::program_options::variables_map& vm);
   bool authenticate(const CryptoNote::HttpRequest& request) const;
 
+  CryptoNote::WalletLegacy& swapWallet();
+  bool on_swap_scan_height(const wallet_rpc::COMMAND_RPC_GET_HEIGHT::request& req,
+                           wallet_rpc::COMMAND_RPC_GET_HEIGHT::response& res);
+  bool on_swap_role(const wallet_rpc::COMMAND_RPC_SWAP_ROLE::request&, wallet_rpc::COMMAND_RPC_SWAP_ROLE::response&);
+  bool on_swap_prepare_funding(const wallet_rpc::COMMAND_RPC_SWAP_PREPARE_FUNDING::request&, wallet_rpc::COMMAND_RPC_SWAP_PREPARE_FUNDING::response&);
+  bool on_swap_prepare_spend(const wallet_rpc::COMMAND_RPC_SWAP_PREPARE_SPEND::request&, wallet_rpc::COMMAND_RPC_SWAP_PREPARE_SPEND::response&);
+  bool on_swap_funding_capabilities(const wallet_rpc::COMMAND_RPC_SWAP_FUNDING_CAPABILITIES::request&, wallet_rpc::COMMAND_RPC_SWAP_FUNDING_CAPABILITIES::response&);
+  bool on_swap_prepare_funding_once(const wallet_rpc::COMMAND_RPC_SWAP_PREPARE_FUNDING_ONCE::request&, wallet_rpc::COMMAND_RPC_SWAP_PREPARE_FUNDING_ONCE::response&);
+  bool on_swap_get_funding_preparation(const wallet_rpc::COMMAND_RPC_SWAP_GET_FUNDING_PREPARATION::request&, wallet_rpc::COMMAND_RPC_SWAP_GET_FUNDING_PREPARATION::response&);
+
   CryptoNote::Currency& m_currency;
   CryptoNote::IWalletLegacy& m_wallet;
   CryptoNote::INode& m_node;

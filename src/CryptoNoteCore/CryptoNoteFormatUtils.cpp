@@ -1,3 +1,4 @@
+#include "CryptoNoteCore/SwapValidation.h"
 // Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 // Copyright (c) 2018-2026, Karbo developers
 //
@@ -56,6 +57,8 @@ bool parseAndValidateTransactionFromBinaryArray(const BinaryArray& tx_blob, Tran
   if (!fromBinaryArray(tx, tx_blob)) {
     return false;
   }
+
+  if (isSwapTransaction(tx) && toBinaryArray(tx) != tx_blob) return false;
 
   //TODO: validate tx
   cn_fast_hash(tx_blob.data(), tx_blob.size(), tx_hash);
@@ -116,7 +119,10 @@ uint32_t get_block_height(const Block& b) {
 }
 
 bool check_inputs_types_supported(const TransactionPrefix& tx) {
-  const bool pqInputs = tx.version >= TRANSACTION_VERSION_1 && isPqTransfer(tx.txType);
+  const bool pqInputs = tx.version >= TRANSACTION_VERSION_1 && (isPqTransfer(tx.txType) || tx.txType == TX_SWAP_FUND);
+  if (tx.txType == TX_SWAP_SPEND) {
+    return tx.version == TRANSACTION_VERSION_1 && tx.inputs.size() == 1 && tx.inputs[0].type() == typeid(SwapInput);
+  }
   for (const auto& in : tx.inputs) {
     if (pqInputs) {
       if (in.type() != typeid(PqInput)) return false;
@@ -131,7 +137,7 @@ bool check_outs_valid(const TransactionPrefix& tx, std::string* error) {
   for (const TransactionOutput& out : tx.outputs) {
     if (tx.version >= TRANSACTION_VERSION_1) {
       if (out.target.type() == typeid(PqOutput)) {
-        if (!isPqTransfer(tx.txType)) {
+        if (!isPqTransfer(tx.txType) && !isSwapTransaction(tx)) {
           if (error) *error = "PqOutput is not allowed for this tx type";
           return false;
         }
@@ -139,6 +145,10 @@ bool check_outs_valid(const TransactionPrefix& tx, std::string* error) {
           if (error) *error = "Zero amount output";
           return false;
         }
+        continue;
+      }
+      if (out.target.type() == typeid(SwapOutput)) {
+        if (tx.txType != TX_SWAP_FUND || out.amount == 0 || out.unlockHeight != 0) return false;
         continue;
       }
       if (out.target.type() == typeid(CoinbaseOutput)) {

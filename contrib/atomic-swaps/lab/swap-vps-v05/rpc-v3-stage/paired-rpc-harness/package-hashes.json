@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "status": "STAGED_CANDIDATE_NO_RUNTIME_OUTCOME",
+  "source_manifest_sha256": "d083413431417696f84ebc3399911cab2fe62984ca9ac03fbc25b123bf69146d",
+  "files": {
+    "bindings.py": "4421104ed9e80b517cd4420aaf0e964ef11f97bcff297728e11a823ea8f93465",
+    "paired.py": "88340b6abb61d18fc7d780ec910870a5deb1df3d30efe69999222741cde640fb",
+    "runner.py": "f1cae09c056b8ab3cbedb21cc7e92c7e548a2713f348b9bd669290a43d8a3107",
+    "test_guards.py": "24c4646ec9a04aee756627a02f2e40a4e63f61ba8c7ca5f3ddf096f91c753492",
+    "README.md": "9a1043b98a7205d8ae683347c7222fb3715db7da9ec3aa0ac5bd4d890040a754",
+    "test-manifest.json": "78ace8360b3808f1331ac59c953b4f44a02a4669036f07eab928e6193f82a168",
+    "fixture-overrides.diff": "d68d63717d13573a742b7d1ec4d72658e1797dc51cd8008294c30eae389a6f09",
+    "freshness-review.diff": "a4d49578d34f1bf8d51ac457d160894c571baaf6ecfcefe2ce15d540c6de471d"
+  },
+  "program_sha256": "30c22daccdd194896ddec53543410b1163c27fea378a58942c018033820f50b7",
+  "program_bytes": 32912,
+  "historical_outcomes_imported": false,
+  "frozen_dependencies": {
+    "linux-harness/runtime_paths.py": "55d36a11c3346cd358789fb271910ee6d11167f8fa55a39bd9d59a66d0315210",
+    "linux-harness/swap_journal.py": "8e935ecceaae034e1ae5ab0c8bccb4ed01ae4c78c799d9a0846eb084cf1c4792",
+    "linux-harness/test_xds_wallet_network.py": "c85067f1ea0ea50e2e57de01845dc87a290f2b742cce85348b35720a3ce52330",
+    "linux-harness/xds_localnet.py": "a44ea85438c46850937dc2af635bcacf86771e07bad5911838ffb387435079c5",
+    "solana-rpc-harness/driver.py": "1d866b3887dfaf0eff56cad2285ff87e8fe29fbecfe8d287e40e2c131ecec6a3"
+  },
+  "offline_tests": 20,
+  "inventory_scope": "8 current runtime/test/docs/review-diff files only; historical logs, old candidate and receipts remain in original package, not copied"
+}

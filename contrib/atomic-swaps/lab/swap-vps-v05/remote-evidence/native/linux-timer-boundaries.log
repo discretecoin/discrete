@@ -1,0 +1,17 @@
+test_daemon_origin_and_content_type_gate (test_localnet_boundaries.LocalnetBoundaries.test_daemon_origin_and_content_type_gate) ... ok
+test_daemon_rejects_hostname_seed_before_resolver (test_localnet_boundaries.LocalnetBoundaries.test_daemon_rejects_hostname_seed_before_resolver) ... ok
+test_daemon_rejects_nonlocal_configured_peer_before_listener (test_localnet_boundaries.LocalnetBoundaries.test_daemon_rejects_nonlocal_configured_peer_before_listener) ... ok
+test_daemon_rejects_nonloopback_rpc_and_p2p_binds (test_localnet_boundaries.LocalnetBoundaries.test_daemon_rejects_nonloopback_rpc_and_p2p_binds) ... ok
+test_daemon_swap_lab_requires_testnet (test_localnet_boundaries.LocalnetBoundaries.test_daemon_swap_lab_requires_testnet) ... ok
+test_duplicate_start_preserves_owned_process_handles (test_localnet_boundaries.LocalnetBoundaries.test_duplicate_start_preserves_owned_process_handles) ... ok
+test_http_opener_ignores_proxy_and_refuses_loopback_redirect (test_localnet_boundaries.LocalnetBoundaries.test_http_opener_ignores_proxy_and_refuses_loopback_redirect) ... ok
+test_wallet_auth_origin_and_content_type_gate (test_localnet_boundaries.LocalnetBoundaries.test_wallet_auth_origin_and_content_type_gate) ... ok
+test_wallet_constructor_failure_cleans_its_unregistered_process (test_localnet_boundaries.LocalnetBoundaries.test_wallet_constructor_failure_cleans_its_unregistered_process) ... ok
+test_wallet_rejects_missing_either_or_both_credentials (test_localnet_boundaries.LocalnetBoundaries.test_wallet_rejects_missing_either_or_both_credentials) ... ok
+test_wallet_rejects_nonloopback_listener_and_ssl (test_localnet_boundaries.LocalnetBoundaries.test_wallet_rejects_nonloopback_listener_and_ssl) ... ok
+test_wallet_swap_lab_requires_testnet (test_localnet_boundaries.LocalnetBoundaries.test_wallet_swap_lab_requires_testnet) ... ok
+
+----------------------------------------------------------------------
+Ran 12 tests in 71.919s
+
+OK

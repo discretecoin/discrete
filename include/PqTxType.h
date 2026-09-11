@@ -39,7 +39,15 @@ enum PqTxType : uint8_t {
   TX_PQ       = 0x01,
   TX_FREE_REG = 0x03,
   TX_PQ_V2    = 0x04,
+  // Experimental conditional family; chain admission requires explicit test activation.
+  // 0x04 belongs to canonical TX_PQ_V2. Earlier unactivated swap-lab funding
+  // records using that byte are not compatible with this profile.
+  TX_SWAP_FUND = 0x06,
+  TX_SWAP_SPEND = 0x05,
 };
+
+static_assert(TX_SWAP_FUND != TX_PQ_V2 && TX_SWAP_SPEND != TX_PQ_V2 &&
+              TX_SWAP_FUND != TX_SWAP_SPEND, "PQ and swap wire types must be distinct");
 
 // True for the ordinary transfer family (PqInput -> PqOutput), whichever
 // delivery era declared it. Use this for every "is this a transfer" test; use

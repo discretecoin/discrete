@@ -1,0 +1,132 @@
+{
+  "core_head": "1e947a8e66ec963e8e634b14fec29343ef7d8822",
+  "baseline_manifest": "baseline-manifest.json",
+  "changed_copies": [
+    "run_evidence.py",
+    "test_bitcoin_regtest.py",
+    "test_cross_chain.py",
+    "test_localnet_boundaries.py",
+    "xds_localnet.py"
+  ],
+  "unchanged_copies": [
+    "bitcoin_adapter.py",
+    "solana-build.json",
+    "solana_escrow.c",
+    "solana_escrow.so",
+    "solana_journal_adapter.py",
+    "solana_profile.h",
+    "swap_journal.py",
+    "test_journal_recovery.py",
+    "test_network_cross_chain.py",
+    "test_solana_journal.py",
+    "test_solana_vm.py",
+    "test_swap_journal.py",
+    "test_xds_wallet_network.py"
+  ],
+  "verification": {
+    "path_tests": {
+      "passed": 9,
+      "failed": 0,
+      "python": "3.12.14 Windows",
+      "command": "python -B -m unittest -v test_runtime_paths"
+    },
+    "all_python_ast_parsed": 16,
+    "unchanged_assertion_nodes": 392,
+    "frozen_source_hashes_unchanged": true,
+    "linux_execution": false
+  },
+  "files": [
+    {
+      "path": "baseline-manifest.json",
+      "sha256": "51ecbdf176ddcebce9780401de706e4e330f7062bc5be06907c212136b4c0057"
+    },
+    {
+      "path": "bitcoin_adapter.py",
+      "sha256": "c1494760cc4b852135beefdf0d4c6d00f9415c14c4404a980a6b297b9628c496"
+    },
+    {
+      "path": "README.md",
+      "sha256": "fa9902dee280b8212136567ca4bf4b076a70487bcef9bca1666090ee6d2b6f0d"
+    },
+    {
+      "path": "run_evidence.py",
+      "sha256": "113f22fe954c745b66dd7ba282a80848deb275e542b71ebcd704b572e8fe5a69"
+    },
+    {
+      "path": "runtime_paths.py",
+      "sha256": "55d36a11c3346cd358789fb271910ee6d11167f8fa55a39bd9d59a66d0315210"
+    },
+    {
+      "path": "solana-build.json",
+      "sha256": "f2896e079aa14d05489a3b6ab7fbaca22625adcedb7f1ddd61876aae152074ef"
+    },
+    {
+      "path": "solana_escrow.c",
+      "sha256": "c64e6f25aa506565d553c5959c5fc3a7c27895c7b22ecffc643091d8c9bf2123"
+    },
+    {
+      "path": "solana_escrow.so",
+      "sha256": "91004de413fa707ebd61d743cb01a2bfea80b0077fef3e15bc1f11bdb6100a89"
+    },
+    {
+      "path": "solana_journal_adapter.py",
+      "sha256": "9e0119533919f7514607390bd3acca570cbd37445fde174174a04dfc5bf19d9c"
+    },
+    {
+      "path": "solana_profile.h",
+      "sha256": "cc86c7703a1e7edf9b2ec7c1a8bbcaa60788f5f375b9292cef8207eb56666551"
+    },
+    {
+      "path": "swap_journal.py",
+      "sha256": "8e935ecceaae034e1ae5ab0c8bccb4ed01ae4c78c799d9a0846eb084cf1c4792"
+    },
+    {
+      "path": "test_bitcoin_regtest.py",
+      "sha256": "46885a2784d4922cf0c8b65a50b8d16bf2c0a5acfe47e7569546d333e239ae52"
+    },
+    {
+      "path": "test_cross_chain.py",
+      "sha256": "650aff6d3ec7242a5a0125dbe48355719762eedd799f5a9630183e69f75e0a69"
+    },
+    {
+      "path": "test_journal_recovery.py",
+      "sha256": "da3a3f3be729e9e056c3d707572a92c0216eddf102958214d3050454f7d8ea7c"
+    },
+    {
+      "path": "test_localnet_boundaries.py",
+      "sha256": "c586f91fbebe8e2a259b3851f4196ecb67ee615bc779d73bfdfa899452f13f4c"
+    },
+    {
+      "path": "test_network_cross_chain.py",
+      "sha256": "bf0618d626d32aa6b3d457fd599550fb772e3a0fae3e5f4acd851389089d336b"
+    },
+    {
+      "path": "test_runtime_paths.py",
+      "sha256": "877ab4cde270793b950fe707cb884f66daa88850176ad06163b616e68f2c814c"
+    },
+    {
+      "path": "test_solana_journal.py",
+      "sha256": "8a3def877897d3fcacb00af2a569e63a093186ec7b928a4da9597c59bcf11597"
+    },
+    {
+      "path": "test_solana_vm.py",
+      "sha256": "48187e48a95a1a94f92ba99e4ea6e3755289e0592c8d94d874c4d4d861892c54"
+    },
+    {
+      "path": "test_swap_journal.py",
+      "sha256": "13f8cdd53363c3d4010fb82ccd3b7fd5069f2234a328e68ad1f31b51f7103015"
+    },
+    {
+      "path": "test_xds_wallet_network.py",
+      "sha256": "c85067f1ea0ea50e2e57de01845dc87a290f2b742cce85348b35720a3ce52330"
+    },
+    {
+      "path": "xds_localnet.py",
+      "sha256": "a44ea85438c46850937dc2af635bcacf86771e07bad5911838ffb387435079c5"
+    },
+    {
+      "path": "portability.patch",
+      "sha256": "9bb876354775d10b6ab4d7fc48a8e8b8aab4b9438ccbc60e234960903d23737f"
+    }
+  ]
+}

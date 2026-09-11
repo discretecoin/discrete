@@ -40,6 +40,7 @@
 #include "Common/FormatTools.h"
 #include "Common/StringTools.h"
 #include "CryptoNoteCore/TransactionExtra.h"
+#include "CryptoNoteCore/SwapValidation.h"
 #include "CryptoNoteCore/TransactionUtils.h"
 #include "CryptoNoteCore/CryptoNoteTools.h"
 #include "CryptoNoteCore/CryptoNoteFormatUtils.h"
@@ -215,6 +216,9 @@ std::unordered_map<std::string, RpcServer::RpcHandler<RpcServer::HandlerFunction
   // "synchronized" — otherwise a fresh network (no peers) could never mine its
   // first blocks to bootstrap.
   { "/start_mining", { jsonMethod<COMMAND_RPC_START_MINING>(&RpcServer::on_start_mining), true } },
+  { "/swap_lab_mine", { jsonMethod<COMMAND_RPC_SWAP_LAB_MINE>(&RpcServer::on_swap_lab_mine), true } },
+  { "/swap_lab_outpoint", { jsonMethod<COMMAND_RPC_SWAP_LAB_OUTPOINT>(&RpcServer::on_swap_lab_outpoint), true } },
+  { "/get_swap_outpoint", { jsonMethod<COMMAND_RPC_GET_SWAP_OUTPOINT>(&RpcServer::on_get_swap_outpoint), true } },
   { "/stop_mining", { jsonMethod<COMMAND_RPC_STOP_MINING>(&RpcServer::on_stop_mining), true } },
   { "/stop_daemon", { jsonMethod<COMMAND_RPC_STOP_DAEMON>(&RpcServer::on_stop_daemon), true } },
   { "/getconnections", { jsonMethod<COMMAND_RPC_GET_CONNECTIONS>(&RpcServer::on_get_connections), true } },
@@ -327,7 +331,26 @@ void RpcServer::processRequest(const CryptoNote::HttpRequest& request, CryptoNot
   const std::string url = request.getUrl();
   logger(Logging::TRACE) << "Incoming RPC request to endpoint " << url;
 
-  if (url == "/stop_daemon") {
+  const bool labEndpoint = url == "/swap_lab_mine" || url == "/swap_lab_outpoint";
+  if (labEndpoint && (!m_core.currency().swapLab() || m_config.getBindIP() != "127.0.0.1")) {
+    response.setStatus(CryptoNote::HttpResponse::STATUS_404);
+    response.setBody("Not found");
+    return;
+  }
+  const bool swapReadEndpoint = url == "/get_swap_outpoint";
+  // The generic read path is available to a co-located coordinator, including
+  // on a normal chain. It never enables signing, mining, or swap activation.
+  if (swapReadEndpoint && m_config.getBindIP() != "127.0.0.1") {
+    response.setStatus(CryptoNote::HttpResponse::STATUS_404);
+    response.setBody("Not found");
+    return;
+  }
+  if ((swapReadEndpoint || url == "/swap_lab_outpoint") && request.getBody().size() > 512) {
+    response.setStatus(CryptoNote::HttpResponse::STATUS_400);
+    response.setBody("Outpoint request too large");
+    return;
+  }
+  if (url == "/stop_daemon" || labEndpoint || swapReadEndpoint) {
     // Shutdown intentionally has no credentials. Keep it out of browser request
     // paths while preserving the JSON POST used by local CLI clients.
     const auto& headers = request.getHeaders();
@@ -1486,7 +1509,8 @@ bool RpcServer::on_get_transactions(const COMMAND_RPC_GET_TRANSACTIONS::request&
     }
     if (b.size() != sizeof(Crypto::Hash))
     {
-      res.status = "Failed, size of data mismatch";
+      res.status = "Failed, transaction hash must be exactly 32 bytes";
+      return true;
     }
     vh.push_back(*reinterpret_cast<const Crypto::Hash*>(b.data()));
   }
@@ -1549,6 +1573,130 @@ bool RpcServer::on_send_raw_transaction(const COMMAND_RPC_SEND_RAW_TRANSACTION::
   }
 
   res.status = CORE_RPC_STATUS_OK;
+  return true;
+}
+
+bool RpcServer::on_swap_lab_mine(const COMMAND_RPC_SWAP_LAB_MINE::request& req, COMMAND_RPC_SWAP_LAB_MINE::response& res) {
+  if (!m_core.currency().swapLab() || m_config.getBindIP() != "127.0.0.1" || m_restricted_rpc) {
+    res.status = "Method disabled"; return true;
+  }
+  auto snapshot = [&] {
+    res.height = m_core.getCurrentBlockchainHeight();
+    res.top_hash = Common::podToHex(m_core.getBlockIdByHeight(res.height - 1));
+  };
+  snapshot();
+  if (!req.expected_tip.empty() && req.expected_tip != res.top_hash) {
+    res.status = "TIP_MISMATCH"; return true;
+  }
+  if (req.blocks == 0 || req.blocks > 32 || req.miner_seed.size() != 64) {
+    res.status = "INVALID_REQUEST"; return true;
+  }
+  if (m_core.get_miner().is_mining()) { res.status = "MINER_BUSY"; return true; }
+  Crypto::SecretKey seed{};
+  CryptoPQ::KemPublicKey viewPub{};
+  CryptoPQ::DsaPublicKey spendPub{};
+  CryptoPQ::DsaSecretKey spendSk{};
+  Tools::SecretLock seedGuard(&seed, sizeof(seed));
+  Tools::SecretLock secretGuard(spendSk.data(), spendSk.size());
+  size_t parsed = 0;
+  if (!Common::fromHex(req.miner_seed, seed.data, sizeof(seed.data), parsed) || parsed != sizeof(seed.data)) {
+    res.status = "INVALID_SEED"; return true;
+  }
+  try {
+    deriveMinerPqKeys(seed, viewPub, spendPub, spendSk);
+    res.status = CORE_RPC_STATUS_OK;
+    for (uint32_t count = 0; count < req.blocks; ++count) {
+      Block block{}; Difficulty difficulty = 0; uint32_t height = 0;
+      if (!m_core.get_block_template_pq(block, viewPub, spendPub, difficulty, height, {})) {
+        res.status = "TEMPLATE_FAILED"; break;
+      }
+      uint64_t parentTimestamp = 0;
+      if (height == 0 || !m_core.getBlockTimestamp(height - 1, parentTimestamp) ||
+          parentTimestamp > UINT64_MAX - m_core.currency().difficultyTarget()) {
+        res.status = "PARENT_FAILED"; break;
+      }
+      // Advance the local historical chain at the real target interval. This
+      // changes no timestamp, difficulty, PoW, reward, maturity or fee validator.
+      block.timestamp = parentTimestamp + m_core.currency().difficultyTarget();
+      if (block.timestamp > static_cast<uint64_t>(std::time(nullptr))) {
+        res.status = "LAB_CLOCK_EXHAUSTED"; break;
+      }
+      bool proved = false;
+      for (uint32_t attempt = 0; attempt < 4096; ++attempt) {
+        block.nonce = attempt; BinaryArray blob; Crypto::Hash pow{};
+        if (!get_block_hashing_blob(block, blob) || !discrete_power_prove(blob, spendSk, block.signature, pow)) {
+          res.status = "PROOF_FAILED"; break;
+        }
+        if (check_hash(pow, difficulty)) { proved = true; break; }
+      }
+      if (!proved) { if (res.status == CORE_RPC_STATUS_OK) res.status = "NONCE_BUDGET_EXHAUSTED"; break; }
+      const auto id = get_block_hash(block);
+      if (!m_core.handle_block_found(block) || m_core.getBlockIdByHeight(height) != id) {
+        res.status = "BLOCK_NOT_ACCEPTED"; break;
+      }
+      res.hashes.push_back(Common::podToHex(id));
+    }
+  } catch (const std::exception& e) {
+    res.status = std::string("ERROR: ") + e.what();
+  }
+  // Partial failure always retains accepted hashes and the actual chain readback.
+  snapshot(); return true;
+}
+
+bool RpcServer::on_swap_lab_outpoint(const COMMAND_RPC_SWAP_LAB_OUTPOINT::request& req, COMMAND_RPC_SWAP_LAB_OUTPOINT::response& res) {
+  if (!m_core.currency().swapLab() || m_config.getBindIP() != "127.0.0.1") {
+    res.status = "Method disabled"; return true;
+  }
+  return on_get_swap_outpoint(req, res);
+}
+
+bool RpcServer::on_get_swap_outpoint(const COMMAND_RPC_GET_SWAP_OUTPOINT::request& req, COMMAND_RPC_GET_SWAP_OUTPOINT::response& res) {
+  if (m_config.getBindIP() != "127.0.0.1") {
+    res.status = "Method disabled"; return true;
+  }
+  Crypto::Hash txid{}; Crypto::KeyImage requestedTag{}; size_t parsed = 0;
+  if (req.txid.size() != 64 || !Common::fromHex(req.txid, txid.data, sizeof(txid.data), parsed) || parsed != sizeof(txid.data)) {
+    res.status = "INVALID_TXID"; return true;
+  }
+  const bool suppliedTag = !req.spend_tag.empty();
+  if (suppliedTag && (req.spend_tag.size() != 64 ||
+      !Common::fromHex(req.spend_tag, requestedTag.data, sizeof(requestedTag.data), parsed) || parsed != sizeof(requestedTag.data))) {
+    res.status = "INVALID_SPEND_TAG"; return true;
+  }
+  m_core.executeLocked([&]() -> std::error_code {
+    res.height = m_core.getCurrentBlockchainHeight();
+    res.tip_hash = Common::podToHex(m_core.getBlockIdByHeight(res.height - 1));
+    const auto chain = m_core.currency().genesisBlockHash();
+    res.genesis_hash = Common::podToHex(chain); res.status = CORE_RPC_STATUS_OK;
+    Transaction tx{};
+    if (!m_core.getTransaction(txid, tx, true)) return {};
+    if (getObjectHash(tx) != txid) { res.status = "INCONSISTENT_TRANSACTION"; return {}; }
+    res.tx_as_hex = Common::toHex(toBinaryArray(tx));
+    Crypto::Hash block{};
+    res.in_chain = m_core.getBlockContainingTx(txid, block, res.block_height);
+    if (res.in_chain) {
+      res.block_hash = Common::podToHex(block);
+      res.confirmations = res.height > res.block_height ? res.height - res.block_height : 0;
+    } else { Transaction pending{}; res.in_pool = m_core.getPoolTransaction(txid, pending); }
+    if (req.index >= tx.outputs.size()) return {};
+    res.found = true; res.amount_atoms = tx.outputs[req.index].amount;
+    Crypto::KeyImage tag{};
+    if (tx.outputs[req.index].target.type() == typeid(SwapOutput)) {
+      SwapInput reference{}; reference.prevTxid = txid; reference.prevOutIndex = req.index;
+      tag = swapSpendTag(reference, chain); res.spent_known = true;
+      if (suppliedTag && tag != requestedTag) { res.status = "SPEND_TAG_MISMATCH"; return {}; }
+    } else if (suppliedTag) {
+      // Ordinary nullifiers cannot be derived from the public outpoint alone.
+      // The wallet must derive and bind this supplied tag using its own keys.
+      tag = requestedTag; res.spent_known = true;
+    }
+    if (res.spent_known) {
+      res.spend_tag = Common::podToHex(tag);
+      res.spent = m_core.get_blockchain_storage().have_spend_tag_as_spent(tag);
+      res.spent_in_pool = m_core.poolHasSpendTag(tag);
+    }
+    return {};
+  });
   return true;
 }
 

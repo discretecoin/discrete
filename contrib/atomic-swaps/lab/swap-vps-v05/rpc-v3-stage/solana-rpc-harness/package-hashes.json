@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "status": "STAGED_CANDIDATE_NO_RUNTIME_OUTCOME",
+  "source_manifest_sha256": "aa7bbecd6fc77a2eea65f876fed5da6958db58006fa274e7a0346ca2f42e7667",
+  "files": {
+    "driver.py": "1d866b3887dfaf0eff56cad2285ff87e8fe29fbecfe8d287e40e2c131ecec6a3",
+    "README.md": "804f48fc73f9f0aac27eeabe831339099923d5d520a7840d98f61b59021d95c8",
+    "requirements.txt": "5662e2cc75609ec896467d4e93309530c879d37b13b48b579fefeb5fb0c16615",
+    "test_guards.py": "5877efa5ef29fe0eb972149fde53b0d6b74d97c6a9ff4f333e660b57a304bcc1",
+    "test-manifest.json": "8e3c3125105cbb337cde2b90d8a48cffc300b31a59d3cb556b478a60226d72a3"
+  },
+  "program_sha256": "30c22daccdd194896ddec53543410b1163c27fea378a58942c018033820f50b7",
+  "program_bytes": 32912,
+  "historical_outcomes_imported": false
+}

@@ -1,0 +1,18 @@
+test_atomic_two_instruction_conflict_rolls_back_first_transfer (test_solana_vm.SolanaVmTests.test_atomic_two_instruction_conflict_rolls_back_first_transfer) ... ok
+test_claim_after_deadline_and_both_spend_orders (test_solana_vm.SolanaVmTests.test_claim_after_deadline_and_both_spend_orders) ... ok
+test_closed_state_cannot_reinitialize_or_claim_twice (test_solana_vm.SolanaVmTests.test_closed_state_cannot_reinitialize_or_claim_twice) ... ok
+test_compute_exhaustion_around_cpi_rolls_back_token_transfer (test_solana_vm.SolanaVmTests.test_compute_exhaustion_around_cpi_rolls_back_token_transfer) ... ok
+test_distinct_valid_vault_and_mint_rejected_by_binding_not_alias (test_solana_vm.SolanaVmTests.test_distinct_valid_vault_and_mint_rejected_by_binding_not_alias) ... ok
+test_funding_unsigned_state_and_delegate_or_close_authority (test_solana_vm.SolanaVmTests.test_funding_unsigned_state_and_delegate_or_close_authority) ... ok
+test_issuer_freeze_preserves_funds_and_thaw_allows_retry (test_solana_vm.SolanaVmTests.test_issuer_freeze_preserves_funds_and_thaw_allows_retry) ... ok
+test_real_spl_fund_claim_exact_amount_no_redirect_and_next_transfer (test_solana_vm.SolanaVmTests.test_real_spl_fund_claim_exact_amount_no_redirect_and_next_transfer) ... ok
+test_refund_exact_slot_and_retry_after_rejection (test_solana_vm.SolanaVmTests.test_refund_exact_slot_and_retry_after_rejection) ... ok
+test_stale_blockhash_then_resign_same_identity (test_solana_vm.SolanaVmTests.test_stale_blockhash_then_resign_same_identity) ... ok
+test_synthetic_inconsistent_supply_overflow_rejected (test_solana_vm.SolanaVmTests.test_synthetic_inconsistent_supply_overflow_rejected) ... ok
+test_wrong_destination_vault_authority_mint_program_and_alias (test_solana_vm.SolanaVmTests.test_wrong_destination_vault_authority_mint_program_and_alias) ... ok
+test_wrong_secret_length_trailing_bytes_leave_funds_locked (test_solana_vm.SolanaVmTests.test_wrong_secret_length_trailing_bytes_leave_funds_locked) ... ok
+
+----------------------------------------------------------------------
+Ran 13 tests in 0.104s
+
+OK

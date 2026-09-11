@@ -18,6 +18,7 @@
 
 #include "BlockchainExplorerDataBuilder.h"
 
+#include <cstring>
 #include <boost/utility/value_init.hpp>
 #include <boost/range/combine.hpp>
 
@@ -27,6 +28,7 @@
 #include "CryptoNoteCore/CryptoNoteTools.h"
 #include "CryptoNoteCore/TransactionExtra.h"
 #include "CryptoNoteCore/PqValidation.h"
+#include "CryptoNoteCore/SwapValidation.h"
 #include "CryptoNoteConfig.h"
 #include "PqTxType.h"
 
@@ -233,7 +235,8 @@ bool BlockchainExplorerDataBuilder::fillTransactionDetails(const Transaction& tr
   transactionDetails.unlockHeight = transaction.unlockHeight;
   transactionDetails.totalOutputsAmount = get_outs_money_amount(transaction);
 
-  const bool pqOnlyInputs = transaction.version >= TRANSACTION_VERSION_1 && isPqTransfer(transaction.txType);
+  const bool pqOnlyInputs = transaction.version >= TRANSACTION_VERSION_1 &&
+    (isPqTransfer(transaction.txType) || isSwapTransaction(transaction));
   const bool freeRegTransaction = transaction.version >= TRANSACTION_VERSION_1 && transaction.txType == TX_FREE_REG;
   if (pqOnlyInputs) {
     uint64_t fee = 0;
@@ -300,6 +303,19 @@ bool BlockchainExplorerDataBuilder::fillTransactionDetails(const Transaction& tr
         txInPqDetails.amount = referencedTx.outputs[txInPq.prevOutIndex].amount;
       }
       txInDetails = txInPqDetails;
+    } else if (txIn.type() == typeid(SwapInput)) {
+      SwapInputDetails details;
+      details.input = boost::get<SwapInput>(txIn);
+      details.output.transactionHash = details.input.prevTxid;
+      details.output.number = details.input.prevOutIndex;
+      const auto tag = swapSpendTag(details.input, m_core.getBlockIdByHeight(0));
+      std::memcpy(details.spendTag.data, tag.data, sizeof(tag.data));
+      Transaction referencedTx;
+      if (!m_core.getTransaction(details.input.prevTxid, referencedTx, true) ||
+          details.input.prevOutIndex >= referencedTx.outputs.size() ||
+          referencedTx.outputs[details.input.prevOutIndex].target.type() != typeid(SwapOutput)) return false;
+      details.amount = referencedTx.outputs[details.input.prevOutIndex].amount;
+      txInDetails = std::move(details);
     } else {
       return false;
     }

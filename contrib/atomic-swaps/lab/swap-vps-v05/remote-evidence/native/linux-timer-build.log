@@ -1,0 +1,671 @@
+[1/70] cd /var/lib/discrete-swap-lab/qualification-v05/core && /usr/bin/cmake -D VERSION=0.1 -D GIT=/usr/bin/git -D TO=/var/lib/discrete-swap-lab/qualification-v05/b/version/version.h -D BUILD_REMARK= -P /var/lib/discrete-swap-lab/qualification-v05/core/src/version.cmake
+-- Found Git: /usr/bin/git (found version "2.39.5") 
+-- Found Git: TRUE
+-- Git tag: 0.9.9
+-- VERSION_MAJOR: 0
+-- VERSION_MINOR: 9
+-- VERSION_PATCH: 9
+-- Git commit ID: f3f84ce
+-- Git commit count: 786
+[2/70] Building CXX object src/CMakeFiles/Http.dir/HTTP/HttpClient.cpp.o
+In file included from /usr/include/boost/smart_ptr/detail/sp_thread_sleep.hpp:22,
+                 from /usr/include/boost/smart_ptr/detail/yield_k.hpp:23,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_gcc_atomic.hpp:14,
+                 from /usr/include/boost/smart_ptr/detail/spinlock.hpp:42,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_pool.hpp:25,
+                 from /usr/include/boost/smart_ptr/shared_ptr.hpp:29,
+                 from /usr/include/boost/shared_ptr.hpp:17,
+                 from /usr/include/boost/date_time/time_clock.hpp:17,
+                 from /usr/include/boost/date_time/posix_time/posix_time_types.hpp:10,
+                 from /usr/include/boost/asio/time_traits.hpp:23,
+                 from /usr/include/boost/asio/detail/timer_queue_ptime.hpp:22,
+                 from /usr/include/boost/asio/detail/deadline_timer_service.hpp:29,
+                 from /usr/include/boost/asio/basic_deadline_timer.hpp:25,
+                 from /usr/include/boost/asio/deadline_timer.hpp:24,
+                 from /usr/include/boost/asio/ssl/detail/stream_core.hpp:21,
+                 from /usr/include/boost/asio/ssl/detail/io.hpp:22,
+                 from /usr/include/boost/asio/ssl/stream.hpp:29,
+                 from /usr/include/boost/asio/ssl.hpp:23,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/HTTP/HttpClient.h:12,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/HTTP/HttpClient.cpp:6:
+/usr/include/boost/detail/scoped_enum_emulation.hpp:17:1: note: ‘#pragma message: This header is deprecated. Use <boost/core/scoped_enum.hpp> instead.’
+   17 | BOOST_HEADER_DEPRECATED("<boost/core/scoped_enum.hpp>")
+      | ^~~~~~~~~~~~~~~~~~~~~~~
+[3/70] Building CXX object src/CMakeFiles/Http.dir/HTTP/HttpServer.cpp.o
+In file included from /usr/include/boost/smart_ptr/detail/sp_thread_sleep.hpp:22,
+                 from /usr/include/boost/smart_ptr/detail/yield_k.hpp:23,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_gcc_atomic.hpp:14,
+                 from /usr/include/boost/smart_ptr/detail/spinlock.hpp:42,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_pool.hpp:25,
+                 from /usr/include/boost/smart_ptr/shared_ptr.hpp:29,
+                 from /usr/include/boost/shared_ptr.hpp:17,
+                 from /usr/include/boost/date_time/time_clock.hpp:17,
+                 from /usr/include/boost/date_time/posix_time/posix_time_types.hpp:10,
+                 from /usr/include/boost/asio/time_traits.hpp:23,
+                 from /usr/include/boost/asio/detail/timer_queue_ptime.hpp:22,
+                 from /usr/include/boost/asio/detail/deadline_timer_service.hpp:29,
+                 from /usr/include/boost/asio/basic_deadline_timer.hpp:25,
+                 from /usr/include/boost/asio/deadline_timer.hpp:24,
+                 from /usr/include/boost/asio/ssl/detail/stream_core.hpp:21,
+                 from /usr/include/boost/asio/ssl/detail/io.hpp:22,
+                 from /usr/include/boost/asio/ssl/stream.hpp:29,
+                 from /usr/include/boost/asio/ssl.hpp:23,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/HTTP/HttpServer.h:14,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/HTTP/HttpServer.cpp:6:
+/usr/include/boost/detail/scoped_enum_emulation.hpp:17:1: note: ‘#pragma message: This header is deprecated. Use <boost/core/scoped_enum.hpp> instead.’
+   17 | BOOST_HEADER_DEPRECATED("<boost/core/scoped_enum.hpp>")
+      | ^~~~~~~~~~~~~~~~~~~~~~~
+[4/70] Building CXX object src/CMakeFiles/NodeRpcProxy.dir/NodeRpcProxy/NodeRpcProxy.cpp.o
+In file included from /usr/include/boost/smart_ptr/detail/sp_thread_sleep.hpp:22,
+                 from /usr/include/boost/smart_ptr/detail/yield_k.hpp:23,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_gcc_atomic.hpp:14,
+                 from /usr/include/boost/smart_ptr/detail/spinlock.hpp:42,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_pool.hpp:25,
+                 from /usr/include/boost/smart_ptr/shared_ptr.hpp:29,
+                 from /usr/include/boost/shared_ptr.hpp:17,
+                 from /usr/include/boost/date_time/time_clock.hpp:17,
+                 from /usr/include/boost/date_time/posix_time/posix_time_types.hpp:10,
+                 from /usr/include/boost/asio/time_traits.hpp:23,
+                 from /usr/include/boost/asio/detail/timer_queue_ptime.hpp:22,
+                 from /usr/include/boost/asio/detail/deadline_timer_service.hpp:29,
+                 from /usr/include/boost/asio/basic_deadline_timer.hpp:25,
+                 from /usr/include/boost/asio/deadline_timer.hpp:24,
+                 from /usr/include/boost/asio/ssl/detail/stream_core.hpp:21,
+                 from /usr/include/boost/asio/ssl/detail/io.hpp:22,
+                 from /usr/include/boost/asio/ssl/stream.hpp:29,
+                 from /usr/include/boost/asio/ssl.hpp:23,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/HTTP/HttpClient.h:12,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/NodeRpcProxy/NodeRpcProxy.h:28,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/NodeRpcProxy/NodeRpcProxy.cpp:19:
+/usr/include/boost/detail/scoped_enum_emulation.hpp:17:1: note: ‘#pragma message: This header is deprecated. Use <boost/core/scoped_enum.hpp> instead.’
+   17 | BOOST_HEADER_DEPRECATED("<boost/core/scoped_enum.hpp>")
+      | ^~~~~~~~~~~~~~~~~~~~~~~
+/var/lib/discrete-swap-lab/qualification-v05/core/src/NodeRpcProxy/NodeRpcProxy.cpp:61:17: warning: ‘std::error_code CryptoNote::{anonymous}::interpretResponseStatus(const std::string&)’ defined but not used [-Wunused-function]
+   61 | std::error_code interpretResponseStatus(const std::string& status) {
+      |                 ^~~~~~~~~~~~~~~~~~~~~~~
+[5/70] Linking CXX static library src/libNodeRpcProxy.a
+[6/70] Building CXX object src/CMakeFiles/Rpc.dir/Rpc/BuiltinExplorer.cpp.o
+In file included from /usr/include/boost/smart_ptr/detail/sp_thread_sleep.hpp:22,
+                 from /usr/include/boost/smart_ptr/detail/yield_k.hpp:23,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_gcc_atomic.hpp:14,
+                 from /usr/include/boost/smart_ptr/detail/spinlock.hpp:42,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_pool.hpp:25,
+                 from /usr/include/boost/smart_ptr/shared_ptr.hpp:29,
+                 from /usr/include/boost/shared_ptr.hpp:17,
+                 from /usr/include/boost/date_time/time_clock.hpp:17,
+                 from /usr/include/boost/date_time/posix_time/posix_time_types.hpp:10,
+                 from /usr/include/boost/asio/time_traits.hpp:23,
+                 from /usr/include/boost/asio/detail/timer_queue_ptime.hpp:22,
+                 from /usr/include/boost/asio/detail/deadline_timer_service.hpp:29,
+                 from /usr/include/boost/asio/basic_deadline_timer.hpp:25,
+                 from /usr/include/boost/asio/deadline_timer.hpp:24,
+                 from /usr/include/boost/asio/ssl/detail/stream_core.hpp:21,
+                 from /usr/include/boost/asio/ssl/detail/io.hpp:22,
+                 from /usr/include/boost/asio/ssl/stream.hpp:29,
+                 from /usr/include/boost/asio/ssl.hpp:23,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/HTTP/HttpServer.h:14,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/Rpc/RpcServer.h:27,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/Rpc/BuiltinExplorer.cpp:20:
+/usr/include/boost/detail/scoped_enum_emulation.hpp:17:1: note: ‘#pragma message: This header is deprecated. Use <boost/core/scoped_enum.hpp> instead.’
+   17 | BOOST_HEADER_DEPRECATED("<boost/core/scoped_enum.hpp>")
+      | ^~~~~~~~~~~~~~~~~~~~~~~
+/var/lib/discrete-swap-lab/qualification-v05/core/src/Rpc/BuiltinExplorer.cpp: In member function ‘bool CryptoNote::BuiltinExplorer::on_get_explorer(const CryptoNote::COMMAND_EXPLORER::request&, CryptoNote::COMMAND_EXPLORER::response&)’:
+/var/lib/discrete-swap-lab/qualification-v05/core/src/Rpc/BuiltinExplorer.cpp:234:26: warning: type qualifiers ignored on cast result type [-Wignored-qualifiers]
+  234 |         time_t rawtime = (const time_t)txd.receiveTime;
+      |                          ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/var/lib/discrete-swap-lab/qualification-v05/core/src/Rpc/BuiltinExplorer.cpp:281:22: warning: type qualifiers ignored on cast result type [-Wignored-qualifiers]
+  281 |     time_t rawtime = (const time_t)blk.timestamp;
+      |                      ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/var/lib/discrete-swap-lab/qualification-v05/core/src/Rpc/BuiltinExplorer.cpp: In member function ‘bool CryptoNote::BuiltinExplorer::on_get_explorer_block_by_hash(const CryptoNote::COMMAND_EXPLORER_GET_BLOCK_DETAILS_BY_HASH::request&, CryptoNote::COMMAND_EXPLORER_GET_BLOCK_DETAILS_BY_HASH::response&)’:
+/var/lib/discrete-swap-lab/qualification-v05/core/src/Rpc/BuiltinExplorer.cpp:434:22: warning: type qualifiers ignored on cast result type [-Wignored-qualifiers]
+  434 |     time_t rawtime = (const time_t)blk.timestamp;
+      |                      ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/var/lib/discrete-swap-lab/qualification-v05/core/src/Rpc/BuiltinExplorer.cpp: In member function ‘bool CryptoNote::BuiltinExplorer::on_get_explorer_tx_by_hash(const CryptoNote::COMMAND_EXPLORER_GET_TRANSACTION_DETAILS_BY_HASH::request&, CryptoNote::COMMAND_EXPLORER_GET_TRANSACTION_DETAILS_BY_HASH::response&)’:
+/var/lib/discrete-swap-lab/qualification-v05/core/src/Rpc/BuiltinExplorer.cpp:596:24: warning: type qualifiers ignored on cast result type [-Wignored-qualifiers]
+  596 |       time_t rawtime = (const time_t)transactionsDetails.timestamp;
+      |                        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[7/70] Building CXX object src/CMakeFiles/Rpc.dir/Rpc/RpcServer.cpp.o
+In file included from /usr/include/boost/smart_ptr/detail/sp_thread_sleep.hpp:22,
+                 from /usr/include/boost/smart_ptr/detail/yield_k.hpp:23,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_gcc_atomic.hpp:14,
+                 from /usr/include/boost/smart_ptr/detail/spinlock.hpp:42,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_pool.hpp:25,
+                 from /usr/include/boost/smart_ptr/shared_ptr.hpp:29,
+                 from /usr/include/boost/shared_ptr.hpp:17,
+                 from /usr/include/boost/date_time/time_clock.hpp:17,
+                 from /usr/include/boost/date_time/posix_time/posix_time_types.hpp:10,
+                 from /usr/include/boost/asio/time_traits.hpp:23,
+                 from /usr/include/boost/asio/detail/timer_queue_ptime.hpp:22,
+                 from /usr/include/boost/asio/detail/deadline_timer_service.hpp:29,
+                 from /usr/include/boost/asio/basic_deadline_timer.hpp:25,
+                 from /usr/include/boost/asio/deadline_timer.hpp:24,
+                 from /usr/include/boost/asio/ssl/detail/stream_core.hpp:21,
+                 from /usr/include/boost/asio/ssl/detail/io.hpp:22,
+                 from /usr/include/boost/asio/ssl/stream.hpp:29,
+                 from /usr/include/boost/asio/ssl.hpp:23,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/HTTP/HttpServer.h:14,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/Rpc/RpcServer.h:27,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/Rpc/RpcServer.cpp:23:
+/usr/include/boost/detail/scoped_enum_emulation.hpp:17:1: note: ‘#pragma message: This header is deprecated. Use <boost/core/scoped_enum.hpp> instead.’
+   17 | BOOST_HEADER_DEPRECATED("<boost/core/scoped_enum.hpp>")
+      | ^~~~~~~~~~~~~~~~~~~~~~~
+/var/lib/discrete-swap-lab/qualification-v05/core/src/Rpc/RpcServer.cpp:2035:12: warning: ‘uint64_t CryptoNote::{anonymous}::slow_memmem(void*, size_t, void*, size_t)’ defined but not used [-Wunused-function]
+ 2035 |   uint64_t slow_memmem(void* start_buff, size_t buflen, void* pat, size_t patlen)
+      |            ^~~~~~~~~~~
+[8/70] Linking CXX static library src/libRpc.a
+[9/70] Building CXX object src/CMakeFiles/P2P.dir/P2p/NetNode.cpp.o
+In file included from /usr/include/boost/smart_ptr/detail/sp_thread_sleep.hpp:22,
+                 from /usr/include/boost/smart_ptr/detail/yield_k.hpp:23,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_gcc_atomic.hpp:14,
+                 from /usr/include/boost/smart_ptr/detail/spinlock.hpp:42,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_pool.hpp:25,
+                 from /usr/include/boost/smart_ptr/shared_ptr.hpp:29,
+                 from /usr/include/boost/shared_ptr.hpp:17,
+                 from /usr/include/boost/date_time/time_clock.hpp:17,
+                 from /usr/include/boost/date_time/posix_time/posix_time_types.hpp:10,
+                 from /usr/include/boost/asio/time_traits.hpp:23,
+                 from /usr/include/boost/asio/detail/timer_queue_ptime.hpp:22,
+                 from /usr/include/boost/asio/detail/deadline_timer_service.hpp:29,
+                 from /usr/include/boost/asio/basic_deadline_timer.hpp:25,
+                 from /usr/include/boost/asio.hpp:25,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/System/Dispatcher.h:10,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/System/Context.h:20,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/P2p/NetNode.h:30,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/P2p/NetNode.cpp:25:
+/usr/include/boost/detail/scoped_enum_emulation.hpp:17:1: note: ‘#pragma message: This header is deprecated. Use <boost/core/scoped_enum.hpp> instead.’
+   17 | BOOST_HEADER_DEPRECATED("<boost/core/scoped_enum.hpp>")
+      | ^~~~~~~~~~~~~~~~~~~~~~~
+[10/70] Linking CXX static library src/libP2P.a
+[11/70] Building CXX object src/CMakeFiles/System.dir/System/ContextGroupTimeout.cpp.o
+In file included from /usr/include/boost/smart_ptr/detail/sp_thread_sleep.hpp:22,
+                 from /usr/include/boost/smart_ptr/detail/yield_k.hpp:23,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_gcc_atomic.hpp:14,
+                 from /usr/include/boost/smart_ptr/detail/spinlock.hpp:42,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_pool.hpp:25,
+                 from /usr/include/boost/smart_ptr/shared_ptr.hpp:29,
+                 from /usr/include/boost/shared_ptr.hpp:17,
+                 from /usr/include/boost/date_time/time_clock.hpp:17,
+                 from /usr/include/boost/date_time/posix_time/posix_time_types.hpp:10,
+                 from /usr/include/boost/asio/time_traits.hpp:23,
+                 from /usr/include/boost/asio/detail/timer_queue_ptime.hpp:22,
+                 from /usr/include/boost/asio/detail/deadline_timer_service.hpp:29,
+                 from /usr/include/boost/asio/basic_deadline_timer.hpp:25,
+                 from /usr/include/boost/asio.hpp:25,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/System/Dispatcher.h:10,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/System/ContextGroup.h:20,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/System/ContextGroupTimeout.h:20,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/System/ContextGroupTimeout.cpp:18:
+/usr/include/boost/detail/scoped_enum_emulation.hpp:17:1: note: ‘#pragma message: This header is deprecated. Use <boost/core/scoped_enum.hpp> instead.’
+   17 | BOOST_HEADER_DEPRECATED("<boost/core/scoped_enum.hpp>")
+      | ^~~~~~~~~~~~~~~~~~~~~~~
+[12/70] Linking CXX static library src/libSystem.a
+[13/70] Linking CXX static library src/libHttp.a
+[14/70] Building CXX object src/CMakeFiles/PaymentGate.dir/PaymentGate/WalletService.cpp.o
+In file included from /usr/include/boost/smart_ptr/detail/sp_thread_sleep.hpp:22,
+                 from /usr/include/boost/smart_ptr/detail/yield_k.hpp:23,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_gcc_atomic.hpp:14,
+                 from /usr/include/boost/smart_ptr/detail/spinlock.hpp:42,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_pool.hpp:25,
+                 from /usr/include/boost/smart_ptr/shared_ptr.hpp:29,
+                 from /usr/include/boost/shared_ptr.hpp:17,
+                 from /usr/include/boost/date_time/time_clock.hpp:17,
+                 from /usr/include/boost/date_time/posix_time/posix_time_types.hpp:10,
+                 from /usr/include/boost/asio/time_traits.hpp:23,
+                 from /usr/include/boost/asio/detail/timer_queue_ptime.hpp:22,
+                 from /usr/include/boost/asio/detail/deadline_timer_service.hpp:29,
+                 from /usr/include/boost/asio/basic_deadline_timer.hpp:25,
+                 from /usr/include/boost/asio.hpp:25,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/System/Dispatcher.h:10,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/System/ContextGroup.h:20,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/PaymentGate/WalletService.h:24,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/PaymentGate/WalletService.cpp:22:
+/usr/include/boost/detail/scoped_enum_emulation.hpp:17:1: note: ‘#pragma message: This header is deprecated. Use <boost/core/scoped_enum.hpp> instead.’
+   17 | BOOST_HEADER_DEPRECATED("<boost/core/scoped_enum.hpp>")
+      | ^~~~~~~~~~~~~~~~~~~~~~~
+[15/70] Linking CXX static library src/libPaymentGate.a
+[16/70] Building CXX object src/CMakeFiles/Daemon.dir/Daemon/Daemon.cpp.o
+In file included from /usr/include/boost/smart_ptr/detail/sp_thread_sleep.hpp:22,
+                 from /usr/include/boost/smart_ptr/detail/yield_k.hpp:23,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_gcc_atomic.hpp:14,
+                 from /usr/include/boost/smart_ptr/detail/spinlock.hpp:42,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_pool.hpp:25,
+                 from /usr/include/boost/smart_ptr/shared_ptr.hpp:29,
+                 from /usr/include/boost/shared_ptr.hpp:17,
+                 from /usr/include/boost/program_options/options_description.hpp:16,
+                 from /usr/include/boost/program_options.hpp:15,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/Daemon/Daemon.cpp:25:
+/usr/include/boost/detail/scoped_enum_emulation.hpp:17:1: note: ‘#pragma message: This header is deprecated. Use <boost/core/scoped_enum.hpp> instead.’
+   17 | BOOST_HEADER_DEPRECATED("<boost/core/scoped_enum.hpp>")
+      | ^~~~~~~~~~~~~~~~~~~~~~~
+[17/70] Building CXX object src/CMakeFiles/Daemon.dir/Daemon/DaemonCommandsHandler.cpp.o
+In file included from /usr/include/boost/smart_ptr/detail/sp_thread_sleep.hpp:22,
+                 from /usr/include/boost/smart_ptr/detail/yield_k.hpp:23,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_gcc_atomic.hpp:14,
+                 from /usr/include/boost/smart_ptr/detail/spinlock.hpp:42,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_pool.hpp:25,
+                 from /usr/include/boost/smart_ptr/shared_ptr.hpp:29,
+                 from /usr/include/boost/shared_ptr.hpp:17,
+                 from /usr/include/boost/format/alt_sstream.hpp:22,
+                 from /usr/include/boost/format/internals.hpp:24,
+                 from /usr/include/boost/format.hpp:38,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/Daemon/DaemonCommandsHandler.h:23,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/Daemon/DaemonCommandsHandler.cpp:22:
+/usr/include/boost/detail/scoped_enum_emulation.hpp:17:1: note: ‘#pragma message: This header is deprecated. Use <boost/core/scoped_enum.hpp> instead.’
+   17 | BOOST_HEADER_DEPRECATED("<boost/core/scoped_enum.hpp>")
+      | ^~~~~~~~~~~~~~~~~~~~~~~
+[18/70] Linking CXX executable src/discreted
+[19/70] Linking CXX executable src/simplewallet
+[20/70] Linking CXX executable src/greenwallet
+[21/70] Building CXX object src/CMakeFiles/PaymentGateService.dir/PaymentGateService/PaymentGateService.cpp.o
+In file included from /usr/include/boost/smart_ptr/detail/sp_thread_sleep.hpp:22,
+                 from /usr/include/boost/smart_ptr/detail/yield_k.hpp:23,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_gcc_atomic.hpp:14,
+                 from /usr/include/boost/smart_ptr/detail/spinlock.hpp:42,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_pool.hpp:25,
+                 from /usr/include/boost/smart_ptr/shared_ptr.hpp:29,
+                 from /usr/include/boost/shared_ptr.hpp:17,
+                 from /usr/include/boost/program_options/options_description.hpp:16,
+                 from /usr/include/boost/program_options.hpp:15,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/CryptoNoteCore/CoreConfig.h:23,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/PaymentGateService/ConfigurationManager.h:20,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/PaymentGateService/PaymentGateService.h:20,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/PaymentGateService/PaymentGateService.cpp:21:
+/usr/include/boost/detail/scoped_enum_emulation.hpp:17:1: note: ‘#pragma message: This header is deprecated. Use <boost/core/scoped_enum.hpp> instead.’
+   17 | BOOST_HEADER_DEPRECATED("<boost/core/scoped_enum.hpp>")
+      | ^~~~~~~~~~~~~~~~~~~~~~~
+/var/lib/discrete-swap-lab/qualification-v05/core/src/PaymentGateService/PaymentGateService.cpp: In constructor ‘PaymentGateService::PaymentGateService()’:
+/var/lib/discrete-swap-lab/qualification-v05/core/src/PaymentGateService/PaymentGateService.cpp:90:19: warning: member ‘PaymentGateService::logger’ is used uninitialized [-Wuninitialized]
+   90 |   currencyBuilder(logger),
+      |                   ^~~~~~
+[22/70] Linking CXX executable src/walletd
+[23/70] Linking CXX executable src/admin-tools
+[24/70] Building CXX object tests/CMakeFiles/IntegrationTestLibrary.dir/IntegrationTestLib/BaseFunctionalTests.cpp.o
+In file included from /usr/include/boost/smart_ptr/detail/sp_thread_sleep.hpp:22,
+                 from /usr/include/boost/smart_ptr/detail/yield_k.hpp:23,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_gcc_atomic.hpp:14,
+                 from /usr/include/boost/smart_ptr/detail/spinlock.hpp:42,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_pool.hpp:25,
+                 from /usr/include/boost/smart_ptr/shared_ptr.hpp:29,
+                 from /usr/include/boost/shared_ptr.hpp:17,
+                 from /usr/include/boost/program_options/options_description.hpp:16,
+                 from /usr/include/boost/program_options.hpp:15,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/tests/IntegrationTestLib/BaseFunctionalTests.h:29,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/tests/IntegrationTestLib/BaseFunctionalTests.cpp:18:
+/usr/include/boost/detail/scoped_enum_emulation.hpp:17:1: note: ‘#pragma message: This header is deprecated. Use <boost/core/scoped_enum.hpp> instead.’
+   17 | BOOST_HEADER_DEPRECATED("<boost/core/scoped_enum.hpp>")
+      | ^~~~~~~~~~~~~~~~~~~~~~~
+/var/lib/discrete-swap-lab/qualification-v05/core/tests/IntegrationTestLib/BaseFunctionalTests.cpp: In member function ‘void Tests::Common::BaseFunctionalTests::stopNode(size_t)’:
+/var/lib/discrete-swap-lab/qualification-v05/core/tests/IntegrationTestLib/BaseFunctionalTests.cpp:232:8: warning: unused variable ‘ok’ [-Wunused-variable]
+  232 |   bool ok = nodeDaemons[index]->stopDaemon();
+      |        ^~
+[25/70] Building CXX object tests/CMakeFiles/IntegrationTestLibrary.dir/IntegrationTestLib/InProcTestNode.cpp.o
+In file included from /usr/include/boost/smart_ptr/detail/sp_thread_sleep.hpp:22,
+                 from /usr/include/boost/smart_ptr/detail/yield_k.hpp:23,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_gcc_atomic.hpp:14,
+                 from /usr/include/boost/smart_ptr/detail/spinlock.hpp:42,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_pool.hpp:25,
+                 from /usr/include/boost/smart_ptr/shared_ptr.hpp:29,
+                 from /usr/include/boost/shared_ptr.hpp:17,
+                 from /usr/include/boost/date_time/time_clock.hpp:17,
+                 from /usr/include/boost/date_time/posix_time/posix_time_types.hpp:10,
+                 from /usr/include/boost/asio/time_traits.hpp:23,
+                 from /usr/include/boost/asio/detail/timer_queue_ptime.hpp:22,
+                 from /usr/include/boost/asio/detail/deadline_timer_service.hpp:29,
+                 from /usr/include/boost/asio/basic_deadline_timer.hpp:25,
+                 from /usr/include/boost/asio.hpp:25,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/System/Dispatcher.h:10,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/tests/IntegrationTestLib/InProcTestNode.h:27,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/tests/IntegrationTestLib/InProcTestNode.cpp:18:
+/usr/include/boost/detail/scoped_enum_emulation.hpp:17:1: note: ‘#pragma message: This header is deprecated. Use <boost/core/scoped_enum.hpp> instead.’
+   17 | BOOST_HEADER_DEPRECATED("<boost/core/scoped_enum.hpp>")
+      | ^~~~~~~~~~~~~~~~~~~~~~~
+[26/70] Linking CXX static library tests/libIntegrationTestLibrary.a
+[27/70] Building CXX object tests/CMakeFiles/IntegrationTests.dir/IntegrationTests/Node.cpp.o
+In file included from /usr/include/boost/smart_ptr/detail/sp_thread_sleep.hpp:22,
+                 from /usr/include/boost/smart_ptr/detail/yield_k.hpp:23,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_gcc_atomic.hpp:14,
+                 from /usr/include/boost/smart_ptr/detail/spinlock.hpp:42,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_pool.hpp:25,
+                 from /usr/include/boost/smart_ptr/shared_ptr.hpp:29,
+                 from /usr/include/boost/shared_ptr.hpp:17,
+                 from /usr/include/boost/date_time/time_clock.hpp:17,
+                 from /usr/include/boost/date_time/posix_time/posix_time_types.hpp:10,
+                 from /usr/include/boost/asio/time_traits.hpp:23,
+                 from /usr/include/boost/asio/detail/timer_queue_ptime.hpp:22,
+                 from /usr/include/boost/asio/detail/deadline_timer_service.hpp:29,
+                 from /usr/include/boost/asio/basic_deadline_timer.hpp:25,
+                 from /usr/include/boost/asio.hpp:25,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/System/Dispatcher.h:10,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/tests/IntegrationTests/Node.cpp:23:
+/usr/include/boost/detail/scoped_enum_emulation.hpp:17:1: note: ‘#pragma message: This header is deprecated. Use <boost/core/scoped_enum.hpp> instead.’
+   17 | BOOST_HEADER_DEPRECATED("<boost/core/scoped_enum.hpp>")
+      | ^~~~~~~~~~~~~~~~~~~~~~~
+/var/lib/discrete-swap-lab/qualification-v05/core/tests/IntegrationTests/Node.cpp: In member function ‘virtual void NodeTest_dumpBlockchain_Test::TestBody()’:
+/var/lib/discrete-swap-lab/qualification-v05/core/tests/IntegrationTests/Node.cpp:226:9: warning: unused variable ‘daemon’ [-Wunused-variable]
+  226 |   auto& daemon = network.getNode(0);
+      |         ^~~~~~
+[28/70] Building CXX object tests/CMakeFiles/IntegrationTests.dir/IntegrationTests/WalletLegacyTests.cpp.o
+In file included from /usr/include/boost/smart_ptr/detail/sp_thread_sleep.hpp:22,
+                 from /usr/include/boost/smart_ptr/detail/yield_k.hpp:23,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_gcc_atomic.hpp:14,
+                 from /usr/include/boost/smart_ptr/detail/spinlock.hpp:42,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_pool.hpp:25,
+                 from /usr/include/boost/smart_ptr/shared_ptr.hpp:29,
+                 from /usr/include/boost/shared_ptr.hpp:17,
+                 from /usr/include/boost/date_time/time_clock.hpp:17,
+                 from /usr/include/boost/date_time/posix_time/posix_time_types.hpp:10,
+                 from /usr/include/boost/date_time/posix_time/time_formatters.hpp:16,
+                 from /usr/include/boost/date_time/posix_time/posix_time.hpp:24,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/Logging/ILogger.h:22,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/Logging/CommonLogger.h:21,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/Logging/ConsoleLogger.h:21,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/tests/IntegrationTests/BaseTests.h:23,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/tests/IntegrationTests/WalletLegacyTests.cpp:18:
+/usr/include/boost/detail/scoped_enum_emulation.hpp:17:1: note: ‘#pragma message: This header is deprecated. Use <boost/core/scoped_enum.hpp> instead.’
+   17 | BOOST_HEADER_DEPRECATED("<boost/core/scoped_enum.hpp>")
+      | ^~~~~~~~~~~~~~~~~~~~~~~
+[29/70] Linking CXX executable tests/integration_tests
+[30/70] Linking CXX executable tests/node_rpc_proxy_tests
+[31/70] Building CXX object tests/CMakeFiles/SystemTests.dir/System/ContextGroupTests.cpp.o
+In file included from /usr/include/boost/smart_ptr/detail/sp_thread_sleep.hpp:22,
+                 from /usr/include/boost/smart_ptr/detail/yield_k.hpp:23,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_gcc_atomic.hpp:14,
+                 from /usr/include/boost/smart_ptr/detail/spinlock.hpp:42,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_pool.hpp:25,
+                 from /usr/include/boost/smart_ptr/shared_ptr.hpp:29,
+                 from /usr/include/boost/shared_ptr.hpp:17,
+                 from /usr/include/boost/date_time/time_clock.hpp:17,
+                 from /usr/include/boost/date_time/posix_time/posix_time_types.hpp:10,
+                 from /usr/include/boost/asio/time_traits.hpp:23,
+                 from /usr/include/boost/asio/detail/timer_queue_ptime.hpp:22,
+                 from /usr/include/boost/asio/detail/deadline_timer_service.hpp:29,
+                 from /usr/include/boost/asio/basic_deadline_timer.hpp:25,
+                 from /usr/include/boost/asio.hpp:25,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/System/Dispatcher.h:10,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/System/Context.h:20,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/tests/System/ContextGroupTests.cpp:18:
+/usr/include/boost/detail/scoped_enum_emulation.hpp:17:1: note: ‘#pragma message: This header is deprecated. Use <boost/core/scoped_enum.hpp> instead.’
+   17 | BOOST_HEADER_DEPRECATED("<boost/core/scoped_enum.hpp>")
+      | ^~~~~~~~~~~~~~~~~~~~~~~
+[32/70] Building CXX object tests/CMakeFiles/SystemTests.dir/System/ContextGroupTimeoutTests.cpp.o
+In file included from /usr/include/boost/smart_ptr/detail/sp_thread_sleep.hpp:22,
+                 from /usr/include/boost/smart_ptr/detail/yield_k.hpp:23,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_gcc_atomic.hpp:14,
+                 from /usr/include/boost/smart_ptr/detail/spinlock.hpp:42,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_pool.hpp:25,
+                 from /usr/include/boost/smart_ptr/shared_ptr.hpp:29,
+                 from /usr/include/boost/shared_ptr.hpp:17,
+                 from /usr/include/boost/date_time/time_clock.hpp:17,
+                 from /usr/include/boost/date_time/posix_time/posix_time_types.hpp:10,
+                 from /usr/include/boost/asio/time_traits.hpp:23,
+                 from /usr/include/boost/asio/detail/timer_queue_ptime.hpp:22,
+                 from /usr/include/boost/asio/detail/deadline_timer_service.hpp:29,
+                 from /usr/include/boost/asio/basic_deadline_timer.hpp:25,
+                 from /usr/include/boost/asio.hpp:25,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/System/Dispatcher.h:10,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/System/ContextGroup.h:20,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/System/ContextGroupTimeout.h:20,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/tests/System/ContextGroupTimeoutTests.cpp:19:
+/usr/include/boost/detail/scoped_enum_emulation.hpp:17:1: note: ‘#pragma message: This header is deprecated. Use <boost/core/scoped_enum.hpp> instead.’
+   17 | BOOST_HEADER_DEPRECATED("<boost/core/scoped_enum.hpp>")
+      | ^~~~~~~~~~~~~~~~~~~~~~~
+[33/70] Building CXX object tests/CMakeFiles/SystemTests.dir/System/ContextTests.cpp.o
+In file included from /usr/include/boost/smart_ptr/detail/sp_thread_sleep.hpp:22,
+                 from /usr/include/boost/smart_ptr/detail/yield_k.hpp:23,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_gcc_atomic.hpp:14,
+                 from /usr/include/boost/smart_ptr/detail/spinlock.hpp:42,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_pool.hpp:25,
+                 from /usr/include/boost/smart_ptr/shared_ptr.hpp:29,
+                 from /usr/include/boost/shared_ptr.hpp:17,
+                 from /usr/include/boost/date_time/time_clock.hpp:17,
+                 from /usr/include/boost/date_time/posix_time/posix_time_types.hpp:10,
+                 from /usr/include/boost/asio/time_traits.hpp:23,
+                 from /usr/include/boost/asio/detail/timer_queue_ptime.hpp:22,
+                 from /usr/include/boost/asio/detail/deadline_timer_service.hpp:29,
+                 from /usr/include/boost/asio/basic_deadline_timer.hpp:25,
+                 from /usr/include/boost/asio.hpp:25,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/System/Dispatcher.h:10,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/System/Context.h:20,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/tests/System/ContextTests.cpp:18:
+/usr/include/boost/detail/scoped_enum_emulation.hpp:17:1: note: ‘#pragma message: This header is deprecated. Use <boost/core/scoped_enum.hpp> instead.’
+   17 | BOOST_HEADER_DEPRECATED("<boost/core/scoped_enum.hpp>")
+      | ^~~~~~~~~~~~~~~~~~~~~~~
+[34/70] Building CXX object tests/CMakeFiles/SystemTests.dir/System/DispatcherTests.cpp.o
+In file included from /usr/include/boost/smart_ptr/detail/sp_thread_sleep.hpp:22,
+                 from /usr/include/boost/smart_ptr/detail/yield_k.hpp:23,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_gcc_atomic.hpp:14,
+                 from /usr/include/boost/smart_ptr/detail/spinlock.hpp:42,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_pool.hpp:25,
+                 from /usr/include/boost/smart_ptr/shared_ptr.hpp:29,
+                 from /usr/include/boost/shared_ptr.hpp:17,
+                 from /usr/include/boost/date_time/time_clock.hpp:17,
+                 from /usr/include/boost/date_time/posix_time/posix_time_types.hpp:10,
+                 from /usr/include/boost/asio/time_traits.hpp:23,
+                 from /usr/include/boost/asio/detail/timer_queue_ptime.hpp:22,
+                 from /usr/include/boost/asio/detail/deadline_timer_service.hpp:29,
+                 from /usr/include/boost/asio/basic_deadline_timer.hpp:25,
+                 from /usr/include/boost/asio.hpp:25,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/System/Dispatcher.h:10,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/System/Context.h:20,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/tests/System/DispatcherTests.cpp:20:
+/usr/include/boost/detail/scoped_enum_emulation.hpp:17:1: note: ‘#pragma message: This header is deprecated. Use <boost/core/scoped_enum.hpp> instead.’
+   17 | BOOST_HEADER_DEPRECATED("<boost/core/scoped_enum.hpp>")
+      | ^~~~~~~~~~~~~~~~~~~~~~~
+[35/70] Building CXX object tests/CMakeFiles/SystemTests.dir/System/OperationTimeoutTests.cpp.o
+In file included from /usr/include/boost/smart_ptr/detail/sp_thread_sleep.hpp:22,
+                 from /usr/include/boost/smart_ptr/detail/yield_k.hpp:23,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_gcc_atomic.hpp:14,
+                 from /usr/include/boost/smart_ptr/detail/spinlock.hpp:42,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_pool.hpp:25,
+                 from /usr/include/boost/smart_ptr/shared_ptr.hpp:29,
+                 from /usr/include/boost/shared_ptr.hpp:17,
+                 from /usr/include/boost/date_time/time_clock.hpp:17,
+                 from /usr/include/boost/date_time/posix_time/posix_time_types.hpp:10,
+                 from /usr/include/boost/asio/time_traits.hpp:23,
+                 from /usr/include/boost/asio/detail/timer_queue_ptime.hpp:22,
+                 from /usr/include/boost/asio/detail/deadline_timer_service.hpp:29,
+                 from /usr/include/boost/asio/basic_deadline_timer.hpp:25,
+                 from /usr/include/boost/asio.hpp:25,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/System/Dispatcher.h:10,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/System/ContextGroup.h:20,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/System/OperationTimeout.h:20,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/tests/System/OperationTimeoutTests.cpp:19:
+/usr/include/boost/detail/scoped_enum_emulation.hpp:17:1: note: ‘#pragma message: This header is deprecated. Use <boost/core/scoped_enum.hpp> instead.’
+   17 | BOOST_HEADER_DEPRECATED("<boost/core/scoped_enum.hpp>")
+      | ^~~~~~~~~~~~~~~~~~~~~~~
+[36/70] Building CXX object tests/CMakeFiles/SystemTests.dir/System/RemoteContextTests.cpp.o
+In file included from /usr/include/boost/smart_ptr/detail/sp_thread_sleep.hpp:22,
+                 from /usr/include/boost/smart_ptr/detail/yield_k.hpp:23,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_gcc_atomic.hpp:14,
+                 from /usr/include/boost/smart_ptr/detail/spinlock.hpp:42,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_pool.hpp:25,
+                 from /usr/include/boost/smart_ptr/shared_ptr.hpp:29,
+                 from /usr/include/boost/shared_ptr.hpp:17,
+                 from /usr/include/boost/date_time/time_clock.hpp:17,
+                 from /usr/include/boost/date_time/posix_time/posix_time_types.hpp:10,
+                 from /usr/include/boost/asio/time_traits.hpp:23,
+                 from /usr/include/boost/asio/detail/timer_queue_ptime.hpp:22,
+                 from /usr/include/boost/asio/detail/deadline_timer_service.hpp:29,
+                 from /usr/include/boost/asio/basic_deadline_timer.hpp:25,
+                 from /usr/include/boost/asio.hpp:25,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/System/Dispatcher.h:10,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/System/RemoteContext.h:21,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/tests/System/RemoteContextTests.cpp:20:
+/usr/include/boost/detail/scoped_enum_emulation.hpp:17:1: note: ‘#pragma message: This header is deprecated. Use <boost/core/scoped_enum.hpp> instead.’
+   17 | BOOST_HEADER_DEPRECATED("<boost/core/scoped_enum.hpp>")
+      | ^~~~~~~~~~~~~~~~~~~~~~~
+[37/70] Building CXX object tests/CMakeFiles/SystemTests.dir/System/TcpConnectionTests.cpp.o
+In file included from /usr/include/boost/smart_ptr/detail/sp_thread_sleep.hpp:22,
+                 from /usr/include/boost/smart_ptr/detail/yield_k.hpp:23,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_gcc_atomic.hpp:14,
+                 from /usr/include/boost/smart_ptr/detail/spinlock.hpp:42,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_pool.hpp:25,
+                 from /usr/include/boost/smart_ptr/shared_ptr.hpp:29,
+                 from /usr/include/boost/shared_ptr.hpp:17,
+                 from /usr/include/boost/date_time/time_clock.hpp:17,
+                 from /usr/include/boost/date_time/posix_time/posix_time_types.hpp:10,
+                 from /usr/include/boost/asio/time_traits.hpp:23,
+                 from /usr/include/boost/asio/detail/timer_queue_ptime.hpp:22,
+                 from /usr/include/boost/asio/detail/deadline_timer_service.hpp:29,
+                 from /usr/include/boost/asio/basic_deadline_timer.hpp:25,
+                 from /usr/include/boost/asio.hpp:25,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/System/Dispatcher.h:10,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/tests/System/TcpConnectionTests.cpp:18:
+/usr/include/boost/detail/scoped_enum_emulation.hpp:17:1: note: ‘#pragma message: This header is deprecated. Use <boost/core/scoped_enum.hpp> instead.’
+   17 | BOOST_HEADER_DEPRECATED("<boost/core/scoped_enum.hpp>")
+      | ^~~~~~~~~~~~~~~~~~~~~~~
+/var/lib/discrete-swap-lab/qualification-v05/core/tests/System/TcpConnectionTests.cpp:49:13: warning: ‘std::string {anonymous}::removePort(const std::string&)’ defined but not used [-Wunused-function]
+   49 | std::string removePort(const std::string& address) {
+      |             ^~~~~~~~~~
+[38/70] Building CXX object tests/CMakeFiles/SystemTests.dir/System/TcpConnectorTests.cpp.o
+In file included from /usr/include/boost/smart_ptr/detail/sp_thread_sleep.hpp:22,
+                 from /usr/include/boost/smart_ptr/detail/yield_k.hpp:23,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_gcc_atomic.hpp:14,
+                 from /usr/include/boost/smart_ptr/detail/spinlock.hpp:42,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_pool.hpp:25,
+                 from /usr/include/boost/smart_ptr/shared_ptr.hpp:29,
+                 from /usr/include/boost/shared_ptr.hpp:17,
+                 from /usr/include/boost/date_time/time_clock.hpp:17,
+                 from /usr/include/boost/date_time/posix_time/posix_time_types.hpp:10,
+                 from /usr/include/boost/asio/time_traits.hpp:23,
+                 from /usr/include/boost/asio/detail/timer_queue_ptime.hpp:22,
+                 from /usr/include/boost/asio/detail/deadline_timer_service.hpp:29,
+                 from /usr/include/boost/asio/basic_deadline_timer.hpp:25,
+                 from /usr/include/boost/asio.hpp:25,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/System/Dispatcher.h:10,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/tests/System/TcpConnectorTests.cpp:18:
+/usr/include/boost/detail/scoped_enum_emulation.hpp:17:1: note: ‘#pragma message: This header is deprecated. Use <boost/core/scoped_enum.hpp> instead.’
+   17 | BOOST_HEADER_DEPRECATED("<boost/core/scoped_enum.hpp>")
+      | ^~~~~~~~~~~~~~~~~~~~~~~
+[39/70] Building CXX object tests/CMakeFiles/SystemTests.dir/System/TcpListenerTests.cpp.o
+In file included from /usr/include/boost/smart_ptr/detail/sp_thread_sleep.hpp:22,
+                 from /usr/include/boost/smart_ptr/detail/yield_k.hpp:23,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_gcc_atomic.hpp:14,
+                 from /usr/include/boost/smart_ptr/detail/spinlock.hpp:42,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_pool.hpp:25,
+                 from /usr/include/boost/smart_ptr/shared_ptr.hpp:29,
+                 from /usr/include/boost/shared_ptr.hpp:17,
+                 from /usr/include/boost/date_time/time_clock.hpp:17,
+                 from /usr/include/boost/date_time/posix_time/posix_time_types.hpp:10,
+                 from /usr/include/boost/asio/time_traits.hpp:23,
+                 from /usr/include/boost/asio/detail/timer_queue_ptime.hpp:22,
+                 from /usr/include/boost/asio/detail/deadline_timer_service.hpp:29,
+                 from /usr/include/boost/asio/basic_deadline_timer.hpp:25,
+                 from /usr/include/boost/asio.hpp:25,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/System/Dispatcher.h:10,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/tests/System/TcpListenerTests.cpp:18:
+/usr/include/boost/detail/scoped_enum_emulation.hpp:17:1: note: ‘#pragma message: This header is deprecated. Use <boost/core/scoped_enum.hpp> instead.’
+   17 | BOOST_HEADER_DEPRECATED("<boost/core/scoped_enum.hpp>")
+      | ^~~~~~~~~~~~~~~~~~~~~~~
+[40/70] Building CXX object tests/CMakeFiles/SystemTests.dir/System/TimerTests.cpp.o
+In file included from /usr/include/boost/smart_ptr/detail/sp_thread_sleep.hpp:22,
+                 from /usr/include/boost/smart_ptr/detail/yield_k.hpp:23,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_gcc_atomic.hpp:14,
+                 from /usr/include/boost/smart_ptr/detail/spinlock.hpp:42,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_pool.hpp:25,
+                 from /usr/include/boost/smart_ptr/shared_ptr.hpp:29,
+                 from /usr/include/boost/shared_ptr.hpp:17,
+                 from /usr/include/boost/date_time/time_clock.hpp:17,
+                 from /usr/include/boost/date_time/posix_time/posix_time_types.hpp:10,
+                 from /usr/include/boost/asio/time_traits.hpp:23,
+                 from /usr/include/boost/asio/detail/timer_queue_ptime.hpp:22,
+                 from /usr/include/boost/asio/detail/deadline_timer_service.hpp:29,
+                 from /usr/include/boost/asio/basic_deadline_timer.hpp:25,
+                 from /usr/include/boost/asio.hpp:25,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/System/Dispatcher.h:10,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/System/Context.h:20,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/tests/System/TimerTests.cpp:19:
+/usr/include/boost/detail/scoped_enum_emulation.hpp:17:1: note: ‘#pragma message: This header is deprecated. Use <boost/core/scoped_enum.hpp> instead.’
+   17 | BOOST_HEADER_DEPRECATED("<boost/core/scoped_enum.hpp>")
+      | ^~~~~~~~~~~~~~~~~~~~~~~
+[41/70] Linking CXX executable tests/system_tests
+[42/70] Building CXX object tests/CMakeFiles/UnitTests.dir/UnitTests/PaymentGateTests.cpp.o
+In file included from /usr/include/boost/smart_ptr/detail/sp_thread_sleep.hpp:22,
+                 from /usr/include/boost/smart_ptr/detail/yield_k.hpp:23,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_gcc_atomic.hpp:14,
+                 from /usr/include/boost/smart_ptr/detail/spinlock.hpp:42,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_pool.hpp:25,
+                 from /usr/include/boost/smart_ptr/shared_ptr.hpp:29,
+                 from /usr/include/boost/shared_ptr.hpp:17,
+                 from /usr/include/boost/date_time/time_clock.hpp:17,
+                 from /usr/include/boost/date_time/posix_time/posix_time_types.hpp:10,
+                 from /usr/include/boost/asio/time_traits.hpp:23,
+                 from /usr/include/boost/asio/detail/timer_queue_ptime.hpp:22,
+                 from /usr/include/boost/asio/detail/deadline_timer_service.hpp:29,
+                 from /usr/include/boost/asio/basic_deadline_timer.hpp:25,
+                 from /usr/include/boost/asio.hpp:25,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/System/Dispatcher.h:10,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/System/Timer.h:9,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/tests/UnitTests/PaymentGateTests.cpp:21:
+/usr/include/boost/detail/scoped_enum_emulation.hpp:17:1: note: ‘#pragma message: This header is deprecated. Use <boost/core/scoped_enum.hpp> instead.’
+   17 | BOOST_HEADER_DEPRECATED("<boost/core/scoped_enum.hpp>")
+      | ^~~~~~~~~~~~~~~~~~~~~~~
+[43/70] Building CXX object tests/CMakeFiles/UnitTests.dir/UnitTests/TestWallet.cpp.o
+In file included from /usr/include/boost/smart_ptr/detail/sp_thread_sleep.hpp:22,
+                 from /usr/include/boost/smart_ptr/detail/yield_k.hpp:23,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_gcc_atomic.hpp:14,
+                 from /usr/include/boost/smart_ptr/detail/spinlock.hpp:42,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_pool.hpp:25,
+                 from /usr/include/boost/smart_ptr/shared_ptr.hpp:29,
+                 from /usr/include/boost/shared_ptr.hpp:17,
+                 from /usr/include/boost/date_time/time_clock.hpp:17,
+                 from /usr/include/boost/date_time/posix_time/posix_time_types.hpp:10,
+                 from /usr/include/boost/date_time/posix_time/time_formatters.hpp:16,
+                 from /usr/include/boost/date_time/posix_time/posix_time.hpp:24,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/CryptoNoteCore/../Logging/ILogger.h:22,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/CryptoNoteCore/../Logging/LoggerRef.h:32,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/CryptoNoteCore/Currency.h:27,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/tests/UnitTests/TestWallet.cpp:34:
+/usr/include/boost/detail/scoped_enum_emulation.hpp:17:1: note: ‘#pragma message: This header is deprecated. Use <boost/core/scoped_enum.hpp> instead.’
+   17 | BOOST_HEADER_DEPRECATED("<boost/core/scoped_enum.hpp>")
+      | ^~~~~~~~~~~~~~~~~~~~~~~
+[44/70] Linking CXX executable tests/unit_tests
+[45/70] Linking CXX executable tests/pq_domains_tests
+[46/70] Linking CXX executable tests/pq_extra_tests
+[47/70] Linking CXX executable tests/pq_wire_tests
+[48/70] Linking CXX executable tests/pq_payment_proof_tests
+[49/70] Linking CXX executable tests/pq_payment_proof_archive_tests
+[50/70] Linking CXX executable tests/pq_nullifier_db_tests
+[51/70] Linking CXX executable tests/pq_validation_tests
+[52/70] Linking CXX executable tests/pq_chain_tests
+[53/70] Linking CXX executable tests/pq_account_tests
+[54/70] Linking CXX executable tests/pq_wallet_tests
+[55/70] Linking CXX executable tests/pq_tx_builder_tests
+[56/70] Linking CXX executable tests/pq_wallet_state_tests
+[57/70] Linking CXX executable tests/pq_consumer_tests
+[58/70] Linking CXX executable tests/pq_genesis_tests
+[59/70] Linking CXX executable tests/pq_sender_tests
+[60/70] Linking CXX executable tests/pq_finality_tests
+[61/70] Linking CXX executable tests/pq_pow_tests
+[62/70] Linking CXX executable tests/pq_dns_checkpoint_tests
+[63/70] Building CXX object tests/CMakeFiles/HttpFramingTests.dir/test_http_framing.cpp.o
+In file included from /usr/include/boost/smart_ptr/detail/sp_thread_sleep.hpp:22,
+                 from /usr/include/boost/smart_ptr/detail/yield_k.hpp:23,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_gcc_atomic.hpp:14,
+                 from /usr/include/boost/smart_ptr/detail/spinlock.hpp:42,
+                 from /usr/include/boost/smart_ptr/detail/spinlock_pool.hpp:25,
+                 from /usr/include/boost/smart_ptr/shared_ptr.hpp:29,
+                 from /usr/include/boost/shared_ptr.hpp:17,
+                 from /usr/include/boost/date_time/time_clock.hpp:17,
+                 from /usr/include/boost/date_time/posix_time/posix_time_types.hpp:10,
+                 from /usr/include/boost/asio/time_traits.hpp:23,
+                 from /usr/include/boost/asio/detail/timer_queue_ptime.hpp:22,
+                 from /usr/include/boost/asio/detail/deadline_timer_service.hpp:29,
+                 from /usr/include/boost/asio/basic_deadline_timer.hpp:25,
+                 from /usr/include/boost/asio/deadline_timer.hpp:24,
+                 from /usr/include/boost/asio/ssl/detail/stream_core.hpp:21,
+                 from /usr/include/boost/asio/ssl/detail/io.hpp:22,
+                 from /usr/include/boost/asio/ssl/stream.hpp:29,
+                 from /usr/include/boost/asio/ssl.hpp:23,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/src/HTTP/HttpClient.h:12,
+                 from /var/lib/discrete-swap-lab/qualification-v05/core/tests/test_http_framing.cpp:16:
+/usr/include/boost/detail/scoped_enum_emulation.hpp:17:1: note: ‘#pragma message: This header is deprecated. Use <boost/core/scoped_enum.hpp> instead.’
+   17 | BOOST_HEADER_DEPRECATED("<boost/core/scoped_enum.hpp>")
+      | ^~~~~~~~~~~~~~~~~~~~~~~
+[64/70] Linking CXX executable tests/http_framing_tests
+[65/70] Linking CXX executable tests/pq_wallet_security_tests
+[66/70] Linking CXX executable tests/pq_serialization_bounds_tests
+[67/70] Linking CXX executable tests/pq_daemon_trust_tests
+[68/70] Linking CXX executable tests/pq_miner_key_tests
+[69/70] Linking CXX executable tests/pq_wallet_legacy_envelope_tests
+[70/70] Linking CXX executable tests/SwapChainTests

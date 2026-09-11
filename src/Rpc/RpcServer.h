@@ -112,6 +112,9 @@ private:
   bool on_get_transactions(const COMMAND_RPC_GET_TRANSACTIONS::request& req, COMMAND_RPC_GET_TRANSACTIONS::response& res);
   bool on_send_raw_transaction(const COMMAND_RPC_SEND_RAW_TRANSACTION::request& req, COMMAND_RPC_SEND_RAW_TRANSACTION::response& res);
   bool on_start_mining(const COMMAND_RPC_START_MINING::request& req, COMMAND_RPC_START_MINING::response& res);
+  bool on_swap_lab_mine(const COMMAND_RPC_SWAP_LAB_MINE::request& req, COMMAND_RPC_SWAP_LAB_MINE::response& res);
+  bool on_swap_lab_outpoint(const COMMAND_RPC_SWAP_LAB_OUTPOINT::request& req, COMMAND_RPC_SWAP_LAB_OUTPOINT::response& res);
+  bool on_get_swap_outpoint(const COMMAND_RPC_GET_SWAP_OUTPOINT::request& req, COMMAND_RPC_GET_SWAP_OUTPOINT::response& res);
   bool on_stop_mining(const COMMAND_RPC_STOP_MINING::request& req, COMMAND_RPC_STOP_MINING::response& res);
   bool on_stop_daemon(const COMMAND_RPC_STOP_DAEMON::request& req, COMMAND_RPC_STOP_DAEMON::response& res);
   bool on_resync_to_majority(const COMMAND_RPC_RESYNC_TO_MAJORITY::request& req, COMMAND_RPC_RESYNC_TO_MAJORITY::response& res);

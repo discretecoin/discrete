@@ -9,6 +9,9 @@ set_tests_properties(P2pTransportTests PROPERTIES TIMEOUT 90)
 
 add_executable(P2pTransportNodeTests test_p2p_transport_nodes.cpp)
 target_link_libraries(P2pTransportNodeTests TestGenerator P2P CryptoNoteProtocol Wallet CryptoNoteCore BlockchainExplorer System Logging Serialization Common Crypto upnpc-static ${Boost_LIBRARIES})
+if(MSVC)
+  target_link_libraries(P2pTransportNodeTests legacy_stdio_definitions.lib)
+endif()
 
 add_executable(P2pTransportBench benchmark_p2p_transport.cpp)
 target_link_libraries(P2pTransportBench P2P System ${Boost_LIBRARIES})
@@ -294,3 +297,10 @@ add_test(SentPaymentsStoreTests sent_payments_store_tests)
 # Pq* name so it joins the regression gate (ctest -R "Pq|Denomination") without
 # pulling in the runtime-broken classical UnitTests suites.
 add_test(NAME PqWalletSyncE2E COMMAND unit_tests --gtest_filter=PqWalletIntegration.*)
+
+add_executable(SwapChainTests test_swap_chain.cpp)
+target_link_libraries(SwapChainTests TestGenerator Wallet CryptoNoteCore Serialization System Logging Common Crypto CryptoPq BlockchainExplorer Checkpoints gtest ${Boost_LIBRARIES})
+if(MSVC)
+  target_link_libraries(SwapChainTests legacy_stdio_definitions.lib ws2_32)
+endif()
+add_test(NAME SwapChainTests COMMAND SwapChainTests)

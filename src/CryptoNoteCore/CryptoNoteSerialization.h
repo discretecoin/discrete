@@ -48,6 +48,8 @@ void serialize(TransactionOutput& in, ISerializer& serializer);
 void serialize(BaseInput& gen, ISerializer& serializer);
 void serialize(KeyInput& key, ISerializer& serializer);
 void serialize(PqInput& key, ISerializer& serializer);
+void serialize(SwapInput& input, ISerializer& serializer);
+void serialize(SwapOutput& output, ISerializer& serializer);
 
 void serialize(TransactionInputs & inputs, ISerializer & serializer);
 

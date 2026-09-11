@@ -131,6 +131,7 @@ const command_line::arg_descriptor<bool> arg_non_deterministic = { "non-determin
 const command_line::arg_descriptor<std::string> arg_log_file = {"log-file", "Set the log file location", ""};
 const command_line::arg_descriptor<uint32_t> arg_log_level = { "log-level", "Set the log verbosity level", INFO, true };
 const command_line::arg_descriptor<bool> arg_testnet = { "testnet", "Used to deploy test nets. The daemon must be launched with --testnet flag", false };
+const command_line::arg_descriptor<bool> arg_swap_lab = { "swap-lab", "Use the isolated local swap laboratory chain (requires --testnet)", false };
 const command_line::arg_descriptor<bool> arg_reset = { "reset", "Deprecated alias for --rescan. Kept because it has always meant \"discard the cache and resynchronize\", which never deleted anything; the destructive operation is the interactive 'reset' command.", false };
 const command_line::arg_descriptor<bool> arg_rescan = { "rescan", "Discard cache data and synchronize from scratch. Recipient addresses and payment proofs are kept.", false };
 const command_line::arg_descriptor<uint32_t> arg_scan_height = { "scan-height", "The height to begin scanning a wallet from", 0 };
@@ -716,6 +717,10 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
     } while (tracking_key_string.empty());
   }
 
+  if (m_currency.swapLab() && (m_daemon_host != "127.0.0.1" || m_daemon_ssl || m_daemon_path != "/")) {
+    fail_msg_writer() << "Swap laboratory requires a direct 127.0.0.1 daemon";
+    return false;
+  }
   this->m_node.reset(new NodeRpcProxy(m_daemon_host, m_daemon_port, m_daemon_path, m_daemon_ssl));
   if (m_trusted_daemon) {
     this->m_node->setTrustedResolver(true);
@@ -2563,6 +2568,7 @@ int main(int argc, char* argv[]) {
   command_line::add_arg(desc_params, arg_log_file);
   command_line::add_arg(desc_params, arg_log_level);
   command_line::add_arg(desc_params, arg_testnet);
+  command_line::add_arg(desc_params, arg_swap_lab);
   command_line::add_arg(desc_params, arg_reset);
   command_line::add_arg(desc_params, arg_rescan);
   command_line::add_arg(desc_params, arg_scan_height);
@@ -2646,8 +2652,13 @@ int main(int argc, char* argv[]) {
 
   logger(INFO, BRIGHT_WHITE) << CRYPTONOTE_NAME << " wallet v" << PROJECT_VERSION_LONG;
 
+  const bool swapLab = command_line::get_arg(vm, arg_swap_lab);
+  if (swapLab && !command_line::get_arg(vm, arg_testnet)) {
+    logger(ERROR) << "--swap-lab requires --testnet";
+    return 1;
+  }
   CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logManager).
-    testnet(command_line::get_arg(vm, arg_testnet)).currency();
+    testnet(command_line::get_arg(vm, arg_testnet)).swapLab(swapLab).currency();
 
   if (command_line::has_arg(vm, Tools::wallet_rpc_server::arg_rpc_bind_port)) {
     //runs wallet with rpc interface
@@ -2696,6 +2707,10 @@ int main(int argc, char* argv[]) {
       }
     }
 
+    if (currency.swapLab() && (daemon_host != "127.0.0.1" || daemon_ssl || daemon_path != "/")) {
+      logger(ERROR) << "Swap laboratory requires a direct 127.0.0.1 daemon";
+      return 1;
+    }
     std::unique_ptr<NodeRpcProxy> proxy(new NodeRpcProxy(daemon_host, daemon_port, daemon_path, daemon_ssl));
     if (trusted_daemon) {
       proxy->setTrustedResolver(true);

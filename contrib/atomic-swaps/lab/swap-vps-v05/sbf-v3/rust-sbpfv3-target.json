@@ -1,0 +1,51 @@
+{
+  "arch": "sbf",
+  "c-enum-min-bits": 32,
+  "cpu": "v3",
+  "crt-objects-fallback": "false",
+  "data-layout": "e-m:e-p:64:64-i64:64-n32:64-S128",
+  "default-visibility": "hidden",
+  "dll-prefix": "",
+  "dynamic-linking": true,
+  "eh-frame-header": false,
+  "emit-debug-gdb-scripts": false,
+  "features": "+static-syscalls",
+  "is-like-solana": true,
+  "link-script": "\nSECTIONS\n{\n  .rodata 0x000000000 : SUBALIGN(8) {\n    BYTE(0);\n    *(.rodata*)\n    *(.data.rel.ro*)\n    . = ALIGN(8);\n  } :rodata\n  .text 0x100000000 : {\n     *(.text*)\n  } :text\n  /DISCARD/ : {\n      *(.comment*)\n      *(.eh_frame*)\n      *(*hash*)\n      *(.bss*)\n      *(.data*)\n      *(.rel.dyn*)\n      *(.dynamic)\n      *(.dynsym)\n      *(.dynstr)\n    }\n}\n\nPHDRS\n{\n  rodata PT_LOAD FLAGS(4);\n  text PT_LOAD FLAGS(1);\n  other PT_NULL FLAGS(0);\n}\n\n",
+  "linker": "rust-lld",
+  "linker-flavor": "gnu-lld",
+  "llvm-target": "sbf",
+  "main-needs-argc-argv": false,
+  "max-atomic-width": 64,
+  "metadata": {
+    "description": "Solana BPF target",
+    "host_tools": null,
+    "std": null,
+    "tier": 2
+  },
+  "only-cdylib": true,
+  "os": "solana",
+  "panic-strategy": "abort",
+  "position-independent-executables": true,
+  "pre-link-args": {
+    "gnu": [
+      "--threads=1",
+      "-z",
+      "notext",
+      "--Bdynamic"
+    ],
+    "gnu-lld": [
+      "--threads=1",
+      "-z",
+      "notext",
+      "--Bdynamic"
+    ]
+  },
+  "singlethread": true,
+  "target-c-int-width": 64,
+  "target-family": [
+    "solana"
+  ],
+  "target-pointer-width": 64,
+  "vendor": "solana"
+}

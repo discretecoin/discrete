@@ -100,6 +100,8 @@ namespace CryptoNote {
     bool deinit();
 
     bool have_tx(const Crypto::Hash &id) const;
+    // Indexed read only; includes kept-by-block conflicts until their pool removal.
+    bool haveSpendTag(const Crypto::KeyImage& tag) const;
     bool add_tx(const Transaction &tx, const Crypto::Hash &id, size_t blobSize, tx_verification_context& tvc, bool keeped_by_block);
     bool add_tx(const Transaction &tx, tx_verification_context& tvc, bool keeped_by_block);
     //gets tx and remove it from pool

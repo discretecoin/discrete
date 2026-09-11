@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "profile": {
+    "schema": 1,
+    "network": "local-synthetic",
+    "genesis_hash": "4desBxgtAgjkUvFoeRjDinRVFbR4z2czpvwwxW2nTavo",
+    "program_id": "75vLTrZ2mMJVLMF1fLsTzrMYAMc9s8YhaoQQcra3yap2",
+    "mint": "2HRD7QMkjciZ4ZuVoXyrBJ7WSqJL5BzmsQd3iTZ51So7",
+    "token_program": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "decimals": 6,
+    "state_bytes": 192,
+    "pda_seed": "xds-swap-v1"
+  },
+  "artifact": {
+    "file": "solana_escrow.so",
+    "bytes": 32960,
+    "sha256": "561e0b7ad5e4be59a3056482ea94370064d201f45a378964d0fdb9f0ff76a901",
+    "sbpf_version": 3
+  },
+  "source_sha256": {
+    "Cargo.toml": "95fbea4c3925ab8043baa328dd2bdc0509883841474ee8c811af10356e02e965",
+    "Cargo.lock": "ecb88b8469a190be6c5587f4762eaef619f4e8bdaaa45171821f6ea4c41f2102",
+    "src/lib.rs": "a74cfdcc454b4553e7a4b340aba72d8c61021285c625c3abf32422c30a154ed9",
+    "src/profile.rs": "9a2ce8032cb1e7b6772a0b7962503d7a899ef147edaf8007062adcbf94dffe00",
+    "profile.py": "e1d74e5d8f0dbd1ece5a2a2cdadb65924625ac1d1b71888f63ca6ee899f0bdeb",
+    "build.py": "f86a5d8e947dfbc4ace2d641bf9714669a31584eaf703e2efc17b68e56e0a504"
+  },
+  "compiled_source_sha256": {
+    "Cargo.toml": "95fbea4c3925ab8043baa328dd2bdc0509883841474ee8c811af10356e02e965",
+    "Cargo.lock": "ecb88b8469a190be6c5587f4762eaef619f4e8bdaaa45171821f6ea4c41f2102",
+    "src/lib.rs": "a74cfdcc454b4553e7a4b340aba72d8c61021285c625c3abf32422c30a154ed9",
+    "src/profile.rs": "3416e3beee3fb9df5fd3c1b5ea66ef16c0390aca3dba05fcf4f84438789c25a0"
+  },
+  "toolchain": {
+    "provider": "Anza platform-tools 1.57",
+    "rustc_version": "rustc 1.95.0-dev (ae660768a 2026-08-17)\nbinary: rustc\ncommit-hash: ae660768afd467d131776918a1627e18920b230c\ncommit-date: 2026-08-17\nhost: x86_64-pc-windows-msvc\nrelease: 1.95.0-dev\nLLVM version: 22.1.2",
+    "cargo_sha256": "7f90f84ff2d811caaab060faf69d5221cad01093eb3eeb654d540271048cad03",
+    "rustc_sha256": "8901dc680c791aff34e0744539f5d135b6147b84a105f3487ff6a1d8c1d25e9c"
+  },
+  "command": [
+    "C:\\ChatGPT-Knowledge-Migration\\knowledge-base\\projects\\discrete-core\\evidence\\swap-integration-v03\\external-tools\\platform-tools\\rust\\bin\\cargo.exe",
+    "build",
+    "--offline",
+    "--locked",
+    "--target",
+    "sbpfv3-solana-solana",
+    "--release",
+    "--target-dir",
+    "C:\\Users\\Admin\\AppData\\Local\\Temp\\xds-swap-final-20260910-evidence\\solana\\private-rpc-build-01\\target"
+  ],
+  "scope": "Offline build only; no deployment, token transfer or chain qualification"
+}

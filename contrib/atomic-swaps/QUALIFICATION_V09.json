@@ -1,0 +1,614 @@
+{
+  "schema": 1,
+  "revision": "0.9",
+  "date_utc": "2026-09-11",
+  "canonical_base": "644ce7624c6c2dc8c8dd7edacea05985ae585c50",
+  "previous_review_head": "9a42ca7b26a6043e145c6ba68401634d0f1aa560",
+  "qualification_document": "QUALIFICATION_V09.md",
+  "transaction_subtypes": {
+    "pq": 1,
+    "pq_v2": 4,
+    "swap_spend": 5,
+    "swap_fund": 6
+  },
+  "swap_output_tag": 18,
+  "phase2_output_tag_left_unused": 19,
+  "source_identity_note": "SHA-256 binds tested working-copy bytes; Git blobs bind normalized committed content. Native binary version text identifies the interim build checkout; these are qualification binaries, not release artifacts.",
+  "offline": {
+    "scope": "offline unit, crypto, abrupt process exit, loopback HTTP/TLS, CLI processes and compiled-ELF LiteSVM",
+    "tests_run": 497,
+    "skipped": 0,
+    "failures": 0,
+    "errors": 0,
+    "seconds": 53.968,
+    "source_unchanged": true,
+    "pass": true
+  },
+  "native_build": {
+    "platform": "Windows MSVC Release ALL_BUILD",
+    "source_files": 1360,
+    "source_unchanged": true,
+    "receipt_sha256": "d35703f77a7a27667c617d972a7c4437d00624229d6de577010cf319038aefcb"
+  },
+  "accepted_checks": [
+    {
+      "name": "Final Windows native build",
+      "receipt": "native/build-04.json",
+      "scope": "ALL_BUILD; canonical master 644ce762 plus swap integration and MSVC test link correction"
+    },
+    {
+      "name": "Final native focused cases",
+      "receipt": "native/focus-03.json",
+      "passed": 50,
+      "scope": "22 SwapChain and 28 swap wallet/store and canonical PQ v2 pool cases"
+    },
+    {
+      "name": "Final native network regressions",
+      "receipt": "native/network-03.json",
+      "passed": 3,
+      "scope": "P2pTransportTests, SynchronizationActivityTests and PqWalletSyncE2E"
+    },
+    {
+      "name": "Earlier adjacent PQ regression suites",
+      "receipt": "native/adjacent-01.json",
+      "passed": 12,
+      "scope": "Before P2P integration and HTML-only correction; preserved PQ validation/scanning paths, not relabeled as final whole-source run"
+    },
+    {
+      "name": "Actual XDS/Bitcoin hardened owners",
+      "receipt": "native/owner-rpc-hardened/run-05.json",
+      "passed": 2,
+      "scope": "Fresh synthetic funding/claims, ordinary spending, actual explorer HTTP, lost native prepare reply and same-wallet restart"
+    },
+    {
+      "name": "Actual XDS/Bitcoin original owner scenarios",
+      "receipt": "native/owner-rpc-legacy/run-02.json",
+      "passed": 3,
+      "scope": "Fresh synthetic ledgers; success, protective refund and fresh-process recovery"
+    },
+    {
+      "name": "Actual XDS/Solana hardened owners",
+      "receipt": "solana/public-fixture-evidence/owner-hardened-02.json",
+      "passed": 1,
+      "scope": "Fresh synthetic Agave genesis and native ledger; durable preparation, paired checkpoints, claims and ordinary spends"
+    },
+    {
+      "name": "Actual XDS/Solana original owners",
+      "receipt": "solana/public-fixture-evidence/owner-legacy-02.json",
+      "passed": 2,
+      "scope": "Same pinned public fixture; fresh native ledger, claims, ordinary spending and protective refund/recovery"
+    }
+  ],
+  "receipt_sha256": {
+    "offline-04/receipt.json": "538d4ee7d2e61b71e7b4b19516ba9b8b839ba936d6c12738b6a43dd05d964e10",
+    "native/build-04.json": "d35703f77a7a27667c617d972a7c4437d00624229d6de577010cf319038aefcb",
+    "native/focus-03.json": "9c1d0232f8136bd3e0fb3001089b8eddc67edaec15d7caa2d6cf5962bf13aed6",
+    "native/network-03.json": "ce93054db2ab6193ca5b00925a45a5afd90e393539bdb75b82b48889749cae33",
+    "native/adjacent-01.json": "608dd5f072150aa9ceadbd01d2b31773ecf545c82d81ec1315479a86eded7d2f",
+    "native/owner-rpc-hardened/run-05.json": "51946f457da1f38cf7f9894680a9ff755f90c61d07562c7232265177b338f8e6",
+    "native/owner-rpc-legacy/run-02.json": "43b212f7f1f01f45c16d6a652c89771f29ce6975d7ebdbd4d8eca12711bfd52c",
+    "solana/public-fixture-evidence/owner-hardened-02.json": "83355711a1d80164b941030150da761e5853110b116c983e8d14c4589bb21d20",
+    "solana/public-fixture-evidence/owner-legacy-02.json": "b47eb61de2e62da22817f3e278b132672a5a0fffe2e20931f391a4d52ef4b176",
+    "solana/public-fixture-evidence/server-final-audit.json": "bc19917719aab5b5519c25a79874858cb47eba7ea98a399a8c64057d5a8ce4c9",
+    "solana/package-receipt.json": "e18217eff496decf5444745c7fdfef70fe71b511816e92a75c6a325612a8ff17",
+    "bitcoin/xds-type-compatibility-review-01.json": "2f847197c03c0a3bddc705dad6e5a1bd1cda198be4591e5248bdb90cd38beb5f",
+    "bitcoin/upstream-integration-review.json": "b174ff0b4482eb393ad4d69e2ba8f249c5fe5a50b0ed6d88c2e12fdbe5fd9a06",
+    "bitcoin/explorer-fix-review.json": "24e937c42c9b6d9858679efab6db868ef7f7408a3e96abef4c5d8516d3c7e8a6",
+    "bitcoin/p2p-merge-review-01.json": "4197250b1ff16f6ec8169bc066dff8afe1685da5f1099645d9a61eaeac60b77a",
+    "bitcoin/solana-send-race-after-01.json": "c52af2bb187a8385701b5a671ecf999c34aae9be4f7bb9993975d43f6f3f4eeb",
+    "native/native-final-audit-02.json": "09b406b7e356281aab3206bac8d5086d6281302a471c858efe37b39961abf9c4"
+  },
+  "source_files": {
+    "contrib/atomic-swaps/lab/swap-vps-v05/sbf-v3/test_solana_vm.py": {
+      "tested_bytes_sha256": "48187e48a95a1a94f92ba99e4ea6e3755289e0592c8d94d874c4d4d861892c54",
+      "git_blob": "eca4a7f4e44b9aa8ed914bb1c08ceede6a60ac09"
+    },
+    "contrib/atomic-swaps/runtime/qualify.py": {
+      "tested_bytes_sha256": "3afb60dafa59427ea0de28998192d9a19d26310aab4926c5a2194fb3023071a5",
+      "git_blob": "8866bc0bdf16052362f04e4d8d037dd34d9655b6"
+    },
+    "contrib/atomic-swaps/runtime/requirements.txt": {
+      "tested_bytes_sha256": "e81d003f7659e655d80758a1077de680ae8575a423ef6f70858a397fbe75537c",
+      "git_blob": "9f58d8ebe25745f71d28fc1fe5168e068d11ee8c"
+    },
+    "contrib/atomic-swaps/runtime/solana_fixture/__init__.py": {
+      "tested_bytes_sha256": "0b80ea75693e7e7e02d54b7db6540f3b5590d5868514acd21f627a2127af2666",
+      "git_blob": "bd3e921a5160996e48c6d02e4272e1bc5562cccd"
+    },
+    "contrib/atomic-swaps/runtime/solana_fixture/__main__.py": {
+      "tested_bytes_sha256": "dd96935600c661e78bbd1c84f4f261d5b73805d900370c85610ffedefaf6b17b",
+      "git_blob": "f0d029dd4f5706bcece9345ee7510b708f1ba61a"
+    },
+    "contrib/atomic-swaps/runtime/solana_fixture/bridge.py": {
+      "tested_bytes_sha256": "243a338401e13461c193f5aa3764947fc7c601ca48fda38687e30ec2861b0b71",
+      "git_blob": "88c2ab0b29aa80d6d3a735be1ef1f1b414e7821e"
+    },
+    "contrib/atomic-swaps/runtime/solana_fixture/runner.py": {
+      "tested_bytes_sha256": "30bde9a830ca4a9c43c18abe7b2382557b944673b75219b19ca1510575aad941",
+      "git_blob": "caae911e86eb84a47610af8f21cc9ac0a87f52b2"
+    },
+    "contrib/atomic-swaps/runtime/solana_fixture/support.py": {
+      "tested_bytes_sha256": "52582621533c600608ba0e2ed046e04ae0185143cabcf35d2ff2be02604cb2ec",
+      "git_blob": "384413f3401cb3dd054ff33fd6f4a3c36a706c1f"
+    },
+    "contrib/atomic-swaps/runtime/swap_runtime/__init__.py": {
+      "tested_bytes_sha256": "001e2c965afad8738de23d8bf79de02db468f9ff86b116905fb73f011bb7379a",
+      "git_blob": "1b958db06e010bfbd74dc2763632f23aa8b3adb7"
+    },
+    "contrib/atomic-swaps/runtime/swap_runtime/__main__.py": {
+      "tested_bytes_sha256": "c3464bb65cfa0db863afd9597235e06d07dbc86ecbd205505bd17d95bc75090a",
+      "git_blob": "b168640f68e845d6f999d943d0304bcdc34172f3"
+    },
+    "contrib/atomic-swaps/runtime/swap_runtime/anchor.py": {
+      "tested_bytes_sha256": "49aadf2c5f411704b09146074f7db92d63f5bb83ccb7c8e2c5cc05d11e628e3e",
+      "git_blob": "a6b409d72239304d6722c3b9a0aef13203a550ad"
+    },
+    "contrib/atomic-swaps/runtime/swap_runtime/anchored_owner.py": {
+      "tested_bytes_sha256": "5fd68780cad673f1dba29305199028553ed1dfa8883aa878fd9263c3f9d1517b",
+      "git_blob": "ae64201d243c323791510db26febfb7ebcb6d04b"
+    },
+    "contrib/atomic-swaps/runtime/swap_runtime/bitcoin.py": {
+      "tested_bytes_sha256": "6268a283c313aadef19172575f2b5033e75e3b64841e6ec8dc14a8a3dd48acfa",
+      "git_blob": "ec13f3936d66bde6cb50439a8a87c3ab92dd10c4"
+    },
+    "contrib/atomic-swaps/runtime/swap_runtime/bitcoin_funding.py": {
+      "tested_bytes_sha256": "780624b57d06fbef861959097c01a7286f6393f463a5b285f037117f00d3a82f",
+      "git_blob": "977ef9b113ef96f592be778b94df0bc8e76816e2"
+    },
+    "contrib/atomic-swaps/runtime/swap_runtime/common.py": {
+      "tested_bytes_sha256": "16bb0dbb1e4cad07ad6b822d62eaefb9c72b364a6bad8dffec104ca2461e38e7",
+      "git_blob": "a597ad782bc1e63af1dcad6fb3b72409be0cc61c"
+    },
+    "contrib/atomic-swaps/runtime/swap_runtime/journal.py": {
+      "tested_bytes_sha256": "c6a00c9897d8541bf7c47a4f6e1bc78e2b422bee6b110cc0abe1d38f59fa61f5",
+      "git_blob": "2fc40a6440da391afe34d9ac350851cbd8a9015f"
+    },
+    "contrib/atomic-swaps/runtime/swap_runtime/lifecycle.py": {
+      "tested_bytes_sha256": "29f4dd4229c58819c87fe600ce37713b3533a8666692fb40f4c3c44b0d88df82",
+      "git_blob": "5c4e13da356dd9e9f624611c895ccdc0030a8e63"
+    },
+    "contrib/atomic-swaps/runtime/swap_runtime/lifecycle_settlement.py": {
+      "tested_bytes_sha256": "225b6ca98bcac88693b33d7cc55b0f34225ca1b7180fb7b0db741c7204d4a238",
+      "git_blob": "5066f9d301c8516cca66c59c4355111cfd5e8b0a"
+    },
+    "contrib/atomic-swaps/runtime/swap_runtime/lifecycle_store.py": {
+      "tested_bytes_sha256": "b52e02c2d0a1bc0fa5f5ae40471a9bd3c5e0794d9727cc204a539fa72d8a6f2e",
+      "git_blob": "338381828b812461c0f512087b64504ceb0ce2ed"
+    },
+    "contrib/atomic-swaps/runtime/swap_runtime/owner_cli.py": {
+      "tested_bytes_sha256": "f7e0830e9627fb68a3f7abf78683d100a754787188207fdf2bcac41d7a112bea",
+      "git_blob": "fc31260c1cb2be2dd694532ca24c0896ede542ec"
+    },
+    "contrib/atomic-swaps/runtime/swap_runtime/owner_protocol.py": {
+      "tested_bytes_sha256": "e171306ee8f00f8f0e4a4bdb076b5621c10020eef981b2c14b03f996db815d76",
+      "git_blob": "dd58850d66c301c21dbff08117dd4f00312bd18f"
+    },
+    "contrib/atomic-swaps/runtime/swap_runtime/rpc.py": {
+      "tested_bytes_sha256": "e46f4793144c500e370eb5f49ea00502241ac7131c80fe9dc3473abb450dad54",
+      "git_blob": "e4536fab24e837f020f435783c125a8d7f43761f"
+    },
+    "contrib/atomic-swaps/runtime/swap_runtime/session.py": {
+      "tested_bytes_sha256": "f6518982b399c982cba22311fe13bc60dabcc3883f284bc94f503dda623a647b",
+      "git_blob": "c7b54076d717aba21151fb07b10df7e8ec6f2f3b"
+    },
+    "contrib/atomic-swaps/runtime/swap_runtime/solana.py": {
+      "tested_bytes_sha256": "11ce55928bffff4b8b9ac3be312a522e63cc1e18e3710028f7ecfdd2a0889692",
+      "git_blob": "d6b44ab4ed5ead73c4a6a2b85af3f8f6830726ec"
+    },
+    "contrib/atomic-swaps/runtime/swap_runtime/solana_funding.py": {
+      "tested_bytes_sha256": "0153c76d557d80a77ae6afa97c34477f1eb7ba4298630de7bb0178e2e34483c8",
+      "git_blob": "7a29a9d2a9a0e2fbe30a89e971b436f304808a8b"
+    },
+    "contrib/atomic-swaps/runtime/swap_runtime/xds.py": {
+      "tested_bytes_sha256": "647acd986b9079774e9820c6c97af33f8ec608391564948a68644f61e807b84f",
+      "git_blob": "8d16afb88fd4cd2b7bd2a0cb7c0e243c8da12923"
+    },
+    "contrib/atomic-swaps/runtime/swap_runtime/xds_discovery.py": {
+      "tested_bytes_sha256": "adec344bb42a510a7d48081a0eadfe91b2ca29cb610f81943f317939f09a35e4",
+      "git_blob": "6dc8de1ef3abbb15c7dc0d8e784cd433b3074fb8"
+    },
+    "contrib/atomic-swaps/runtime/swap_runtime/xds_funding.py": {
+      "tested_bytes_sha256": "2824ee5d4de07ff9a0f5b9beb67f15ea93d31d8de4105b3772c44482866a651f",
+      "git_blob": "8840ea1a9b734973eae7a7b4a1c5d6d2e00c9f01"
+    },
+    "contrib/atomic-swaps/runtime/swap_runtime/xds_preparation.py": {
+      "tested_bytes_sha256": "6d4a81069d6c082e9fa05f4efe6cd4f1939aecc6115d3f713c4e9abe8176295e",
+      "git_blob": "6ff289b385a8672d7c1312ad559e30290a81ba47"
+    },
+    "contrib/atomic-swaps/runtime/tests/fixtures/solana-v06/build-manifest.json": {
+      "tested_bytes_sha256": "3280a82ad13cd2671b558f001678615ced7fee1b8dbfae820071f87836f7bd7f",
+      "git_blob": "4167e7091823a062cf7f710b039e02632837129c"
+    },
+    "contrib/atomic-swaps/runtime/tests/fixtures/solana-v06/solana_escrow.so": {
+      "tested_bytes_sha256": "561e0b7ad5e4be59a3056482ea94370064d201f45a378964d0fdb9f0ff76a901",
+      "git_blob": "d2f47861b32eed29f3fdea0e0d9ae15de4518b48"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_anchor.py": {
+      "tested_bytes_sha256": "f3ce4865c6a7c69128f01e964379d50075a28a1c7fe76217e81120d816acea94",
+      "git_blob": "49e4ca56a272996fef659920a6fcd94a8d0a906a"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_anchored_owner.py": {
+      "tested_bytes_sha256": "361c01b51492f1a78d1fb8e080b428791591722d42acabc97d7639f0e5371dc3",
+      "git_blob": "5de2eb7e959d4a5de30b6bbf3c4935362123925b"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_bitcoin.py": {
+      "tested_bytes_sha256": "2856d874a9d2cac43c8331a95ee07083ba07b68357c9bb9bbddf523d33e1f215",
+      "git_blob": "0673d9802f374ba9be78313d310029b3ec0d4237"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_bitcoin_funding.py": {
+      "tested_bytes_sha256": "860debf43e1ff49b35ff1b1cd52865730f8bce301797c45d813f9101baf0cd56",
+      "git_blob": "c698d32f4b64fa4ebcf82d0cab884d0248370348"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_bitcoin_funding_rpc_integration.py": {
+      "tested_bytes_sha256": "baf91875b1c366984bd9882fddc8e71490ef3e09d0ae4680419631e766602ede",
+      "git_blob": "ff5baa05236145ef6a1b1137e973a8ea9b52e674"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_bitcoin_rpc_integration.py": {
+      "tested_bytes_sha256": "ea4fc43d0871d1356e4683ef72a946f6774a2a57d1e150674567c092cc7f71c5",
+      "git_blob": "8006813a8344aba3d893eecc15cfe52b98305133"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_journal.py": {
+      "tested_bytes_sha256": "8af576fc87951a3fb0f3fe5f205af7db7e63b4d212e7ed4d1351fbce4d59111e",
+      "git_blob": "75a8d41fda9cd90b0028a203a7a2aba374e9aa50"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_lifecycle_settlement.py": {
+      "tested_bytes_sha256": "43e8d1975fcd61d76bcab26119ce87296f54bc762e4934b11ebd6e9e71e2f4bf",
+      "git_blob": "0bd14821b02089bf8b794f72588f5abb8496fb7c"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_lifecycle_store.py": {
+      "tested_bytes_sha256": "f507afffb1743477464eae52fb7a801b855216cf886bcf9f001eccc280c8da85",
+      "git_blob": "4db77db0ab7b8bc76e78fdfa4d4cc040e42dc0f8"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_owner.py": {
+      "tested_bytes_sha256": "78071213c9a1259e4963616c39e0ecf52c744db46589641d179ce53ae1f416d4",
+      "git_blob": "c1a769c8f9a075747d37d9658fbd14a0a73a136f"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_owner_cli.py": {
+      "tested_bytes_sha256": "df04393022897b98f8260e6adfe8c2b9776ee9cc1f793eea7536dee2f84b9f4e",
+      "git_blob": "4bfc50ce5c17c624c65958bebffa9f00b23f73dc"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_owner_hardening_cli.py": {
+      "tested_bytes_sha256": "24ba0b774481af4415abe6ffe30b08a13d433a4830c6418186788aaad4537290",
+      "git_blob": "d1f1da207bec9ae81105ce20fc87a6c755efdbfb"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_owner_hardening_rpc_integration.py": {
+      "tested_bytes_sha256": "c374b1bd1653a5d793b4865eacf13e3a51c69d0f1e14e89549c30f90486597af",
+      "git_blob": "ddd0844e9707eaa8f6464d4d50d970bee5538fa8"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_owner_hardening_solana_rpc_integration.py": {
+      "tested_bytes_sha256": "1647d80395baa33a9d9ed7eeb99361fbb46e72e6a106dea5f376524f7724d5c5",
+      "git_blob": "311f34a5564f47633ac389627d0ecddc7b9a5cde"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_owner_protocol.py": {
+      "tested_bytes_sha256": "fac5ff41516982b6dd2f9e1ca3c02e22b5eec31cff2174515728a04adb677ec8",
+      "git_blob": "00f81081961584f51609899929cae766a6f60e9e"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_owner_recovery.py": {
+      "tested_bytes_sha256": "7fe0a4f5f383680f912f0d12bff1661a47c24320bfb8fd6321108580c80bfa87",
+      "git_blob": "1d54e4a04b994f0d48969e71040e24ecb07a7ab1"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_owner_rpc_integration.py": {
+      "tested_bytes_sha256": "28b81ab03ad9ea16bd9a48b6da197e324b61632c608d6c155dd148e713013d13",
+      "git_blob": "84c8a21a086769e271f532a9ffe388f7de34e7ca"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_owner_solana.py": {
+      "tested_bytes_sha256": "a4893b34bc088c9fa44a3b3c8cb39d508a306a9638b2a344b22ae2ec5bbb3255",
+      "git_blob": "13a1aa830d010f5d85919dbd20454051f9939a18"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_owner_solana_rpc_integration.py": {
+      "tested_bytes_sha256": "e7089faae040eaf1d12ed0d8e543f30b92f9ad3e7902c0538185fc7be9082c5a",
+      "git_blob": "9ae6e9dc13f1de9b2acfff2c34769364e1903f67"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_pair_rpc_integration.py": {
+      "tested_bytes_sha256": "b025edd9ea4b41f7090386b48798e090e79c016fb99555b2d06ed9ebddd2a981",
+      "git_blob": "0273d40dcf78a710ba15520aba90dc2fd6b6fdd7"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_pair_solana_rpc_integration.py": {
+      "tested_bytes_sha256": "b767f3c12e6c2ef80d6ab9738def470e6d5ad965eaaaa1993b9a4e5b87ce7a07",
+      "git_blob": "3aa0b51f201cb7b80d450656bd4078487f1b4583"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_session.py": {
+      "tested_bytes_sha256": "c3c5d244d3567fcaa99bca919bd224acb0f4a99a75b4086daa370cb1c9fedde8",
+      "git_blob": "b23a58ee8b46ad4c50b6a348e873cf75e5154d50"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_solana.py": {
+      "tested_bytes_sha256": "d88b2b6968290a2ee06f2574cdf3da6c34eb28581c53777cfd987ea785a869f8",
+      "git_blob": "7cad0a9f1521561bfd0a5bef34aa5aa78475ef1a"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_solana_fixture.py": {
+      "tested_bytes_sha256": "5d8a664ef99fdee3bfc49b13564f1dc974dca3801383ce8e57d2d6a8723cead1",
+      "git_blob": "cf672c28dd87dabdd883dd664dfb07d7673d1582"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_solana_fixture_rpc_integration.py": {
+      "tested_bytes_sha256": "04ae113272fc0269a2f1f8d967217d58fd7ffd04b040cee0cdb843cdeb9c0137",
+      "git_blob": "fc8cea6320c2330a7e30c5276c4f200632e3db22"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_solana_funding.py": {
+      "tested_bytes_sha256": "8e35ddd221fcf217d1eaf7759c8ded40ecd750faa3c36136fedd6a6e47265211",
+      "git_blob": "0ba8f0edd29a5b71c0c2e3fd28f50a33bfeca241"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_solana_rpc_integration.py": {
+      "tested_bytes_sha256": "f5e5b167127d46e993698f80bd200914eb7ac90c959ede2f887df3e9f848c671",
+      "git_blob": "d540f90da606fa2b129a235fda0accd342fb510b"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_transport_cli.py": {
+      "tested_bytes_sha256": "c9b1853f901ecb56f77fe16b4f21f8c57041911341e0d86df73ccbe48fc79c42",
+      "git_blob": "4ee9def81cee4dcd6e3394ffb3ff61b54841322e"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_xds.py": {
+      "tested_bytes_sha256": "1a7e3ec4e236417e8eb4f53b52f22ce542c851d963afc004c9513baf49cef81d",
+      "git_blob": "0c1b548882a0e1eb66ccf2cd274cc05fb47a43d4"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_xds_discovery.py": {
+      "tested_bytes_sha256": "941410119d2ce8c5e1843b9a2ea5b412084e8d3dc6db0f6ffb935ff808f524a4",
+      "git_blob": "14bd7f022b0364acc5f1e4686e6f8c7e7ad0490e"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_xds_funding.py": {
+      "tested_bytes_sha256": "efc37e91571bfa9e7debc1b9fc9c212738977e69b7b3284294fa21c2fd583ba9",
+      "git_blob": "b305f3f431707a2088e7fe9fa3ebf3ab43d696c4"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_xds_funding_rpc_integration.py": {
+      "tested_bytes_sha256": "47c760800e850cf89f9d0f3e790c0e7be407bf9cd08bd48be6ad1e6684965565",
+      "git_blob": "1a6d1c1a0019e3232217ab42c3c71705e8e885a6"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_xds_preparation.py": {
+      "tested_bytes_sha256": "760697784164f3c5e688b0d7202855a8cab1f2e4ed72230fc5ed4c176c1a4d35",
+      "git_blob": "5128d855e9a7d4d175d0eedd335d178610823ab1"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_xds_rpc_integration.py": {
+      "tested_bytes_sha256": "1773fdeb549a4511f85d3cf6414b65040fc4a3212f8967c71edfcb6658894753",
+      "git_blob": "e324ba1ee6d9e1e593c9e48f6a3fe49c1ebd4ab0"
+    },
+    "contrib/atomic-swaps/solana/Cargo.lock": {
+      "tested_bytes_sha256": "19826f438acf267f8f698288961908d995f2ae1523f8e81028ff8fea95614078",
+      "git_blob": "8fb288d3e7fedcfc12702fc18086983a51bf08a6"
+    },
+    "contrib/atomic-swaps/solana/Cargo.toml": {
+      "tested_bytes_sha256": "1093d3a7e38a97322338e03048cb9e7afcfc0a3e46766b1b3bcad5a9e9884b58",
+      "git_blob": "34379d254673d75ae91d0023c7250848e8d6fa56"
+    },
+    "contrib/atomic-swaps/solana/build.py": {
+      "tested_bytes_sha256": "f41c38846af86708c76b1b6b719a9b3adeea5ea87023082dab518bea4506e44b",
+      "git_blob": "33d7af701918f50841e9edecdec847c16b07b1d4"
+    },
+    "contrib/atomic-swaps/solana/profile.py": {
+      "tested_bytes_sha256": "2efbad2de0b4bc0e04748262b5ac1cd8785a439deb7c792bc77ba004f7b46c17",
+      "git_blob": "0c1c7c551d8f7509ad1686574bf85f695f397a15"
+    },
+    "contrib/atomic-swaps/solana/src/lib.rs": {
+      "tested_bytes_sha256": "ef524a97f7ac31a52b6e2b70d593cd894e4aa798e146cadef6395e824dabfe66",
+      "git_blob": "11f7ff9135d2728d4db396a528a46ce6c854964e"
+    },
+    "contrib/atomic-swaps/solana/src/profile.rs": {
+      "tested_bytes_sha256": "b8ae7dd9bf216d89627d9f7c685c4074711d1d3b9f914cfe51a90aaf1ba91266",
+      "git_blob": "064e335badf56e17d3a3ec0785edd06d26ede7bc"
+    },
+    "contrib/atomic-swaps/solana/tests/test_profile.py": {
+      "tested_bytes_sha256": "ec72da3802ad03c2929b6e771b0a7a249c8b8af367ba737c78da34e74e48fec2",
+      "git_blob": "65cf0224640a99981faa24861c181b5e40570c4f"
+    },
+    "contrib/atomic-swaps/solana/tests/test_vm.py": {
+      "tested_bytes_sha256": "6b3f30252ee59ec6d5bcc7094382efb826acabb1126729f087a3b4ea97524f71",
+      "git_blob": "31788922f4b1a214ff8e76c3a84e76391248850b"
+    },
+    "contrib/atomic-swaps/solana/verify_deployment.py": {
+      "tested_bytes_sha256": "51deaf8710f193eb9d6ab34e65c6964b17b6f88aba8e56160fa9258df8f34cdf",
+      "git_blob": "0198e042f5864b2d7adf7fea7fd082a879bf1298"
+    },
+    "include/PqTxType.h": {
+      "tested_bytes_sha256": "abab0ab0272b3d402a322f9041ca792672ae1c8b42fde3bad45751f8adc114c3",
+      "git_blob": "06f1d59d29b1333c631e65f93208cf580c061697"
+    },
+    "src/BlockchainExplorer/BlockchainExplorerDataBuilder.cpp": {
+      "tested_bytes_sha256": "e277c4d42cb0a53d634a5832592053c4d7c64fc673414acda393801b637c776c",
+      "git_blob": "ac01458048d5322aed4692fbcfc51d06768e3a4d"
+    },
+    "src/CMakeLists.txt": {
+      "tested_bytes_sha256": "bad1f55ca2150cdd1f9833a72652b5c41b47e075e633ada48c5982c2f828158a",
+      "git_blob": "23907478277688ec704bc929c6597957b20c1d19"
+    },
+    "src/CryptoNoteConfig.h": {
+      "tested_bytes_sha256": "afded66362c923a5325c32e49bee487474fcb4a0cc4e619cf80113df071401fa",
+      "git_blob": "8ba2545c69e61f8a6704db4c0661da54957416d2"
+    },
+    "src/CryptoNoteCore/Blockchain.cpp": {
+      "tested_bytes_sha256": "7c652ce74ef153e24fa57a61eb90177a035328916ce97a01939b0b413dade998",
+      "git_blob": "fd8e11ce4698bac0c1ffeca71cf74a1fbad7e6aa"
+    },
+    "src/CryptoNoteCore/Blockchain.h": {
+      "tested_bytes_sha256": "b9a533a44c9f325de569890489c9db0dbf2cad0d670fca0fe8c9ada85283bcc8",
+      "git_blob": "c133a3686ae0cd86527af2a7167264396e9307bd"
+    },
+    "src/CryptoNoteCore/Core.cpp": {
+      "tested_bytes_sha256": "d4f44d780ca7408698c93bfb2586906165389a9544df23f985072961c4b17da8",
+      "git_blob": "16b6f80ca2e504aba4d22110068f593448368b11"
+    },
+    "src/CryptoNoteCore/CryptoNoteFormatUtils.cpp": {
+      "tested_bytes_sha256": "b61ad0a208932a46093666cc00eafb964875a91c5678d8e0ec6f356ae07d7ec8",
+      "git_blob": "116ce0498d030198926ec6d25f10533b3d04ce5b"
+    },
+    "src/CryptoNoteCore/Currency.cpp": {
+      "tested_bytes_sha256": "5866b0e60bb50d96f45831500d97d419ad8f5aeb78156e1e2da1805bb4137070",
+      "git_blob": "480b1ba57298670961361baae85625e4c9a9bbd0"
+    },
+    "src/CryptoNoteCore/Currency.h": {
+      "tested_bytes_sha256": "ed97f0101e076a201cd4fb000ba2c13098ae6cb5bb14faee2c5636c7e38b06f9",
+      "git_blob": "2f1d1400227934d26eee4db4a790edb26f2d37fc"
+    },
+    "src/CryptoNoteCore/PqValidation.cpp": {
+      "tested_bytes_sha256": "0fa876716b41d4770c5f8b29cc02b3c6468066d7ad15f36916bb28d81fa031bf",
+      "git_blob": "8669f899fe46e7fd76bfcfaa9dab8b5f4c68184a"
+    },
+    "src/CryptoNoteCore/PqValidation.h": {
+      "tested_bytes_sha256": "6ced7345abb2a02e438a92e9bddda95bf80ee8cd32377d001458847f779d6900",
+      "git_blob": "ced7c187d1ca6d9bc675b6bf87bbdef91d7c7891"
+    },
+    "src/CryptoNoteCore/TransactionPool.cpp": {
+      "tested_bytes_sha256": "fd65663d16d8f01af01fd1c8470a6236cdc86537b5e9b07dd261911d891c4388",
+      "git_blob": "ba47e4fd84c97158a768eb4bfe584d34d371a0e3"
+    },
+    "src/P2p/LevinProtocol.cpp": {
+      "tested_bytes_sha256": "2e5ad0672420f5e8485167106b20342327588a6cb09b46e57afb43a70b49528a",
+      "git_blob": "85a03cf29b6a9a3cf2b6f3bd5ccc9da0ec8d3315"
+    },
+    "src/P2p/LevinProtocol.h": {
+      "tested_bytes_sha256": "16ec2bcd90c0d053a650d0d4607b82af68739cbe0bbc0f651d18fdf7ee0cd52c",
+      "git_blob": "8861566426d98e6bda7029bb69b2b2c1114d0cd8"
+    },
+    "src/P2p/NetNode.cpp": {
+      "tested_bytes_sha256": "3cd34e56673e7eac3a954392ecfb6a1d41a5fd9d1d6a01071cac4a7b58955311",
+      "git_blob": "24cb9f45112555e6121f9a31c849caa890e8a0ce"
+    },
+    "src/P2p/NetNode.h": {
+      "tested_bytes_sha256": "881076ba1bd5fef7ffed8e19c08cea12d2be884be1f6438b333d6f82dd043062",
+      "git_blob": "8c793fe2fc16dc1e6656baff43c3d045e8e89a03"
+    },
+    "src/P2p/NetNodeConfig.cpp": {
+      "tested_bytes_sha256": "d30c893aa18b940e77d40142a8605609bfa8c4c7cd1b376bc099435ea3daf760",
+      "git_blob": "aecaa9ad5139909992cbe5d26cd590af93043085"
+    },
+    "src/P2p/NetNodeConfig.h": {
+      "tested_bytes_sha256": "fb2d6a02978a7ced49a25b2ec06a370280ba742cf9e3b0b8748d6e2c6b9ee89c",
+      "git_blob": "e437af9b2a98d0ca8a008cf820605fedb3766a6f"
+    },
+    "src/P2p/P2pConnectionContext.cpp": {
+      "tested_bytes_sha256": "bd1ded5208a0e9dc407cb3b503a589612ef484f5ace3be5013b9bf727ad85aa5",
+      "git_blob": "361d8d93bd612afb786249904217d0660db08fb9"
+    },
+    "src/P2p/P2pConnectionContext.h": {
+      "tested_bytes_sha256": "b0c7046552a11e707cc206f19c8c62e60111c81385fbb14a62b23f7087cd9ade",
+      "git_blob": "e5400e960efd6d9f7ba7c72cab256bbd92d21e16"
+    },
+    "src/P2p/P2pTransport.cpp": {
+      "tested_bytes_sha256": "2e852dc2abec8473880e69f9ca4849f52f908fc96cf79dd3279983b015f2d1e2",
+      "git_blob": "e4c02c69c307b812de43ffe532eaa7e53f489767"
+    },
+    "src/P2p/P2pTransport.h": {
+      "tested_bytes_sha256": "e54c3b32d45fb43a2f4e80e86c91d1fe421569049be23de113cde6da055a7117",
+      "git_blob": "75b96f222b7005e9bd09d87cd79d232851108467"
+    },
+    "src/P2p/P2pTransportConfig.cpp": {
+      "tested_bytes_sha256": "630c9b0d8ec532e191cfc0ccc9b2669fa8c00f0ba0064a76501cacd80a6c2c92",
+      "git_blob": "056eb89b46ff233a22d80be52374e067d91f7e08"
+    },
+    "src/P2p/P2pTransportKey.cpp": {
+      "tested_bytes_sha256": "959df946935e71c84c1967013f105b7008aac0c7e88e45d89aca84671685da42",
+      "git_blob": "f0790a7f02f6b3d66e90b749006bdb150918504f"
+    },
+    "src/P2p/P2pTransportKey.h": {
+      "tested_bytes_sha256": "40d50f899b9232f6e8edaf14fd041c13d7ef7e9ef3822843a74d0a305054f663",
+      "git_blob": "4d5501bbe351dd2ea4263d0b0822723fd936e103"
+    },
+    "src/Rpc/BuiltinExplorer.cpp": {
+      "tested_bytes_sha256": "b7c111c03b9265575f66404e2a285e784350c2ae78567260325989f960204424",
+      "git_blob": "148c4eab64b747c40075a359a00633e4bebff9ac"
+    },
+    "src/Rpc/RpcServer.cpp": {
+      "tested_bytes_sha256": "b11e6df91ce641bbf0ff78231a12c4ede77db188147a4eb301819cf5aeaa31bb",
+      "git_blob": "ee3cc645299da753c629576f594c257fb98168fb"
+    },
+    "src/System/TcpListener.cpp": {
+      "tested_bytes_sha256": "864bf0f61fcfbbf5386fee4d39892e36067e75379430583e5b5e934a3d0a6b56",
+      "git_blob": "0908f15d4a54d6dddae69b240e9abf040b476ec9"
+    },
+    "src/System/TcpListener.h": {
+      "tested_bytes_sha256": "f5f8dc638f05ceee801e250dfe1dc9154d2d79181b6efb4ef768b54b2d7236bf",
+      "git_blob": "2307f3df94c5cd6e5b18d00b3973133ecf008305"
+    },
+    "src/Wallet/PqSender.cpp": {
+      "tested_bytes_sha256": "65be2929c87e29b045e7cbc41e2f582ae4aac83ed7051b80a10f7389315f8765",
+      "git_blob": "d062b3f20acd212095215638aee29b5ecb23ea32"
+    },
+    "src/Wallet/PqSender.h": {
+      "tested_bytes_sha256": "cbe35a27b051ec162f16dd5276cb60d827ec5b9fb1feb71fef23899b952f618a",
+      "git_blob": "7a826f673371f71d8731aab3be12663bb15eabd3"
+    },
+    "src/Wallet/PqTransactionBuilder.cpp": {
+      "tested_bytes_sha256": "d16e610d3d22bf60472657214edf1b402271306e93c5b7d5c792fe37a25a974a",
+      "git_blob": "81a41d9b5bc4b29675ad55d4008462bbd6e9108f"
+    },
+    "src/Wallet/WalletGreen.cpp": {
+      "tested_bytes_sha256": "d593a56d2e72e239f3d6749a8e2ee4af22a8e66d61f82d7a71be7955e7df4619",
+      "git_blob": "e3a3a0b9e778c5f3401ab15d31fe9d6d01fe73b7"
+    },
+    "src/Wallet/WalletGreen.h": {
+      "tested_bytes_sha256": "828ad1d41ebc73b1fedbd2966aaf05200bc27b6ab7aa3989593916928d067e37",
+      "git_blob": "75e8a3efef743dc3787e6d4afe7c272955f8214a"
+    },
+    "src/Wallet/WalletLedger.cpp": {
+      "tested_bytes_sha256": "4f663e606e0969796854abda09c3800532c78aeff16adbe743a546c39e88c659",
+      "git_blob": "de3bee303a4a51632a4fc9971ef63b6aa7cb5b21"
+    },
+    "src/Wallet/WalletLedger.h": {
+      "tested_bytes_sha256": "bba34d3c1587fa5810f7394280f4ab3fc635b16d2a91208abf00f7ce894d769c",
+      "git_blob": "5d5b8dee156c1a20f8b943e506308d2b394bbac9"
+    },
+    "src/WalletLegacy/WalletLegacy.cpp": {
+      "tested_bytes_sha256": "15a9808dae4640f12932950e5178dd5a607ea41a9dbffa278863932ff42155b1",
+      "git_blob": "8c8c8a05003061b9cf0e0198259b731e738f9d22"
+    },
+    "src/crypto_pq/PqOutputBuilder.cpp": {
+      "tested_bytes_sha256": "76ffdd58ad824ae92a2f65ad238b0b68629514aa1e7f779b09ed40b467daafaf",
+      "git_blob": "3eec7be69a7b08963439c71b30b764d7d418cc6c"
+    },
+    "src/crypto_pq/PqScan.cpp": {
+      "tested_bytes_sha256": "15fb595c2641eb0fb284c516e4b433c651ab96d6e82aef130412e7bb6b2351af",
+      "git_blob": "6ae50c3cb7552143154617d38c28693c5222e4c0"
+    },
+    "src/crypto_pq/PqScan.h": {
+      "tested_bytes_sha256": "68289bcc0a63e54127dd1c0eb6013f423b32bfc691d3ffdfc715e614d0e895ed",
+      "git_blob": "ae72adda84bd3be3410a0a176f5c8ad7c995b907"
+    },
+    "tests/CMakeLists.txt": {
+      "tested_bytes_sha256": "e7a5d4417fded20f9df3b5865256017322c00c44586adc78bf116327420582a2",
+      "git_blob": "32beabf9075ad8ba3f842a7f073c60e13bf05a63"
+    },
+    "tests/UnitTests/TestPqDeliveryPool.cpp": {
+      "tested_bytes_sha256": "61e0c5ac5faf4b316a4741ba58854cbc1a6ec8ac59925ca23297da5dffb9fa78",
+      "git_blob": "6ede4864dc4b7c7304990cdd0d012e074d4a285f"
+    },
+    "tests/benchmark_p2p_transport.cpp": {
+      "tested_bytes_sha256": "7ed62be3a572fb72476b6ce84a79186bdcfad1a99839ed107d5e472d825f2049",
+      "git_blob": "eb6a31a49d00bddc32c3f9e7dec0cd12a6bfe931"
+    },
+    "tests/p2p_transport/ProcessCpuTime.h": {
+      "tested_bytes_sha256": "671e2c02c7dee3162451d4ba4e9fda1a0f559dce6094dfcf3dfa5d3c79a6fe30",
+      "git_blob": "0212629f65fbda4337b77e9827e4de7ef067a82a"
+    },
+    "tests/test_p2p_transport.cpp": {
+      "tested_bytes_sha256": "3e9227ea5fd74ca0115db4e5ce0e7691960f03b9e10799c72bf5c0bff9affefd",
+      "git_blob": "ab9c63758a10998c3da8b3d7654863359103971d"
+    },
+    "tests/test_p2p_transport_nodes.cpp": {
+      "tested_bytes_sha256": "b31414a2516f12741357f6d1499ab3fed6ca62e9e5c6e85a070e3b4cd04371e0",
+      "git_blob": "42f50983c362a12b95f80a2db95b6787e6e0bebb"
+    },
+    "tests/test_pq_chain.cpp": {
+      "tested_bytes_sha256": "1b63dde4a04e84568a9a55a6ce09f61fdb0291dfa9f22b3e514e6eff62fe9a4f",
+      "git_blob": "3d9fd3046de9cb74af087178b96161c58fd390a6"
+    },
+    "tests/test_pq_scan.cpp": {
+      "tested_bytes_sha256": "9e22b9990f26d7621e9e7c0564bb0a36b9e80daa8baef97bc72f89adc7c74ea7",
+      "git_blob": "ad90c33dd7172255c8252b7405d57d3757f3da43"
+    },
+    "tests/test_pq_validation.cpp": {
+      "tested_bytes_sha256": "b6feca5d0211913b86c1d973f9b605db886fcf7c79979d5d11ac61eeaa54bdd3",
+      "git_blob": "75fbcb76d8e907185ef4ddbc26bfd7ab1d847035"
+    },
+    "tests/test_pq_wallet_state.cpp": {
+      "tested_bytes_sha256": "1263e709b1ac7b3f0aa93dcbdc093ec3b9556a7d60669b9a3941937cbb71621f",
+      "git_blob": "b671af2968c58e93c3e44b4582229323fb65f250"
+    },
+    "tests/test_swap_chain.cpp": {
+      "tested_bytes_sha256": "47488a5ef84b13a4c01f9ad7dc029610b87382166a2e78c230c0da05ec45eb07",
+      "git_blob": "4ae18006e98dd95a793a67b5d3c6fdd98bbd0313"
+    }
+  },
+  "solana_elf_sha256": "561e0b7ad5e4be59a3056482ea94370064d201f45a378964d0fdb9f0ff76a901",
+  "limitations": [
+    "owned synthetic ledgers/assets",
+    "old funding4 artifacts are incompatible; preserve original binary/state",
+    "separate in-process anchors; HTTPS checked independently",
+    "no mainnet, real USDC, GUI, physical power-loss or production-capacity qualification"
+  ]
+}

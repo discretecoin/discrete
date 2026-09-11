@@ -1,0 +1,9 @@
+test_all_custom_error_boundaries_preserve_full_accounts (test_differential.DifferentialTests.test_all_custom_error_boundaries_preserve_full_accounts) ... ok
+test_c_permitted_source_close_authority_and_destination_fields (test_differential.DifferentialTests.test_c_permitted_source_close_authority_and_destination_fields) ... ok
+test_fund_claim_tombstone_and_next_transfer_full_accounts (test_differential.DifferentialTests.test_fund_claim_tombstone_and_next_transfer_full_accounts) ... ok
+test_refund_boundary_and_claim_after_deadline_full_state (test_differential.DifferentialTests.test_refund_boundary_and_claim_after_deadline_full_state) ... ok
+
+----------------------------------------------------------------------
+Ran 4 tests in 0.346s
+
+OK

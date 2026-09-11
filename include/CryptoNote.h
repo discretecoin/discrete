@@ -83,8 +83,20 @@ struct CoinbaseOutput {
 // serializer throws if it encounters tag 0x2 (KeyOutput) on the wire, and
 // Blockchain::checkTransactionInputs rejects any tx whose outputs aren't PqOutput.
 // ---------------------------------------------------------------------------
-typedef boost::variant<BaseInput, PqInput> TransactionInput;
-typedef boost::variant<KeyOutput, PqOutput, CoinbaseOutput> TransactionOutputTarget;
+// Experimental conditional-output profile. Not activated on mainnet.
+struct SwapOutput {
+  uint8_t version = 1, hashScheme = 1, authScheme = 1, amountScheme = 1;
+  Crypto::Hash nonce{}, hashlock{}, claimCommit{}, refundCommit{};
+  uint32_t refundHeight = 0;
+};
+struct SwapInput {
+  Crypto::Hash prevTxid{};
+  uint32_t prevOutIndex = 0;
+  uint8_t branch = 1; // 1 = claimant + preimage; 2 = timed refund owner.
+  std::vector<uint8_t> authPub, rhoReveal, secret;
+};
+typedef boost::variant<BaseInput, PqInput, SwapInput> TransactionInput;
+typedef boost::variant<KeyOutput, PqOutput, CoinbaseOutput, SwapOutput> TransactionOutputTarget;
 
 struct TransactionOutput {
   uint64_t amount;

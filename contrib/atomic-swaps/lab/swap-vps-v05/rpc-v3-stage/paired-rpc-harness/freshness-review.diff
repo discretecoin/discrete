@@ -1,0 +1,121 @@
+--- pre-review-agecheck/runner.py
++++ runner.py
+@@ -15,6 +15,14 @@
+ 
+ def event(phase, **fields):
+     print(json.dumps({"phase": phase, **fields}), flush=True)
++
++
++def persist_admission(result, evidence, observations, path, started, policy):
++    observations.append(evidence)
++    sol.atomic_json(path, observations)
++    sol.check(0 <= time.monotonic() - started <= policy.max_observation_seconds,
++              "admission observation aged out while persisting evidence; no first disclosure")
++    return result
+ 
+ 
+ def persist_coordinated(x, c, kind, sender, record):
+@@ -180,10 +188,10 @@
+         observations = []
+ 
+         def fresh_admission():
++            started = time.monotonic()
+             result, evidence = observe_admission(x, c, f, rpc, policy)
+-            observations.append(evidence)
+-            sol.atomic_json(case_root / "admission-observations.json", observations)
+-            return result
++            return persist_admission(result, evidence, observations,
++                                     case_root / "admission-observations.json", started, policy)
+ 
+         if name == "success":
+             x.prepare_spend(c)
+--- pre-review-agecheck/test_guards.py
++++ test_guards.py
+@@ -9,7 +9,8 @@
+ 
+ from bindings import sol, xds, localnet, verify_pins
+ from paired import PairFixture, Policy, admission_from_observations, observe_admission, validate_public_witness
+-from runner import persist_coordinated, send_coordinated
++from runner import persist_admission, persist_coordinated, send_coordinated
++import runner
+ 
+ 
+ def state_bytes(f, status=1):
+@@ -299,6 +300,35 @@
+             persist_coordinated(self.x, self.c, "foreign-fund", self.sender, record)
+         self.assertEqual(self.sent, [])
+ 
++    def test_persistence_delay_is_in_first_exposure_age_and_cannot_send_stale_admission(self):
++        result = self.admission()
++        self.assertTrue(result.allow_first_exposure())
++        original_persist = sol.atomic_json
++        for elapsed, allowed in ((15.0, True), (15.001, False)):
++            with self.subTest(elapsed=elapsed):
++                swap = "age-" + str(elapsed)
++                j = self.x.journal
++                j.register(swap, {"fixture_only": True})
++                j.prepare(swap, "xds-claim", b"owned synthetic claim", "age-test-txid")
++                clock, sends = [101.0], []
++                evidence_path = self.store.root / (swap + ".json")
++                def delayed_persist(path, value):
++                    original_persist(path, value)
++                    clock[0] = 100.0 + elapsed
++                def supplier():
++                    return persist_admission(result, {"observation_seconds": 1.0}, [], evidence_path, 100.0, self.policy)
++                with patch.object(sol, "atomic_json", side_effect=delayed_persist), \
++                     patch.object(runner.time, "monotonic", side_effect=lambda: clock[0]):
++                    if allowed:
++                        j.broadcast(swap, "xds-claim", lambda *args: sends.append(args), supplier)
++                    else:
++                        with self.assertRaisesRegex(sol.GateError, "aged out while persisting"):
++                            j.broadcast(swap, "xds-claim", lambda *args: sends.append(args), supplier)
++                self.assertTrue(evidence_path.exists())
++                self.assertEqual(j.exposed(swap), allowed)
++                self.assertEqual(bool(sends), allowed)
++                self.assertEqual(j.intent(swap, "xds-claim")["stage"], "attempt-started" if allowed else "prepared")
++
+ 
+ if __name__ == "__main__":
+     unittest.main(verbosity=2)
+--- pre-review-agecheck/README.md
++++ README.md
+@@ -2,7 +2,7 @@
+ 
+ This is an isolated Linux laboratory runner for two cases: success and abandonment. It uses four actual XDS daemons, two actual encrypted XDS wallet RPC processes and an already running owned Agave 4.2.2 validator. It does not start Bitcoin, contact public RPC, change consensus, or modify frozen V03/V04, Core, Linux or standalone Solana sources. The SPL mint is the frozen synthetic mint, not Circle USDC.
+ 
+-**Current evidence:** 19 offline guard tests passed locally. No paired runtime was executed by the author. Runtime success, combined memory capacity, long-duration liveness and recovery after process death or expired blockhash remain unqualified. The parent owns Linux/validator qualification and deployment.
++**Current evidence:** 20 offline guard tests passed locally. No paired runtime was executed by the author. Runtime success, combined memory capacity, long-duration liveness and recovery after process death or expired blockhash remain unqualified. The parent owns Linux/validator qualification and deployment.
+ 
+ ## Pinned reuse and minimal changes
+ 
+@@ -16,9 +16,9 @@
+ 
+ Each contract gets a fresh secret held by Bob for his XDS claim. On Solana, the configured synthetic payer is Bob, owns source/refund tokens and must be the existing synthetic mint's authority. A new separate Alice identity owns the claim token account and pays its claim fee. Private synthetic keys and intents are written as owned 0600 files below the 0700 run directory; the configured payer's private key is read silently and is not copied into the run.
+ 
+-The foreign funding wire is signed once and persisted by `Sender.prepare`, then registered in the coordinator journal with the exact same bytes, signature and immutable terms before either can send. The coordinator checks kind, instruction, program, accounts, hash, amount, deadline and payer. Finalized exact-wire funding/state/accounting precede XDS funding. XDS funding is also persisted before both its initial submission and exact-byte retry.
++The foreign funding wire is signed once and persisted by `Sender.prepare`, then registered in the coordinator journal with the exact same bytes, signature and immutable terms before either can send. The paired wrapper `persist_coordinated` checks kind, instruction, program, accounts, hash, amount, deadline and payer; the unchanged Journal preserves opaque wire identity, durability and exposure. Current funded state, owners and amounts come from fixture snapshots and first-exposure observations. Finalized exact-wire funding/state/accounting precede XDS funding. XDS funding is also persisted before both its initial submission and exact-byte retry.
+ 
+-Immediately before first XDS claim handoff, admission reads the exact unspent XDS outpoint/height/11 confirmations, a finalized foreign funded snapshot, actual claim fee quote and available fee balance, then a processed slot used solely as a conservative clock. The stored policy is 2 XDS blocks of claim budget, 128 Solana slots of claim budget, a 768-slot foreign refund window, at most 96 slots of finalized observation lag, and at most 15 seconds for the observation batch. These are measured laboratory acceptance bounds, not production timing/finality guarantees. Insufficient or inconsistent data cannot authorize first exposure. The coordinator commits sticky exposure before node handoff; uncertainty never clears it or authorizes a different transaction.
++Immediately before first XDS claim handoff, admission reads the exact unspent XDS outpoint/height/11 confirmations, a finalized foreign funded snapshot, actual claim fee quote and available fee balance, then a processed slot used solely as a conservative clock. The stored policy is 2 XDS blocks of claim budget, 128 Solana slots of claim budget, a 768-slot foreign refund window, at most 96 slots of finalized observation lag, and at most 15 seconds for the observation batch including evidence persistence. These are configured laboratory acceptance bounds, not production timing/finality guarantees. The final monotonic age check runs after the evidence JSON has been persisted and refuses first exposure if the batch aged out. The subsequent journal commit and node handoff still take time: this is not atomic cross-chain freshness, and their runtime delay remains a laboratory measurement/qualification limit. Insufficient or inconsistent data cannot authorize first exposure. The coordinator commits sticky exposure before node handoff; uncertainty never clears it or authorizes a different transaction.
+ 
+ Success mines the XDS claim and extracts the preimage only from node 3's public exact transaction/details/outpoint readback. It requires type 5, fee 1, main-chain inclusion, SwapInput 20, the original funding outpoint/branch 1 and both hashlocks. Only that extracted public value reaches the Solana claim builder. The fresh Solana wire goes through both journals. A finalized claim after the immutable refund boundary is still attempted protectively but cannot make this timing test PASS. Wallet scanning waits happen after foreign redemption, outside the disclosure-to-redemption critical path.
+ 
+@@ -69,6 +69,6 @@
+ 
+ Rollback of this isolated code is removal from execution of this new candidate directory; frozen dependencies, Core and remote state were not edited. Do not delete retained run directories or journals as part of rollback. Project-wide state/decision documents are parent-owned during this concurrent task; this candidate and its unexecuted runtime status do not independently close the V05 gates.
+ 
+-**Перевірено:** local 19/19 offline guards, exact five dependency hashes, no socket/process invocation during those guards, no changes to frozen dependencies.
++**Перевірено:** local 20/20 offline guards including delayed-persistence refusal with prepared/unexposed/no-send state, exact five dependency hashes, no socket/process invocation during those guards, no changes to frozen dependencies.
+ 
+ **Не перевірено:** actual paired RPC execution, Linux process/resource fit, interruption recovery, public-chain finality, production key custody, Circle USDC or mainnet activation.
+--- pre-review-agecheck/test-manifest.json
++++ test-manifest.json
+@@ -2,7 +2,7 @@
+   "schema": 1,
+   "artifact": "V05 paired XDS wallet and real Solana RPC candidate",
+   "runtime_status": "NOT_RUN_BY_AUTHOR",
+-  "offline_tests": 19,
++  "offline_tests": 20,
+   "commitment": "finalized",
+   "runtime_cases": [
+     {"name": "success", "xds_alice_delta_atoms": -1002, "xds_bob_delta_atoms": 1000, "solana_principal_units": 1234567, "terminal_state": 2, "foreign_secret_source": "public mined node-3 XDS claim only"},

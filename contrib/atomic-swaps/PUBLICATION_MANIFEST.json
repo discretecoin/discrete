@@ -1,0 +1,703 @@
+{
+  "schema": 1,
+  "utc": "2026-09-08T15:30:19.813541+00:00",
+  "scope": "Exact selected laboratory source/evidence for public draft review; no new native/chain tests",
+  "native_candidate": "f3f84ce6ba44f5391a5bec78418a5d78052a1b3d",
+  "native_base": "ed4a27005bdaa211ff68bfb31f7bd1f7013c7771",
+  "source_review_archive_sha256": "b6f99bb325abc3c50187ec13b4c58dcb726a689b8ddd0f5e528bd94259112047",
+  "files": [
+    {
+      "path": "lab/swap-localnet-v04/solana_escrow.c",
+      "source_review_path": "evidence/swap-localnet-v04/solana_escrow.c",
+      "bytes": 5293,
+      "sha256": "c64e6f25aa506565d553c5959c5fc3a7c27895c7b22ecffc643091d8c9bf2123"
+    },
+    {
+      "path": "lab/swap-localnet-v04/solana_escrow.so",
+      "source_review_path": "evidence/swap-localnet-v04/solana_escrow.so",
+      "bytes": 9248,
+      "sha256": "91004de413fa707ebd61d743cb01a2bfea80b0077fef3e15bc1f11bdb6100a89"
+    },
+    {
+      "path": "lab/swap-localnet-v04/solana_profile.h",
+      "source_review_path": "evidence/swap-localnet-v04/solana_profile.h",
+      "bytes": 764,
+      "sha256": "cc86c7703a1e7edf9b2ec7c1a8bbcaa60788f5f375b9292cef8207eb56666551"
+    },
+    {
+      "path": "lab/swap-localnet-v04/test_solana_vm.py",
+      "source_review_path": "evidence/swap-localnet-v04/test_solana_vm.py",
+      "bytes": 11661,
+      "sha256": "48187e48a95a1a94f92ba99e4ea6e3755289e0592c8d94d874c4d4d861892c54"
+    },
+    {
+      "path": "lab/swap-vps-v05/audit/actual-v3-runtime-evidence-review.md",
+      "source_review_path": "evidence/swap-vps-v05/audit/actual-v3-runtime-evidence-review.md",
+      "bytes": 15191,
+      "sha256": "c5eea206ec312c472940df3fd401f82d58811e3686979e80a030aa0be3975ff4"
+    },
+    {
+      "path": "lab/swap-vps-v05/audit/agave-v3-loader-evidence-review.md",
+      "source_review_path": "evidence/swap-vps-v05/audit/agave-v3-loader-evidence-review.md",
+      "bytes": 8961,
+      "sha256": "b6a0580d42d37c16f479c25238fae06867a7f364dabaa1a666881111786efdd3"
+    },
+    {
+      "path": "lab/swap-vps-v05/audit/native-timer-interim-evidence-review.md",
+      "source_review_path": "evidence/swap-vps-v05/audit/native-timer-interim-evidence-review.md",
+      "bytes": 13052,
+      "sha256": "9023f4c84e9b18880fce336195ba83222d09f73bf3f425d9ef37655b0351af18"
+    },
+    {
+      "path": "lab/swap-vps-v05/audit/native-unit-retry-final-addendum.md",
+      "source_review_path": "evidence/swap-vps-v05/audit/native-unit-retry-final-addendum.md",
+      "bytes": 7241,
+      "sha256": "5ece8a49c8cb90c780ac42c52f2e89d4af05cfd18837dd5d80ac55972a6c9921"
+    },
+    {
+      "path": "lab/swap-vps-v05/audit/rpc-v3-stage-review.md",
+      "source_review_path": "evidence/swap-vps-v05/audit/rpc-v3-stage-review.md",
+      "bytes": 4166,
+      "sha256": "da545c4f4f8a38a40894409397d1a842947467d167dc2b988b5e968058c1099c"
+    },
+    {
+      "path": "lab/swap-vps-v05/audit/sbf-v3-port-review.md",
+      "source_review_path": "evidence/swap-vps-v05/audit/sbf-v3-port-review.md",
+      "bytes": 9867,
+      "sha256": "3639010aa958ce85050b06465e42a2427910a7eefa16c3a7adabd5a4677f4be4"
+    },
+    {
+      "path": "lab/swap-vps-v05/audit/timer-deadline-patch-review.md",
+      "source_review_path": "evidence/swap-vps-v05/audit/timer-deadline-patch-review.md",
+      "bytes": 8417,
+      "sha256": "d697f961380af784277529a616f7843fc08e65712f6e7c7d79d0a5901e80618f"
+    },
+    {
+      "path": "lab/swap-vps-v05/audit/v3-restart-state-final-review.md",
+      "source_review_path": "evidence/swap-vps-v05/audit/v3-restart-state-final-review.md",
+      "bytes": 4917,
+      "sha256": "518c2bdbc1637b98f6e5ae710fe3db24a523f1faccc40aa4b32b08b25c032459"
+    },
+    {
+      "path": "lab/swap-vps-v05/linux-harness/README.md",
+      "source_review_path": "evidence/swap-vps-v05/linux-harness/README.md",
+      "bytes": 7640,
+      "sha256": "fa9902dee280b8212136567ca4bf4b076a70487bcef9bca1666090ee6d2b6f0d"
+    },
+    {
+      "path": "lab/swap-vps-v05/linux-harness/baseline-manifest.json",
+      "source_review_path": "evidence/swap-vps-v05/linux-harness/baseline-manifest.json",
+      "bytes": 2844,
+      "sha256": "51ecbdf176ddcebce9780401de706e4e330f7062bc5be06907c212136b4c0057"
+    },
+    {
+      "path": "lab/swap-vps-v05/linux-harness/bitcoin_adapter.py",
+      "source_review_path": "evidence/swap-vps-v05/linux-harness/bitcoin_adapter.py",
+      "bytes": 3303,
+      "sha256": "c1494760cc4b852135beefdf0d4c6d00f9415c14c4404a980a6b297b9628c496"
+    },
+    {
+      "path": "lab/swap-vps-v05/linux-harness/portability-manifest.json",
+      "source_review_path": "evidence/swap-vps-v05/linux-harness/portability-manifest.json",
+      "bytes": 4079,
+      "sha256": "e1885d4461733c9be5fe21b5014b27cf518734bebc5919622317253c6bff0615"
+    },
+    {
+      "path": "lab/swap-vps-v05/linux-harness/portability.patch",
+      "source_review_path": "evidence/swap-vps-v05/linux-harness/portability.patch",
+      "bytes": 9096,
+      "sha256": "9bb876354775d10b6ab4d7fc48a8e8b8aab4b9438ccbc60e234960903d23737f"
+    },
+    {
+      "path": "lab/swap-vps-v05/linux-harness/run_evidence.py",
+      "source_review_path": "evidence/swap-vps-v05/linux-harness/run_evidence.py",
+      "bytes": 2734,
+      "sha256": "113f22fe954c745b66dd7ba282a80848deb275e542b71ebcd704b572e8fe5a69"
+    },
+    {
+      "path": "lab/swap-vps-v05/linux-harness/runtime_paths.py",
+      "source_review_path": "evidence/swap-vps-v05/linux-harness/runtime_paths.py",
+      "bytes": 2500,
+      "sha256": "55d36a11c3346cd358789fb271910ee6d11167f8fa55a39bd9d59a66d0315210"
+    },
+    {
+      "path": "lab/swap-vps-v05/linux-harness/solana-build.json",
+      "source_review_path": "evidence/swap-vps-v05/linux-harness/solana-build.json",
+      "bytes": 951,
+      "sha256": "f2896e079aa14d05489a3b6ab7fbaca22625adcedb7f1ddd61876aae152074ef"
+    },
+    {
+      "path": "lab/swap-vps-v05/linux-harness/solana_escrow.c",
+      "source_review_path": "evidence/swap-vps-v05/linux-harness/solana_escrow.c",
+      "bytes": 5293,
+      "sha256": "c64e6f25aa506565d553c5959c5fc3a7c27895c7b22ecffc643091d8c9bf2123"
+    },
+    {
+      "path": "lab/swap-vps-v05/linux-harness/solana_escrow.so",
+      "source_review_path": "evidence/swap-vps-v05/linux-harness/solana_escrow.so",
+      "bytes": 9248,
+      "sha256": "91004de413fa707ebd61d743cb01a2bfea80b0077fef3e15bc1f11bdb6100a89"
+    },
+    {
+      "path": "lab/swap-vps-v05/linux-harness/solana_journal_adapter.py",
+      "source_review_path": "evidence/swap-vps-v05/linux-harness/solana_journal_adapter.py",
+      "bytes": 9148,
+      "sha256": "9e0119533919f7514607390bd3acca570cbd37445fde174174a04dfc5bf19d9c"
+    },
+    {
+      "path": "lab/swap-vps-v05/linux-harness/solana_profile.h",
+      "source_review_path": "evidence/swap-vps-v05/linux-harness/solana_profile.h",
+      "bytes": 764,
+      "sha256": "cc86c7703a1e7edf9b2ec7c1a8bbcaa60788f5f375b9292cef8207eb56666551"
+    },
+    {
+      "path": "lab/swap-vps-v05/linux-harness/swap_journal.py",
+      "source_review_path": "evidence/swap-vps-v05/linux-harness/swap_journal.py",
+      "bytes": 16642,
+      "sha256": "8e935ecceaae034e1ae5ab0c8bccb4ed01ae4c78c799d9a0846eb084cf1c4792"
+    },
+    {
+      "path": "lab/swap-vps-v05/linux-harness/test_bitcoin_regtest.py",
+      "source_review_path": "evidence/swap-vps-v05/linux-harness/test_bitcoin_regtest.py",
+      "bytes": 9999,
+      "sha256": "46885a2784d4922cf0c8b65a50b8d16bf2c0a5acfe47e7569546d333e239ae52"
+    },
+    {
+      "path": "lab/swap-vps-v05/linux-harness/test_cross_chain.py",
+      "source_review_path": "evidence/swap-vps-v05/linux-harness/test_cross_chain.py",
+      "bytes": 5892,
+      "sha256": "650aff6d3ec7242a5a0125dbe48355719762eedd799f5a9630183e69f75e0a69"
+    },
+    {
+      "path": "lab/swap-vps-v05/linux-harness/test_journal_recovery.py",
+      "source_review_path": "evidence/swap-vps-v05/linux-harness/test_journal_recovery.py",
+      "bytes": 14518,
+      "sha256": "da3a3f3be729e9e056c3d707572a92c0216eddf102958214d3050454f7d8ea7c"
+    },
+    {
+      "path": "lab/swap-vps-v05/linux-harness/test_localnet_boundaries.py",
+      "source_review_path": "evidence/swap-vps-v05/linux-harness/test_localnet_boundaries.py",
+      "bytes": 14693,
+      "sha256": "c586f91fbebe8e2a259b3851f4196ecb67ee615bc779d73bfdfa899452f13f4c"
+    },
+    {
+      "path": "lab/swap-vps-v05/linux-harness/test_network_cross_chain.py",
+      "source_review_path": "evidence/swap-vps-v05/linux-harness/test_network_cross_chain.py",
+      "bytes": 9086,
+      "sha256": "bf0618d626d32aa6b3d457fd599550fb772e3a0fae3e5f4acd851389089d336b"
+    },
+    {
+      "path": "lab/swap-vps-v05/linux-harness/test_runtime_paths.py",
+      "source_review_path": "evidence/swap-vps-v05/linux-harness/test_runtime_paths.py",
+      "bytes": 4446,
+      "sha256": "877ab4cde270793b950fe707cb884f66daa88850176ad06163b616e68f2c814c"
+    },
+    {
+      "path": "lab/swap-vps-v05/linux-harness/test_solana_journal.py",
+      "source_review_path": "evidence/swap-vps-v05/linux-harness/test_solana_journal.py",
+      "bytes": 9004,
+      "sha256": "8a3def877897d3fcacb00af2a569e63a093186ec7b928a4da9597c59bcf11597"
+    },
+    {
+      "path": "lab/swap-vps-v05/linux-harness/test_solana_vm.py",
+      "source_review_path": "evidence/swap-vps-v05/linux-harness/test_solana_vm.py",
+      "bytes": 11661,
+      "sha256": "48187e48a95a1a94f92ba99e4ea6e3755289e0592c8d94d874c4d4d861892c54"
+    },
+    {
+      "path": "lab/swap-vps-v05/linux-harness/test_swap_journal.py",
+      "source_review_path": "evidence/swap-vps-v05/linux-harness/test_swap_journal.py",
+      "bytes": 9468,
+      "sha256": "13f8cdd53363c3d4010fb82ccd3b7fd5069f2234a328e68ad1f31b51f7103015"
+    },
+    {
+      "path": "lab/swap-vps-v05/linux-harness/test_xds_wallet_network.py",
+      "source_review_path": "evidence/swap-vps-v05/linux-harness/test_xds_wallet_network.py",
+      "bytes": 12802,
+      "sha256": "c85067f1ea0ea50e2e57de01845dc87a290f2b742cce85348b35720a3ce52330"
+    },
+    {
+      "path": "lab/swap-vps-v05/linux-harness/xds_localnet.py",
+      "source_review_path": "evidence/swap-vps-v05/linux-harness/xds_localnet.py",
+      "bytes": 11567,
+      "sha256": "a44ea85438c46850937dc2af635bcacf86771e07bad5911838ffb387435079c5"
+    },
+    {
+      "path": "lab/swap-vps-v05/remote-evidence/native/linux-timer-adapters.log",
+      "source_review_path": "evidence/swap-vps-v05/remote-evidence/native/linux-timer-adapters.log",
+      "bytes": 9468,
+      "sha256": "a410164b0bbe8a2066b45116d78f71f22d595199e11aa582867550e1005f0d15"
+    },
+    {
+      "path": "lab/swap-vps-v05/remote-evidence/native/linux-timer-boundaries.log",
+      "source_review_path": "evidence/swap-vps-v05/remote-evidence/native/linux-timer-boundaries.log",
+      "bytes": 1948,
+      "sha256": "a0d942773c91d87bc88d68c6cf0aa0e9e20efdd0ad4e738477493934db0ba3bf"
+    },
+    {
+      "path": "lab/swap-vps-v05/remote-evidence/native/linux-timer-build.log",
+      "source_review_path": "evidence/swap-vps-v05/remote-evidence/native/linux-timer-build.log",
+      "bytes": 54214,
+      "sha256": "ed117b488611c545051f4eaed1d459fca63fc37a997ce250946b884b102fb6bd"
+    },
+    {
+      "path": "lab/swap-vps-v05/remote-evidence/native/linux-timer-ctest.log",
+      "source_review_path": "evidence/swap-vps-v05/remote-evidence/native/linux-timer-ctest.log",
+      "bytes": 101116,
+      "sha256": "99e9e571ffd3a452d1fdf5b073416f737caa026d8b9cd316655af97cc29878e4"
+    },
+    {
+      "path": "lab/swap-vps-v05/remote-evidence/native/linux-timer-http-repeat.log",
+      "source_review_path": "evidence/swap-vps-v05/remote-evidence/native/linux-timer-http-repeat.log",
+      "bytes": 17991,
+      "sha256": "1ef3422f4ab7cbeba02787e3f564224167f4d0ff343b9227e9de5ae26f5a13b9"
+    },
+    {
+      "path": "lab/swap-vps-v05/remote-evidence/native/linux-timer-network.log",
+      "source_review_path": "evidence/swap-vps-v05/remote-evidence/native/linux-timer-network.log",
+      "bytes": 2161,
+      "sha256": "a050ae843809d26b1b5a7257e254373c7ce400828c696cf0bcf4578a6421a384"
+    },
+    {
+      "path": "lab/swap-vps-v05/remote-evidence/native/linux-timer-pair.log",
+      "source_review_path": "evidence/swap-vps-v05/remote-evidence/native/linux-timer-pair.log",
+      "bytes": 694,
+      "sha256": "763d8c020693aa75e7ddcc8ba1527aea899d0afdefb1307009077d9f5d70077d"
+    },
+    {
+      "path": "lab/swap-vps-v05/remote-evidence/native/linux-timer-unit-retry.log",
+      "source_review_path": "evidence/swap-vps-v05/remote-evidence/native/linux-timer-unit-retry.log",
+      "bytes": 322,
+      "sha256": "9c49eb133e31a833dee2bd7d50df9b3e2a5c588a0024623ac11f180f62576b4d"
+    },
+    {
+      "path": "lab/swap-vps-v05/remote-evidence/native/run-manifests/linux-timer-build.json",
+      "source_review_path": "evidence/swap-vps-v05/remote-evidence/native/run-manifests/linux-timer-build.json",
+      "bytes": 466041,
+      "sha256": "4c69814fff2137258d2aa777d630aa7b2fff1e7ff1f05bf8df9e0a2177010c5e"
+    },
+    {
+      "path": "lab/swap-vps-v05/remote-evidence/native/run-manifests/linux-timer-ctest.json",
+      "source_review_path": "evidence/swap-vps-v05/remote-evidence/native/run-manifests/linux-timer-ctest.json",
+      "bytes": 466416,
+      "sha256": "66b6f794faa2e7af469fa31b510a1b4db9749f340c9d7ae0b1faf087af6a7bb0"
+    },
+    {
+      "path": "lab/swap-vps-v05/remote-evidence/native/run-manifests/linux-timer-unit-retry.json",
+      "source_review_path": "evidence/swap-vps-v05/remote-evidence/native/run-manifests/linux-timer-unit-retry.json",
+      "bytes": 466460,
+      "sha256": "351283a7fa6de1c66853f6886adbd55744d426c2eac318ce9397c4330f32c677"
+    },
+    {
+      "path": "lab/swap-vps-v05/remote-evidence/public-metadata-v3/qualification-v05/linux-timer-ctest.xml",
+      "source_review_path": "evidence/swap-vps-v05/remote-evidence/public-metadata-v3/qualification-v05/linux-timer-ctest.xml",
+      "bytes": 141233,
+      "sha256": "af32ba25da3bc076f0536d6b3ef293f7ab19074bb9db03ede31f0d84c3d80552"
+    },
+    {
+      "path": "lab/swap-vps-v05/remote-evidence/public-metadata-v3/qualification-v05/linux-timer-first-LastTest.log",
+      "source_review_path": "evidence/swap-vps-v05/remote-evidence/public-metadata-v3/qualification-v05/linux-timer-first-LastTest.log",
+      "bytes": 219783,
+      "sha256": "e6bfb415515825b31b1d0ac1c1d395c86ead39d45c0436752ee29554b73933a4"
+    },
+    {
+      "path": "lab/swap-vps-v05/remote-evidence/public-metadata-v3/qualification-v05/linux-timer-unit-retry-LastTest.log",
+      "source_review_path": "evidence/swap-vps-v05/remote-evidence/public-metadata-v3/qualification-v05/linux-timer-unit-retry-LastTest.log",
+      "bytes": 117707,
+      "sha256": "ba5f00d91816f186806898d38ea3dd3b8e101e60e0cd3f807635b66958892fa2"
+    },
+    {
+      "path": "lab/swap-vps-v05/remote-evidence/public-metadata-v3/qualification-v05/linux-timer-unit-retry.xml",
+      "source_review_path": "evidence/swap-vps-v05/remote-evidence/public-metadata-v3/qualification-v05/linux-timer-unit-retry.xml",
+      "bytes": 1429,
+      "sha256": "90b6897f1064147f787b8c4374e1b7655e028b081dafcb699a0a6c8aab6183dc"
+    },
+    {
+      "path": "lab/swap-vps-v05/remote-evidence/public-metadata-v3/v3-settled-state-restart-public.json",
+      "source_review_path": "evidence/swap-vps-v05/remote-evidence/public-metadata-v3/v3-settled-state-restart-public.json",
+      "bytes": 18307,
+      "sha256": "596a042fce64940d7ea17e1c3926a28841c1f6bd99348bcf1c00fa947a1da721"
+    },
+    {
+      "path": "lab/swap-vps-v05/remote-evidence/solana/escrow-rpc-v3-run01-receipt.json",
+      "source_review_path": "evidence/swap-vps-v05/remote-evidence/solana/escrow-rpc-v3-run01-receipt.json",
+      "bytes": 44179,
+      "sha256": "8de5d0729292b6755c1c6374a9aa0991c289480ab20254e86adcbc3790a6637d"
+    },
+    {
+      "path": "lab/swap-vps-v05/remote-evidence/solana/escrow-rpc-v3-run01.log",
+      "source_review_path": "evidence/swap-vps-v05/remote-evidence/solana/escrow-rpc-v3-run01.log",
+      "bytes": 3114,
+      "sha256": "218c6013cf65c3ede650b62c0b80b570b6107ef7bb19ecaa7031b26fad242948"
+    },
+    {
+      "path": "lab/swap-vps-v05/remote-evidence/solana/paired-rpc-v3-run01-receipt.json",
+      "source_review_path": "evidence/swap-vps-v05/remote-evidence/solana/paired-rpc-v3-run01-receipt.json",
+      "bytes": 559569,
+      "sha256": "8ea2f95d5d628d09bdf7c46ac4b8ebee544ff608f27162ada0f803e413a11dbb"
+    },
+    {
+      "path": "lab/swap-vps-v05/remote-evidence/solana/paired-rpc-v3-run01.log",
+      "source_review_path": "evidence/swap-vps-v05/remote-evidence/solana/paired-rpc-v3-run01.log",
+      "bytes": 3174,
+      "sha256": "a627487df75a4f5e9a86ca96f7e9c33f374c5284d904572e8b1d14f2f04968af"
+    },
+    {
+      "path": "lab/swap-vps-v05/rpc-v3-stage/README.md",
+      "source_review_path": "evidence/swap-vps-v05/rpc-v3-stage/README.md",
+      "bytes": 5984,
+      "sha256": "3ad985320b9c759beac8fe12b01e8889649db7d6f8dccc3bad08346c867c2e82"
+    },
+    {
+      "path": "lab/swap-vps-v05/rpc-v3-stage/candidate-provenance.json",
+      "source_review_path": "evidence/swap-vps-v05/rpc-v3-stage/candidate-provenance.json",
+      "bytes": 1414,
+      "sha256": "21b4a4e15589d0dd7000783bc4b5187a39b4505a6b7839ff4872d3c3194adf05"
+    },
+    {
+      "path": "lab/swap-vps-v05/rpc-v3-stage/linux-harness/runtime_paths.py",
+      "source_review_path": "evidence/swap-vps-v05/rpc-v3-stage/linux-harness/runtime_paths.py",
+      "bytes": 2500,
+      "sha256": "55d36a11c3346cd358789fb271910ee6d11167f8fa55a39bd9d59a66d0315210"
+    },
+    {
+      "path": "lab/swap-vps-v05/rpc-v3-stage/linux-harness/swap_journal.py",
+      "source_review_path": "evidence/swap-vps-v05/rpc-v3-stage/linux-harness/swap_journal.py",
+      "bytes": 16642,
+      "sha256": "8e935ecceaae034e1ae5ab0c8bccb4ed01ae4c78c799d9a0846eb084cf1c4792"
+    },
+    {
+      "path": "lab/swap-vps-v05/rpc-v3-stage/linux-harness/test_xds_wallet_network.py",
+      "source_review_path": "evidence/swap-vps-v05/rpc-v3-stage/linux-harness/test_xds_wallet_network.py",
+      "bytes": 12802,
+      "sha256": "c85067f1ea0ea50e2e57de01845dc87a290f2b742cce85348b35720a3ce52330"
+    },
+    {
+      "path": "lab/swap-vps-v05/rpc-v3-stage/linux-harness/xds_localnet.py",
+      "source_review_path": "evidence/swap-vps-v05/rpc-v3-stage/linux-harness/xds_localnet.py",
+      "bytes": 11567,
+      "sha256": "a44ea85438c46850937dc2af635bcacf86771e07bad5911838ffb387435079c5"
+    },
+    {
+      "path": "lab/swap-vps-v05/rpc-v3-stage/mechanical-runtime.diff",
+      "source_review_path": "evidence/swap-vps-v05/rpc-v3-stage/mechanical-runtime.diff",
+      "bytes": 2394,
+      "sha256": "0914f3ed6fbd4c8bfa3b6f012a545ff1ea3cf74991da1c6b710c318090b37230"
+    },
+    {
+      "path": "lab/swap-vps-v05/rpc-v3-stage/paired-rpc-harness/README.md",
+      "source_review_path": "evidence/swap-vps-v05/rpc-v3-stage/paired-rpc-harness/README.md",
+      "bytes": 11899,
+      "sha256": "9a1043b98a7205d8ae683347c7222fb3715db7da9ec3aa0ac5bd4d890040a754"
+    },
+    {
+      "path": "lab/swap-vps-v05/rpc-v3-stage/paired-rpc-harness/bindings.py",
+      "source_review_path": "evidence/swap-vps-v05/rpc-v3-stage/paired-rpc-harness/bindings.py",
+      "bytes": 1718,
+      "sha256": "4421104ed9e80b517cd4420aaf0e964ef11f97bcff297728e11a823ea8f93465"
+    },
+    {
+      "path": "lab/swap-vps-v05/rpc-v3-stage/paired-rpc-harness/fixture-overrides.diff",
+      "source_review_path": "evidence/swap-vps-v05/rpc-v3-stage/paired-rpc-harness/fixture-overrides.diff",
+      "bytes": 5668,
+      "sha256": "d68d63717d13573a742b7d1ec4d72658e1797dc51cd8008294c30eae389a6f09"
+    },
+    {
+      "path": "lab/swap-vps-v05/rpc-v3-stage/paired-rpc-harness/freshness-review.diff",
+      "source_review_path": "evidence/swap-vps-v05/rpc-v3-stage/paired-rpc-harness/freshness-review.diff",
+      "bytes": 10498,
+      "sha256": "a4d49578d34f1bf8d51ac457d160894c571baaf6ecfcefe2ce15d540c6de471d"
+    },
+    {
+      "path": "lab/swap-vps-v05/rpc-v3-stage/paired-rpc-harness/package-hashes.json",
+      "source_review_path": "evidence/swap-vps-v05/rpc-v3-stage/paired-rpc-harness/package-hashes.json",
+      "bytes": 1807,
+      "sha256": "c5a745f258406be5cbbeb19937f9c6db88ccb4708a48fe0166863d7925864e02"
+    },
+    {
+      "path": "lab/swap-vps-v05/rpc-v3-stage/paired-rpc-harness/paired.py",
+      "source_review_path": "evidence/swap-vps-v05/rpc-v3-stage/paired-rpc-harness/paired.py",
+      "bytes": 10284,
+      "sha256": "88340b6abb61d18fc7d780ec910870a5deb1df3d30efe69999222741cde640fb"
+    },
+    {
+      "path": "lab/swap-vps-v05/rpc-v3-stage/paired-rpc-harness/runner.py",
+      "source_review_path": "evidence/swap-vps-v05/rpc-v3-stage/paired-rpc-harness/runner.py",
+      "bytes": 20923,
+      "sha256": "f1cae09c056b8ab3cbedb21cc7e92c7e548a2713f348b9bd669290a43d8a3107"
+    },
+    {
+      "path": "lab/swap-vps-v05/rpc-v3-stage/paired-rpc-harness/test-manifest.json",
+      "source_review_path": "evidence/swap-vps-v05/rpc-v3-stage/paired-rpc-harness/test-manifest.json",
+      "bytes": 1813,
+      "sha256": "78ace8360b3808f1331ac59c953b4f44a02a4669036f07eab928e6193f82a168"
+    },
+    {
+      "path": "lab/swap-vps-v05/rpc-v3-stage/paired-rpc-harness/test_guards.py",
+      "source_review_path": "evidence/swap-vps-v05/rpc-v3-stage/paired-rpc-harness/test_guards.py",
+      "bytes": 19365,
+      "sha256": "24c4646ec9a04aee756627a02f2e40a4e63f61ba8c7ca5f3ddf096f91c753492"
+    },
+    {
+      "path": "lab/swap-vps-v05/rpc-v3-stage/solana-rpc-harness/README.md",
+      "source_review_path": "evidence/swap-vps-v05/rpc-v3-stage/solana-rpc-harness/README.md",
+      "bytes": 8650,
+      "sha256": "804f48fc73f9f0aac27eeabe831339099923d5d520a7840d98f61b59021d95c8"
+    },
+    {
+      "path": "lab/swap-vps-v05/rpc-v3-stage/solana-rpc-harness/driver.py",
+      "source_review_path": "evidence/swap-vps-v05/rpc-v3-stage/solana-rpc-harness/driver.py",
+      "bytes": 33103,
+      "sha256": "1d866b3887dfaf0eff56cad2285ff87e8fe29fbecfe8d287e40e2c131ecec6a3"
+    },
+    {
+      "path": "lab/swap-vps-v05/rpc-v3-stage/solana-rpc-harness/package-hashes.json",
+      "source_review_path": "evidence/swap-vps-v05/rpc-v3-stage/solana-rpc-harness/package-hashes.json",
+      "bytes": 783,
+      "sha256": "e7bb57d8091aa58aedc2cbcb221bba9faed86f693eb462273ab41f1ea3325140"
+    },
+    {
+      "path": "lab/swap-vps-v05/rpc-v3-stage/solana-rpc-harness/requirements.txt",
+      "source_review_path": "evidence/swap-vps-v05/rpc-v3-stage/solana-rpc-harness/requirements.txt",
+      "bytes": 16,
+      "sha256": "5662e2cc75609ec896467d4e93309530c879d37b13b48b579fefeb5fb0c16615"
+    },
+    {
+      "path": "lab/swap-vps-v05/rpc-v3-stage/solana-rpc-harness/test-manifest.json",
+      "source_review_path": "evidence/swap-vps-v05/rpc-v3-stage/solana-rpc-harness/test-manifest.json",
+      "bytes": 2700,
+      "sha256": "8e3c3125105cbb337cde2b90d8a48cffc300b31a59d3cb556b478a60226d72a3"
+    },
+    {
+      "path": "lab/swap-vps-v05/rpc-v3-stage/solana-rpc-harness/test_guards.py",
+      "source_review_path": "evidence/swap-vps-v05/rpc-v3-stage/solana-rpc-harness/test_guards.py",
+      "bytes": 8752,
+      "sha256": "5877efa5ef29fe0eb972149fde53b0d6b74d97c6a9ff4f333e660b57a304bcc1"
+    },
+    {
+      "path": "lab/swap-vps-v05/rpc-v3-stage/source-copy-baseline.json",
+      "source_review_path": "evidence/swap-vps-v05/rpc-v3-stage/source-copy-baseline.json",
+      "bytes": 2335,
+      "sha256": "3c5741622268fd990e203608c5e1ed62567ffbe6750013443a0b83941b53df5e"
+    },
+    {
+      "path": "lab/swap-vps-v05/run_paired_rpc_v3.py",
+      "source_review_path": "evidence/swap-vps-v05/run_paired_rpc_v3.py",
+      "bytes": 7546,
+      "sha256": "f96624ce114d4ff0ca1339bef28c2a01a63fb36c2677546645291a4a841ff947"
+    },
+    {
+      "path": "lab/swap-vps-v05/run_solana_rpc_v3.py",
+      "source_review_path": "evidence/swap-vps-v05/run_solana_rpc_v3.py",
+      "bytes": 5795,
+      "sha256": "0d2c551b0b8a2a918586dc1f8f52d81c89cec9866f4451905febdfee4833c400"
+    },
+    {
+      "path": "lab/swap-vps-v05/sbf-v3/Cargo.lock",
+      "source_review_path": "evidence/swap-vps-v05/sbf-v3/Cargo.lock",
+      "bytes": 40856,
+      "sha256": "ecb88b8469a190be6c5587f4762eaef619f4e8bdaaa45171821f6ea4c41f2102"
+    },
+    {
+      "path": "lab/swap-vps-v05/sbf-v3/Cargo.toml",
+      "source_review_path": "evidence/swap-vps-v05/sbf-v3/Cargo.toml",
+      "bytes": 348,
+      "sha256": "95fbea4c3925ab8043baa328dd2bdc0509883841474ee8c811af10356e02e965"
+    },
+    {
+      "path": "lab/swap-vps-v05/sbf-v3/MANIFEST.json",
+      "source_review_path": "evidence/swap-vps-v05/sbf-v3/MANIFEST.json",
+      "bytes": 5521,
+      "sha256": "05c72366d4c87c856c7af6839252523c17ea3d2646f38556d67789bcef877b46"
+    },
+    {
+      "path": "lab/swap-vps-v05/sbf-v3/PROVENANCE.json",
+      "source_review_path": "evidence/swap-vps-v05/sbf-v3/PROVENANCE.json",
+      "bytes": 4356,
+      "sha256": "94845fde2907460cb55445797f47e70286130a560fcdeea6dc96f63cc7537a67"
+    },
+    {
+      "path": "lab/swap-vps-v05/sbf-v3/README-pre-build.md",
+      "source_review_path": "evidence/swap-vps-v05/sbf-v3/README-pre-build.md",
+      "bytes": 6140,
+      "sha256": "0beec056a6c89b5503eb1121c6820dc007ac19dab1b3ed4d28d5367379a7cbdc"
+    },
+    {
+      "path": "lab/swap-vps-v05/sbf-v3/README.md",
+      "source_review_path": "evidence/swap-vps-v05/sbf-v3/README.md",
+      "bytes": 11254,
+      "sha256": "f2aec2c65a1d007ea831a0591311b4361971df808b86ac5a039899ea3004252d"
+    },
+    {
+      "path": "lab/swap-vps-v05/sbf-v3/audit-package.py",
+      "source_review_path": "evidence/swap-vps-v05/sbf-v3/audit-package.py",
+      "bytes": 4703,
+      "sha256": "132f4a4e98670cf03edd73c8a53ee932d8cc6a6733a095a367f3b4f930d1c35d"
+    },
+    {
+      "path": "lab/swap-vps-v05/sbf-v3/build-dev01.log",
+      "source_review_path": "evidence/swap-vps-v05/sbf-v3/build-dev01.log",
+      "bytes": 126,
+      "sha256": "331ea4196e238cc7ae04916e8580f8d687a80b97807e90dedde8d8f2b407a4a4"
+    },
+    {
+      "path": "lab/swap-vps-v05/sbf-v3/build-dev02.log",
+      "source_review_path": "evidence/swap-vps-v05/sbf-v3/build-dev02.log",
+      "bytes": 2857,
+      "sha256": "89440dc69acf3560da0036dd57d3b2992717bbbb6cfd0240e47065df0915778a"
+    },
+    {
+      "path": "lab/swap-vps-v05/sbf-v3/dependency-fetch-all.log",
+      "source_review_path": "evidence/swap-vps-v05/sbf-v3/dependency-fetch-all.log",
+      "bytes": 2054,
+      "sha256": "61837ab157b566f0e9b240b0307046f5d4011e9eb19188b3143d343f970ca3dc"
+    },
+    {
+      "path": "lab/swap-vps-v05/sbf-v3/dependency-fetch.log",
+      "source_review_path": "evidence/swap-vps-v05/sbf-v3/dependency-fetch.log",
+      "bytes": 3479,
+      "sha256": "a66d15c95642e6f7d3b31591569ade8cd984a8b2642ac0b680abe9e8bd9cce3d"
+    },
+    {
+      "path": "lab/swap-vps-v05/sbf-v3/dependency-resolution.log",
+      "source_review_path": "evidence/swap-vps-v05/sbf-v3/dependency-resolution.log",
+      "bytes": 200,
+      "sha256": "082141ac32649e069c59e24d1df9a21a7de3ec80d883f5d91e39094c71ce5319"
+    },
+    {
+      "path": "lab/swap-vps-v05/sbf-v3/elf-inspection.log",
+      "source_review_path": "evidence/swap-vps-v05/sbf-v3/elf-inspection.log",
+      "bytes": 10326,
+      "sha256": "87e1e277f0cd282e3f066ab3e14e64573c075023f6720cf196f1cd5628ff1eb4"
+    },
+    {
+      "path": "lab/swap-vps-v05/sbf-v3/inspect-repro.py",
+      "source_review_path": "evidence/swap-vps-v05/sbf-v3/inspect-repro.py",
+      "bytes": 2439,
+      "sha256": "e7ead2b689a1662bec14840545748736314e8b7c07ddfca48ebd02cbc5384ff3"
+    },
+    {
+      "path": "lab/swap-vps-v05/sbf-v3/repro-comparison.json",
+      "source_review_path": "evidence/swap-vps-v05/sbf-v3/repro-comparison.json",
+      "bytes": 5001,
+      "sha256": "fb0b931f1b2526f0897b7cdd164c06cf217e7badb54f56c3c6cd2ce7c26a663f"
+    },
+    {
+      "path": "lab/swap-vps-v05/sbf-v3/reproduce-build-dev01.ps1",
+      "source_review_path": "evidence/swap-vps-v05/sbf-v3/reproduce-build-dev01.ps1",
+      "bytes": 4468,
+      "sha256": "e8332e7cc5d3fa58ed3a260a3897738824673cdfd866562ebbb341c4b2ba638e"
+    },
+    {
+      "path": "lab/swap-vps-v05/sbf-v3/reproduce-build.ps1",
+      "source_review_path": "evidence/swap-vps-v05/sbf-v3/reproduce-build.ps1",
+      "bytes": 4670,
+      "sha256": "d834b30d20f9f7fa39174c3d187af199f7c63e4cd659e505cf2cac75fadb9e32"
+    },
+    {
+      "path": "lab/swap-vps-v05/sbf-v3/rust-sbpfv3-target.json",
+      "source_review_path": "evidence/swap-vps-v05/sbf-v3/rust-sbpfv3-target.json",
+      "bytes": 1621,
+      "sha256": "17348c3d3c4ee84b05bba4ecd102e35c4c8dac7fa5b5a9ded5e1ae2394221945"
+    },
+    {
+      "path": "lab/swap-vps-v05/sbf-v3/solana_escrow.so",
+      "source_review_path": "evidence/swap-vps-v05/sbf-v3/solana_escrow.so",
+      "bytes": 32912,
+      "sha256": "30c22daccdd194896ddec53543410b1163c27fea378a58942c018033820f50b7"
+    },
+    {
+      "path": "lab/swap-vps-v05/sbf-v3/source-dependency-audit.json",
+      "source_review_path": "evidence/swap-vps-v05/sbf-v3/source-dependency-audit.json",
+      "bytes": 52807,
+      "sha256": "8a0b4d10379640ddbf957302789632156a9d6fee1826662be219cf4b219fe082"
+    },
+    {
+      "path": "lab/swap-vps-v05/sbf-v3/src/lib.rs",
+      "source_review_path": "evidence/swap-vps-v05/sbf-v3/src/lib.rs",
+      "bytes": 7551,
+      "sha256": "6fa662506bd667f6e510aaa3ea9aea74edaadeebdc829bd82bcfc05325b60eea"
+    },
+    {
+      "path": "lab/swap-vps-v05/sbf-v3/target-repro-01/build.log",
+      "source_review_path": "evidence/swap-vps-v05/sbf-v3/target-repro-01/build.log",
+      "bytes": 2857,
+      "sha256": "e4f07064ab5eaa7e5fa5db80e30e8d86d3dfbd8f1316976b0ec929656f648e80"
+    },
+    {
+      "path": "lab/swap-vps-v05/sbf-v3/target-repro-01/elf-inspection.log",
+      "source_review_path": "evidence/swap-vps-v05/sbf-v3/target-repro-01/elf-inspection.log",
+      "bytes": 10326,
+      "sha256": "87e1e277f0cd282e3f066ab3e14e64573c075023f6720cf196f1cd5628ff1eb4"
+    },
+    {
+      "path": "lab/swap-vps-v05/sbf-v3/target-repro-01/result.json",
+      "source_review_path": "evidence/swap-vps-v05/sbf-v3/target-repro-01/result.json",
+      "bytes": 2945,
+      "sha256": "f46a95a56472d9f3d693819f7fd97232864578eff1523d12bc1ccd315276ecef"
+    },
+    {
+      "path": "lab/swap-vps-v05/sbf-v3/target-repro-01/sbpfv3-solana-solana/release/xds_swap_sbpfv3.so",
+      "source_review_path": "evidence/swap-vps-v05/sbf-v3/target-repro-01/sbpfv3-solana-solana/release/xds_swap_sbpfv3.so",
+      "bytes": 32912,
+      "sha256": "e22474092bbc8426b830799ec42735d1ca0b47a05f80e4221302111452d34642"
+    },
+    {
+      "path": "lab/swap-vps-v05/sbf-v3/target-repro-02/build.log",
+      "source_review_path": "evidence/swap-vps-v05/sbf-v3/target-repro-02/build.log",
+      "bytes": 2857,
+      "sha256": "7e9f5ba195394dbfa09d449de608ec58fa088ef087f837b2cba1e8341a1104d5"
+    },
+    {
+      "path": "lab/swap-vps-v05/sbf-v3/target-repro-02/elf-inspection.log",
+      "source_review_path": "evidence/swap-vps-v05/sbf-v3/target-repro-02/elf-inspection.log",
+      "bytes": 10326,
+      "sha256": "87e1e277f0cd282e3f066ab3e14e64573c075023f6720cf196f1cd5628ff1eb4"
+    },
+    {
+      "path": "lab/swap-vps-v05/sbf-v3/target-repro-02/result.json",
+      "source_review_path": "evidence/swap-vps-v05/sbf-v3/target-repro-02/result.json",
+      "bytes": 2936,
+      "sha256": "e9a1f1f5125ea2b6066f8fbf9c9106e7ac92fd76a6ba353a6736134406c5ac90"
+    },
+    {
+      "path": "lab/swap-vps-v05/sbf-v3/target-repro-02/sbpfv3-solana-solana/release/xds_swap_sbpfv3.so",
+      "source_review_path": "evidence/swap-vps-v05/sbf-v3/target-repro-02/sbpfv3-solana-solana/release/xds_swap_sbpfv3.so",
+      "bytes": 32912,
+      "sha256": "30c22daccdd194896ddec53543410b1163c27fea378a58942c018033820f50b7"
+    },
+    {
+      "path": "lab/swap-vps-v05/sbf-v3/test_differential.py",
+      "source_review_path": "evidence/swap-vps-v05/sbf-v3/test_differential.py",
+      "bytes": 9339,
+      "sha256": "35bb09a6fec88e07ec0a71abeb0cef62bbfb08d7f9a48fab3f4e78066ba87e2b"
+    },
+    {
+      "path": "lab/swap-vps-v05/sbf-v3/test_solana_vm.py",
+      "source_review_path": "evidence/swap-vps-v05/sbf-v3/test_solana_vm.py",
+      "bytes": 11661,
+      "sha256": "48187e48a95a1a94f92ba99e4ea6e3755289e0592c8d94d874c4d4d861892c54"
+    },
+    {
+      "path": "lab/swap-vps-v05/sbf-v3/vm-differential-dev01.log",
+      "source_review_path": "evidence/swap-vps-v05/sbf-v3/vm-differential-dev01.log",
+      "bytes": 755,
+      "sha256": "460122624b5a958b519714fd60d4df23fdae86185ba13deff6c91f141acca99e"
+    },
+    {
+      "path": "lab/swap-vps-v05/sbf-v3/vm-original13.log",
+      "source_review_path": "evidence/swap-vps-v05/sbf-v3/vm-original13.log",
+      "bytes": 2101,
+      "sha256": "c79dbd970c257a48bf8955bcdf970b9119be76c6eb64c137fa277d0388b1d420"
+    },
+    {
+      "path": "lab/swap-vps-v05/v3_restart_state.py",
+      "source_review_path": "evidence/swap-vps-v05/v3_restart_state.py",
+      "bytes": 9593,
+      "sha256": "5f1b644bfd009e2cf7744094f73993d42f12d758bc6f5e7abe037bd1ae366326"
+    }
+  ],
+  "python_syntax_files": 34,
+  "private_key_block_hits": [],
+  "historical_scope": "Original source manifests/reports retain their original larger-package references and outcome dates; some references are outside this publication selection."
+}

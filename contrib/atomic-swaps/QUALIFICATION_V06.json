@@ -1,0 +1,98 @@
+{
+  "schema": 1,
+  "date": "2026-09-10",
+  "upstream": "9fd5415ca5332b512b02dd091fc8d448c5c8b6b5",
+  "native_source_commit": "933d5795ff50c18fe2532c591ea8bc78a7bfc995",
+  "scope": "Aggregate qualification and public source/artifact hashes only; private logs and wallet state omitted",
+  "offline": {
+    "tests_run": 162,
+    "skipped": 0,
+    "failures": 0,
+    "errors": 0,
+    "source_unchanged": true,
+    "pass": true
+  },
+  "real_rpc": {
+    "bitcoin_adapter": 4,
+    "xds_adapter": 4,
+    "xds_bitcoin_session": 2,
+    "solana_private_claim_refund": 2,
+    "xds_solana_session": 3
+  },
+  "solana_pair": {
+    "runs": [
+      {
+        "tests": 2,
+        "seconds": 358.303
+      },
+      {
+        "tests": 1,
+        "seconds": 239.308
+      }
+    ],
+    "runtime_sources_unchanged": true,
+    "test_source_sha256": {
+      "initial_two_cases": "8673fc76c6e06907fc7617244264dfee9fde2865f72e0d674ae92e0e64ba4075",
+      "additional_renewal_case": "a560405f15353e1f5b41d9997f51b5bc30b09092dde89e4a5dfd42120f386c90"
+    },
+    "scope": "Local XDS daemon/wallet RPC; real Agave loopback RPC forwarded through authenticated pinned-key SSH into the owned private network namespace",
+    "assets": "Synthetic isolated native XDS and legacy SPL test mint; no genuine Circle USDC or public chain funds",
+    "renewal": {
+      "sends": 1,
+      "prior_attempt_unchanged": true,
+      "authenticated_acquisition_loaded": true,
+      "acquisition_context_slot": 3668,
+      "expiry_context_slot": 3822,
+      "unspent_context_slot": 3822,
+      "retry_action": "reconciled"
+    },
+    "owned_processes_remaining": 0
+  },
+  "core_ctest": {
+    "passed": 39,
+    "total": 39
+  },
+  "sources": {
+    "runtime/qualify.py": "6345094f26a87aac9a026a1495aeeabc8f55fc2e27e6a995b63d747494295b0a",
+    "runtime/requirements.txt": "f6961b28212eaf9f6a97f17716b2772ee8e210553a7706fe58b79810f420fb55",
+    "runtime/swap_runtime/__init__.py": "c66b8eedf5fb45f7630ea418829ecf2327b378a97e62889bb43d87b639d36f37",
+    "runtime/swap_runtime/__main__.py": "a008d7f52fcbe472bc573b00e80eebd20fdedaf558684100dd2da0327290d848",
+    "runtime/swap_runtime/bitcoin.py": "983423cc3a8cb072d4d72dac2edf8991f7eef34a5a019731db9036fb10d365a7",
+    "runtime/swap_runtime/common.py": "04337358a6abc1610cfc650b18cb071f109e74bae83aae7fdca1dfe05c67acea",
+    "runtime/swap_runtime/journal.py": "f0ac00685a0329045bf518de08a65baae24d4534afaac07937cd654fdadc8075",
+    "runtime/swap_runtime/rpc.py": "2a543183189abdbf8e65b576a40bf49cae265aa0a2bfce2576994de81672ef31",
+    "runtime/swap_runtime/session.py": "a0f61c539c0c7c5487b76ff7a8a3a1744939ea25feba479501523b2230f4e555",
+    "runtime/swap_runtime/solana.py": "92640e163f2b5623561ec08e40247a1038ad8ad0dfa36233ddb3ec581e26761b",
+    "runtime/swap_runtime/xds.py": "181464537931dff962ab64d9df49030c7640d3ee3073e0dda70757fb297aea81",
+    "runtime/tests/fixtures/solana-v06/build-manifest.json": "3280a82ad13cd2671b558f001678615ced7fee1b8dbfae820071f87836f7bd7f",
+    "runtime/tests/fixtures/solana-v06/solana_escrow.so": "561e0b7ad5e4be59a3056482ea94370064d201f45a378964d0fdb9f0ff76a901",
+    "runtime/tests/test_bitcoin.py": "50e30ca6e975548e60ab969363e6d94538eccb93601e77f23a7ac97d2cff413e",
+    "runtime/tests/test_bitcoin_rpc_integration.py": "465706d4134932fdab0947211a64df65be550b290309e3c6de6a864cbd996c2f",
+    "runtime/tests/test_journal.py": "a5dc9e469f417e5dc8f2a8931dbcc52bf5e1e2db7dca3315f681f129cede8ed3",
+    "runtime/tests/test_pair_rpc_integration.py": "3df79414fe9012be11cf80c5f088a17a52f0cc42f402616ee50bbf43837615c1",
+    "runtime/tests/test_pair_solana_rpc_integration.py": "a560405f15353e1f5b41d9997f51b5bc30b09092dde89e4a5dfd42120f386c90",
+    "runtime/tests/test_session.py": "f91a89c8fa621c6a0aa288683569b3e743e4533f0ce20b9639336e31d37527ad",
+    "runtime/tests/test_solana.py": "69dfea772cfd25cde0399a4b7b3749b88e069d5af1bc74fb9a3c2bebf1c63d27",
+    "runtime/tests/test_solana_rpc_integration.py": "62995cd14d08f23019b9c03a03ea2bb00ef7f831fce0549c9feb616572e6e43f",
+    "runtime/tests/test_transport_cli.py": "151385ce283cf5225a9ce8eaeaf51f56e0ea71322b49d7098b907718c1885190",
+    "runtime/tests/test_xds.py": "82d2c8f805487adf9e0310404d4013cbcba1a46140236f221eb05af8f7f10fea",
+    "runtime/tests/test_xds_rpc_integration.py": "4e0d65bde91862a85366952c3286d9396d02777f428b559c24759e22d662cdac",
+    "solana/build.py": "f86a5d8e947dfbc4ace2d641bf9714669a31584eaf703e2efc17b68e56e0a504",
+    "solana/Cargo.lock": "ecb88b8469a190be6c5587f4762eaef619f4e8bdaaa45171821f6ea4c41f2102",
+    "solana/Cargo.toml": "95fbea4c3925ab8043baa328dd2bdc0509883841474ee8c811af10356e02e965",
+    "solana/profile.py": "e1d74e5d8f0dbd1ece5a2a2cdadb65924625ac1d1b71888f63ca6ee899f0bdeb",
+    "solana/src/lib.rs": "a74cfdcc454b4553e7a4b340aba72d8c61021285c625c3abf32422c30a154ed9",
+    "solana/src/profile.rs": "9a2ce8032cb1e7b6772a0b7962503d7a899ef147edaf8007062adcbf94dffe00",
+    "solana/tests/test_profile.py": "8ef2b091dc27bae06a27c75186893bed1f7b8ae3728e562085bc1c4a8e6f3d3b",
+    "solana/tests/test_vm.py": "a573298a68bf35caf9e814d39051984131f59a92f09aae77d0298f3c8ebb81e1",
+    "solana/verify_deployment.py": "11391fffd07e584b67dd508ffdce08ce1eb6e7ff4e5af66f86d4257ab9ca8a32"
+  },
+  "local_evidence_sha256": {
+    "offline-release-05/receipt.json": "13b62fa2449d84c91e754cccaf916f824e94ab996d76eea0dc97a54a384b1cb3",
+    "pair-runtime/pair-release-final.json": "ae1ec4f2053330e636c90e45d9f305265d358cdfcef58a3e17500c09af304b68",
+    "native/final-evidence-audit.json": "02546571c0e3c385cc3fe536110ae153e93f8c8119473715c2a03506afb273ce",
+    "solana/private-rpc-final-audit.json": "5b3090542f062cfd7956c5352cb170ccb9495ea386b2086cf42cdbcc245ea38b",
+    "solana/paired-native-solana-public-final-01/final-audit.json": "b9b90d445ffbad4d6359f25bc715153e9f4b05e56b2ccaff98fa005e53322465"
+  },
+  "qualification_notes": "See QUALIFICATION_V06.md for source deltas, preserved failed invocations and remaining limits."
+}

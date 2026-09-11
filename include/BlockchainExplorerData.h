@@ -102,8 +102,14 @@ struct PqInputDetails {
   Crypto::Hash nullifier;
   TransactionOutputReferenceDetails output;
 };
+struct SwapInputDetails {
+  SwapInput input;
+  uint64_t amount = 0;
+  Crypto::Hash spendTag{};
+  TransactionOutputReferenceDetails output;
+};
 
-typedef boost::variant<BaseInputDetails, KeyInputDetails, PqInputDetails> transactionInputDetails2;
+typedef boost::variant<BaseInputDetails, KeyInputDetails, PqInputDetails, SwapInputDetails> transactionInputDetails2;
 
 struct TransactionExtraDetails2 {
   std::vector<size_t> padding;

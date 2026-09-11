@@ -1,0 +1,1720 @@
+{
+  "status": "PASS",
+  "failures": [],
+  "sources": {
+    "src/lib.rs": {
+      "bytes": 7551,
+      "sha256": "6fa662506bd667f6e510aaa3ea9aea74edaadeebdc829bd82bcfc05325b60eea"
+    },
+    "Cargo.toml": {
+      "bytes": 348,
+      "sha256": "95fbea4c3925ab8043baa328dd2bdc0509883841474ee8c811af10356e02e965"
+    },
+    "Cargo.lock": {
+      "bytes": 40856,
+      "sha256": "ecb88b8469a190be6c5587f4762eaef619f4e8bdaaa45171821f6ea4c41f2102"
+    },
+    "solana_escrow.so": {
+      "bytes": 32912,
+      "sha256": "30c22daccdd194896ddec53543410b1163c27fea378a58942c018033820f50b7"
+    },
+    "test_solana_vm.py": {
+      "bytes": 11661,
+      "sha256": "48187e48a95a1a94f92ba99e4ea6e3755289e0592c8d94d874c4d4d861892c54"
+    },
+    "test_differential.py": {
+      "bytes": 9339,
+      "sha256": "35bb09a6fec88e07ec0a71abeb0cef62bbfb08d7f9a48fab3f4e78066ba87e2b"
+    }
+  },
+  "baseline": {
+    "solana_escrow.c": {
+      "bytes": 5293,
+      "sha256": "c64e6f25aa506565d553c5959c5fc3a7c27895c7b22ecffc643091d8c9bf2123"
+    },
+    "solana_profile.h": {
+      "bytes": 764,
+      "sha256": "cc86c7703a1e7edf9b2ec7c1a8bbcaa60788f5f375b9292cef8207eb56666551"
+    },
+    "solana_escrow.so": {
+      "bytes": 9248,
+      "sha256": "91004de413fa707ebd61d743cb01a2bfea80b0077fef3e15bc1f11bdb6100a89"
+    },
+    "test_solana_vm.py": {
+      "bytes": 11661,
+      "sha256": "48187e48a95a1a94f92ba99e4ea6e3755289e0592c8d94d874c4d4d861892c54"
+    }
+  },
+  "dependency_count": 158,
+  "dependency_archive_checksums_match": true,
+  "unpacked_source_files_checked": 3872,
+  "dependencies": [
+    {
+      "name": "arrayvec",
+      "version": "0.7.8",
+      "archive": {
+        "bytes": 33260,
+        "sha256": "d3fb67a6e08acf24fdeccbac2cb6ac4305825bd1f117462e0e6f2f193345ad56"
+      },
+      "source_files_checked": 22
+    },
+    {
+      "name": "autocfg",
+      "version": "1.5.1",
+      "archive": {
+        "bytes": 18911,
+        "sha256": "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
+      },
+      "source_files_checked": 23
+    },
+    {
+      "name": "base16ct",
+      "version": "0.2.0",
+      "archive": {
+        "bytes": 10240,
+        "sha256": "4c7f02d4ea65f2c1853089ffd8d2787bdbc63de2f0d29dedbcf8ccdfa0ccd4cf"
+      },
+      "source_files_checked": 15
+    },
+    {
+      "name": "base64",
+      "version": "0.22.1",
+      "archive": {
+        "bytes": 81597,
+        "sha256": "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
+      },
+      "source_files_checked": 38
+    },
+    {
+      "name": "base64ct",
+      "version": "1.8.3",
+      "archive": {
+        "bytes": 32227,
+        "sha256": "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
+      },
+      "source_files_checked": 32
+    },
+    {
+      "name": "bincode",
+      "version": "1.3.3",
+      "archive": {
+        "bytes": 28958,
+        "sha256": "b1f45e9417d87227c7a56d22e471c6206462cba514c7590c09aff4cf6d1ddcad"
+      },
+      "source_files_checked": 23
+    },
+    {
+      "name": "bitflags",
+      "version": "2.13.1",
+      "archive": {
+        "bytes": 51395,
+        "sha256": "b588b76d00fde79687d7646a9b5bdf3cc0f655e0bbd080335a95d7e96f3587da"
+      },
+      "source_files_checked": 64
+    },
+    {
+      "name": "blake3",
+      "version": "1.8.7",
+      "archive": {
+        "bytes": 209726,
+        "sha256": "6d9e454fc11f76977dc803893aff6304ed33d6a26efae8696573bea74baa27ae"
+      },
+      "source_files_checked": 80
+    },
+    {
+      "name": "block-buffer",
+      "version": "0.10.4",
+      "archive": {
+        "bytes": 10538,
+        "sha256": "3078c7629b62d3f0439517fa394996acacc5cbc91c5a20d8c658e77abd503a71"
+      },
+      "source_files_checked": 10
+    },
+    {
+      "name": "borsh",
+      "version": "1.8.1",
+      "archive": {
+        "bytes": 85266,
+        "sha256": "553c5d846a6ba5150c65e3b1b8ec073bcf1abc20f9b7220de384a4443ea4e20a"
+      },
+      "source_files_checked": 95
+    },
+    {
+      "name": "borsh-derive",
+      "version": "1.8.1",
+      "archive": {
+        "bytes": 33529,
+        "sha256": "12cdfe656708a01f89b451a7d36466e6fe6c414de0aa18fc54f864f6f9ca9f56"
+      },
+      "source_files_checked": 31
+    },
+    {
+      "name": "bs58",
+      "version": "0.5.1",
+      "archive": {
+        "bytes": 28483,
+        "sha256": "bf88ba1141d185c399bee5288d850d63b8369520c1eafc32a0430b5b6c287bf4"
+      },
+      "source_files_checked": 24
+    },
+    {
+      "name": "bv",
+      "version": "0.11.1",
+      "archive": {
+        "bytes": 42061,
+        "sha256": "8834bb1d8ee5dc048ee3124f2c7c1afcc6bc9aed03f11e9dfd8c69470a5db340"
+      },
+      "source_files_checked": 41
+    },
+    {
+      "name": "bytemuck",
+      "version": "1.25.2",
+      "archive": {
+        "bytes": 54075,
+        "sha256": "95832e849adfb21180ccb6826a99da14e5d266ae5c2e668e1602cf234f153797"
+      },
+      "source_files_checked": 38
+    },
+    {
+      "name": "bytemuck_derive",
+      "version": "1.12.0",
+      "archive": {
+        "bytes": 26352,
+        "sha256": "fc0e56a716f1e132ff6bf4bdac1c944a3fcdc1cae65f70a4a2a1ac3b401d2d1f"
+      },
+      "source_files_checked": 13
+    },
+    {
+      "name": "bytes",
+      "version": "1.12.1",
+      "archive": {
+        "bytes": 75667,
+        "sha256": "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
+      },
+      "source_files_checked": 40
+    },
+    {
+      "name": "cc",
+      "version": "1.4.5",
+      "archive": {
+        "bytes": 101464,
+        "sha256": "005ec2760ca554fae18df7a11195552ec576cd665632a881bc011d5bb2fd4d80"
+      },
+      "source_files_checked": 28
+    },
+    {
+      "name": "cfg-if",
+      "version": "1.0.4",
+      "archive": {
+        "bytes": 9360,
+        "sha256": "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
+      },
+      "source_files_checked": 14
+    },
+    {
+      "name": "cfg_aliases",
+      "version": "0.2.2",
+      "archive": {
+        "bytes": 6527,
+        "sha256": "f079e83a288787bcd14a6aea84cee5c87a67c5a3e660c30f557a3d24761b3527"
+      },
+      "source_files_checked": 10
+    },
+    {
+      "name": "const-oid",
+      "version": "0.9.6",
+      "archive": {
+        "bytes": 45382,
+        "sha256": "c2459377285ad874054d797f3ccebf984978aa39129f6eafde5cdc8315b612f8"
+      },
+      "source_files_checked": 16
+    },
+    {
+      "name": "constant_time_eq",
+      "version": "0.4.2",
+      "archive": {
+        "bytes": 25831,
+        "sha256": "3d52eff69cd5e647efe296129160853a42795992097e8af39800e1060caeea9b"
+      },
+      "source_files_checked": 24
+    },
+    {
+      "name": "cpufeatures",
+      "version": "0.2.17",
+      "archive": {
+        "bytes": 13466,
+        "sha256": "59ed5838eebb26a2bb2e58f6d5b5316989ae9d08bab10e0e6d103e656d1b0280"
+      },
+      "source_files_checked": 16
+    },
+    {
+      "name": "cpufeatures",
+      "version": "0.3.1",
+      "archive": {
+        "bytes": 14272,
+        "sha256": "5ca28b0ae3115b884660db4118d803791fd6756b6e88f39c0f3f7859060d7566"
+      },
+      "source_files_checked": 16
+    },
+    {
+      "name": "crypto-bigint",
+      "version": "0.5.5",
+      "archive": {
+        "bytes": 83384,
+        "sha256": "0dc92fb57ca44df6db8059111ab3af99a63d5d0f8375d9972e319a379c6bab76"
+      },
+      "source_files_checked": 99
+    },
+    {
+      "name": "crypto-common",
+      "version": "0.1.7",
+      "archive": {
+        "bytes": 9619,
+        "sha256": "78c8292055d1c1df0cce5d180393dc8cce0abec0a7102adb6c7b1eef6016d60a"
+      },
+      "source_files_checked": 9
+    },
+    {
+      "name": "curve25519-dalek",
+      "version": "4.1.3",
+      "archive": {
+        "bytes": 306017,
+        "sha256": "97fb8b7c4503de7d6ae7b42ab72a5a59857b4c937ec27a3d4539dba95b5ab2be"
+      },
+      "source_files_checked": 63
+    },
+    {
+      "name": "curve25519-dalek-derive",
+      "version": "0.1.1",
+      "archive": {
+        "bytes": 11723,
+        "sha256": "f46882e17999c6cc590af592290432be3bce0428cb0d5f8b6715e4dc7b383eb3"
+      },
+      "source_files_checked": 9
+    },
+    {
+      "name": "darling",
+      "version": "0.23.0",
+      "archive": {
+        "bytes": 43298,
+        "sha256": "25ae13da2f202d56bd7f91c25fba009e7717a1e4a1cc98a76d844b65ae912e9d"
+      },
+      "source_files_checked": 85
+    },
+    {
+      "name": "darling_core",
+      "version": "0.23.0",
+      "archive": {
+        "bytes": 74564,
+        "sha256": "9865a50f7c335f53564bb694ef660825eb8610e0a53d3e11bf1b0d3df31e03b0"
+      },
+      "source_files_checked": 77
+    },
+    {
+      "name": "darling_macro",
+      "version": "0.23.0",
+      "archive": {
+        "bytes": 2480,
+        "sha256": "ac3984ec7bd6cfa798e62b4a642426a5be0e68f9401cfc2a01e3fa9ea2fcdb8d"
+      },
+      "source_files_checked": 6
+    },
+    {
+      "name": "der",
+      "version": "0.7.10",
+      "archive": {
+        "bytes": 90111,
+        "sha256": "e7c1832837b905bbfb5101e07cc24c8deddf52f93225eee6ead5f4d63d53ddcb"
+      },
+      "source_files_checked": 68
+    },
+    {
+      "name": "digest",
+      "version": "0.10.7",
+      "archive": {
+        "bytes": 19557,
+        "sha256": "9ed9a281f7bc9b7576e61468ba615a66a5c8cfdff42420a70aa82701a3b1e292"
+      },
+      "source_files_checked": 21
+    },
+    {
+      "name": "ecdsa",
+      "version": "0.16.9",
+      "archive": {
+        "bytes": 31406,
+        "sha256": "ee27f32b5c5292967d2d4a9d7f1e0b0aed2c15daded5a60300e4abb9d8020bca"
+      },
+      "source_files_checked": 16
+    },
+    {
+      "name": "elliptic-curve",
+      "version": "0.13.8",
+      "archive": {
+        "bytes": 63198,
+        "sha256": "b5e6043086bf7973472e0c7dff2142ea0b680d30e18d9cc40f267efbf222bd47"
+      },
+      "source_files_checked": 42
+    },
+    {
+      "name": "equivalent",
+      "version": "1.0.2",
+      "archive": {
+        "bytes": 7419,
+        "sha256": "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
+      },
+      "source_files_checked": 10
+    },
+    {
+      "name": "feature-probe",
+      "version": "0.1.1",
+      "archive": {
+        "bytes": 7622,
+        "sha256": "835a3dc7d1ec9e75e2b5fb4ba75396837112d2060b03f7d43bc1897c7f7211da"
+      },
+      "source_files_checked": 10
+    },
+    {
+      "name": "ff",
+      "version": "0.13.1",
+      "archive": {
+        "bytes": 18607,
+        "sha256": "c0b50bfb653653f9ca9095b427bed08ab8d75a137839d9ad64eb11810d5b6393"
+      },
+      "source_files_checked": 14
+    },
+    {
+      "name": "fiat-crypto",
+      "version": "0.2.9",
+      "archive": {
+        "bytes": 495390,
+        "sha256": "28dea519a9695b9977216879a3ebfddf92f1c08c05d984f8996aecd6ecdc811d"
+      },
+      "source_files_checked": 39
+    },
+    {
+      "name": "find-msvc-tools",
+      "version": "0.1.12",
+      "archive": {
+        "bytes": 31570,
+        "sha256": "3e0f1c7c3a72c66fd80abe965175f7523475c0489a87d3ff9d6e8c87d87a9d2d"
+      },
+      "source_files_checked": 18
+    },
+    {
+      "name": "five8",
+      "version": "1.0.0",
+      "archive": {
+        "bytes": 23849,
+        "sha256": "23f76610e969fa1784327ded240f1e28a3fd9520c9cec93b636fcf62dd37f772"
+      },
+      "source_files_checked": 12
+    },
+    {
+      "name": "five8_const",
+      "version": "1.0.0",
+      "archive": {
+        "bytes": 3709,
+        "sha256": "1a0f1728185f277989ca573a402716ae0beaaea3f76a8ff87ef9dd8fb19436c5"
+      },
+      "source_files_checked": 6
+    },
+    {
+      "name": "five8_core",
+      "version": "1.0.0",
+      "archive": {
+        "bytes": 3348,
+        "sha256": "059c31d7d36c43fe39d89e55711858b4da8be7eb6dabac23c7289b1a19489406"
+      },
+      "source_files_checked": 7
+    },
+    {
+      "name": "generic-array",
+      "version": "0.14.7",
+      "archive": {
+        "bytes": 15950,
+        "sha256": "85649ca51fd72272d7821adaf274ad91c288277713d9c18820d8499a7ff69e9a"
+      },
+      "source_files_checked": 16
+    },
+    {
+      "name": "getrandom",
+      "version": "0.2.17",
+      "archive": {
+        "bytes": 40780,
+        "sha256": "ff2abc00be7fca6ebc474524697ae276ad847ad0a6b3faa4bcb027e9a4614ad0"
+      },
+      "source_files_checked": 38
+    },
+    {
+      "name": "group",
+      "version": "0.13.0",
+      "archive": {
+        "bytes": 16526,
+        "sha256": "f0f9ef7462f7c099f518d754361858f86d8a07af53ba9af0fe635bbccb151a63"
+      },
+      "source_files_checked": 16
+    },
+    {
+      "name": "hashbrown",
+      "version": "0.17.1",
+      "archive": {
+        "bytes": 155512,
+        "sha256": "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
+      },
+      "source_files_checked": 50
+    },
+    {
+      "name": "hmac",
+      "version": "0.12.1",
+      "archive": {
+        "bytes": 42657,
+        "sha256": "6c49c37c09c17a53d937dfbb742eb3a961d65a994e6bcdcf37e7399d0cc8ab5e"
+      },
+      "source_files_checked": 22
+    },
+    {
+      "name": "ident_case",
+      "version": "1.0.1",
+      "archive": {
+        "bytes": 3492,
+        "sha256": "b9e0384b61958566e926dc50660321d12159025e767c18e043daf26b70104c39"
+      },
+      "source_files_checked": 9
+    },
+    {
+      "name": "indexmap",
+      "version": "2.14.2",
+      "archive": {
+        "bytes": 103014,
+        "sha256": "cc4e190f5d26ca7051642629da2c52fc03bde85a03197c99408dcd291734c855"
+      },
+      "source_files_checked": 43
+    },
+    {
+      "name": "k256",
+      "version": "0.13.4",
+      "archive": {
+        "bytes": 93562,
+        "sha256": "f6e3919bbaa2945715f0bb6d3934a173d1e9a59ac23767fbaaef277265a7411b"
+      },
+      "source_files_checked": 34
+    },
+    {
+      "name": "keccak",
+      "version": "0.1.6",
+      "archive": {
+        "bytes": 13529,
+        "sha256": "cb26cec98cce3a3d96cbb7bced3c4b16e3d13f27ec56dbd62cbc8f39cfb9d653"
+      },
+      "source_files_checked": 12
+    },
+    {
+      "name": "lazy_static",
+      "version": "1.5.0",
+      "archive": {
+        "bytes": 14025,
+        "sha256": "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
+      },
+      "source_files_checked": 21
+    },
+    {
+      "name": "libc",
+      "version": "0.2.189",
+      "archive": {
+        "bytes": 851502,
+        "sha256": "3eaf3ede3fee6db1a4c2ee091bf8a8b4dccdc6d17f656fb07896ee72867612f2"
+      },
+      "source_files_checked": 404
+    },
+    {
+      "name": "lock_api",
+      "version": "0.4.14",
+      "archive": {
+        "bytes": 29249,
+        "sha256": "224399e74b87b5f3557511d98dff8b14089b3dadafcab6bb93eab67d3aace965"
+      },
+      "source_files_checked": 10
+    },
+    {
+      "name": "log",
+      "version": "0.4.34",
+      "archive": {
+        "bytes": 53395,
+        "sha256": "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
+      },
+      "source_files_checked": 23
+    },
+    {
+      "name": "memchr",
+      "version": "2.8.3",
+      "archive": {
+        "bytes": 99165,
+        "sha256": "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
+      },
+      "source_files_checked": 59
+    },
+    {
+      "name": "memoffset",
+      "version": "0.9.1",
+      "archive": {
+        "bytes": 9032,
+        "sha256": "488016bfae457b036d996092f6cb448677611ce4449e970ceaf42695203f218a"
+      },
+      "source_files_checked": 13
+    },
+    {
+      "name": "num-bigint",
+      "version": "0.4.8",
+      "archive": {
+        "bytes": 109961,
+        "sha256": "c89e69e7e0f03bea5ef08013795c25018e101932225a656383bd384495ecc367"
+      },
+      "source_files_checked": 53
+    },
+    {
+      "name": "num-integer",
+      "version": "0.1.47",
+      "archive": {
+        "bytes": 23502,
+        "sha256": "7ce2d95d4b3734dc35aa2f45e1aa22cd416814592a4f9d9205e11affd5b8e10b"
+      },
+      "source_files_checked": 17
+    },
+    {
+      "name": "num-traits",
+      "version": "0.2.19",
+      "archive": {
+        "bytes": 51631,
+        "sha256": "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
+      },
+      "source_files_checked": 29
+    },
+    {
+      "name": "once_cell",
+      "version": "1.21.4",
+      "archive": {
+        "bytes": 35010,
+        "sha256": "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
+      },
+      "source_files_checked": 29
+    },
+    {
+      "name": "parking_lot",
+      "version": "0.12.5",
+      "archive": {
+        "bytes": 46735,
+        "sha256": "93857453250e3077bd71ff98b6a65ea6621a19bb0f559a85248955ac12c45a1a"
+      },
+      "source_files_checked": 28
+    },
+    {
+      "name": "parking_lot_core",
+      "version": "0.9.12",
+      "archive": {
+        "bytes": 34110,
+        "sha256": "2621685985a2ebf1c516881c026032ac7deafcda1a2c9b7850dc81e3dfcb64c1"
+      },
+      "source_files_checked": 24
+    },
+    {
+      "name": "pastey",
+      "version": "0.2.3",
+      "archive": {
+        "bytes": 20361,
+        "sha256": "2ee67f1008b1ba2321834326597b8e186293b049a023cdef258527550b9935b4"
+      },
+      "source_files_checked": 13
+    },
+    {
+      "name": "pkcs8",
+      "version": "0.10.2",
+      "archive": {
+        "bytes": 26360,
+        "sha256": "f950b2377845cebe5cf8b5165cb3cc1a5e0fa5cfa3e1f7f55707d8fd82e0a7b7"
+      },
+      "source_files_checked": 39
+    },
+    {
+      "name": "proc-macro-crate",
+      "version": "3.5.0",
+      "archive": {
+        "bytes": 12709,
+        "sha256": "e67ba7e9b2b56446f1d419b1d807906278ffa1a658a8a5d8a39dcb1f5a78614f"
+      },
+      "source_files_checked": 14
+    },
+    {
+      "name": "proc-macro2",
+      "version": "1.0.107",
+      "archive": {
+        "bytes": 59588,
+        "sha256": "985e7ec9bb745e6ce6535b544d84d6cd6f7ad8bd711c398938ae983b91a766d9"
+      },
+      "source_files_checked": 33
+    },
+    {
+      "name": "quote",
+      "version": "1.0.47",
+      "archive": {
+        "bytes": 31622,
+        "sha256": "1fbf4db142a473a8d80c26bbf18454ed458bf8d26c8219c331daecfdbd079001"
+      },
+      "source_files_checked": 35
+    },
+    {
+      "name": "rand_core",
+      "version": "0.6.4",
+      "archive": {
+        "bytes": 22666,
+        "sha256": "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
+      },
+      "source_files_checked": 14
+    },
+    {
+      "name": "redox_syscall",
+      "version": "0.5.18",
+      "archive": {
+        "bytes": 30747,
+        "sha256": "ed2bf2547551a7053d6fdfafda3f938979645c44812fbfcda098faae3f1a362d"
+      },
+      "source_files_checked": 32
+    },
+    {
+      "name": "rfc6979",
+      "version": "0.4.0",
+      "archive": {
+        "bytes": 9140,
+        "sha256": "f8dd2a808d456c4a54e300a23e9f5a67e122c3024119acbfd73e3bf664491cb2"
+      },
+      "source_files_checked": 10
+    },
+    {
+      "name": "rustc_version",
+      "version": "0.4.1",
+      "archive": {
+        "bytes": 12245,
+        "sha256": "cfcb3a22ef46e85b45de6ee7e79d063319ebb6594faafcf1c225ea92ab6e9b92"
+      },
+      "source_files_checked": 13
+    },
+    {
+      "name": "scopeguard",
+      "version": "1.2.0",
+      "archive": {
+        "bytes": 11619,
+        "sha256": "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
+      },
+      "source_files_checked": 11
+    },
+    {
+      "name": "sec1",
+      "version": "0.7.3",
+      "archive": {
+        "bytes": 17979,
+        "sha256": "d3e97a565f76233a6003f9f5c54be1d9c5bdfa3eccfb189469f11ec4901c47dc"
+      },
+      "source_files_checked": 17
+    },
+    {
+      "name": "semver",
+      "version": "1.0.28",
+      "archive": {
+        "bytes": 33064,
+        "sha256": "8a7852d02fc848982e0c167ef163aaff9cd91dc640ba85e263cb1ce46fae51cd"
+      },
+      "source_files_checked": 25
+    },
+    {
+      "name": "serde",
+      "version": "1.0.229",
+      "archive": {
+        "bytes": 83669,
+        "sha256": "4148590afebada386688f18773da617792bf2ef03ffc1e4cbd2b1d45b023e0ba"
+      },
+      "source_files_checked": 33
+    },
+    {
+      "name": "serde_core",
+      "version": "1.0.229",
+      "archive": {
+        "bytes": 63100,
+        "sha256": "67dca2c9c51e58a4791a4b1ed58308b39c64224d349a935ab5039aa360942a48"
+      },
+      "source_files_checked": 27
+    },
+    {
+      "name": "serde_derive",
+      "version": "1.0.229",
+      "archive": {
+        "bytes": 59864,
+        "sha256": "e7a5d71263a5a7d47b41f6b3f06ba276f10cc18b0931f1799f710578e2309348"
+      },
+      "source_files_checked": 36
+    },
+    {
+      "name": "sha2",
+      "version": "0.10.9",
+      "archive": {
+        "bytes": 29271,
+        "sha256": "a7507d819769d01a365ab707794a4084392c824f54a7a6a7862f8c3d0892b283"
+      },
+      "source_files_checked": 31
+    },
+    {
+      "name": "sha2-const-stable",
+      "version": "0.1.0",
+      "archive": {
+        "bytes": 4442741,
+        "sha256": "5f179d4e11094a893b82fff208f74d448a7512f99f5a0acbd5c679b705f83ed9"
+      },
+      "source_files_checked": 35
+    },
+    {
+      "name": "sha3",
+      "version": "0.10.9",
+      "archive": {
+        "bytes": 859930,
+        "sha256": "77fd7028345d415a4034cf8777cd4f8ab1851274233b45f84e3d955502d93874"
+      },
+      "source_files_checked": 31
+    },
+    {
+      "name": "shlex",
+      "version": "2.0.1",
+      "archive": {
+        "bytes": 19332,
+        "sha256": "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
+      },
+      "source_files_checked": 13
+    },
+    {
+      "name": "signature",
+      "version": "2.2.0",
+      "archive": {
+        "bytes": 15531,
+        "sha256": "77549399552de45a898a580c1b41d445bf730df867cc44e6c0233bbc4b8329de"
+      },
+      "source_files_checked": 16
+    },
+    {
+      "name": "smallvec",
+      "version": "1.16.0",
+      "archive": {
+        "bytes": 32647,
+        "sha256": "b9be42f50aa861c555654aa3a37f52f4b1074bacf4e48fe0ef7fa584e80f1f0f"
+      },
+      "source_files_checked": 11
+    },
+    {
+      "name": "solana-account-info",
+      "version": "3.1.1",
+      "archive": {
+        "bytes": 8207,
+        "sha256": "a9cf16495d9eb53e3d04e72366a33bb1c20c24e78c171d8b8f5978357b63ae95"
+      },
+      "source_files_checked": 6
+    },
+    {
+      "name": "solana-address",
+      "version": "1.1.0",
+      "archive": {
+        "bytes": 8488,
+        "sha256": "a2ecac8e1b7f74c2baa9e774c42817e3e75b20787134b76cc4d45e8a604488f5"
+      },
+      "source_files_checked": 5
+    },
+    {
+      "name": "solana-address",
+      "version": "2.7.0",
+      "archive": {
+        "bytes": 25109,
+        "sha256": "01332a01c0a3098404d55a724c8d9a92aed4a50fe40a7dd0c7a51e29274c14de"
+      },
+      "source_files_checked": 9
+    },
+    {
+      "name": "solana-address-lookup-table-interface",
+      "version": "3.2.0",
+      "archive": {
+        "bytes": 15782,
+        "sha256": "8dedafa11d25554279235dd0539d378adc144183eca65072a302c9592cc6a591"
+      },
+      "source_files_checked": 8
+    },
+    {
+      "name": "solana-atomic-u64",
+      "version": "3.0.1",
+      "archive": {
+        "bytes": 2579,
+        "sha256": "085db4906d89324cef2a30840d59eaecf3d4231c560ec7c9f6614a93c652f501"
+      },
+      "source_files_checked": 5
+    },
+    {
+      "name": "solana-big-mod-exp",
+      "version": "3.0.0",
+      "archive": {
+        "bytes": 13644,
+        "sha256": "30c80fb6d791b3925d5ec4bf23a7c169ef5090c013059ec3ed7d0b2c04efa085"
+      },
+      "source_files_checked": 8
+    },
+    {
+      "name": "solana-blake3-hasher",
+      "version": "3.1.0",
+      "archive": {
+        "bytes": 2999,
+        "sha256": "7116e1d942a2432ca3f514625104757ab8a56233787e95144c93950029e31176"
+      },
+      "source_files_checked": 5
+    },
+    {
+      "name": "solana-clock",
+      "version": "3.2.0",
+      "archive": {
+        "bytes": 6327,
+        "sha256": "a7708bdb262fd9c257c3a56d4289297b10a3e821b8cba3f7cf42b49c40201ab9"
+      },
+      "source_files_checked": 6
+    },
+    {
+      "name": "solana-cpi",
+      "version": "3.1.0",
+      "archive": {
+        "bytes": 11235,
+        "sha256": "4dea26709d867aada85d0d3617db0944215c8bb28d3745b912de7db13a23280c"
+      },
+      "source_files_checked": 6
+    },
+    {
+      "name": "solana-define-syscall",
+      "version": "3.0.0",
+      "archive": {
+        "bytes": 2696,
+        "sha256": "f9697086a4e102d28a156b8d6b521730335d6951bd39a5e766512bbe09007cee"
+      },
+      "source_files_checked": 6
+    },
+    {
+      "name": "solana-define-syscall",
+      "version": "4.0.1",
+      "archive": {
+        "bytes": 3165,
+        "sha256": "57e5b1c0bc1d4a4d10c88a4100499d954c09d3fecfae4912c1a074dff68b1738"
+      },
+      "source_files_checked": 6
+    },
+    {
+      "name": "solana-define-syscall",
+      "version": "5.2.0",
+      "archive": {
+        "bytes": 3813,
+        "sha256": "bf8209ece2bd9f1450e672858ffc0e5c8c786ff6916d2a862b126dd0128f380f"
+      },
+      "source_files_checked": 7
+    },
+    {
+      "name": "solana-epoch-rewards",
+      "version": "3.2.0",
+      "archive": {
+        "bytes": 8844,
+        "sha256": "0788d74ee15778deecaa15ed1a1e37727ba954f86cbc35225450a1f2b5012969"
+      },
+      "source_files_checked": 6
+    },
+    {
+      "name": "solana-epoch-schedule",
+      "version": "3.3.0",
+      "archive": {
+        "bytes": 11097,
+        "sha256": "a1633cfd10cde127f2caf8f12021b4f8e9a425e7e4eea4326e428c422376d6fd"
+      },
+      "source_files_checked": 6
+    },
+    {
+      "name": "solana-epoch-stake",
+      "version": "3.0.1",
+      "archive": {
+        "bytes": 2212,
+        "sha256": "027e6d0b9e7daac5b2ac7c3f9ca1b727861121d9ef05084cf435ff736051e7c2"
+      },
+      "source_files_checked": 5
+    },
+    {
+      "name": "solana-example-mocks",
+      "version": "3.0.0",
+      "archive": {
+        "bytes": 8358,
+        "sha256": "978855d164845c1b0235d4b4d101cadc55373fffaf0b5b6cfa2194d25b2ed658"
+      },
+      "source_files_checked": 5
+    },
+    {
+      "name": "solana-fee-calculator",
+      "version": "3.3.0",
+      "archive": {
+        "bytes": 8712,
+        "sha256": "d4bf4f4afb4704212ef1d994ee65bef7293441721639dfd16f0e60996f37be51"
+      },
+      "source_files_checked": 5
+    },
+    {
+      "name": "solana-get-sysvar",
+      "version": "1.0.0",
+      "archive": {
+        "bytes": 3375,
+        "sha256": "ef3bc859fc036ed490146793557386cbfae614ebba4adc704c37d94350824ed4"
+      },
+      "source_files_checked": 5
+    },
+    {
+      "name": "solana-hash",
+      "version": "3.1.0",
+      "archive": {
+        "bytes": 6700,
+        "sha256": "337c246447142f660f778cf6cb582beba8e28deb05b3b24bfb9ffd7c562e5f41"
+      },
+      "source_files_checked": 5
+    },
+    {
+      "name": "solana-hash",
+      "version": "4.6.0",
+      "archive": {
+        "bytes": 11465,
+        "sha256": "0df9b01495ed31100aca97a7f5862d5e19ab1636d60d1a9f02391408dd9dec84"
+      },
+      "source_files_checked": 6
+    },
+    {
+      "name": "solana-instruction",
+      "version": "3.5.0",
+      "archive": {
+        "bytes": 9353,
+        "sha256": "d70cf6ece1070a66d25e68274f338f29664794669c175223940a298645ef3495"
+      },
+      "source_files_checked": 7
+    },
+    {
+      "name": "solana-instruction-error",
+      "version": "2.5.0",
+      "archive": {
+        "bytes": 11454,
+        "sha256": "e8e7db78c122d02189619490b1fef04a2a042c389662920617c0e6381fdf8fdd"
+      },
+      "source_files_checked": 5
+    },
+    {
+      "name": "solana-instructions-sysvar",
+      "version": "3.0.1",
+      "archive": {
+        "bytes": 8156,
+        "sha256": "9e0732294560e88ecdb2bbc656e67383e9f88c78ec09469cef172f0d28cd1bcd"
+      },
+      "source_files_checked": 5
+    },
+    {
+      "name": "solana-keccak-hasher",
+      "version": "3.1.0",
+      "archive": {
+        "bytes": 3088,
+        "sha256": "ed1c0d16d6fdeba12291a1f068cdf0d479d9bff1141bf44afd7aa9d485f65ef8"
+      },
+      "source_files_checked": 5
+    },
+    {
+      "name": "solana-last-restart-slot",
+      "version": "3.2.0",
+      "archive": {
+        "bytes": 3783,
+        "sha256": "5099e736c3c06c451b307a60637d69eb65b3144143ebeed899e2fd1134f4fc35"
+      },
+      "source_files_checked": 6
+    },
+    {
+      "name": "solana-message",
+      "version": "3.1.0",
+      "archive": {
+        "bytes": 41300,
+        "sha256": "0448b1fd891c5f46491e5dc7d9986385ba3c852c340db2911dd29faa01d2b08d"
+      },
+      "source_files_checked": 17
+    },
+    {
+      "name": "solana-msg",
+      "version": "3.1.0",
+      "archive": {
+        "bytes": 2176,
+        "sha256": "726b7cbbc6be6f1c6f29146ac824343b9415133eee8cce156452ad1db93f8008"
+      },
+      "source_files_checked": 6
+    },
+    {
+      "name": "solana-native-token",
+      "version": "3.0.0",
+      "archive": {
+        "bytes": 1852,
+        "sha256": "ae8dd4c280dca9d046139eb5b7a5ac9ad10403fbd64964c7d7571214950d758f"
+      },
+      "source_files_checked": 5
+    },
+    {
+      "name": "solana-nonce",
+      "version": "3.3.0",
+      "archive": {
+        "bytes": 11068,
+        "sha256": "1f13b7ec92de6dd4ef713ed763d22585efa0042cd244bce81997e52077885c47"
+      },
+      "source_files_checked": 7
+    },
+    {
+      "name": "solana-program",
+      "version": "3.0.0",
+      "archive": {
+        "bytes": 29206,
+        "sha256": "91b12305dd81045d705f427acd0435a2e46444b65367d7179d7bdcfc3bc5f5eb"
+      },
+      "source_files_checked": 25
+    },
+    {
+      "name": "solana-program-entrypoint",
+      "version": "3.1.1",
+      "archive": {
+        "bytes": 10029,
+        "sha256": "84c9b0a1ff494e05f503a08b3d51150b73aa639544631e510279d6375f290997"
+      },
+      "source_files_checked": 5
+    },
+    {
+      "name": "solana-program-error",
+      "version": "3.0.1",
+      "archive": {
+        "bytes": 6170,
+        "sha256": "4f04fa578707b3612b095f0c8e19b66a1233f7c42ca8082fcb3b745afcc0add6"
+      },
+      "source_files_checked": 5
+    },
+    {
+      "name": "solana-program-memory",
+      "version": "3.1.0",
+      "archive": {
+        "bytes": 2976,
+        "sha256": "4068648649653c2c50546e9a7fb761791b5ab0cda054c771bb5808d3a4b9eb52"
+      },
+      "source_files_checked": 5
+    },
+    {
+      "name": "solana-program-option",
+      "version": "3.1.0",
+      "archive": {
+        "bytes": 7181,
+        "sha256": "7a88006a9b8594088cec9027ab77caaaa258a2aaa2083d3f086c44b42e50aeab"
+      },
+      "source_files_checked": 5
+    },
+    {
+      "name": "solana-program-pack",
+      "version": "3.1.0",
+      "archive": {
+        "bytes": 1875,
+        "sha256": "3d7701cb15b90667ae1c89ef4ac35a59c61e66ce58ddee13d729472af7f41d59"
+      },
+      "source_files_checked": 5
+    },
+    {
+      "name": "solana-pubkey",
+      "version": "3.0.0",
+      "archive": {
+        "bytes": 9011,
+        "sha256": "8909d399deb0851aa524420beeb5646b115fd253ef446e35fe4504c904da3941"
+      },
+      "source_files_checked": 5
+    },
+    {
+      "name": "solana-pubkey",
+      "version": "4.3.0",
+      "archive": {
+        "bytes": 9126,
+        "sha256": "10f71b7a414de2ced1071f015834e9be581592d013432adbd06d02e4af11eba9"
+      },
+      "source_files_checked": 5
+    },
+    {
+      "name": "solana-rent",
+      "version": "3.1.0",
+      "archive": {
+        "bytes": 8943,
+        "sha256": "e860d5499a705369778647e97d760f7670adfb6fc8419dd3d568deccd46d5487"
+      },
+      "source_files_checked": 6
+    },
+    {
+      "name": "solana-sanitize",
+      "version": "3.0.1",
+      "archive": {
+        "bytes": 1583,
+        "sha256": "dcf09694a0fc14e5ffb18f9b7b7c0f15ecb6eac5b5610bf76a1853459d19daf9"
+      },
+      "source_files_checked": 5
+    },
+    {
+      "name": "solana-sdk-ids",
+      "version": "3.1.0",
+      "archive": {
+        "bytes": 2219,
+        "sha256": "def234c1956ff616d46c9dd953f251fa7096ddbaa6d52b165218de97882b7280"
+      },
+      "source_files_checked": 5
+    },
+    {
+      "name": "solana-sdk-macro",
+      "version": "3.0.1",
+      "archive": {
+        "bytes": 3857,
+        "sha256": "8765316242300c48242d84a41614cb3388229ec353ba464f6fe62a733e41806f"
+      },
+      "source_files_checked": 5
+    },
+    {
+      "name": "solana-secp256k1-recover",
+      "version": "3.3.0",
+      "archive": {
+        "bytes": 16281,
+        "sha256": "ce0d2e8d53946f04e789476d6c407e4997b7fb412483df5fc10c075c65cb2edf"
+      },
+      "source_files_checked": 5
+    },
+    {
+      "name": "solana-serde-varint",
+      "version": "3.0.1",
+      "archive": {
+        "bytes": 4655,
+        "sha256": "950e5b83e839dc0f92c66afc124bb8f40e89bc90f0579e8ec5499296d27f54e3"
+      },
+      "source_files_checked": 5
+    },
+    {
+      "name": "solana-serialize-utils",
+      "version": "3.1.2",
+      "archive": {
+        "bytes": 6381,
+        "sha256": "761357b0853c9623bf12c1d2314b3d6160a85b087b84c45224fb85766d22616b"
+      },
+      "source_files_checked": 6
+    },
+    {
+      "name": "solana-sha256-hasher",
+      "version": "3.1.0",
+      "archive": {
+        "bytes": 2902,
+        "sha256": "db7dc3011ea4c0334aaaa7e7128cb390ecf546b28d412e9bf2064680f57f588f"
+      },
+      "source_files_checked": 5
+    },
+    {
+      "name": "solana-short-vec",
+      "version": "3.3.0",
+      "archive": {
+        "bytes": 17473,
+        "sha256": "c75782529cc4521114c1ecd71c7e2cdebd41a6fe9844b5d088fd36ef08c57c36"
+      },
+      "source_files_checked": 7
+    },
+    {
+      "name": "solana-slot-hashes",
+      "version": "3.2.0",
+      "archive": {
+        "bytes": 5442,
+        "sha256": "007d6bc909599eea325c9d09f7ff16ef6166c134876ff47a6a122d693d058dad"
+      },
+      "source_files_checked": 6
+    },
+    {
+      "name": "solana-slot-history",
+      "version": "3.2.0",
+      "archive": {
+        "bytes": 4847,
+        "sha256": "4560fde841a6f2001aedc33b74fe99840ee3d56a71fe9b98ee332303b8597900"
+      },
+      "source_files_checked": 6
+    },
+    {
+      "name": "solana-stable-layout",
+      "version": "3.0.1",
+      "archive": {
+        "bytes": 8460,
+        "sha256": "c9f6a291ba063a37780af29e7db14bdd3dc447584d8ba5b3fc4b88e2bbc982fa"
+      },
+      "source_files_checked": 10
+    },
+    {
+      "name": "solana-system-interface",
+      "version": "2.0.0",
+      "archive": {
+        "bytes": 22050,
+        "sha256": "4e1790547bfc3061f1ee68ea9d8dc6c973c02a163697b24263a8e9f2e6d4afa2"
+      },
+      "source_files_checked": 8
+    },
+    {
+      "name": "solana-sysvar",
+      "version": "3.1.1",
+      "archive": {
+        "bytes": 22057,
+        "sha256": "6690d3dd88f15c21edff68eb391ef8800df7a1f5cec84ee3e8d1abf05affdf74"
+      },
+      "source_files_checked": 16
+    },
+    {
+      "name": "solana-sysvar-id",
+      "version": "3.1.0",
+      "archive": {
+        "bytes": 2527,
+        "sha256": "17358d1e9a13e5b9c2264d301102126cf11a47fd394cdf3dec174fe7bc96e1de"
+      },
+      "source_files_checked": 5
+    },
+    {
+      "name": "solana-transaction-error",
+      "version": "3.4.0",
+      "archive": {
+        "bytes": 10359,
+        "sha256": "8a37cf28c58b03878d38c38411f0414d3a99a9e3b7e5ebb0f83f3317b2796d18"
+      },
+      "source_files_checked": 5
+    },
+    {
+      "name": "spki",
+      "version": "0.7.3",
+      "archive": {
+        "bytes": 16409,
+        "sha256": "d91ed6c858b01f942cd56b37a94b3e0a1798290327d1236e4d9cf4eaca44d29d"
+      },
+      "source_files_checked": 21
+    },
+    {
+      "name": "strsim",
+      "version": "0.11.1",
+      "archive": {
+        "bytes": 14266,
+        "sha256": "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
+      },
+      "source_files_checked": 13
+    },
+    {
+      "name": "subtle",
+      "version": "2.6.1",
+      "archive": {
+        "bytes": 14562,
+        "sha256": "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
+      },
+      "source_files_checked": 10
+    },
+    {
+      "name": "syn",
+      "version": "2.0.119",
+      "archive": {
+        "bytes": 307407,
+        "sha256": "872831b642d1a07999a962a351ed35b955ea2cfc8f3862091e2a240a84f17297"
+      },
+      "source_files_checked": 105
+    },
+    {
+      "name": "syn",
+      "version": "3.0.5",
+      "archive": {
+        "bytes": 313222,
+        "sha256": "12df2e0110f65b775f769bb17ef989067a1d931b2eb822bd4346631eeada89f9"
+      },
+      "source_files_checked": 104
+    },
+    {
+      "name": "thiserror",
+      "version": "2.0.20",
+      "archive": {
+        "bytes": 28969,
+        "sha256": "ec86235f5fcc2a73650310756d2ac5b138a5780bbbdfae3eeccec992c435ba4f"
+      },
+      "source_files_checked": 105
+    },
+    {
+      "name": "thiserror-impl",
+      "version": "2.0.20",
+      "archive": {
+        "bytes": 21436,
+        "sha256": "bc04cd3e1236dd4a98afca4569f2deb3f120e5422a4023be2cb683f8486292af"
+      },
+      "source_files_checked": 17
+    },
+    {
+      "name": "tinyvec",
+      "version": "1.13.2",
+      "archive": {
+        "bytes": 60587,
+        "sha256": "4cf0ded5c4e56918d8f8a339e1bb67d038d3bc6d144ac407904015ba2e4cde9b"
+      },
+      "source_files_checked": 38
+    },
+    {
+      "name": "tinyvec_macros",
+      "version": "0.1.1",
+      "archive": {
+        "bytes": 5865,
+        "sha256": "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
+      },
+      "source_files_checked": 8
+    },
+    {
+      "name": "toml_datetime",
+      "version": "1.1.1+spec-1.1.0",
+      "archive": {
+        "bytes": 17982,
+        "sha256": "3165f65f62e28e0115a00b2ebdd37eb6f3b641855f9d636d3cd4103767159ad7"
+      },
+      "source_files_checked": 11
+    },
+    {
+      "name": "toml_edit",
+      "version": "0.25.13+spec-1.1.0",
+      "archive": {
+        "bytes": 68589,
+        "sha256": "6975367e4d2ef766d86af01ffad14b622fecc8d4357a998fbc4deb6e9bacaf9b"
+      },
+      "source_files_checked": 45
+    },
+    {
+      "name": "toml_parser",
+      "version": "1.1.3+spec-1.1.0",
+      "archive": {
+        "bytes": 35888,
+        "sha256": "1d38ac1cf9b95face32296c0a3ede1fdc270627c9d9c02a7274dd6d960dc4d56"
+      },
+      "source_files_checked": 22
+    },
+    {
+      "name": "typenum",
+      "version": "1.20.1",
+      "archive": {
+        "bytes": 105479,
+        "sha256": "b6f5e870be6c3b371b77fe0ee0bafb859fa4964b4404c27de1d380043c4dda20"
+      },
+      "source_files_checked": 26
+    },
+    {
+      "name": "unicode-ident",
+      "version": "1.0.24",
+      "archive": {
+        "bytes": 49298,
+        "sha256": "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
+      },
+      "source_files_checked": 26
+    },
+    {
+      "name": "version_check",
+      "version": "0.9.5",
+      "archive": {
+        "bytes": 15554,
+        "sha256": "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
+      },
+      "source_files_checked": 13
+    },
+    {
+      "name": "wasi",
+      "version": "0.11.1+wasi-snapshot-preview1",
+      "archive": {
+        "bytes": 28477,
+        "sha256": "ccf3ec651a847eb01de73ccad15eb7d99f80485de043efb2f370cd654f4ea44b"
+      },
+      "source_files_checked": 17
+    },
+    {
+      "name": "wincode",
+      "version": "0.6.1",
+      "archive": {
+        "bytes": 117267,
+        "sha256": "bfc6339f1ba427bf7ad7c42403b28e524832ba2ddb5eef1bb2cc3b85db6b7b75"
+      },
+      "source_files_checked": 39
+    },
+    {
+      "name": "wincode-derive",
+      "version": "0.5.1",
+      "archive": {
+        "bytes": 23307,
+        "sha256": "11d582d9fc9d813264407a9e16bfa16846ccf15ef032f9bbcd700741bdc00255"
+      },
+      "source_files_checked": 10
+    },
+    {
+      "name": "windows-link",
+      "version": "0.2.1",
+      "archive": {
+        "bytes": 6133,
+        "sha256": "f0805222e57f7521d6a62e36fa9163bc891acd422f971defe97d64e70d0a4fe5"
+      },
+      "source_files_checked": 8
+    },
+    {
+      "name": "winnow",
+      "version": "1.0.4",
+      "archive": {
+        "bytes": 188513,
+        "sha256": "23b97319f7b8343df12cc98938e5c3eb436064524c8d2b4e30a1d3a36eecdf81"
+      },
+      "source_files_checked": 107
+    },
+    {
+      "name": "zeroize",
+      "version": "1.9.0",
+      "archive": {
+        "bytes": 24480,
+        "sha256": "e13c156562582aa81c60cb29407084cdb54c4164760106ab78e6c5b0858cf64e"
+      },
+      "source_files_checked": 16
+    }
+  ],
+  "toolchain_files": {
+    "rust/bin/cargo.exe": {
+      "bytes": 32891392,
+      "sha256": "7f90f84ff2d811caaab060faf69d5221cad01093eb3eeb654d540271048cad03"
+    },
+    "rust/bin/rustc.exe": {
+      "bytes": 110592,
+      "sha256": "8901dc680c791aff34e0744539f5d135b6147b84a105f3487ff6a1d8c1d25e9c"
+    },
+    "rust/lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe": {
+      "bytes": 55570944,
+      "sha256": "dae2a9c3b35e263e8df4b7c432e2eab60343b65eda7de3dfd092a0c68c3e02ba"
+    },
+    "llvm/bin/llvm-readelf.exe": {
+      "bytes": 7532544,
+      "sha256": "9c0ad688a3aa61c28601acae8fa23f6869ad4f1d95e2ea7a77114aae11e1d83a"
+    },
+    "version.md": {
+      "bytes": 159,
+      "sha256": "f3e39eb0e441d8e47aac60871d3da6f4aa0a384c9a10b48e77e9bcf22c8e3862"
+    },
+    "rust/bin/rustc_driver-caff655fd74b8b7a.dll": {
+      "bytes": 134854656,
+      "sha256": "d8420a271e6fc86fe0db7bb737e20e43170d27b599543ddd011b1a07e5ffccd9"
+    },
+    "rust/bin/std-2137bdd3874dafb5.dll": {
+      "bytes": 852480,
+      "sha256": "d6613a5432ec4610f714266889a18b1bdccb6035b3a3add2019233a5eb554637"
+    },
+    "rust/lib/rustlib/sbpfv3-solana-solana/lib/libaddr2line-82a20b11f71a772a.rlib": {
+      "bytes": 25078,
+      "sha256": "03c1ae5cc25937ef546108d020a5a2cafc61f1a526753f3f09115ec19310649f"
+    },
+    "rust/lib/rustlib/sbpfv3-solana-solana/lib/libaddr2line-82a20b11f71a772a.rmeta": {
+      "bytes": 488008,
+      "sha256": "43eb6f037fd4ca78363eb542dd4f8ccb048e2a70c31726fb9335c2498e6b3e73"
+    },
+    "rust/lib/rustlib/sbpfv3-solana-solana/lib/libadler2-98cbf2afae003bc0.rlib": {
+      "bytes": 9184,
+      "sha256": "4f44a68528efaea7288b98a2c84f65f3d48a6229dd9ab63415f7685e1ceb8204"
+    },
+    "rust/lib/rustlib/sbpfv3-solana-solana/lib/libadler2-98cbf2afae003bc0.rmeta": {
+      "bytes": 20741,
+      "sha256": "afe8557cc6f854726ff9e438f5d8d4a02d1c21fd6d1c0fb25d63f5a536831dba"
+    },
+    "rust/lib/rustlib/sbpfv3-solana-solana/lib/liballoc-dfb769e0b332cc60.rlib": {
+      "bytes": 250440,
+      "sha256": "d7f0555cc944d2c3e6009f2ce3cd8126a086b5c0463635bc7e9e8b35f4c6ecd5"
+    },
+    "rust/lib/rustlib/sbpfv3-solana-solana/lib/liballoc-dfb769e0b332cc60.rmeta": {
+      "bytes": 7322043,
+      "sha256": "5d816b64b4550c09c6b05123519769263ea46e551f94a456b0457a273f74c912"
+    },
+    "rust/lib/rustlib/sbpfv3-solana-solana/lib/libcfg_if-9b84132404305b83.rlib": {
+      "bytes": 3646,
+      "sha256": "42244538b157a332ced7d867617832144685beab4ca6a695c9ae0cc2f5e64c2f"
+    },
+    "rust/lib/rustlib/sbpfv3-solana-solana/lib/libcfg_if-9b84132404305b83.rmeta": {
+      "bytes": 5692,
+      "sha256": "5e4208d77d92ab3625bbd0238044beef2da8724a840def00f53db9b681a2fadd"
+    },
+    "rust/lib/rustlib/sbpfv3-solana-solana/lib/libcompiler_builtins-962e71416b6502a9.rlib": {
+      "bytes": 2122720,
+      "sha256": "fa3854e3965ffbeb6b50c64c429c67883d8596c96c52be235f65dcc1096990f3"
+    },
+    "rust/lib/rustlib/sbpfv3-solana-solana/lib/libcompiler_builtins-962e71416b6502a9.rmeta": {
+      "bytes": 2009139,
+      "sha256": "3a18be85cf120615c8b91b22c0c475d10b7f5d9670275939fca83c9b1e38844f"
+    },
+    "rust/lib/rustlib/sbpfv3-solana-solana/lib/libcore-05b9b4dd8c39b0d7.rlib": {
+      "bytes": 1254958,
+      "sha256": "a2b9e6074a8d6cadae149ab6d64235910c8055816493a0329f80e585d2b1db16"
+    },
+    "rust/lib/rustlib/sbpfv3-solana-solana/lib/libcore-05b9b4dd8c39b0d7.rmeta": {
+      "bytes": 40251135,
+      "sha256": "523ab524bb4c92dc765f49f37e410affb14c93b3780131c32a5eb37b9417075e"
+    },
+    "rust/lib/rustlib/sbpfv3-solana-solana/lib/libgetopts-725f49de98d83d9c.rlib": {
+      "bytes": 168230,
+      "sha256": "120eac3cda472e0898e45804a449567d4a1652f51ca65a8c5c6ca98de6cab1eb"
+    },
+    "rust/lib/rustlib/sbpfv3-solana-solana/lib/libgetopts-725f49de98d83d9c.rmeta": {
+      "bytes": 224224,
+      "sha256": "1ca3daa666f0999e59c6272e11aed73c319a1354bdc111317fccf58028cc2a28"
+    },
+    "rust/lib/rustlib/sbpfv3-solana-solana/lib/libgimli-7f5e53b83c06cf48.rlib": {
+      "bytes": 808920,
+      "sha256": "bbdebfd832577cfc21199e4f35b5da42b372ee20b20f1493093667eaf493203a"
+    },
+    "rust/lib/rustlib/sbpfv3-solana-solana/lib/libgimli-7f5e53b83c06cf48.rmeta": {
+      "bytes": 5311677,
+      "sha256": "6ae03e5d7d4548262094eb4c3409c7c1270fddebce0bee031f85490891af774c"
+    },
+    "rust/lib/rustlib/sbpfv3-solana-solana/lib/libhashbrown-bafa1acc77cb7b40.rlib": {
+      "bytes": 13598,
+      "sha256": "83013ae3f3a8fc884e6b73f9ff318328da7c6d846b9c1c1948b8bc146d794edc"
+    },
+    "rust/lib/rustlib/sbpfv3-solana-solana/lib/libhashbrown-bafa1acc77cb7b40.rmeta": {
+      "bytes": 1640995,
+      "sha256": "1efe0f3854cbd2a79ba4994a09b314a422fb96c628a250da7e6e996abb6478a6"
+    },
+    "rust/lib/rustlib/sbpfv3-solana-solana/lib/liblibc-7ea744d115e10322.rlib": {
+      "bytes": 3634,
+      "sha256": "3c67821bc2bbf8ee6c59c690c171310a820167eaf114a0b2d7aa50c09b6cc668"
+    },
+    "rust/lib/rustlib/sbpfv3-solana-solana/lib/liblibc-7ea744d115e10322.rmeta": {
+      "bytes": 29001,
+      "sha256": "879f9436f8e3ff271f1c74b5e6b2ff095dbbdd48a601d8d42e788e4d7ae1bcb6"
+    },
+    "rust/lib/rustlib/sbpfv3-solana-solana/lib/libmemchr-fe369a78938baf93.rlib": {
+      "bytes": 66470,
+      "sha256": "b891c564da79087bd2e4643977668c723febeda4d07e8e2804fac858caf45a68"
+    },
+    "rust/lib/rustlib/sbpfv3-solana-solana/lib/libmemchr-fe369a78938baf93.rmeta": {
+      "bytes": 605195,
+      "sha256": "6ef68f3c14956258338c7f19d643b7b5101db7988f682623479ad932f5235fff"
+    },
+    "rust/lib/rustlib/sbpfv3-solana-solana/lib/libminiz_oxide-b4504fa7f48641ab.rlib": {
+      "bytes": 101422,
+      "sha256": "48d6e55b99322819ce677ef61e5546f66b0b49d31ab98cfc12e908669842cfa4"
+    },
+    "rust/lib/rustlib/sbpfv3-solana-solana/lib/libminiz_oxide-b4504fa7f48641ab.rmeta": {
+      "bytes": 126547,
+      "sha256": "f2ec33dbb6cc20a03f1d80b0078c75ce260e6e92d9333f9e7f05a0672e85e316"
+    },
+    "rust/lib/rustlib/sbpfv3-solana-solana/lib/libobject-60c1b73f37c77d7a.rlib": {
+      "bytes": 171754,
+      "sha256": "ec3f6b59fd047183636803b55851629139b430223814e8a1edee5de807102333"
+    },
+    "rust/lib/rustlib/sbpfv3-solana-solana/lib/libobject-60c1b73f37c77d7a.rmeta": {
+      "bytes": 8538036,
+      "sha256": "b8eac33d845adfe03d40ce5ee9983a74b601e89f280e069f408298b346235115"
+    },
+    "rust/lib/rustlib/sbpfv3-solana-solana/lib/libpanic_abort-6a29bd0a119d50c8.rlib": {
+      "bytes": 6616,
+      "sha256": "414a61441cbf8e47f748adcf7fa23794007ce4d26ce2e72e03be450aa5baab80"
+    },
+    "rust/lib/rustlib/sbpfv3-solana-solana/lib/libpanic_abort-6a29bd0a119d50c8.rmeta": {
+      "bytes": 2859,
+      "sha256": "e8428c87d699d89b1945b9d9b9ebfa1da8c4cc9500d78d489fcefdc7a9a5f487"
+    },
+    "rust/lib/rustlib/sbpfv3-solana-solana/lib/libpanic_unwind-616b3fe20ca075a4.rlib": {
+      "bytes": 5258,
+      "sha256": "1281de4e738fe9eb45c1d0d083bd7dfccaf72f08960c05aac01f99af23504002"
+    },
+    "rust/lib/rustlib/sbpfv3-solana-solana/lib/libpanic_unwind-616b3fe20ca075a4.rmeta": {
+      "bytes": 4630,
+      "sha256": "6225768b9f68fb2c4e3c8120dbfc80b76ff11ab78766698b61030b1a13e3fa68"
+    },
+    "rust/lib/rustlib/sbpfv3-solana-solana/lib/libproc_macro-36c797bc1c70b122.rlib": {
+      "bytes": 999782,
+      "sha256": "83ee41e9f29501a4abe517413b66f153bbc65db5524faa961501886b0c1e0e55"
+    },
+    "rust/lib/rustlib/sbpfv3-solana-solana/lib/libproc_macro-36c797bc1c70b122.rmeta": {
+      "bytes": 1035710,
+      "sha256": "9776141f295eb90ff05729495664bbf7935abb81f47ede4280da14d77bb5c12b"
+    },
+    "rust/lib/rustlib/sbpfv3-solana-solana/lib/librustc_literal_escaper-47b0c601a89d97aa.rlib": {
+      "bytes": 3732,
+      "sha256": "fa4dbbc20ad0468d78b16600441ae989c7d30a400d7bdd68d966973f345025ad"
+    },
+    "rust/lib/rustlib/sbpfv3-solana-solana/lib/librustc_literal_escaper-47b0c601a89d97aa.rmeta": {
+      "bytes": 121856,
+      "sha256": "971b749df7a4d82e42f600f4ac2f094e0e8868d677f6cdd63db5676fb1ab0cab"
+    },
+    "rust/lib/rustlib/sbpfv3-solana-solana/lib/librustc_std_workspace_alloc-c06fc4e061a090c0.rlib": {
+      "bytes": 3764,
+      "sha256": "0f9abfdc235bb5de1c9d8bc7c35d9b401baa9f06342c44be7df38e83d690f8e4"
+    },
+    "rust/lib/rustlib/sbpfv3-solana-solana/lib/librustc_std_workspace_alloc-c06fc4e061a090c0.rmeta": {
+      "bytes": 2103,
+      "sha256": "405a7c0c0581318ae9aef5139e099ea2faad93a33079f523fd5193158e7d199c"
+    },
+    "rust/lib/rustlib/sbpfv3-solana-solana/lib/librustc_std_workspace_core-65d1cb60d1847b40.rlib": {
+      "bytes": 3770,
+      "sha256": "1bf391a0152be8c41727eb9321054433c9de731415579d1b6cccba76512a2858"
+    },
+    "rust/lib/rustlib/sbpfv3-solana-solana/lib/librustc_std_workspace_core-65d1cb60d1847b40.rmeta": {
+      "bytes": 5757,
+      "sha256": "77fbefd25557ea2374a04bcc6badd294a33c07f7290921ac2b179d4802376a20"
+    },
+    "rust/lib/rustlib/sbpfv3-solana-solana/lib/librustc_std_workspace_std-6312cb604999ebff.rlib": {
+      "bytes": 3752,
+      "sha256": "0fe635e254f8917231dac63d53642fde06ff28a850f109133ea54fee8675a861"
+    },
+    "rust/lib/rustlib/sbpfv3-solana-solana/lib/librustc_std_workspace_std-6312cb604999ebff.rmeta": {
+      "bytes": 6476,
+      "sha256": "7dcd995452f1074e08d9440754f847738f708c569f3fbdb3a10bcd5844857fd1"
+    },
+    "rust/lib/rustlib/sbpfv3-solana-solana/lib/libstd-7ae51ceda2fca0c7.rlib": {
+      "bytes": 626946,
+      "sha256": "4b8ed3e60c9062de49530304ce6869ed5c16c78e03082c3acec8b623e48dee19"
+    },
+    "rust/lib/rustlib/sbpfv3-solana-solana/lib/libstd-7ae51ceda2fca0c7.rmeta": {
+      "bytes": 6391473,
+      "sha256": "3e6c04176dad12738680a5223017e00835efc10504ca93a048349ff53cc3bacf"
+    },
+    "rust/lib/rustlib/sbpfv3-solana-solana/lib/libstd_detect-8f2332e2cecf50d8.rlib": {
+      "bytes": 3678,
+      "sha256": "c5bc7bdfadf06caae32f134891401b4f6980f6a56eae0629f28091609c8fea3f"
+    },
+    "rust/lib/rustlib/sbpfv3-solana-solana/lib/libstd_detect-8f2332e2cecf50d8.rmeta": {
+      "bytes": 220892,
+      "sha256": "aa7bace5f41ab69542bbfbb7c8491ee7555bcb424627b249a685623b1b6762d9"
+    },
+    "rust/lib/rustlib/sbpfv3-solana-solana/lib/libsysroot-303c5a3a4bfc3b57.rlib": {
+      "bytes": 3656,
+      "sha256": "7f983bf4dd300751ac8915c54b57cbb2bfad1aed07e51f025c2ba9c013d1f617"
+    },
+    "rust/lib/rustlib/sbpfv3-solana-solana/lib/libsysroot-303c5a3a4bfc3b57.rmeta": {
+      "bytes": 1747,
+      "sha256": "221f1cc9310da68d8bb77df0d346daef1bac86336c581525247a356cdd38c127"
+    },
+    "rust/lib/rustlib/sbpfv3-solana-solana/lib/libtest-df9dd913773d475f.rlib": {
+      "bytes": 1251228,
+      "sha256": "1b368b0bd8db7aa511f6b7036bba382be490f635a96b889ca0dba70f5820538c"
+    },
+    "rust/lib/rustlib/sbpfv3-solana-solana/lib/libtest-df9dd913773d475f.rmeta": {
+      "bytes": 978697,
+      "sha256": "63ebd4dec3fa07f0278b1e83b8c2087580cf0b09198c5c91044de024027672f7"
+    },
+    "rust/lib/rustlib/sbpfv3-solana-solana/lib/libunwind-e5fe2f16a391016f.rlib": {
+      "bytes": 3646,
+      "sha256": "25b851bc9e0b61f7e8de51baf9dc62a0037a1c03c55500c63a26076ccf48735e"
+    },
+    "rust/lib/rustlib/sbpfv3-solana-solana/lib/libunwind-e5fe2f16a391016f.rmeta": {
+      "bytes": 1754,
+      "sha256": "d616e21d0ea75fe98a3864320b4c74661eefe8604a3c9c8e517f4b68dd7ba4a3"
+    }
+  },
+  "python": {
+    "executable": "python",
+    "version": "3.12.14",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "solders": "0.29.0"
+  },
+  "evidence": [
+    "build-dev02.log",
+    "vm-original13.log",
+    "vm-differential-dev01.log",
+    "target-repro-01/result.json",
+    "target-repro-02/result.json",
+    "repro-comparison.json"
+  ],
+  "bounds": "Local artifact/input identity and retained local test reports; not independent runtime execution, formal equivalence, reproducibility across paths/hosts or RPC/deployment qualification."
+}

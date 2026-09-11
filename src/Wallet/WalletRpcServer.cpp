@@ -35,10 +35,13 @@
 #include "Rpc/JsonRpc.h"
 #include "WalletLegacy/WalletHelper.h"
 #include "WalletLegacy/WalletLegacy.h"
+#include "Wallet/SwapWallet.h"
+#include "crypto_pq/PqDerive.h"
 #include "Common/StringTools.h"
 #include "Common/Base58.h"
 #include "Common/Util.h"
 #include "WalletRpcServer.h"
+#include "Common/SecureMemory.h"
 #include "AccountNumber.h"
 #include "CryptoNoteCore/TransactionExtra.h"
 #include "Wallet/PqRecipient.h"
@@ -187,6 +190,12 @@ bool wallet_rpc_server::init(const boost::program_options::variables_map& vm)
     return false;
   }
 
+  if (m_currency.swapLab() && (m_bind_ip != "127.0.0.1" ||
+      m_rpcUser.empty() || m_rpcPassword.empty() || m_enable_ssl)) {
+    logger(Logging::ERROR) << "Swap lab wallet RPC requires literal loopback, both credentials and no SSL listener";
+    return false;
+  }
+
   // Validate SSL files
   boost::system::error_code ec;
   if (!chain_file_path.has_parent_path()) chain_file_path = data_dir_path / chain_file_path;
@@ -252,9 +261,26 @@ void wallet_rpc_server::processRequest(const CryptoNote::HttpRequest& request, C
     jsonRequest.parseRequest(request.getBody());
     jsonResponse.setId(jsonRequest.getId());
 
+    if (jsonRequest.getMethod().compare(0, 5, "swap_") == 0) {
+      const auto& headers = request.getHeaders();
+      const auto type = headers.find("content-type");
+      if (request.getMethod() != "POST" || headers.count("origin") ||
+          type == headers.end() || type->second.substr(0, type->second.find(';')) != "application/json") {
+        throw JsonRpcError(WALLET_RPC_ERROR_CODE_UNKNOWN_ERROR, "Swap RPC requires a direct JSON POST");
+      }
+      swapWallet(); // Lab, listener, credentials and concrete wallet gate before parsing witnesses.
+    }
+
     static const std::unordered_map<std::string, JsonMemberMethod> s_methods =
     {
             { "get_balance"       , makeMemberMethod(&wallet_rpc_server::on_get_balance)       },
+            { "swap_role", makeMemberMethod(&wallet_rpc_server::on_swap_role) },
+            { "swap_scan_height", makeMemberMethod(&wallet_rpc_server::on_swap_scan_height) },
+            { "swap_prepare_funding", makeMemberMethod(&wallet_rpc_server::on_swap_prepare_funding) },
+            { "swap_prepare_spend", makeMemberMethod(&wallet_rpc_server::on_swap_prepare_spend) },
+            { "swap_funding_capabilities", makeMemberMethod(&wallet_rpc_server::on_swap_funding_capabilities) },
+            { "swap_prepare_funding_once", makeMemberMethod(&wallet_rpc_server::on_swap_prepare_funding_once) },
+            { "swap_get_funding_preparation", makeMemberMethod(&wallet_rpc_server::on_swap_get_funding_preparation) },
             { "transfer"          , makeMemberMethod(&wallet_rpc_server::on_transfer)          },
             { "store"             , makeMemberMethod(&wallet_rpc_server::on_store)             },
             { "stop_wallet"       , makeMemberMethod(&wallet_rpc_server::on_stop_wallet)       },
@@ -862,6 +888,132 @@ bool wallet_rpc_server::on_register_pq_account(const wallet_rpc::COMMAND_RPC_REG
     throw JsonRpc::JsonRpcError(WALLET_RPC_ERROR_CODE_GENERIC_TRANSFER_ERROR, e.what());
   }
 
+  return true;
+}
+
+namespace {
+Crypto::Hash swapRpcHash(const std::string& hex, const char* field) {
+  Crypto::Hash out{};
+  if (hex.size() != 64 || !Common::podFromHex(hex, out)) throw std::invalid_argument(field);
+  return out;
+}
+CryptoPQ::Rho swapRpcRho(const std::string& hex) {
+  CryptoPQ::Rho out{}; size_t written = 0;
+  if (hex.size() != 64 || !Common::fromHex(hex, out.data(), out.size(), written) || written != out.size())
+    throw std::invalid_argument("rho must contain exactly 32 bytes");
+  return out;
+}
+Crypto::Hash swapRpcCommit(WalletLegacy& wallet, const CryptoPQ::Rho& rho) {
+  PqTrackingKeys keys;
+  if (!wallet.getPqTrackingKeys(keys)) throw std::runtime_error("PQ identity required");
+  const auto value = CryptoPQ::spendCommit(keys.spendPub, rho);
+  Crypto::Hash out{}; std::memcpy(out.data, value.data(), value.size()); return out;
+}
+void swapRpcResult(const SwapWalletPrepared& prepared, wallet_rpc::SwapPreparedResponse& result) {
+  result.tx_hash = Common::podToHex(prepared.txid);
+  result.tx_as_hex = Common::toHex(prepared.wire);
+  result.fee_atoms = prepared.fee;
+  result.principal_atoms = prepared.principal;
+}
+Crypto::Hash swapRpcCanonicalHash(const std::string& hex,const char* field) {
+  const auto hash=swapRpcHash(hex,field);
+  if(Common::podToHex(hash)!=hex)throw std::invalid_argument(field);
+  return hash;
+}
+void swapOperationResult(const SwapFundingPreparation& prepared,wallet_rpc::SwapFundingPreparationResponse& result) {
+  result.operation_id=Common::podToHex(prepared.operation);
+  result.status=prepared.status==SwapFundingPreparation::Absent?"absent":
+      prepared.status==SwapFundingPreparation::Draft?"draft":"prepared";
+  if(prepared.status!=SwapFundingPreparation::Absent) {
+    result.request_hash=Common::podToHex(prepared.requestHash);
+    result.draft_hash=Common::podToHex(prepared.draftHash);
+    result.fee_atoms=prepared.prepared.fee;result.principal_atoms=prepared.prepared.principal;
+  }
+  if(prepared.status==SwapFundingPreparation::Prepared)swapRpcResult(prepared.prepared,result);
+}
+}
+
+WalletLegacy& wallet_rpc_server::swapWallet() {
+  if (!m_currency.swapLab() || m_bind_ip != "127.0.0.1" || m_rpcUser.empty() || m_rpcPassword.empty())
+    throw JsonRpc::JsonRpcError(WALLET_RPC_ERROR_CODE_UNKNOWN_ERROR, "Swap RPC requires authenticated loopback laboratory mode");
+  auto* wallet = dynamic_cast<WalletLegacy*>(&m_wallet);
+  if (!wallet || !wallet->pqEnabled()) throw std::runtime_error("PQ wallet required");
+  return *wallet;
+}
+
+bool wallet_rpc_server::on_swap_role(const wallet_rpc::COMMAND_RPC_SWAP_ROLE::request& req,
+                                    wallet_rpc::COMMAND_RPC_SWAP_ROLE::response& res) {
+  auto& wallet = swapWallet();
+  res.commitment = Common::podToHex(swapRpcCommit(wallet, swapRpcRho(req.rho)));
+  res.address = wallet.getPqAddress();
+  res.genesis_hash = Common::podToHex(m_currency.genesisBlockHash());
+  return true;
+}
+
+bool wallet_rpc_server::on_swap_scan_height(const wallet_rpc::COMMAND_RPC_GET_HEIGHT::request&,
+                                           wallet_rpc::COMMAND_RPC_GET_HEIGHT::response& res) {
+  res.height = swapWallet().pqSyncedHeight();
+  return true;
+}
+
+bool wallet_rpc_server::on_swap_prepare_funding(const wallet_rpc::COMMAND_RPC_SWAP_PREPARE_FUNDING::request& req,
+                                               wallet_rpc::COMMAND_RPC_SWAP_PREPARE_FUNDING::response& res) {
+  auto& wallet = swapWallet();
+  SwapWalletFundingRequest request;
+  request.genesis = swapRpcHash(req.genesis_hash, "invalid genesis hash");
+  request.principal = req.principal_atoms;
+  request.refundRho = swapRpcRho(req.refund_rho);
+  request.contract.nonce = swapRpcHash(req.nonce, "invalid contract nonce");
+  request.contract.hashlock = swapRpcHash(req.hashlock, "invalid hashlock");
+  request.contract.claimCommit = swapRpcHash(req.claim_commitment, "invalid claimant commitment");
+  request.contract.refundCommit = swapRpcCommit(wallet, request.refundRho);
+  request.contract.refundHeight = req.refund_height;
+  swapRpcResult(wallet.prepareSwapFunding(request), res);
+  return true;
+}
+
+bool wallet_rpc_server::on_swap_prepare_spend(const wallet_rpc::COMMAND_RPC_SWAP_PREPARE_SPEND::request& req,
+                                             wallet_rpc::COMMAND_RPC_SWAP_PREPARE_SPEND::response& res) {
+  auto& wallet = swapWallet();
+  if (req.branch != 1 && req.branch != 2) throw std::invalid_argument("invalid swap branch");
+  SwapWalletSpendRequest request;
+  request.genesis = swapRpcHash(req.genesis_hash, "invalid genesis hash");
+  request.fundingTxid = swapRpcHash(req.funding_txid, "invalid funding transaction id");
+  request.outputIndex = req.output_index;
+  request.branch = static_cast<uint8_t>(req.branch);
+  request.rho = swapRpcRho(req.rho);
+  if ((req.branch == 1 && req.secret.size() != 64) || (req.branch == 2 && !req.secret.empty()) ||
+      !Common::fromHex(req.secret, request.secret)) throw std::invalid_argument("invalid secret size/encoding");
+  swapRpcResult(wallet.prepareSwapSpend(request), res);
+  return true;
+}
+
+bool wallet_rpc_server::on_swap_funding_capabilities(const wallet_rpc::COMMAND_RPC_SWAP_FUNDING_CAPABILITIES::request&,
+    wallet_rpc::COMMAND_RPC_SWAP_FUNDING_CAPABILITIES::response&) {
+  auto& wallet=swapWallet();AccountKeys account;wallet.getAccountKeys(account);
+  Tools::SecretLock scrub(&account,sizeof(account));
+  if(account.spendSecretKey==NULL_SECRET_KEY)throw std::invalid_argument("spend-capable wallet required for durable swap preparation");
+  return true;
+}
+bool wallet_rpc_server::on_swap_get_funding_preparation(const wallet_rpc::COMMAND_RPC_SWAP_GET_FUNDING_PREPARATION::request& req,
+    wallet_rpc::COMMAND_RPC_SWAP_GET_FUNDING_PREPARATION::response& res) {
+  auto& wallet=swapWallet();
+  const auto operation=swapRpcCanonicalHash(req.operation_id,"invalid swap operation id");
+  swapOperationResult(wallet.getSwapFundingPreparation(m_walletFilename+".swap-funding-v1",operation),res);
+  return true;
+}
+bool wallet_rpc_server::on_swap_prepare_funding_once(const wallet_rpc::COMMAND_RPC_SWAP_PREPARE_FUNDING_ONCE::request& req,
+    wallet_rpc::COMMAND_RPC_SWAP_PREPARE_FUNDING_ONCE::response& res) {
+  auto& wallet=swapWallet();SwapWalletFundingRequest request;
+  const auto operation=swapRpcCanonicalHash(req.operation_id,"invalid swap operation id");
+  request.genesis=swapRpcCanonicalHash(req.genesis_hash,"invalid genesis hash");
+  request.principal=req.principal_atoms;request.refundRho=swapRpcRho(req.refund_rho);
+  if(Common::toHex(request.refundRho.data(),request.refundRho.size())!=req.refund_rho)throw std::invalid_argument("noncanonical refund rho");
+  request.contract.nonce=swapRpcCanonicalHash(req.nonce,"invalid contract nonce");
+  request.contract.hashlock=swapRpcCanonicalHash(req.hashlock,"invalid hashlock");
+  request.contract.claimCommit=swapRpcCanonicalHash(req.claim_commitment,"invalid claimant commitment");
+  request.contract.refundCommit=swapRpcCommit(wallet,request.refundRho);request.contract.refundHeight=req.refund_height;
+  swapOperationResult(wallet.prepareSwapFundingOnce(m_walletFilename+".swap-funding-v1",operation,request),res);
   return true;
 }
 

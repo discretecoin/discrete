@@ -1206,6 +1206,81 @@ bool WalletLegacy::restorePqSpendSeed(
   return true;
 }
 
+namespace {
+SwapOutpointInfo readWalletSwapOutpoint(INode& node, const Crypto::Hash& txid,
+                                      uint32_t index, const Crypto::Hash& tag) {
+  struct Pending {
+    SwapOutpointInfo result;
+    std::promise<std::error_code> done;
+  };
+  auto pending = std::make_shared<Pending>();
+  auto future = pending->done.get_future();
+  node.getSwapOutpoint(txid, index, tag, pending->result,
+      [pending](std::error_code ec) { pending->done.set_value(ec); });
+  // The callback owns result storage even if the caller times out.
+  if (future.wait_for(std::chrono::seconds(30)) != std::future_status::ready)
+    throw std::system_error(std::make_error_code(std::errc::timed_out), "swap outpoint observation");
+  const auto ec = future.get();
+  if (ec) throw std::system_error(ec, "swap outpoint observation");
+  return std::move(pending->result);
+}
+}
+
+SwapWalletPrepared WalletLegacy::prepareSwapFunding(const SwapWalletFundingRequest& request) {
+  throwIfNotInitialised();
+  if (!m_currency.swapLab()) throw std::invalid_argument("swap preparation requires local swap lab");
+  AccountKeys account; getAccountKeys(account);
+  Tools::SecretLock accountScrub(&account, sizeof(account));
+  if (account.spendSecretKey == NULL_SECRET_KEY) throw std::invalid_argument("tracking wallet cannot prepare swaps");
+  auto keys = deriveVerifiedSpendKeys(pqSeedMasterFromSpendSecret(account.spendSecretKey));
+  Tools::SecretLock keyScrub(&keys, sizeof(keys));
+  return prepareSwapWalletFunding(request, pqSpendableInputs(), keys, m_currency.genesisBlockHash(),
+      pqSyncedHeight(), [this](const Crypto::Hash& txid, uint32_t index, const Crypto::Hash& tag) {
+        return readWalletSwapOutpoint(m_node, txid, index, tag);
+      });
+}
+
+SwapWalletPrepared WalletLegacy::prepareSwapSpend(const SwapWalletSpendRequest& request) {
+  throwIfNotInitialised();
+  if (!m_currency.swapLab()) throw std::invalid_argument("swap preparation requires local swap lab");
+  AccountKeys account; getAccountKeys(account);
+  Tools::SecretLock accountScrub(&account, sizeof(account));
+  if (account.spendSecretKey == NULL_SECRET_KEY) throw std::invalid_argument("tracking wallet cannot prepare swaps");
+  auto keys = deriveVerifiedSpendKeys(pqSeedMasterFromSpendSecret(account.spendSecretKey));
+  Tools::SecretLock keyScrub(&keys, sizeof(keys));
+  return prepareSwapWalletSpend(request, keys, m_currency.genesisBlockHash(),
+      [this](const Crypto::Hash& txid, uint32_t index, const Crypto::Hash& tag) {
+        return readWalletSwapOutpoint(m_node, txid, index, tag);
+      });
+}
+
+SwapFundingPreparation WalletLegacy::prepareSwapFundingOnce(const std::string& storePath,
+    const Crypto::Hash& operation,const SwapWalletFundingRequest& request) {
+  throwIfNotInitialised();
+  if (!m_currency.swapLab()) throw std::invalid_argument("swap preparation requires local swap lab");
+  AccountKeys account; getAccountKeys(account);
+  Tools::SecretLock accountScrub(&account,sizeof(account));
+  if (account.spendSecretKey==NULL_SECRET_KEY) throw std::invalid_argument("tracking wallet cannot prepare swaps");
+  auto keys=deriveVerifiedSpendKeys(pqSeedMasterFromSpendSecret(account.spendSecretKey));
+  Tools::SecretLock keyScrub(&keys,sizeof(keys));
+  return prepareSwapWalletFundingOnce(storePath,operation,request,pqSpendableInputs(),keys,
+      m_currency.genesisBlockHash(),pqSyncedHeight(),[this](const Crypto::Hash& txid,uint32_t index,const Crypto::Hash& tag) {
+        return readWalletSwapOutpoint(m_node,txid,index,tag);
+      });
+}
+
+SwapFundingPreparation WalletLegacy::getSwapFundingPreparation(const std::string& storePath,
+    const Crypto::Hash& operation) {
+  throwIfNotInitialised();
+  if (!m_currency.swapLab()) throw std::invalid_argument("swap preparation requires local swap lab");
+  AccountKeys account; getAccountKeys(account);
+  Tools::SecretLock accountScrub(&account,sizeof(account));
+  if (account.spendSecretKey==NULL_SECRET_KEY) throw std::invalid_argument("tracking wallet cannot read private swap drafts");
+  auto keys=deriveVerifiedSpendKeys(pqSeedMasterFromSpendSecret(account.spendSecretKey));
+  Tools::SecretLock keyScrub(&keys,sizeof(keys));
+  return lookupSwapWalletFunding(storePath,operation,keys,m_currency.genesisBlockHash());
+}
+
 PqSendResult WalletLegacy::sendPqTransfer(const std::vector<PqSendOutput>& recipients,
                                           uint64_t fee, uint64_t unlockHeight,
                                           const std::vector<uint8_t>& extra,

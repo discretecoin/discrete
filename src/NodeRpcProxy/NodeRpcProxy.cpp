@@ -19,6 +19,7 @@
 #include "NodeRpcProxy.h"
 
 #include "Common/DaemonTrust.h"
+#include "CryptoNoteCore/SwapValidation.h"
 #include "NodeErrors.h"
 
 #include <system_error>
@@ -925,6 +926,54 @@ std::error_code NodeRpcProxy::doGetTransactionHashesByPaymentId(const Crypto::Ha
 
   transactionHashes = std::move(resp.transactionHashes);
   return ec;
+}
+
+void NodeRpcProxy::getSwapOutpoint(const Crypto::Hash& txid, uint32_t index,
+    const Crypto::Hash& spendTag, SwapOutpointInfo& result, const Callback& callback) {
+  std::lock_guard<std::mutex> lock(m_mutex);
+  if (m_state != STATE_INITIALIZED) { callback(make_error_code(error::NOT_INITIALIZED)); return; }
+  scheduleRequest(std::bind(&NodeRpcProxy::doGetSwapOutpoint, this, txid, index, spendTag, std::ref(result)), callback);
+}
+
+std::error_code NodeRpcProxy::doGetSwapOutpoint(Crypto::Hash txid, uint32_t index,
+    Crypto::Hash spendTag, SwapOutpointInfo& result) {
+  if (!Common::isLoopbackHost(m_nodeHost)) return std::make_error_code(std::errc::permission_denied);
+  COMMAND_RPC_SWAP_LAB_OUTPOINT::request request;
+  request.txid = Common::podToHex(txid); request.index = index;
+  if (spendTag != Crypto::Hash{}) request.spend_tag = Common::podToHex(spendTag);
+  COMMAND_RPC_SWAP_LAB_OUTPOINT::response response;
+  auto ec = jsonCommand("get_swap_outpoint", request, response);
+  if (ec) return ec;
+  SwapOutpointInfo next;
+  auto decode = [](const std::string& value, Crypto::Hash& hash) {
+    size_t size = 0;
+    return value.size() == 64 && Common::fromHex(value, hash.data, 32, size) && size == 32;
+  };
+  if (!decode(response.genesis_hash, next.genesis) || !decode(response.tip_hash, next.tipHash))
+    return make_error_code(error::INTERNAL_NODE_ERROR);
+  next.found = response.found; next.inChain = response.in_chain; next.inPool = response.in_pool;
+  next.spentKnown = response.spent_known; next.spent = response.spent; next.spentInPool = response.spent_in_pool;
+  next.height = response.height; next.blockHeight = response.block_height;
+  next.confirmations = response.confirmations; next.amount = response.amount_atoms;
+  if (next.inChain && !decode(response.block_hash, next.blockHash)) return make_error_code(error::INTERNAL_NODE_ERROR);
+  if (next.found) {
+    BinaryArray raw; Crypto::Hash parsed{}, prefix{};
+    if (!Common::fromHex(response.tx_as_hex, raw) ||
+        !parseAndValidateTransactionFromBinaryArray(raw, next.transaction, parsed, prefix) ||
+        parsed != txid || index >= next.transaction.outputs.size() || next.transaction.outputs[index].amount != next.amount)
+      return make_error_code(error::INTERNAL_NODE_ERROR);
+    if (next.spentKnown) {
+      Crypto::Hash expected = spendTag, returned{};
+      if (next.transaction.outputs[index].target.type() == typeid(SwapOutput)) {
+        SwapInput input; input.prevTxid = txid; input.prevOutIndex = index;
+        const auto tag = swapSpendTag(input, next.genesis);
+        std::memcpy(expected.data, tag.data, 32);
+      }
+      if (expected == Crypto::Hash{} || !decode(response.spend_tag, returned) || returned != expected)
+        return make_error_code(error::INTERNAL_NODE_ERROR);
+    }
+  }
+  result = std::move(next); return {};
 }
 
 std::error_code NodeRpcProxy::doGetTransaction(const Crypto::Hash& transactionHash, CryptoNote::Transaction& transaction) {

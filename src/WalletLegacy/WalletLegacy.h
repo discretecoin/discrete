@@ -59,6 +59,7 @@
 #include "Wallet/WalletLedgerConsumer.h"
 #include "Wallet/PqTransactionBuilder.h"
 #include "Wallet/PqSender.h"
+#include "Wallet/SwapWallet.h"
 #include "Wallet/SentPaymentsStore.h"
 #include "Wallet/PaymentProofArchive.h"
 
@@ -179,6 +180,14 @@ public:
   PqSendResult preparePqTransfer(const std::vector<PqSendOutput>& recipients,
                                  uint64_t fee = 0, uint64_t unlockHeight = 0,
                                  const std::vector<uint8_t>& extra = {});
+  // Explicit local-lab preparation only. No relay, wallet reservation or journal
+  // transition; callers persist exact wire/txid before any transmission attempt.
+  SwapWalletPrepared prepareSwapFunding(const SwapWalletFundingRequest& request);
+  SwapWalletPrepared prepareSwapSpend(const SwapWalletSpendRequest& request);
+  SwapFundingPreparation prepareSwapFundingOnce(const std::string& storePath,
+      const Crypto::Hash& operation, const SwapWalletFundingRequest& request);
+  SwapFundingPreparation getSwapFundingPreparation(const std::string& storePath,
+      const Crypto::Hash& operation);
   const SentPaymentRecord* getPaymentProofs(const Crypto::Hash& txid) const;
   bool copyPaymentProofs(const Crypto::Hash& txid, SentPaymentRecord& record) const;
   void exportPaymentProofs(const Crypto::Hash& txid, const std::string& path,

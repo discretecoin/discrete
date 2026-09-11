@@ -1,0 +1,1774 @@
+Start testing: Sep 08 06:07 UTC
+----------------------------------------------------------
+4/39 Testing: UnitTests
+4/39 Test: UnitTests
+Command: "/var/lib/discrete-swap-lab/qualification-v05/b/tests/unit_tests"
+Directory: /var/lib/discrete-swap-lab/qualification-v05/b/tests
+"UnitTests" start time: Sep 08 06:07 UTC
+Output:
+----------------------------------------------------------
+[==========] Running 676 tests from 64 test cases.
+[----------] Global test environment set-up.
+[----------] 25 tests from ArrayRefTests
+[ RUN      ] ArrayRefTests.representations
+[       OK ] ArrayRefTests.representations (0 ms)
+[ RUN      ] ArrayRefTests.directConstructor
+[       OK ] ArrayRefTests.directConstructor (0 ms)
+[ RUN      ] ArrayRefTests.arrayConstructor
+[       OK ] ArrayRefTests.arrayConstructor (0 ms)
+[ RUN      ] ArrayRefTests.copyConstructor
+[       OK ] ArrayRefTests.copyConstructor (0 ms)
+[ RUN      ] ArrayRefTests.copyAssignment
+[       OK ] ArrayRefTests.copyAssignment (0 ms)
+[ RUN      ] ArrayRefTests.arrayView
+[       OK ] ArrayRefTests.arrayView (0 ms)
+[ RUN      ] ArrayRefTests.emptyNil
+[       OK ] ArrayRefTests.emptyNil (0 ms)
+[ RUN      ] ArrayRefTests.squareBrackets
+[       OK ] ArrayRefTests.squareBrackets (0 ms)
+[ RUN      ] ArrayRefTests.firstLast
+[       OK ] ArrayRefTests.firstLast (0 ms)
+[ RUN      ] ArrayRefTests.beginEnd
+[       OK ] ArrayRefTests.beginEnd (0 ms)
+[ RUN      ] ArrayRefTests.comparisons
+[       OK ] ArrayRefTests.comparisons (0 ms)
+[ RUN      ] ArrayRefTests.beginsWith
+[       OK ] ArrayRefTests.beginsWith (0 ms)
+[ RUN      ] ArrayRefTests.contains
+[       OK ] ArrayRefTests.contains (0 ms)
+[ RUN      ] ArrayRefTests.endsWith
+[       OK ] ArrayRefTests.endsWith (0 ms)
+[ RUN      ] ArrayRefTests.find
+[       OK ] ArrayRefTests.find (0 ms)
+[ RUN      ] ArrayRefTests.findLast
+[       OK ] ArrayRefTests.findLast (0 ms)
+[ RUN      ] ArrayRefTests.head
+[       OK ] ArrayRefTests.head (0 ms)
+[ RUN      ] ArrayRefTests.tail
+[       OK ] ArrayRefTests.tail (0 ms)
+[ RUN      ] ArrayRefTests.unhead
+[       OK ] ArrayRefTests.unhead (0 ms)
+[ RUN      ] ArrayRefTests.untail
+[       OK ] ArrayRefTests.untail (0 ms)
+[ RUN      ] ArrayRefTests.range
+[       OK ] ArrayRefTests.range (0 ms)
+[ RUN      ] ArrayRefTests.slice
+[       OK ] ArrayRefTests.slice (0 ms)
+[ RUN      ] ArrayRefTests.fill
+[       OK ] ArrayRefTests.fill (0 ms)
+[ RUN      ] ArrayRefTests.reverse
+[       OK ] ArrayRefTests.reverse (0 ms)
+[ RUN      ] ArrayRefTests.stdString
+[       OK ] ArrayRefTests.stdString (0 ms)
+[----------] 25 tests from ArrayRefTests (0 ms total)
+
+[----------] 21 tests from ArrayViewTests
+[ RUN      ] ArrayViewTests.representations
+[       OK ] ArrayViewTests.representations (0 ms)
+[ RUN      ] ArrayViewTests.directConstructor
+[       OK ] ArrayViewTests.directConstructor (0 ms)
+[ RUN      ] ArrayViewTests.arrayConstructor
+[       OK ] ArrayViewTests.arrayConstructor (0 ms)
+[ RUN      ] ArrayViewTests.copyConstructor
+[       OK ] ArrayViewTests.copyConstructor (0 ms)
+[ RUN      ] ArrayViewTests.copyAssignment
+[       OK ] ArrayViewTests.copyAssignment (0 ms)
+[ RUN      ] ArrayViewTests.emptyNil
+[       OK ] ArrayViewTests.emptyNil (0 ms)
+[ RUN      ] ArrayViewTests.squareBrackets
+[       OK ] ArrayViewTests.squareBrackets (0 ms)
+[ RUN      ] ArrayViewTests.firstLast
+[       OK ] ArrayViewTests.firstLast (0 ms)
+[ RUN      ] ArrayViewTests.beginEnd
+[       OK ] ArrayViewTests.beginEnd (0 ms)
+[ RUN      ] ArrayViewTests.comparisons
+[       OK ] ArrayViewTests.comparisons (0 ms)
+[ RUN      ] ArrayViewTests.beginsWith
+[       OK ] ArrayViewTests.beginsWith (0 ms)
+[ RUN      ] ArrayViewTests.contains
+[       OK ] ArrayViewTests.contains (0 ms)
+[ RUN      ] ArrayViewTests.endsWith
+[       OK ] ArrayViewTests.endsWith (0 ms)
+[ RUN      ] ArrayViewTests.find
+[       OK ] ArrayViewTests.find (0 ms)
+[ RUN      ] ArrayViewTests.findLast
+[       OK ] ArrayViewTests.findLast (0 ms)
+[ RUN      ] ArrayViewTests.head
+[       OK ] ArrayViewTests.head (0 ms)
+[ RUN      ] ArrayViewTests.tail
+[       OK ] ArrayViewTests.tail (0 ms)
+[ RUN      ] ArrayViewTests.unhead
+[       OK ] ArrayViewTests.unhead (0 ms)
+[ RUN      ] ArrayViewTests.untail
+[       OK ] ArrayViewTests.untail (0 ms)
+[ RUN      ] ArrayViewTests.range
+[       OK ] ArrayViewTests.range (0 ms)
+[ RUN      ] ArrayViewTests.slice
+[       OK ] ArrayViewTests.slice (0 ms)
+[----------] 21 tests from ArrayViewTests (0 ms total)
+
+[----------] 8 tests from base58_uint_8be_to_64
+[ RUN      ] base58_uint_8be_to_64.handles_bytes_0x0000000000000001
+[       OK ] base58_uint_8be_to_64.handles_bytes_0x0000000000000001 (0 ms)
+[ RUN      ] base58_uint_8be_to_64.handles_bytes_0x0000000000000102
+[       OK ] base58_uint_8be_to_64.handles_bytes_0x0000000000000102 (0 ms)
+[ RUN      ] base58_uint_8be_to_64.handles_bytes_0x0000000000010203
+[       OK ] base58_uint_8be_to_64.handles_bytes_0x0000000000010203 (0 ms)
+[ RUN      ] base58_uint_8be_to_64.handles_bytes_0x0000000001020304
+[       OK ] base58_uint_8be_to_64.handles_bytes_0x0000000001020304 (0 ms)
+[ RUN      ] base58_uint_8be_to_64.handles_bytes_0x0000000102030405
+[       OK ] base58_uint_8be_to_64.handles_bytes_0x0000000102030405 (0 ms)
+[ RUN      ] base58_uint_8be_to_64.handles_bytes_0x0000010203040506
+[       OK ] base58_uint_8be_to_64.handles_bytes_0x0000010203040506 (0 ms)
+[ RUN      ] base58_uint_8be_to_64.handles_bytes_0x0001020304050607
+[       OK ] base58_uint_8be_to_64.handles_bytes_0x0001020304050607 (0 ms)
+[ RUN      ] base58_uint_8be_to_64.handles_bytes_0x0102030405060708
+[       OK ] base58_uint_8be_to_64.handles_bytes_0x0102030405060708 (0 ms)
+[----------] 8 tests from base58_uint_8be_to_64 (1 ms total)
+
+[----------] 8 tests from base58_uint_64_to_8be
+[ RUN      ] base58_uint_64_to_8be.handles_bytes_0x0000000000000001
+[       OK ] base58_uint_64_to_8be.handles_bytes_0x0000000000000001 (0 ms)
+[ RUN      ] base58_uint_64_to_8be.handles_bytes_0x0000000000000102
+[       OK ] base58_uint_64_to_8be.handles_bytes_0x0000000000000102 (0 ms)
+[ RUN      ] base58_uint_64_to_8be.handles_bytes_0x0000000000010203
+[       OK ] base58_uint_64_to_8be.handles_bytes_0x0000000000010203 (0 ms)
+[ RUN      ] base58_uint_64_to_8be.handles_bytes_0x0000000001020304
+[       OK ] base58_uint_64_to_8be.handles_bytes_0x0000000001020304 (0 ms)
+[ RUN      ] base58_uint_64_to_8be.handles_bytes_0x0000000102030405
+[       OK ] base58_uint_64_to_8be.handles_bytes_0x0000000102030405 (0 ms)
+[ RUN      ] base58_uint_64_to_8be.handles_bytes_0x0000010203040506
+[       OK ] base58_uint_64_to_8be.handles_bytes_0x0000010203040506 (0 ms)
+[ RUN      ] base58_uint_64_to_8be.handles_bytes_0x0001020304050607
+[       OK ] base58_uint_64_to_8be.handles_bytes_0x0001020304050607 (0 ms)
+[ RUN      ] base58_uint_64_to_8be.handles_bytes_0x0102030405060708
+[       OK ] base58_uint_64_to_8be.handles_bytes_0x0102030405060708 (0 ms)
+[----------] 8 tests from base58_uint_64_to_8be (0 ms total)
+
+[----------] 1 test from reverse_alphabet
+[ RUN      ] reverse_alphabet.is_correct
+[       OK ] reverse_alphabet.is_correct (0 ms)
+[----------] 1 test from reverse_alphabet (0 ms total)
+
+[----------] 29 tests from base58_encode_block
+[ RUN      ] base58_encode_block.handles_11
+[       OK ] base58_encode_block.handles_11 (0 ms)
+[ RUN      ] base58_encode_block.handles_1z
+[       OK ] base58_encode_block.handles_1z (0 ms)
+[ RUN      ] base58_encode_block.handles_5Q
+[       OK ] base58_encode_block.handles_5Q (0 ms)
+[ RUN      ] base58_encode_block.handles_111
+[       OK ] base58_encode_block.handles_111 (0 ms)
+[ RUN      ] base58_encode_block.handles_11z
+[       OK ] base58_encode_block.handles_11z (0 ms)
+[ RUN      ] base58_encode_block.handles_15R
+[       OK ] base58_encode_block.handles_15R (0 ms)
+[ RUN      ] base58_encode_block.handles_LUv
+[       OK ] base58_encode_block.handles_LUv (0 ms)
+[ RUN      ] base58_encode_block.handles_11111
+[       OK ] base58_encode_block.handles_11111 (0 ms)
+[ RUN      ] base58_encode_block.handles_1111z
+[       OK ] base58_encode_block.handles_1111z (0 ms)
+[ RUN      ] base58_encode_block.handles_11LUw
+[       OK ] base58_encode_block.handles_11LUw (0 ms)
+[ RUN      ] base58_encode_block.handles_2UzHL
+[       OK ] base58_encode_block.handles_2UzHL (0 ms)
+[ RUN      ] base58_encode_block.handles_11111z
+[       OK ] base58_encode_block.handles_11111z (0 ms)
+[ RUN      ] base58_encode_block.handles_7YXq9G
+[       OK ] base58_encode_block.handles_7YXq9G (0 ms)
+[ RUN      ] base58_encode_block.handles_111111z
+[       OK ] base58_encode_block.handles_111111z (0 ms)
+[ RUN      ] base58_encode_block.handles_VtB5VXc
+[       OK ] base58_encode_block.handles_VtB5VXc (0 ms)
+[ RUN      ] base58_encode_block.handles_11111111z
+[       OK ] base58_encode_block.handles_11111111z (0 ms)
+[ RUN      ] base58_encode_block.handles_3CUsUpv9t
+[       OK ] base58_encode_block.handles_3CUsUpv9t (0 ms)
+[ RUN      ] base58_encode_block.handles_111111111z
+[       OK ] base58_encode_block.handles_111111111z (0 ms)
+[ RUN      ] base58_encode_block.handles_Ahg1opVcGW
+[       OK ] base58_encode_block.handles_Ahg1opVcGW (0 ms)
+[ RUN      ] base58_encode_block.handles_1111111111z
+[       OK ] base58_encode_block.handles_1111111111z (0 ms)
+[ RUN      ] base58_encode_block.handles_jpXCZedGfVQ
+[       OK ] base58_encode_block.handles_jpXCZedGfVQ (0 ms)
+[ RUN      ] base58_encode_block.handles_11111111111
+[       OK ] base58_encode_block.handles_11111111111 (0 ms)
+[ RUN      ] base58_encode_block.handles_11111111112
+[       OK ] base58_encode_block.handles_11111111112 (0 ms)
+[ RUN      ] base58_encode_block.handles_11111111119
+[       OK ] base58_encode_block.handles_11111111119 (0 ms)
+[ RUN      ] base58_encode_block.handles_1111111111A
+[       OK ] base58_encode_block.handles_1111111111A (0 ms)
+[ RUN      ] base58_encode_block.handles_11111111121
+[       OK ] base58_encode_block.handles_11111111121 (0 ms)
+[ RUN      ] base58_encode_block.handles_1Ahg1opVcGW
+[       OK ] base58_encode_block.handles_1Ahg1opVcGW (0 ms)
+[ RUN      ] base58_encode_block.handles_22222222222
+[       OK ] base58_encode_block.handles_22222222222 (0 ms)
+[ RUN      ] base58_encode_block.handles_1z111111111
+[       OK ] base58_encode_block.handles_1z111111111 (0 ms)
+[----------] 29 tests from base58_encode_block (0 ms total)
+
+[----------] 45 tests from base58_decode_block
+[ RUN      ] base58_decode_block.handles_neg_1
+[       OK ] base58_decode_block.handles_neg_1 (0 ms)
+[ RUN      ] base58_decode_block.handles_neg_z
+[       OK ] base58_decode_block.handles_neg_z (0 ms)
+[ RUN      ] base58_decode_block.handles_pos_11
+[       OK ] base58_decode_block.handles_pos_11 (0 ms)
+[ RUN      ] base58_decode_block.handles_pos_5Q
+[       OK ] base58_decode_block.handles_pos_5Q (0 ms)
+[ RUN      ] base58_decode_block.handles_neg_5R
+[       OK ] base58_decode_block.handles_neg_5R (0 ms)
+[ RUN      ] base58_decode_block.handles_neg_zz
+[       OK ] base58_decode_block.handles_neg_zz (0 ms)
+[ RUN      ] base58_decode_block.handles_pos_111
+[       OK ] base58_decode_block.handles_pos_111 (0 ms)
+[ RUN      ] base58_decode_block.handles_pos_LUv
+[       OK ] base58_decode_block.handles_pos_LUv (0 ms)
+[ RUN      ] base58_decode_block.handles_neg_LUw
+[       OK ] base58_decode_block.handles_neg_LUw (0 ms)
+[ RUN      ] base58_decode_block.handles_neg_zzz
+[       OK ] base58_decode_block.handles_neg_zzz (0 ms)
+[ RUN      ] base58_decode_block.handles_neg_1111
+[       OK ] base58_decode_block.handles_neg_1111 (0 ms)
+[ RUN      ] base58_decode_block.handles_neg_zzzz
+[       OK ] base58_decode_block.handles_neg_zzzz (0 ms)
+[ RUN      ] base58_decode_block.handles_pos_11111
+[       OK ] base58_decode_block.handles_pos_11111 (0 ms)
+[ RUN      ] base58_decode_block.handles_pos_2UzHL
+[       OK ] base58_decode_block.handles_pos_2UzHL (0 ms)
+[ RUN      ] base58_decode_block.handles_neg_2UzHM
+[       OK ] base58_decode_block.handles_neg_2UzHM (0 ms)
+[ RUN      ] base58_decode_block.handles_neg_zzzzz
+[       OK ] base58_decode_block.handles_neg_zzzzz (0 ms)
+[ RUN      ] base58_decode_block.handles_pos_111111
+[       OK ] base58_decode_block.handles_pos_111111 (0 ms)
+[ RUN      ] base58_decode_block.handles_pos_7YXq9G
+[       OK ] base58_decode_block.handles_pos_7YXq9G (0 ms)
+[ RUN      ] base58_decode_block.handles_neg_7YXq9H
+[       OK ] base58_decode_block.handles_neg_7YXq9H (0 ms)
+[ RUN      ] base58_decode_block.handles_neg_zzzzzz
+[       OK ] base58_decode_block.handles_neg_zzzzzz (0 ms)
+[ RUN      ] base58_decode_block.handles_pos_1111111
+[       OK ] base58_decode_block.handles_pos_1111111 (0 ms)
+[ RUN      ] base58_decode_block.handles_pos_VtB5VXc
+[       OK ] base58_decode_block.handles_pos_VtB5VXc (0 ms)
+[ RUN      ] base58_decode_block.handles_neg_VtB5VXd
+[       OK ] base58_decode_block.handles_neg_VtB5VXd (0 ms)
+[ RUN      ] base58_decode_block.handles_neg_zzzzzzz
+[       OK ] base58_decode_block.handles_neg_zzzzzzz (0 ms)
+[ RUN      ] base58_decode_block.handles_neg_11111111
+[       OK ] base58_decode_block.handles_neg_11111111 (0 ms)
+[ RUN      ] base58_decode_block.handles_neg_zzzzzzzz
+[       OK ] base58_decode_block.handles_neg_zzzzzzzz (0 ms)
+[ RUN      ] base58_decode_block.handles_pos_111111111
+[       OK ] base58_decode_block.handles_pos_111111111 (0 ms)
+[ RUN      ] base58_decode_block.handles_pos_3CUsUpv9t
+[       OK ] base58_decode_block.handles_pos_3CUsUpv9t (0 ms)
+[ RUN      ] base58_decode_block.handles_neg_3CUsUpv9u
+[       OK ] base58_decode_block.handles_neg_3CUsUpv9u (0 ms)
+[ RUN      ] base58_decode_block.handles_neg_zzzzzzzzz
+[       OK ] base58_decode_block.handles_neg_zzzzzzzzz (0 ms)
+[ RUN      ] base58_decode_block.handles_pos_1111111111
+[       OK ] base58_decode_block.handles_pos_1111111111 (0 ms)
+[ RUN      ] base58_decode_block.handles_pos_Ahg1opVcGW
+[       OK ] base58_decode_block.handles_pos_Ahg1opVcGW (0 ms)
+[ RUN      ] base58_decode_block.handles_neg_Ahg1opVcGX
+[       OK ] base58_decode_block.handles_neg_Ahg1opVcGX (0 ms)
+[ RUN      ] base58_decode_block.handles_neg_zzzzzzzzzz
+[       OK ] base58_decode_block.handles_neg_zzzzzzzzzz (0 ms)
+[ RUN      ] base58_decode_block.handles_pos_11111111111
+[       OK ] base58_decode_block.handles_pos_11111111111 (0 ms)
+[ RUN      ] base58_decode_block.handles_pos_jpXCZedGfVQ
+[       OK ] base58_decode_block.handles_pos_jpXCZedGfVQ (0 ms)
+[ RUN      ] base58_decode_block.handles_neg_jpXCZedGfVR
+[       OK ] base58_decode_block.handles_neg_jpXCZedGfVR (0 ms)
+[ RUN      ] base58_decode_block.handles_neg_zzzzzzzzzzz
+[       OK ] base58_decode_block.handles_neg_zzzzzzzzzzz (0 ms)
+[ RUN      ] base58_decode_block.handles_neg_01111111111
+[       OK ] base58_decode_block.handles_neg_01111111111 (0 ms)
+[ RUN      ] base58_decode_block.handles_neg_11111111110
+[       OK ] base58_decode_block.handles_neg_11111111110 (0 ms)
+[ RUN      ] base58_decode_block.handles_neg_11111011111
+[       OK ] base58_decode_block.handles_neg_11111011111 (0 ms)
+[ RUN      ] base58_decode_block.handles_neg_I1111111111
+[       OK ] base58_decode_block.handles_neg_I1111111111 (0 ms)
+[ RUN      ] base58_decode_block.handles_neg_O1111111111
+[       OK ] base58_decode_block.handles_neg_O1111111111 (0 ms)
+[ RUN      ] base58_decode_block.handles_neg_l1111111111
+[       OK ] base58_decode_block.handles_neg_l1111111111 (0 ms)
+[ RUN      ] base58_decode_block.handles_neg__1111111111
+[       OK ] base58_decode_block.handles_neg__1111111111 (0 ms)
+[----------] 45 tests from base58_decode_block (1 ms total)
+
+[----------] 17 tests from base58_encode
+[ RUN      ] base58_encode.handles_11
+[       OK ] base58_encode.handles_11 (0 ms)
+[ RUN      ] base58_encode.handles_111
+[       OK ] base58_encode.handles_111 (0 ms)
+[ RUN      ] base58_encode.handles_11111
+[       OK ] base58_encode.handles_11111 (0 ms)
+[ RUN      ] base58_encode.handles_111111
+[       OK ] base58_encode.handles_111111 (0 ms)
+[ RUN      ] base58_encode.handles_1111111
+[       OK ] base58_encode.handles_1111111 (0 ms)
+[ RUN      ] base58_encode.handles_111111111
+[       OK ] base58_encode.handles_111111111 (0 ms)
+[ RUN      ] base58_encode.handles_1111111111
+[       OK ] base58_encode.handles_1111111111 (0 ms)
+[ RUN      ] base58_encode.handles_11111111111
+[       OK ] base58_encode.handles_11111111111 (0 ms)
+[ RUN      ] base58_encode.handles_1111111111111
+[       OK ] base58_encode.handles_1111111111111 (0 ms)
+[ RUN      ] base58_encode.handles_11111111111111
+[       OK ] base58_encode.handles_11111111111111 (0 ms)
+[ RUN      ] base58_encode.handles_1111111111111111
+[       OK ] base58_encode.handles_1111111111111111 (0 ms)
+[ RUN      ] base58_encode.handles_11111111111111111
+[       OK ] base58_encode.handles_11111111111111111 (0 ms)
+[ RUN      ] base58_encode.handles_111111111111111111
+[       OK ] base58_encode.handles_111111111111111111 (0 ms)
+[ RUN      ] base58_encode.handles_11111111111111111111
+[       OK ] base58_encode.handles_11111111111111111111 (0 ms)
+[ RUN      ] base58_encode.handles_111111111111111111111
+[       OK ] base58_encode.handles_111111111111111111111 (0 ms)
+[ RUN      ] base58_encode.handles_1111111111111111111111
+[       OK ] base58_encode.handles_1111111111111111111111 (0 ms)
+[ RUN      ] base58_encode.handles_22222222222VtB5VXc
+[       OK ] base58_encode.handles_22222222222VtB5VXc (0 ms)
+[----------] 17 tests from base58_encode (0 ms total)
+
+[----------] 17 tests from base58_decode_pos
+[ RUN      ] base58_decode_pos.handles_pos_
+[       OK ] base58_decode_pos.handles_pos_ (0 ms)
+[ RUN      ] base58_decode_pos.handles_pos_5Q
+[       OK ] base58_decode_pos.handles_pos_5Q (0 ms)
+[ RUN      ] base58_decode_pos.handles_pos_LUv
+[       OK ] base58_decode_pos.handles_pos_LUv (0 ms)
+[ RUN      ] base58_decode_pos.handles_pos_2UzHL
+[       OK ] base58_decode_pos.handles_pos_2UzHL (0 ms)
+[ RUN      ] base58_decode_pos.handles_pos_7YXq9G
+[       OK ] base58_decode_pos.handles_pos_7YXq9G (0 ms)
+[ RUN      ] base58_decode_pos.handles_pos_VtB5VXc
+[       OK ] base58_decode_pos.handles_pos_VtB5VXc (0 ms)
+[ RUN      ] base58_decode_pos.handles_pos_3CUsUpv9t
+[       OK ] base58_decode_pos.handles_pos_3CUsUpv9t (0 ms)
+[ RUN      ] base58_decode_pos.handles_pos_Ahg1opVcGW
+[       OK ] base58_decode_pos.handles_pos_Ahg1opVcGW (0 ms)
+[ RUN      ] base58_decode_pos.handles_pos_jpXCZedGfVQ
+[       OK ] base58_decode_pos.handles_pos_jpXCZedGfVQ (0 ms)
+[ RUN      ] base58_decode_pos.handles_pos_jpXCZedGfVQ5Q
+[       OK ] base58_decode_pos.handles_pos_jpXCZedGfVQ5Q (0 ms)
+[ RUN      ] base58_decode_pos.handles_pos_jpXCZedGfVQLUv
+[       OK ] base58_decode_pos.handles_pos_jpXCZedGfVQLUv (0 ms)
+[ RUN      ] base58_decode_pos.handles_pos_jpXCZedGfVQ2UzHL
+[       OK ] base58_decode_pos.handles_pos_jpXCZedGfVQ2UzHL (0 ms)
+[ RUN      ] base58_decode_pos.handles_pos_jpXCZedGfVQ7YXq9G
+[       OK ] base58_decode_pos.handles_pos_jpXCZedGfVQ7YXq9G (0 ms)
+[ RUN      ] base58_decode_pos.handles_pos_jpXCZedGfVQVtB5VXc
+[       OK ] base58_decode_pos.handles_pos_jpXCZedGfVQVtB5VXc (0 ms)
+[ RUN      ] base58_decode_pos.handles_pos_jpXCZedGfVQ3CUsUpv9t
+[       OK ] base58_decode_pos.handles_pos_jpXCZedGfVQ3CUsUpv9t (0 ms)
+[ RUN      ] base58_decode_pos.handles_pos_jpXCZedGfVQAhg1opVcGW
+[       OK ] base58_decode_pos.handles_pos_jpXCZedGfVQAhg1opVcGW (0 ms)
+[ RUN      ] base58_decode_pos.handles_pos_jpXCZedGfVQjpXCZedGfVQ
+[       OK ] base58_decode_pos.handles_pos_jpXCZedGfVQjpXCZedGfVQ (0 ms)
+[----------] 17 tests from base58_decode_pos (0 ms total)
+
+[----------] 56 tests from base58_decode_neg
+[ RUN      ] base58_decode_neg.handles_neg_1
+[       OK ] base58_decode_neg.handles_neg_1 (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_z
+[       OK ] base58_decode_neg.handles_neg_z (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_1111
+[       OK ] base58_decode_neg.handles_neg_1111 (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_zzzz
+[       OK ] base58_decode_neg.handles_neg_zzzz (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_11111111
+[       OK ] base58_decode_neg.handles_neg_11111111 (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_zzzzzzzz
+[       OK ] base58_decode_neg.handles_neg_zzzzzzzz (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_123456789AB1
+[       OK ] base58_decode_neg.handles_neg_123456789AB1 (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_123456789ABz
+[       OK ] base58_decode_neg.handles_neg_123456789ABz (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_123456789AB1111
+[       OK ] base58_decode_neg.handles_neg_123456789AB1111 (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_123456789ABzzzz
+[       OK ] base58_decode_neg.handles_neg_123456789ABzzzz (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_123456789AB11111111
+[       OK ] base58_decode_neg.handles_neg_123456789AB11111111 (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_123456789ABzzzzzzzz
+[       OK ] base58_decode_neg.handles_neg_123456789ABzzzzzzzz (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_5R
+[       OK ] base58_decode_neg.handles_neg_5R (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_zz
+[       OK ] base58_decode_neg.handles_neg_zz (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_LUw
+[       OK ] base58_decode_neg.handles_neg_LUw (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_zzz
+[       OK ] base58_decode_neg.handles_neg_zzz (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_2UzHM
+[       OK ] base58_decode_neg.handles_neg_2UzHM (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_zzzzz
+[       OK ] base58_decode_neg.handles_neg_zzzzz (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_7YXq9H
+[       OK ] base58_decode_neg.handles_neg_7YXq9H (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_zzzzzz
+[       OK ] base58_decode_neg.handles_neg_zzzzzz (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_VtB5VXd
+[       OK ] base58_decode_neg.handles_neg_VtB5VXd (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_zzzzzzz
+[       OK ] base58_decode_neg.handles_neg_zzzzzzz (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_3CUsUpv9u
+[       OK ] base58_decode_neg.handles_neg_3CUsUpv9u (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_zzzzzzzzz
+[       OK ] base58_decode_neg.handles_neg_zzzzzzzzz (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_Ahg1opVcGX
+[       OK ] base58_decode_neg.handles_neg_Ahg1opVcGX (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_zzzzzzzzzz
+[       OK ] base58_decode_neg.handles_neg_zzzzzzzzzz (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_jpXCZedGfVR
+[       OK ] base58_decode_neg.handles_neg_jpXCZedGfVR (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_zzzzzzzzzzz
+[       OK ] base58_decode_neg.handles_neg_zzzzzzzzzzz (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_123456789AB5R
+[       OK ] base58_decode_neg.handles_neg_123456789AB5R (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_123456789ABzz
+[       OK ] base58_decode_neg.handles_neg_123456789ABzz (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_123456789ABLUw
+[       OK ] base58_decode_neg.handles_neg_123456789ABLUw (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_123456789ABzzz
+[       OK ] base58_decode_neg.handles_neg_123456789ABzzz (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_123456789AB2UzHM
+[       OK ] base58_decode_neg.handles_neg_123456789AB2UzHM (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_123456789ABzzzzz
+[       OK ] base58_decode_neg.handles_neg_123456789ABzzzzz (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_123456789AB7YXq9H
+[       OK ] base58_decode_neg.handles_neg_123456789AB7YXq9H (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_123456789ABzzzzzz
+[       OK ] base58_decode_neg.handles_neg_123456789ABzzzzzz (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_123456789ABVtB5VXd
+[       OK ] base58_decode_neg.handles_neg_123456789ABVtB5VXd (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_123456789ABzzzzzzz
+[       OK ] base58_decode_neg.handles_neg_123456789ABzzzzzzz (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_123456789AB3CUsUpv9u
+[       OK ] base58_decode_neg.handles_neg_123456789AB3CUsUpv9u (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_123456789ABzzzzzzzzz
+[       OK ] base58_decode_neg.handles_neg_123456789ABzzzzzzzzz (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_123456789ABAhg1opVcGX
+[       OK ] base58_decode_neg.handles_neg_123456789ABAhg1opVcGX (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_123456789ABzzzzzzzzzz
+[       OK ] base58_decode_neg.handles_neg_123456789ABzzzzzzzzzz (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_123456789ABjpXCZedGfVR
+[       OK ] base58_decode_neg.handles_neg_123456789ABjpXCZedGfVR (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_123456789ABzzzzzzzzzzz
+[       OK ] base58_decode_neg.handles_neg_123456789ABzzzzzzzzzzz (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_zzzzzzzzzzz11
+[       OK ] base58_decode_neg.handles_neg_zzzzzzzzzzz11 (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_10
+[       OK ] base58_decode_neg.handles_neg_10 (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_11I
+[       OK ] base58_decode_neg.handles_neg_11I (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_11O11
+[       OK ] base58_decode_neg.handles_neg_11O11 (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_11l111
+[       OK ] base58_decode_neg.handles_neg_11l111 (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_11_11111111
+[       OK ] base58_decode_neg.handles_neg_11_11111111 (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_1101111111111
+[       OK ] base58_decode_neg.handles_neg_1101111111111 (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_11I11111111111111
+[       OK ] base58_decode_neg.handles_neg_11I11111111111111 (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_11O1111111111111111111
+[       OK ] base58_decode_neg.handles_neg_11O1111111111111111111 (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_1111111111110
+[       OK ] base58_decode_neg.handles_neg_1111111111110 (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_111111111111l1111
+[       OK ] base58_decode_neg.handles_neg_111111111111l1111 (0 ms)
+[ RUN      ] base58_decode_neg.handles_neg_111111111111_111111111
+[       OK ] base58_decode_neg.handles_neg_111111111111_111111111 (0 ms)
+[----------] 56 tests from base58_decode_neg (0 ms total)
+
+[----------] 21 tests from base58_encode_decode_addr
+[ RUN      ] base58_encode_decode_addr.handles_21D35quxec711111111111111111111111111111111111111111111111111111111111111111111111111111133RE4Z
+[       OK ] base58_encode_decode_addr.handles_21D35quxec711111111111111111111111111111111111111111111111111111111111111111111111111111133RE4Z (0 ms)
+[ RUN      ] base58_encode_decode_addr.handles_2Aui6ejTFscjpXCZedGfVQjpXCZedGfVQjpXCZedGfVQjpXCZedGfVQjpXCZedGfVQjpXCZedGfVQjpXCZedGfVQVsTPQ1q
+[       OK ] base58_encode_decode_addr.handles_2Aui6ejTFscjpXCZedGfVQjpXCZedGfVQjpXCZedGfVQjpXCZedGfVQjpXCZedGfVQjpXCZedGfVQjpXCZedGfVQVsTPQ1q (0 ms)
+[ RUN      ] base58_encode_decode_addr.handles_1119XrkPuSmLzdHXgVgrZKjepg5hZAxffLzdHXgVgrZKjepg5hZAxffLzdHXgVgrZKjepg5hZAxffLzdHXgVgrZKVnagGh9
+[       OK ] base58_encode_decode_addr.handles_1119XrkPuSmLzdHXgVgrZKjepg5hZAxffLzdHXgVgrZKjepg5hZAxffLzdHXgVgrZKjepg5hZAxffLzdHXgVgrZKVnagGh9 (0 ms)
+[ RUN      ] base58_encode_decode_addr.handles_111111111111111111111111111111111111111111111111111111111111111111111111111111111111111112fz28L
+[       OK ] base58_encode_decode_addr.handles_111111111111111111111111111111111111111111111111111111111111111111111111111111111111111112fz28L (0 ms)
+[ RUN      ] base58_encode_decode_addr.handles_PuT7GAdgbA83qvSEivPLYo1111111111111111111111111111111111111111111111111111111111111111111111111111116THj7H
+[       OK ] base58_encode_decode_addr.handles_PuT7GAdgbA83qvSEivPLYo1111111111111111111111111111111111111111111111111111111111111111111111111111116THj7H (0 ms)
+[ RUN      ] base58_encode_decode_addr.handles_PuT7GAdgbA841d7FXjswpJjpXCZedGfVQjpXCZedGfVQjpXCZedGfVQjpXCZedGfVQjpXCZedGfVQjpXCZedGfVQjpXCZedGfVQVpkqB9b
+[       OK ] base58_encode_decode_addr.handles_PuT7GAdgbA841d7FXjswpJjpXCZedGfVQjpXCZedGfVQjpXCZedGfVQjpXCZedGfVQjpXCZedGfVQjpXCZedGfVQjpXCZedGfVQVpkqB9b (0 ms)
+[ RUN      ] base58_encode_decode_addr.handles_PuT7GAdgbA819Vy7SLVt
+[       OK ] base58_encode_decode_addr.handles_PuT7GAdgbA819Vy7SLVt (0 ms)
+[ RUN      ] base58_encode_decode_addr.handles_PuT7GAdgbA81efAirfJVU
+[       OK ] base58_encode_decode_addr.handles_PuT7GAdgbA81efAirfJVU (0 ms)
+[ RUN      ] base58_encode_decode_addr.handles_PuT7GAdgbA83sryEyAab5g
+[       OK ] base58_encode_decode_addr.handles_PuT7GAdgbA83sryEyAab5g (0 ms)
+[ RUN      ] base58_encode_decode_addr.handles_PuT7GAdgbA83tWUuc5ace43P
+[       OK ] base58_encode_decode_addr.handles_PuT7GAdgbA83tWUuc5ace43P (0 ms)
+[ RUN      ] base58_encode_decode_addr.handles_PuT7GAdgbA83u9zaKrtErE9ZV
+[       OK ] base58_encode_decode_addr.handles_PuT7GAdgbA83u9zaKrtErE9ZV (0 ms)
+[ RUN      ] base58_encode_decode_addr.handles_PuT7GAdgbA83uoWF3eanGc1fRhM
+[       OK ] base58_encode_decode_addr.handles_PuT7GAdgbA83uoWF3eanGc1fRhM (0 ms)
+[ RUN      ] base58_encode_decode_addr.handles_PuT7GAdgbA83vT1umSHMYJ1MMUmr
+[       OK ] base58_encode_decode_addr.handles_PuT7GAdgbA83vT1umSHMYJ1MMUmr (0 ms)
+[ RUN      ] base58_encode_decode_addr.handles_PuT7GAdgbA83w6XaVDyvpoGMvWnPY
+[       OK ] base58_encode_decode_addr.handles_PuT7GAdgbA83w6XaVDyvpoGMvWnPY (0 ms)
+[ RUN      ] base58_encode_decode_addr.handles_PuT7GAdgbA83wk3FD1gW7J2KVKfDCUo
+[       OK ] base58_encode_decode_addr.handles_PuT7GAdgbA83wk3FD1gW7J2KVKfDCUo (0 ms)
+[ RUN      ] base58_encode_decode_addr.handles_13PMpZ4
+[       OK ] base58_encode_decode_addr.handles_13PMpZ4 (0 ms)
+[ RUN      ] base58_encode_decode_addr.handles_FQQgzcx
+[       OK ] base58_encode_decode_addr.handles_FQQgzcx (0 ms)
+[ RUN      ] base58_encode_decode_addr.handles_26k4NUP9S
+[       OK ] base58_encode_decode_addr.handles_26k4NUP9S (0 ms)
+[ RUN      ] base58_encode_decode_addr.handles_3BzA6KTmd
+[       OK ] base58_encode_decode_addr.handles_3BzA6KTmd (0 ms)
+[ RUN      ] base58_encode_decode_addr.handles_11efCaY6UjG63hgkr
+[       OK ] base58_encode_decode_addr.handles_11efCaY6UjG63hgkr (0 ms)
+[ RUN      ] base58_encode_decode_addr.handles_21rhHRT48LN3E5Dqz
+[       OK ] base58_encode_decode_addr.handles_21rhHRT48LN3E5Dqz (0 ms)
+[----------] 21 tests from base58_encode_decode_addr (1 ms total)
+
+[----------] 17 tests from base58_decode_addr_neg
+[ RUN      ] base58_decode_addr_neg.decode_fails_due_overflow
+[       OK ] base58_decode_addr_neg.decode_fails_due_overflow (0 ms)
+[ RUN      ] base58_decode_addr_neg.decode_fails_due_invalid_char_0
+[       OK ] base58_decode_addr_neg.decode_fails_due_invalid_char_0 (0 ms)
+[ RUN      ] base58_decode_addr_neg.decode_fails_due_invalid_char_I
+[       OK ] base58_decode_addr_neg.decode_fails_due_invalid_char_I (0 ms)
+[ RUN      ] base58_decode_addr_neg.decode_fails_due_invalid_char_O
+[       OK ] base58_decode_addr_neg.decode_fails_due_invalid_char_O (0 ms)
+[ RUN      ] base58_decode_addr_neg.decode_fails_due_invalid_char_l
+[       OK ] base58_decode_addr_neg.decode_fails_due_invalid_char_l (0 ms)
+[ RUN      ] base58_decode_addr_neg.decode_fails_due_invalid_char_00
+[       OK ] base58_decode_addr_neg.decode_fails_due_invalid_char_00 (0 ms)
+[ RUN      ] base58_decode_addr_neg.decode_fails_due_invalid_lenght
+[       OK ] base58_decode_addr_neg.decode_fails_due_invalid_lenght (0 ms)
+[ RUN      ] base58_decode_addr_neg.handles_invalid_checksum
+[       OK ] base58_decode_addr_neg.handles_invalid_checksum (0 ms)
+[ RUN      ] base58_decode_addr_neg.handles_non_correct_tag
+[       OK ] base58_decode_addr_neg.handles_non_correct_tag (0 ms)
+[ RUN      ] base58_decode_addr_neg.decode_fails_due_invalid_block_len_0
+[       OK ] base58_decode_addr_neg.decode_fails_due_invalid_block_len_0 (0 ms)
+[ RUN      ] base58_decode_addr_neg.decode_fails_due_invalid_block_len_1
+[       OK ] base58_decode_addr_neg.decode_fails_due_invalid_block_len_1 (0 ms)
+[ RUN      ] base58_decode_addr_neg.decode_fails_due_address_too_short_0
+[       OK ] base58_decode_addr_neg.decode_fails_due_address_too_short_0 (0 ms)
+[ RUN      ] base58_decode_addr_neg.decode_fails_due_address_too_short_1
+[       OK ] base58_decode_addr_neg.decode_fails_due_address_too_short_1 (0 ms)
+[ RUN      ] base58_decode_addr_neg.decode_fails_due_address_too_short_2
+[       OK ] base58_decode_addr_neg.decode_fails_due_address_too_short_2 (0 ms)
+[ RUN      ] base58_decode_addr_neg.decode_fails_due_address_too_short_3
+[       OK ] base58_decode_addr_neg.decode_fails_due_address_too_short_3 (0 ms)
+[ RUN      ] base58_decode_addr_neg.decode_fails_due_address_too_short_4
+[       OK ] base58_decode_addr_neg.decode_fails_due_address_too_short_4 (0 ms)
+[ RUN      ] base58_decode_addr_neg.decode_fails_due_address_too_short_5
+[       OK ] base58_decode_addr_neg.decode_fails_due_address_too_short_5 (0 ms)
+[----------] 17 tests from base58_decode_addr_neg (0 ms total)
+
+[----------] 1 test from getAccountAddressAsStr
+[ RUN      ] getAccountAddressAsStr.works_correctly
+[       OK ] getAccountAddressAsStr.works_correctly (0 ms)
+[----------] 1 test from getAccountAddressAsStr (0 ms total)
+
+[----------] 4 tests from parseAccountAddressString
+[ RUN      ] parseAccountAddressString.handles_valid_address
+[       OK ] parseAccountAddressString.handles_valid_address (0 ms)
+[ RUN      ] parseAccountAddressString.fails_on_invalid_address_format
+[       OK ] parseAccountAddressString.fails_on_invalid_address_format (0 ms)
+[ RUN      ] parseAccountAddressString.fails_on_invalid_address_prefix
+[       OK ] parseAccountAddressString.fails_on_invalid_address_prefix (0 ms)
+[ RUN      ] parseAccountAddressString.fails_on_invalid_address_content
+[       OK ] parseAccountAddressString.fails_on_invalid_address_content (1 ms)
+[----------] 4 tests from parseAccountAddressString (1 ms total)
+
+[----------] 3 tests from getBlockReward_and_already_generated_coins
+[ RUN      ] getBlockReward_and_already_generated_coins.handles_first_values
+[       OK ] getBlockReward_and_already_generated_coins.handles_first_values (0 ms)
+[ RUN      ] getBlockReward_and_already_generated_coins.correctly_steps_from_reward_2_to_1
+[       OK ] getBlockReward_and_already_generated_coins.correctly_steps_from_reward_2_to_1 (0 ms)
+[ RUN      ] getBlockReward_and_already_generated_coins.handles_max_already_generaged_coins
+[       OK ] getBlockReward_and_already_generated_coins.handles_max_already_generaged_coins (0 ms)
+[----------] 3 tests from getBlockReward_and_already_generated_coins (0 ms total)
+
+[----------] 8 tests from getBlockReward_and_median_and_blockSize
+[ RUN      ] getBlockReward_and_median_and_blockSize.handles_zero_median
+[       OK ] getBlockReward_and_median_and_blockSize.handles_zero_median (0 ms)
+[ RUN      ] getBlockReward_and_median_and_blockSize.handles_median_lt_relevance_level
+[       OK ] getBlockReward_and_median_and_blockSize.handles_median_lt_relevance_level (0 ms)
+[ RUN      ] getBlockReward_and_median_and_blockSize.handles_median_eq_relevance_level
+[       OK ] getBlockReward_and_median_and_blockSize.handles_median_eq_relevance_level (0 ms)
+[ RUN      ] getBlockReward_and_median_and_blockSize.handles_median_gt_relevance_level
+[       OK ] getBlockReward_and_median_and_blockSize.handles_median_gt_relevance_level (0 ms)
+[ RUN      ] getBlockReward_and_median_and_blockSize.handles_big_median
+[       OK ] getBlockReward_and_median_and_blockSize.handles_big_median (0 ms)
+[ RUN      ] getBlockReward_and_median_and_blockSize.handles_big_block_size
+[       OK ] getBlockReward_and_median_and_blockSize.handles_big_block_size (0 ms)
+[ RUN      ] getBlockReward_and_median_and_blockSize.handles_big_block_size_fail
+[       OK ] getBlockReward_and_median_and_blockSize.handles_big_block_size_fail (0 ms)
+[ RUN      ] getBlockReward_and_median_and_blockSize.handles_big_median_and_block_size
+[       OK ] getBlockReward_and_median_and_blockSize.handles_big_median_and_block_size (0 ms)
+[----------] 8 tests from getBlockReward_and_median_and_blockSize (0 ms total)
+
+[----------] 8 tests from getBlockReward_and_currentBlockSize
+[ RUN      ] getBlockReward_and_currentBlockSize.handles_zero_block_size
+[       OK ] getBlockReward_and_currentBlockSize.handles_zero_block_size (0 ms)
+[ RUN      ] getBlockReward_and_currentBlockSize.handles_block_size_less_median
+[       OK ] getBlockReward_and_currentBlockSize.handles_block_size_less_median (0 ms)
+[ RUN      ] getBlockReward_and_currentBlockSize.handles_block_size_eq_median
+[       OK ] getBlockReward_and_currentBlockSize.handles_block_size_eq_median (0 ms)
+[ RUN      ] getBlockReward_and_currentBlockSize.handles_block_size_gt_median
+[       OK ] getBlockReward_and_currentBlockSize.handles_block_size_gt_median (0 ms)
+[ RUN      ] getBlockReward_and_currentBlockSize.handles_block_size_less_2_medians
+[       OK ] getBlockReward_and_currentBlockSize.handles_block_size_less_2_medians (0 ms)
+[ RUN      ] getBlockReward_and_currentBlockSize.handles_block_size_eq_2_medians
+[       OK ] getBlockReward_and_currentBlockSize.handles_block_size_eq_2_medians (0 ms)
+[ RUN      ] getBlockReward_and_currentBlockSize.handles_block_size_gt_2_medians
+[       OK ] getBlockReward_and_currentBlockSize.handles_block_size_gt_2_medians (0 ms)
+[ RUN      ] getBlockReward_and_currentBlockSize.calculates_correctly
+[       OK ] getBlockReward_and_currentBlockSize.calculates_correctly (0 ms)
+[----------] 8 tests from getBlockReward_and_currentBlockSize (1 ms total)
+
+[----------] 11 tests from getBlockReward_fee_and_penalizeFee_test
+[ RUN      ] getBlockReward_fee_and_penalizeFee_test.handles_zero_fee_and_no_penalize_fee
+[       OK ] getBlockReward_fee_and_penalizeFee_test.handles_zero_fee_and_no_penalize_fee (0 ms)
+[ RUN      ] getBlockReward_fee_and_penalizeFee_test.handles_zero_fee_and_penalize_fee
+[       OK ] getBlockReward_fee_and_penalizeFee_test.handles_zero_fee_and_penalize_fee (0 ms)
+[ RUN      ] getBlockReward_fee_and_penalizeFee_test.handles_fee_lt_block_reward_and_no_penalize_fee
+[       OK ] getBlockReward_fee_and_penalizeFee_test.handles_fee_lt_block_reward_and_no_penalize_fee (0 ms)
+[ RUN      ] getBlockReward_fee_and_penalizeFee_test.handles_fee_lt_block_reward_and_penalize_fee
+[       OK ] getBlockReward_fee_and_penalizeFee_test.handles_fee_lt_block_reward_and_penalize_fee (0 ms)
+[ RUN      ] getBlockReward_fee_and_penalizeFee_test.handles_fee_eq_block_reward_and_no_penalize_fee
+[       OK ] getBlockReward_fee_and_penalizeFee_test.handles_fee_eq_block_reward_and_no_penalize_fee (0 ms)
+[ RUN      ] getBlockReward_fee_and_penalizeFee_test.handles_fee_eq_block_reward_and_penalize_fee
+[       OK ] getBlockReward_fee_and_penalizeFee_test.handles_fee_eq_block_reward_and_penalize_fee (0 ms)
+[ RUN      ] getBlockReward_fee_and_penalizeFee_test.handles_fee_gt_block_reward_and_no_penalize_fee
+[       OK ] getBlockReward_fee_and_penalizeFee_test.handles_fee_gt_block_reward_and_no_penalize_fee (0 ms)
+[ RUN      ] getBlockReward_fee_and_penalizeFee_test.handles_fee_gt_block_reward_and_penalize_fee
+[       OK ] getBlockReward_fee_and_penalizeFee_test.handles_fee_gt_block_reward_and_penalize_fee (0 ms)
+[ RUN      ] getBlockReward_fee_and_penalizeFee_test.handles_emission_change_eq_zero
+[       OK ] getBlockReward_fee_and_penalizeFee_test.handles_emission_change_eq_zero (0 ms)
+[ RUN      ] getBlockReward_fee_and_penalizeFee_test.handles_fee_if_block_reward_is_zero_and_no_penalize_fee
+[       OK ] getBlockReward_fee_and_penalizeFee_test.handles_fee_if_block_reward_is_zero_and_no_penalize_fee (0 ms)
+[ RUN      ] getBlockReward_fee_and_penalizeFee_test.handles_fee_if_block_reward_is_zero_and_penalize_fee
+[       OK ] getBlockReward_fee_and_penalizeFee_test.handles_fee_if_block_reward_is_zero_and_penalize_fee (0 ms)
+[----------] 11 tests from getBlockReward_fee_and_penalizeFee_test (0 ms total)
+
+[----------] 6 tests from BlockingQueue
+[ RUN      ] BlockingQueue.SPMC
+[       OK ] BlockingQueue.SPMC (227 ms)
+[ RUN      ] BlockingQueue.MPSC
+[       OK ] BlockingQueue.MPSC (224 ms)
+[ RUN      ] BlockingQueue.PerfTest
+[       OK ] BlockingQueue.PerfTest (0 ms)
+[ RUN      ] BlockingQueue.Close
+[       OK ] BlockingQueue.Close (0 ms)
+[ RUN      ] BlockingQueue.CloseAndWait
+[       OK ] BlockingQueue.CloseAndWait (253 ms)
+[ RUN      ] BlockingQueue.AllowsMoveOnly
+[       OK ] BlockingQueue.AllowsMoveOnly (0 ms)
+[----------] 6 tests from BlockingQueue (704 ms total)
+
+[----------] 4 tests from chacha8
+[ RUN      ] chacha8.is_correct_0
+[       OK ] chacha8.is_correct_0 (0 ms)
+[ RUN      ] chacha8.is_correct_1
+[       OK ] chacha8.is_correct_1 (0 ms)
+[ RUN      ] chacha8.is_correct_2
+[       OK ] chacha8.is_correct_2 (0 ms)
+[ RUN      ] chacha8.is_correct_3
+[       OK ] chacha8.is_correct_3 (0 ms)
+[----------] 4 tests from chacha8 (0 ms total)
+
+[----------] 3 tests from checkpoints_is_alternative_block_allowed
+[ RUN      ] checkpoints_is_alternative_block_allowed.handles_empty_checkpoins
+[       OK ] checkpoints_is_alternative_block_allowed.handles_empty_checkpoins (0 ms)
+[ RUN      ] checkpoints_is_alternative_block_allowed.handles_one_checkpoint
+[       OK ] checkpoints_is_alternative_block_allowed.handles_one_checkpoint (0 ms)
+[ RUN      ] checkpoints_is_alternative_block_allowed.handles_two_and_more_checkpoints
+[       OK ] checkpoints_is_alternative_block_allowed.handles_two_and_more_checkpoints (0 ms)
+[----------] 3 tests from checkpoints_is_alternative_block_allowed (0 ms total)
+
+[----------] 10 tests from ConsoleHandler
+[ RUN      ] ConsoleHandler.ExternalStopInterruptsIdleLineEditor
+[       OK ] ConsoleHandler.ExternalStopInterruptsIdleLineEditor (1 ms)
+[ RUN      ] ConsoleHandler.PipedEofClosesInputQueue
+[       OK ] ConsoleHandler.PipedEofClosesInputQueue (0 ms)
+[ RUN      ] ConsoleHandler.RedirectedConsoleFallsBackToLegacyInput
+[       OK ] ConsoleHandler.RedirectedConsoleFallsBackToLegacyInput (0 ms)
+[ RUN      ] ConsoleHandler.RawModeFailureFallsBackToLegacyInput
+[       OK ] ConsoleHandler.RawModeFailureFallsBackToLegacyInput (0 ms)
+[ RUN      ] ConsoleHandler.InteractiveReadErrorClosesInputQueue
+[       OK ] ConsoleHandler.InteractiveReadErrorClosesInputQueue (0 ms)
+[ RUN      ] ConsoleHandler.LegacyWaitErrorClosesInputQueue
+[       OK ] ConsoleHandler.LegacyWaitErrorClosesInputQueue (0 ms)
+[ RUN      ] ConsoleHandler.ControlEndOfInputQueuesGracefulExit
+[       OK ] ConsoleHandler.ControlEndOfInputQueuesGracefulExit (0 ms)
+[ RUN      ] ConsoleHandler.PauseAndUnpausePreserveInteractiveInput
+[       OK ] ConsoleHandler.PauseAndUnpausePreserveInteractiveInput (1 ms)
+[ RUN      ] ConsoleHandler.DefaultModeRetainsLegacyDaemonPath
+[       OK ] ConsoleHandler.DefaultModeRetainsLegacyDaemonPath (0 ms)
+[ RUN      ] ConsoleHandler.LineEditorReceivesColoredPrompt
+[       OK ] ConsoleHandler.LineEditorReceivesColoredPrompt (0 ms)
+[----------] 10 tests from ConsoleHandler (2 ms total)
+
+[----------] 7 tests from decompose_amount_into_digits_test
+[ RUN      ] decompose_amount_into_digits_test.is_correct_0
+[       OK ] decompose_amount_into_digits_test.is_correct_0 (0 ms)
+[ RUN      ] decompose_amount_into_digits_test.is_correct_1
+[       OK ] decompose_amount_into_digits_test.is_correct_1 (0 ms)
+[ RUN      ] decompose_amount_into_digits_test.is_correct_2
+[       OK ] decompose_amount_into_digits_test.is_correct_2 (0 ms)
+[ RUN      ] decompose_amount_into_digits_test.is_correct_3
+[       OK ] decompose_amount_into_digits_test.is_correct_3 (0 ms)
+[ RUN      ] decompose_amount_into_digits_test.is_correct_4
+[       OK ] decompose_amount_into_digits_test.is_correct_4 (0 ms)
+[ RUN      ] decompose_amount_into_digits_test.is_correct_5
+[       OK ] decompose_amount_into_digits_test.is_correct_5 (0 ms)
+[ RUN      ] decompose_amount_into_digits_test.is_correct_6
+[       OK ] decompose_amount_into_digits_test.is_correct_6 (0 ms)
+[----------] 7 tests from decompose_amount_into_digits_test (0 ms total)
+
+[----------] 2 tests from mul128
+[ RUN      ] mul128.handles_zero
+[       OK ] mul128.handles_zero (0 ms)
+[ RUN      ] mul128.handles_one
+[       OK ] mul128.handles_one (0 ms)
+[----------] 2 tests from mul128 (0 ms total)
+
+[----------] 1 test from mul128_without_carry
+[ RUN      ] mul128_without_carry.multiplies_correctly
+[       OK ] mul128_without_carry.multiplies_correctly (0 ms)
+[----------] 1 test from mul128_without_carry (0 ms total)
+
+[----------] 1 test from mul128_with_carry_1_only
+[ RUN      ] mul128_with_carry_1_only.multiplies_correctly
+[       OK ] mul128_with_carry_1_only.multiplies_correctly (0 ms)
+[----------] 1 test from mul128_with_carry_1_only (0 ms total)
+
+[----------] 1 test from mul128_with_carry_2_only
+[ RUN      ] mul128_with_carry_2_only.multiplies_correctly
+[       OK ] mul128_with_carry_2_only.multiplies_correctly (0 ms)
+[----------] 1 test from mul128_with_carry_2_only (0 ms total)
+
+[----------] 1 test from mul128_with_carry_1_and_2
+[ RUN      ] mul128_with_carry_1_and_2.multiplies_correctly
+[       OK ] mul128_with_carry_1_and_2.multiplies_correctly (0 ms)
+[----------] 1 test from mul128_with_carry_1_and_2 (0 ms total)
+
+[----------] 5 tests from div128_32
+[ RUN      ] div128_32.handles_zero
+[       OK ] div128_32.handles_zero (0 ms)
+[ RUN      ] div128_32.handles_one
+[       OK ] div128_32.handles_one (0 ms)
+[ RUN      ] div128_32.handles_if_dividend_less_divider
+[       OK ] div128_32.handles_if_dividend_less_divider (0 ms)
+[ RUN      ] div128_32.handles_if_dividend_dwords_less_divider
+[       OK ] div128_32.handles_if_dividend_dwords_less_divider (0 ms)
+[ RUN      ] div128_32.works_correctly
+[       OK ] div128_32.works_correctly (0 ms)
+[----------] 5 tests from div128_32 (0 ms total)
+
+[----------] 11 tests from PaymentGateTest
+[ RUN      ] PaymentGateTest.createWallet
+[       OK ] PaymentGateTest.createWallet (12 ms)
+[ RUN      ] PaymentGateTest.getSpendKeysAcceptsOwnAddress
+[       OK ] PaymentGateTest.getSpendKeysAcceptsOwnAddress (10 ms)
+[ RUN      ] PaymentGateTest.addressIndexAndAccountNumberSelectors
+[       OK ] PaymentGateTest.addressIndexAndAccountNumberSelectors (15 ms)
+[ RUN      ] PaymentGateTest.ChangeDestinationRuleMatchesCryptoNote
+[       OK ] PaymentGateTest.ChangeDestinationRuleMatchesCryptoNote (14 ms)
+[ RUN      ] PaymentGateTest.RestoreAddressCountRegeneratesDeposits
+[       OK ] PaymentGateTest.RestoreAddressCountRegeneratesDeposits (29 ms)
+[ RUN      ] PaymentGateTest.IndexModeRegistersAndIssuesHITC
+[       OK ] PaymentGateTest.IndexModeRegistersAndIssuesHITC (567037 ms)
+[ RUN      ] PaymentGateTest.DepositEndpointsFailClosedOnAnUntrustedDaemon
+[       OK ] PaymentGateTest.DepositEndpointsFailClosedOnAnUntrustedDaemon (585424 ms)
+[ RUN      ] PaymentGateTest.AggregatedDepositsAreUnaffectedByDaemonTrust
+[       OK ] PaymentGateTest.AggregatedDepositsAreUnaffectedByDaemonTrust (13 ms)
+[ RUN      ] PaymentGateTest.MessageSigningMnemonicAndViewKeyShape
+[       OK ] PaymentGateTest.MessageSigningMnemonicAndViewKeyShape (11 ms)
+[ RUN      ] PaymentGateTest.GetStatusReportsALastBlockHash
+[       OK ] PaymentGateTest.GetStatusReportsALastBlockHash (10 ms)
+[ RUN      ] PaymentGateTest.TrackingKeyExportIsAuditOnly
+[       OK ] PaymentGateTest.TrackingKeyExportIsAuditOnly (21 ms)
+[----------] 11 tests from PaymentGateTest (1152596 ms total)
+
+[----------] 2 tests from RpcServerConfig
+[ RUN      ] RpcServerConfig.StopDaemonRequiresUnrestrictedLoopbackRpc
+[       OK ] RpcServerConfig.StopDaemonRequiresUnrestrictedLoopbackRpc (0 ms)
+[ RUN      ] RpcServerConfig.StopDaemonRequiresNonBrowserJsonPost
+[       OK ] RpcServerConfig.StopDaemonRequiresNonBrowserJsonPost (0 ms)
+[----------] 2 tests from RpcServerConfig (0 ms total)
+
+[----------] 1 test from BinarySerializer
+[ RUN      ] BinarySerializer.uint16
+[       OK ] BinarySerializer.uint16 (0 ms)
+[----------] 1 test from BinarySerializer (0 ms total)
+
+[----------] 2 tests from KVSerialize
+[ RUN      ] KVSerialize.Simple
+[       OK ] KVSerialize.Simple (0 ms)
+[ RUN      ] KVSerialize.BigCollection
+[       OK ] KVSerialize.BigCollection (21 ms)
+[----------] 2 tests from KVSerialize (21 ms total)
+
+[----------] 3 tests from ShuffleTest
+[ RUN      ] ShuffleTest.correctness
+[       OK ] ShuffleTest.correctness (0 ms)
+[ RUN      ] ShuffleTest.correctness_fractionalSize
+[       OK ] ShuffleTest.correctness_fractionalSize (2 ms)
+[ RUN      ] ShuffleTest.cryptoGenerator
+[       OK ] ShuffleTest.cryptoGenerator (1 ms)
+[----------] 3 tests from ShuffleTest (4 ms total)
+
+[----------] 34 tests from StringBufferTests
+[ RUN      ] StringBufferTests.defaultConstructor
+[       OK ] StringBufferTests.defaultConstructor (0 ms)
+[ RUN      ] StringBufferTests.directConstructor
+[       OK ] StringBufferTests.directConstructor (0 ms)
+[ RUN      ] StringBufferTests.arrayConstructor
+[       OK ] StringBufferTests.arrayConstructor (0 ms)
+[ RUN      ] StringBufferTests.viewConstructor
+[       OK ] StringBufferTests.viewConstructor (0 ms)
+[ RUN      ] StringBufferTests.copyConstructor
+[       OK ] StringBufferTests.copyConstructor (0 ms)
+[ RUN      ] StringBufferTests.copyAssignment
+[       OK ] StringBufferTests.copyAssignment (0 ms)
+[ RUN      ] StringBufferTests.viewAssignment
+[       OK ] StringBufferTests.viewAssignment (0 ms)
+[ RUN      ] StringBufferTests.view
+[       OK ] StringBufferTests.view (0 ms)
+[ RUN      ] StringBufferTests.getData
+[       OK ] StringBufferTests.getData (0 ms)
+[ RUN      ] StringBufferTests.empty
+[       OK ] StringBufferTests.empty (0 ms)
+[ RUN      ] StringBufferTests.squareBrackets
+[       OK ] StringBufferTests.squareBrackets (0 ms)
+[ RUN      ] StringBufferTests.firstLast
+[       OK ] StringBufferTests.firstLast (0 ms)
+[ RUN      ] StringBufferTests.beginEnd
+[       OK ] StringBufferTests.beginEnd (0 ms)
+[ RUN      ] StringBufferTests.comparisons
+[       OK ] StringBufferTests.comparisons (0 ms)
+[ RUN      ] StringBufferTests.beginsWith
+[       OK ] StringBufferTests.beginsWith (0 ms)
+[ RUN      ] StringBufferTests.contains
+[       OK ] StringBufferTests.contains (0 ms)
+[ RUN      ] StringBufferTests.endsWith
+[       OK ] StringBufferTests.endsWith (0 ms)
+[ RUN      ] StringBufferTests.find
+[       OK ] StringBufferTests.find (0 ms)
+[ RUN      ] StringBufferTests.findLast
+[       OK ] StringBufferTests.findLast (0 ms)
+[ RUN      ] StringBufferTests.head
+[       OK ] StringBufferTests.head (0 ms)
+[ RUN      ] StringBufferTests.tail
+[       OK ] StringBufferTests.tail (0 ms)
+[ RUN      ] StringBufferTests.unhead
+[       OK ] StringBufferTests.unhead (0 ms)
+[ RUN      ] StringBufferTests.untail
+[       OK ] StringBufferTests.untail (0 ms)
+[ RUN      ] StringBufferTests.range
+[       OK ] StringBufferTests.range (0 ms)
+[ RUN      ] StringBufferTests.slice
+[       OK ] StringBufferTests.slice (0 ms)
+[ RUN      ] StringBufferTests.append
+[       OK ] StringBufferTests.append (0 ms)
+[ RUN      ] StringBufferTests.clear
+[       OK ] StringBufferTests.clear (0 ms)
+[ RUN      ] StringBufferTests.cut
+[       OK ] StringBufferTests.cut (0 ms)
+[ RUN      ] StringBufferTests.fill
+[       OK ] StringBufferTests.fill (0 ms)
+[ RUN      ] StringBufferTests.insert
+[       OK ] StringBufferTests.insert (0 ms)
+[ RUN      ] StringBufferTests.overwrite
+[       OK ] StringBufferTests.overwrite (0 ms)
+[ RUN      ] StringBufferTests.resize
+[       OK ] StringBufferTests.resize (0 ms)
+[ RUN      ] StringBufferTests.reverse
+[       OK ] StringBufferTests.reverse (0 ms)
+[ RUN      ] StringBufferTests.shrink
+[       OK ] StringBufferTests.shrink (0 ms)
+[----------] 34 tests from StringBufferTests (0 ms total)
+
+[----------] 23 tests from StringViewTests
+[ RUN      ] StringViewTests.representations
+[       OK ] StringViewTests.representations (0 ms)
+[ RUN      ] StringViewTests.directConstructor
+[       OK ] StringViewTests.directConstructor (0 ms)
+[ RUN      ] StringViewTests.arrayConstructor
+[       OK ] StringViewTests.arrayConstructor (0 ms)
+[ RUN      ] StringViewTests.stdStringConstructor
+[       OK ] StringViewTests.stdStringConstructor (0 ms)
+[ RUN      ] StringViewTests.copyConstructor
+[       OK ] StringViewTests.copyConstructor (0 ms)
+[ RUN      ] StringViewTests.copyAssignment
+[       OK ] StringViewTests.copyAssignment (0 ms)
+[ RUN      ] StringViewTests.emptyNil
+[       OK ] StringViewTests.emptyNil (0 ms)
+[ RUN      ] StringViewTests.squareBrackets
+[       OK ] StringViewTests.squareBrackets (0 ms)
+[ RUN      ] StringViewTests.firstLast
+[       OK ] StringViewTests.firstLast (0 ms)
+[ RUN      ] StringViewTests.beginEnd
+[       OK ] StringViewTests.beginEnd (0 ms)
+[ RUN      ] StringViewTests.comparisons
+[       OK ] StringViewTests.comparisons (0 ms)
+[ RUN      ] StringViewTests.beginsWith
+[       OK ] StringViewTests.beginsWith (0 ms)
+[ RUN      ] StringViewTests.contains
+[       OK ] StringViewTests.contains (0 ms)
+[ RUN      ] StringViewTests.endsWith
+[       OK ] StringViewTests.endsWith (0 ms)
+[ RUN      ] StringViewTests.find
+[       OK ] StringViewTests.find (0 ms)
+[ RUN      ] StringViewTests.findLast
+[       OK ] StringViewTests.findLast (0 ms)
+[ RUN      ] StringViewTests.head
+[       OK ] StringViewTests.head (0 ms)
+[ RUN      ] StringViewTests.tail
+[       OK ] StringViewTests.tail (0 ms)
+[ RUN      ] StringViewTests.unhead
+[       OK ] StringViewTests.unhead (0 ms)
+[ RUN      ] StringViewTests.untail
+[       OK ] StringViewTests.untail (0 ms)
+[ RUN      ] StringViewTests.range
+[       OK ] StringViewTests.range (0 ms)
+[ RUN      ] StringViewTests.slice
+[       OK ] StringViewTests.slice (0 ms)
+[ RUN      ] StringViewTests.set
+[       OK ] StringViewTests.set (0 ms)
+[----------] 23 tests from StringViewTests (1 ms total)
+
+[----------] 52 tests from BcSTest
+[ RUN      ] BcSTest.addConsumerStopped
+[       OK ] BcSTest.addConsumerStopped (0 ms)
+[ RUN      ] BcSTest.addConsumerStartStop
+[       OK ] BcSTest.addConsumerStartStop (1 ms)
+[ RUN      ] BcSTest.addConsumerStartThrow
+2026-Sep-08 06:26:41.279142 ERROR   [BlockchainSynchronizer] Failed to add consumer: not stopped, consumer 0x562b8ca78b30
+[       OK ] BcSTest.addConsumerStartThrow (1 ms)
+[ RUN      ] BcSTest.removeConsumerWhichIsNotExist
+2026-Sep-08 06:26:41.279936 ERROR   [BlockchainSynchronizer] Failed to remove consumer: not found, consumer 0x7ffe6a254bc0
+[       OK ] BcSTest.removeConsumerWhichIsNotExist (0 ms)
+[ RUN      ] BcSTest.removeConsumerStartThrow
+2026-Sep-08 06:26:41.280698 ERROR   [BlockchainSynchronizer] Failed to remove consumer: not stopped, consumer 0x7ffe6a254bc0
+[       OK ] BcSTest.removeConsumerStartThrow (1 ms)
+[ RUN      ] BcSTest.removeConsumerStopped
+[       OK ] BcSTest.removeConsumerStopped (1 ms)
+[ RUN      ] BcSTest.removeConsumerStartStop
+[       OK ] BcSTest.removeConsumerStartStop (0 ms)
+[ RUN      ] BcSTest.getConsumerStateWhichIsNotExist
+[       OK ] BcSTest.getConsumerStateWhichIsNotExist (1 ms)
+[ RUN      ] BcSTest.getConsumerStateStartThrow
+2026-Sep-08 06:26:41.283083 ERROR   [BlockchainSynchronizer] Failed to get consumer state: not stopped, consumer 0x7ffe6a254bc0
+[       OK ] BcSTest.getConsumerStateStartThrow (1 ms)
+[ RUN      ] BcSTest.getConsumerStateStopped
+[       OK ] BcSTest.getConsumerStateStopped (0 ms)
+[ RUN      ] BcSTest.getConsumerStateStartStop
+[       OK ] BcSTest.getConsumerStateStartStop (1 ms)
+[ RUN      ] BcSTest.startWithoutConsumersThrow
+2026-Sep-08 06:26:41.285044 ERROR   [BlockchainSynchronizer] Failed to start: no consumers
+[       OK ] BcSTest.startWithoutConsumersThrow (1 ms)
+[ RUN      ] BcSTest.doubleStart
+2026-Sep-08 06:26:41.285746 ERROR   [BlockchainSynchronizer] Failed to start: already started
+[       OK ] BcSTest.doubleStart (0 ms)
+[ RUN      ] BcSTest.startAfterStop
+[       OK ] BcSTest.startAfterStop (1 ms)
+[ RUN      ] BcSTest.startAndObserve
+2026-Sep-08 06:26:41.286991 ERROR   [BlockchainSynchronizer] Failed to start: already started
+[       OK ] BcSTest.startAndObserve (1 ms)
+[ RUN      ] BcSTest.noObservationsBeforeStart
+[       OK ] BcSTest.noObservationsBeforeStart (0 ms)
+[ RUN      ] BcSTest.noObservationsAfterStop
+[       OK ] BcSTest.noObservationsAfterStop (1 ms)
+[ RUN      ] BcSTest.stopOnCreation
+[       OK ] BcSTest.stopOnCreation (1 ms)
+[ RUN      ] BcSTest.doubleStopAfterStart
+[       OK ] BcSTest.doubleStopAfterStart (0 ms)
+[ RUN      ] BcSTest.stopIsWaiting
+[       OK ] BcSTest.stopIsWaiting (1011 ms)
+[ RUN      ] BcSTest.stopReturnsQuicklyWhenQueryBlocksNeverCallsBack
+[       OK ] BcSTest.stopReturnsQuicklyWhenQueryBlocksNeverCallsBack (201 ms)
+[ RUN      ] BcSTest.stopReturnsQuicklyWhenPoolRequestNeverCallsBack
+[       OK ] BcSTest.stopReturnsQuicklyWhenPoolRequestNeverCallsBack (201 ms)
+[ RUN      ] BcSTest.synchronizationActivityWrapsSuccessfulCycle
+[       OK ] BcSTest.synchronizationActivityWrapsSuccessfulCycle (1 ms)
+[ RUN      ] BcSTest.synchronizationActivityBeginsBeforeConsumerMutation
+[       OK ] BcSTest.synchronizationActivityBeginsBeforeConsumerMutation (3 ms)
+[ RUN      ] BcSTest.synchronizationActivityEndsOnQueryError
+2026-Sep-08 06:26:42.706774 ERROR   [BlockchainSynchronizer] Failed to query blocks: generic:22, Invalid argument
+[       OK ] BcSTest.synchronizationActivityEndsOnQueryError (0 ms)
+[ RUN      ] BcSTest.synchronizationActivityRestartsAfterRetryablePoolError
+[       OK ] BcSTest.synchronizationActivityRestartsAfterRetryablePoolError (5001 ms)
+[ RUN      ] BcSTest.synchronizationActivityEndsWhenStopAbandonsQuery
+[       OK ] BcSTest.synchronizationActivityEndsWhenStopAbandonsQuery (200 ms)
+[ RUN      ] BcSTest.syncCompletedError
+[       OK ] BcSTest.syncCompletedError (211 ms)
+[ RUN      ] BcSTest.onLastKnownBlockHeightUpdated
+[       OK ] BcSTest.onLastKnownBlockHeightUpdated (14 ms)
+[ RUN      ] BcSTest.onPoolChanged
+[       OK ] BcSTest.onPoolChanged (13 ms)
+[ RUN      ] BcSTest.serializationCheck
+[       OK ] BcSTest.serializationCheck (0 ms)
+[ RUN      ] BcSTest.firstPoolSynchronizationCheck
+[       OK ] BcSTest.firstPoolSynchronizationCheck (1 ms)
+[ RUN      ] BcSTest.firstPoolSynchronizationCheckNonActual
+[       OK ] BcSTest.firstPoolSynchronizationCheckNonActual (1 ms)
+[ RUN      ] BcSTest.firstPoolSynchronizationCheckGetPoolErr
+2026-Sep-08 06:26:48.149135 ERROR   [BlockchainSynchronizer] Failed to query transaction pool changes: generic:22, Invalid argument
+[       OK ] BcSTest.firstPoolSynchronizationCheckGetPoolErr (1 ms)
+[ RUN      ] BcSTest.poolSynchronizationCheckActual
+[       OK ] BcSTest.poolSynchronizationCheckActual (1 ms)
+[ RUN      ] BcSTest.poolSynchronizationCheckError
+2026-Sep-08 06:26:48.151142 ERROR   [BlockchainSynchronizer] Failed to query transaction pool changes: generic:22, Invalid argument
+[       OK ] BcSTest.poolSynchronizationCheckError (1 ms)
+[ RUN      ] BcSTest.poolSynchronizationCheckTxAdded
+[       OK ] BcSTest.poolSynchronizationCheckTxAdded (1 ms)
+[ RUN      ] BcSTest.poolSynchronizationCheckTxDeleted
+[       OK ] BcSTest.poolSynchronizationCheckTxDeleted (1 ms)
+[ RUN      ] BcSTest.poolSynchronizationCheckNotification
+[       OK ] BcSTest.poolSynchronizationCheckNotification (0 ms)
+[ RUN      ] BcSTest.poolSynchronizationCheckConsumersNotififcation
+[       OK ] BcSTest.poolSynchronizationCheckConsumersNotififcation (1 ms)
+[ RUN      ] BcSTest.poolSynchronizationCheckConsumerReturnError
+2026-Sep-08 06:26:48.155512 ERROR   [BlockchainSynchronizer] Failed to process outdated pool transactions: generic:22, Invalid argument, consumer 0x7ffe6a254b10
+[       OK ] BcSTest.poolSynchronizationCheckConsumerReturnError (1 ms)
+[ RUN      ] BcSTest.synchronizationActivityEndsOnConsumerError
+2026-Sep-08 06:26:48.157280 ERROR   [BlockchainSynchronizer] Failed to add blocks to consumer, consumer 0x7ffe6a254b70
+[       OK ] BcSTest.synchronizationActivityEndsOnConsumerError (2 ms)
+[ RUN      ] BcSTest.checkINodeError
+2026-Sep-08 06:26:48.158013 ERROR   [BlockchainSynchronizer] Failed to query blocks: generic:22, Invalid argument
+[       OK ] BcSTest.checkINodeError (1 ms)
+[ RUN      ] BcSTest.checkConsumerError
+2026-Sep-08 06:26:48.163690 ERROR   [BlockchainSynchronizer] Failed to add blocks to consumer, consumer 0x7ffe6a254b70
+[       OK ] BcSTest.checkConsumerError (5 ms)
+[ RUN      ] BcSTest.checkBlocksRequesting
+[       OK ] BcSTest.checkBlocksRequesting (12 ms)
+[ RUN      ] BcSTest.rejectsResponseStartingAfterConsumerHeight
+2026-Sep-08 06:26:48.176626 ERROR   [BlockchainSynchronizer] Failed to update consumer: node response starts at height 1 beyond consumer height 0, consumer 0x7ffe6a254b70
+[       OK ] BcSTest.rejectsResponseStartingAfterConsumerHeight (1 ms)
+[ RUN      ] BcSTest.checkConsumerHeightReceived
+[       OK ] BcSTest.checkConsumerHeightReceived (23 ms)
+[ RUN      ] BcSTest.checkConsumerOldBlocksNotIvoked
+[       OK ] BcSTest.checkConsumerOldBlocksNotIvoked (12 ms)
+[ RUN      ] BcSTest.checkConsumerHeightReceivedOnDetach
+[       OK ] BcSTest.checkConsumerHeightReceivedOnDetach (26 ms)
+[ RUN      ] BcSTest.checkStatePreservingBetweenSynchronizations
+2026-Sep-08 06:26:48.249323 ERROR   [BlockchainSynchronizer] Failed to query blocks: generic:4, Interrupted system call
+[       OK ] BcSTest.checkStatePreservingBetweenSynchronizations (12 ms)
+[ RUN      ] BcSTest.checkBlocksRerequestingOnError
+2026-Sep-08 06:26:48.260185 ERROR   [BlockchainSynchronizer] Failed to add blocks to consumer, consumer 0x7ffe6a254b70
+[       OK ] BcSTest.checkBlocksRerequestingOnError (12 ms)
+[ RUN      ] BcSTest.checkTxOrder
+2026-Sep-08 06:26:48.263224 ERROR   [BlockchainSynchronizer] Failed to query blocks: generic:4, Interrupted system call
+[       OK ] BcSTest.checkTxOrder (2 ms)
+[----------] 52 tests from BcSTest (6986 ms total)
+
+[----------] 73 tests from FileMappedVectorTest
+[ RUN      ] FileMappedVectorTest.constructorOpensFileIfModeIsOpenAndFileExists
+[       OK ] FileMappedVectorTest.constructorOpensFileIfModeIsOpenAndFileExists (0 ms)
+[ RUN      ] FileMappedVectorTest.constructorThrowsExceptionIfModeIsOpenAndFileDoesNotExist
+[       OK ] FileMappedVectorTest.constructorThrowsExceptionIfModeIsOpenAndFileDoesNotExist (1 ms)
+[ RUN      ] FileMappedVectorTest.constructorCreatesFileIfModeIsCreateAndFileDoesNotExists
+[       OK ] FileMappedVectorTest.constructorCreatesFileIfModeIsCreateAndFileDoesNotExists (0 ms)
+[ RUN      ] FileMappedVectorTest.constructorThrowsExceptionIfModeIsCreateAndFileExists
+[       OK ] FileMappedVectorTest.constructorThrowsExceptionIfModeIsCreateAndFileExists (0 ms)
+[ RUN      ] FileMappedVectorTest.constructorThrowsExceptionIfModeIsCreateAndBakFileExists
+[       OK ] FileMappedVectorTest.constructorThrowsExceptionIfModeIsCreateAndBakFileExists (0 ms)
+[ RUN      ] FileMappedVectorTest.constructorOpensFileIfModeIsOpenOrCreateAndFileExists
+[       OK ] FileMappedVectorTest.constructorOpensFileIfModeIsOpenOrCreateAndFileExists (0 ms)
+[ RUN      ] FileMappedVectorTest.constructorCreatesFileIfModeIsOpenOrCreateAndFileDoesNotExist
+[       OK ] FileMappedVectorTest.constructorCreatesFileIfModeIsOpenOrCreateAndFileDoesNotExist (1 ms)
+[ RUN      ] FileMappedVectorTest.constructorCreatesEmptyFile
+[       OK ] FileMappedVectorTest.constructorCreatesEmptyFile (0 ms)
+[ RUN      ] FileMappedVectorTest.constructorCreatesEmptyFileWithPrefix
+[       OK ] FileMappedVectorTest.constructorCreatesEmptyFileWithPrefix (1 ms)
+[ RUN      ] FileMappedVectorTest.constructorCorrectlyOpensExistentFile
+[       OK ] FileMappedVectorTest.constructorCorrectlyOpensExistentFile (0 ms)
+[ RUN      ] FileMappedVectorTest.constructorCorrectlyOpensFileWithPrefixAndSuffix
+[       OK ] FileMappedVectorTest.constructorCorrectlyOpensFileWithPrefixAndSuffix (1 ms)
+[ RUN      ] FileMappedVectorTest.constructorOpensFileIfItExistsAndRemovesBakFileIfItExists
+[       OK ] FileMappedVectorTest.constructorOpensFileIfItExistsAndRemovesBakFileIfItExists (0 ms)
+[ RUN      ] FileMappedVectorTest.constructorOpensAndRenamesBakFileIfItExists
+[       OK ] FileMappedVectorTest.constructorOpensAndRenamesBakFileIfItExists (0 ms)
+[ RUN      ] FileMappedVectorTest.constructorThrowsExceptionIfFailedToOpenExistentFile
+[       OK ] FileMappedVectorTest.constructorThrowsExceptionIfFailedToOpenExistentFile (0 ms)
+[ RUN      ] FileMappedVectorTest.constructorThrowsExceptionIfFailedToOpenExistentBakFile
+[       OK ] FileMappedVectorTest.constructorThrowsExceptionIfFailedToOpenExistentBakFile (0 ms)
+[ RUN      ] FileMappedVectorTest.constructorThrowsExceptionIfFailedToRemoveBakFile
+[       OK ] FileMappedVectorTest.constructorThrowsExceptionIfFailedToRemoveBakFile (0 ms)
+[ RUN      ] FileMappedVectorTest.constructorThrowsExceptionIfFileDoesNotContainMetadata
+[       OK ] FileMappedVectorTest.constructorThrowsExceptionIfFileDoesNotContainMetadata (0 ms)
+[ RUN      ] FileMappedVectorTest.constructorThrowsExceptionIfFileSizeIsLessThanCapacity
+[       OK ] FileMappedVectorTest.constructorThrowsExceptionIfFileSizeIsLessThanCapacity (1 ms)
+[ RUN      ] FileMappedVectorTest.constructorThrowsExceptionIfFileCapacityIsLessThanVectorSize
+[       OK ] FileMappedVectorTest.constructorThrowsExceptionIfFileCapacityIsLessThanVectorSize (0 ms)
+[ RUN      ] FileMappedVectorTest.constructorCanOpenFileWithZeroCapacity
+[       OK ] FileMappedVectorTest.constructorCanOpenFileWithZeroCapacity (1 ms)
+[ RUN      ] FileMappedVectorTest.destructorFlushesAllChangesToDisk
+[       OK ] FileMappedVectorTest.destructorFlushesAllChangesToDisk (0 ms)
+[ RUN      ] FileMappedVectorTest.newVectorIsEmpty
+[       OK ] FileMappedVectorTest.newVectorIsEmpty (1 ms)
+[ RUN      ] FileMappedVectorTest.reserveIncreasesCapacity
+[       OK ] FileMappedVectorTest.reserveIncreasesCapacity (1 ms)
+[ RUN      ] FileMappedVectorTest.reserveDoesNotDecreaseCapacity
+[       OK ] FileMappedVectorTest.reserveDoesNotDecreaseCapacity (1 ms)
+[ RUN      ] FileMappedVectorTest.reservePreservesFilePrefixAndSuffix
+[       OK ] FileMappedVectorTest.reservePreservesFilePrefixAndSuffix (1 ms)
+[ RUN      ] FileMappedVectorTest.shrinkToFitSetCapacityToSize
+[       OK ] FileMappedVectorTest.shrinkToFitSetCapacityToSize (1 ms)
+[ RUN      ] FileMappedVectorTest.beginReturnsIteratorPointsToFirstElement
+[       OK ] FileMappedVectorTest.beginReturnsIteratorPointsToFirstElement (1 ms)
+[ RUN      ] FileMappedVectorTest.beginReturnsNonConstIterator
+[       OK ] FileMappedVectorTest.beginReturnsNonConstIterator (1 ms)
+[ RUN      ] FileMappedVectorTest.beginAndEndAreEqualForEmptyVector
+[       OK ] FileMappedVectorTest.beginAndEndAreEqualForEmptyVector (0 ms)
+[ RUN      ] FileMappedVectorTest.endReturnsIteratorPointsAfterLastElement
+[       OK ] FileMappedVectorTest.endReturnsIteratorPointsAfterLastElement (1 ms)
+[ RUN      ] FileMappedVectorTest.squareBracketsOperatorReturnsCorrectElement
+[       OK ] FileMappedVectorTest.squareBracketsOperatorReturnsCorrectElement (1 ms)
+[ RUN      ] FileMappedVectorTest.squareBracketsOperatorReturnsNonConstReference
+[       OK ] FileMappedVectorTest.squareBracketsOperatorReturnsNonConstReference (0 ms)
+[ RUN      ] FileMappedVectorTest.atThrowsOutOfRangeException
+[       OK ] FileMappedVectorTest.atThrowsOutOfRangeException (1 ms)
+[ RUN      ] FileMappedVectorTest.atReturnsNonConstReference
+[       OK ] FileMappedVectorTest.atReturnsNonConstReference (1 ms)
+[ RUN      ] FileMappedVectorTest.frontReturnsFirstElement
+[       OK ] FileMappedVectorTest.frontReturnsFirstElement (1 ms)
+[ RUN      ] FileMappedVectorTest.frontReturnsNonConstIterator
+[       OK ] FileMappedVectorTest.frontReturnsNonConstIterator (0 ms)
+[ RUN      ] FileMappedVectorTest.backReturnsLastElement
+[       OK ] FileMappedVectorTest.backReturnsLastElement (1 ms)
+[ RUN      ] FileMappedVectorTest.backReturnsNonConstIterator
+[       OK ] FileMappedVectorTest.backReturnsNonConstIterator (1 ms)
+[ RUN      ] FileMappedVectorTest.dataReturnsPointerToVectorData
+[       OK ] FileMappedVectorTest.dataReturnsPointerToVectorData (1 ms)
+[ RUN      ] FileMappedVectorTest.vectorDataCanBeChangedViaPointer
+[       OK ] FileMappedVectorTest.vectorDataCanBeChangedViaPointer (1 ms)
+[ RUN      ] FileMappedVectorTest.clearRemovesAllElements
+[       OK ] FileMappedVectorTest.clearRemovesAllElements (1 ms)
+[ RUN      ] FileMappedVectorTest.eraseCanRemoveTheFirstElement
+[       OK ] FileMappedVectorTest.eraseCanRemoveTheFirstElement (1 ms)
+[ RUN      ] FileMappedVectorTest.eraseCanRemoveTheLastElement
+[       OK ] FileMappedVectorTest.eraseCanRemoveTheLastElement (1 ms)
+[ RUN      ] FileMappedVectorTest.eraseCanRemoveOneMiddleElement
+[       OK ] FileMappedVectorTest.eraseCanRemoveOneMiddleElement (1 ms)
+[ RUN      ] FileMappedVectorTest.eraseCanRemoveAllMiddleElements
+[       OK ] FileMappedVectorTest.eraseCanRemoveAllMiddleElements (1 ms)
+[ RUN      ] FileMappedVectorTest.eraseCanRemoveAllElements
+[       OK ] FileMappedVectorTest.eraseCanRemoveAllElements (0 ms)
+[ RUN      ] FileMappedVectorTest.eraseReturnsIteratorPointsToFirstElementAfterErased
+[       OK ] FileMappedVectorTest.eraseReturnsIteratorPointsToFirstElementAfterErased (1 ms)
+[ RUN      ] FileMappedVectorTest.erasePreservesFilePrefixAndSuffix
+[       OK ] FileMappedVectorTest.erasePreservesFilePrefixAndSuffix (2 ms)
+[ RUN      ] FileMappedVectorTest.insertCanAddElementsToEmptyVector
+[       OK ] FileMappedVectorTest.insertCanAddElementsToEmptyVector (1 ms)
+[ RUN      ] FileMappedVectorTest.insertCanAddElementToFront
+[       OK ] FileMappedVectorTest.insertCanAddElementToFront (1 ms)
+[ RUN      ] FileMappedVectorTest.insertCanAddElementToBack
+[       OK ] FileMappedVectorTest.insertCanAddElementToBack (1 ms)
+[ RUN      ] FileMappedVectorTest.insertCanAddOneElementToMiddle
+[       OK ] FileMappedVectorTest.insertCanAddOneElementToMiddle (1 ms)
+[ RUN      ] FileMappedVectorTest.insertCanAddSeveralElementsToMiddle
+[       OK ] FileMappedVectorTest.insertCanAddSeveralElementsToMiddle (1 ms)
+[ RUN      ] FileMappedVectorTest.insertCanIncreaseCapacity
+[       OK ] FileMappedVectorTest.insertCanIncreaseCapacity (8 ms)
+[ RUN      ] FileMappedVectorTest.insertReturnsIteratorPointsToFirstInsertedElement
+[       OK ] FileMappedVectorTest.insertReturnsIteratorPointsToFirstInsertedElement (1 ms)
+[ RUN      ] FileMappedVectorTest.insertPreservesFilePrefixAndSuffix
+[       OK ] FileMappedVectorTest.insertPreservesFilePrefixAndSuffix (1 ms)
+[ RUN      ] FileMappedVectorTest.pushBackCanAppendElementToEmptyVector
+[       OK ] FileMappedVectorTest.pushBackCanAppendElementToEmptyVector (1 ms)
+[ RUN      ] FileMappedVectorTest.pushBackCanAppendElementToNonEmptyVector
+[       OK ] FileMappedVectorTest.pushBackCanAppendElementToNonEmptyVector (0 ms)
+[ RUN      ] FileMappedVectorTest.pushBackCanIncreaseCapacity
+[       OK ] FileMappedVectorTest.pushBackCanIncreaseCapacity (4 ms)
+[ RUN      ] FileMappedVectorTest.pushBackFlushesDataToDiskImmediately
+[       OK ] FileMappedVectorTest.pushBackFlushesDataToDiskImmediately (1 ms)
+[ RUN      ] FileMappedVectorTest.popBackRemovesLastElement
+[       OK ] FileMappedVectorTest.popBackRemovesLastElement (0 ms)
+[ RUN      ] FileMappedVectorTest.popBackRemovesTheOnlyElement
+[       OK ] FileMappedVectorTest.popBackRemovesTheOnlyElement (0 ms)
+[ RUN      ] FileMappedVectorTest.swapWorksCorrectly
+[       OK ] FileMappedVectorTest.swapWorksCorrectly (2 ms)
+[ RUN      ] FileMappedVectorTest.resizePrefixCorrectlyShrinksPrefix
+[       OK ] FileMappedVectorTest.resizePrefixCorrectlyShrinksPrefix (1 ms)
+[ RUN      ] FileMappedVectorTest.resizePrefixCorrectlyExpandsPrefix
+[       OK ] FileMappedVectorTest.resizePrefixCorrectlyExpandsPrefix (1 ms)
+[ RUN      ] FileMappedVectorTest.resizePrefixCanRemovePrefix
+[       OK ] FileMappedVectorTest.resizePrefixCanRemovePrefix (1 ms)
+[ RUN      ] FileMappedVectorTest.resizePrefixCanAddPrefixIfItDidNotExist
+[       OK ] FileMappedVectorTest.resizePrefixCanAddPrefixIfItDidNotExist (1 ms)
+[ RUN      ] FileMappedVectorTest.resizeSuffixCorrectlyShrinksSuffix
+[       OK ] FileMappedVectorTest.resizeSuffixCorrectlyShrinksSuffix (1 ms)
+[ RUN      ] FileMappedVectorTest.resizeSuffixCorrectlyExpandsSuffix
+[       OK ] FileMappedVectorTest.resizeSuffixCorrectlyExpandsSuffix (1 ms)
+[ RUN      ] FileMappedVectorTest.resizeSuffixCanRemoveSuffix
+[       OK ] FileMappedVectorTest.resizeSuffixCanRemoveSuffix (1 ms)
+[ RUN      ] FileMappedVectorTest.resizeSuffixCanAddSuffixIfItDidNotExist
+[       OK ] FileMappedVectorTest.resizeSuffixCanAddSuffixIfItDidNotExist (1 ms)
+[ RUN      ] FileMappedVectorTest.atomicUpdateThrowsExceptionIfFailedToRemoveExistentBakFile
+[       OK ] FileMappedVectorTest.atomicUpdateThrowsExceptionIfFailedToRemoveExistentBakFile (1 ms)
+[ RUN      ] FileMappedVectorTest.atomicUpdateFailureDoesNotBrokeVector
+[       OK ] FileMappedVectorTest.atomicUpdateFailureDoesNotBrokeVector (1 ms)
+[----------] 73 tests from FileMappedVectorTest (65 ms total)
+
+[----------] 9 tests from parseTransactionExtra
+[ RUN      ] parseTransactionExtra.handles_empty_extra
+[       OK ] parseTransactionExtra.handles_empty_extra (0 ms)
+[ RUN      ] parseTransactionExtra.handles_padding_only_size_1
+[       OK ] parseTransactionExtra.handles_padding_only_size_1 (0 ms)
+[ RUN      ] parseTransactionExtra.handles_padding_only_size_2
+[       OK ] parseTransactionExtra.handles_padding_only_size_2 (0 ms)
+[ RUN      ] parseTransactionExtra.handles_padding_only_max_size
+[       OK ] parseTransactionExtra.handles_padding_only_max_size (0 ms)
+[ RUN      ] parseTransactionExtra.handles_padding_only_exceed_max_size
+[       OK ] parseTransactionExtra.handles_padding_only_exceed_max_size (0 ms)
+[ RUN      ] parseTransactionExtra.handles_invalid_padding_only
+[       OK ] parseTransactionExtra.handles_invalid_padding_only (0 ms)
+[ RUN      ] parseTransactionExtra.handles_pub_key_only
+[       OK ] parseTransactionExtra.handles_pub_key_only (0 ms)
+[ RUN      ] parseTransactionExtra.handles_extra_nonce_only
+[       OK ] parseTransactionExtra.handles_extra_nonce_only (0 ms)
+[ RUN      ] parseTransactionExtra.handles_pub_key_and_padding
+[       OK ] parseTransactionExtra.handles_pub_key_and_padding (0 ms)
+[----------] 9 tests from parseTransactionExtra (0 ms total)
+
+[----------] 1 test from parse_and_validate_tx_extra
+[ RUN      ] parse_and_validate_tx_extra.fails_on_wrong_size_in_extra_nonce
+[       OK ] parse_and_validate_tx_extra.fails_on_wrong_size_in_extra_nonce (0 ms)
+[----------] 1 test from parse_and_validate_tx_extra (0 ms total)
+
+[----------] 2 tests from JsonValue
+[ RUN      ] JsonValue.testGoodPatterns
+Pattern: {}
+Pattern:    {}   
+Pattern:    {   }   
+Pattern: 100
+Pattern: [10,20,30]
+Pattern:   [  10  , 
+ 20  , 
+  30  ]  
+Pattern: {"prop": 100}
+Pattern: {"prop": 100, "prop2": [100, 20, 30] }
+Pattern: {"prop": 100, "prop2": { "p":"test" } }
+[       OK ] JsonValue.testGoodPatterns (0 ms)
+[ RUN      ] JsonValue.testBadPatterns
+[       OK ] JsonValue.testBadPatterns (0 ms)
+[----------] 2 tests from JsonValue (0 ms total)
+
+[----------] 7 tests from MessageQueueTest
+[ RUN      ] MessageQueueTest.singleNewBlockMessage
+[       OK ] MessageQueueTest.singleNewBlockMessage (0 ms)
+[ RUN      ] MessageQueueTest.singleNewAlternativeBlockMessage
+[       OK ] MessageQueueTest.singleNewAlternativeBlockMessage (1 ms)
+[ RUN      ] MessageQueueTest.singleChainSwitchMessage
+[       OK ] MessageQueueTest.singleChainSwitchMessage (0 ms)
+[ RUN      ] MessageQueueTest.manyMessagesOneListener
+[       OK ] MessageQueueTest.manyMessagesOneListener (0 ms)
+[ RUN      ] MessageQueueTest.manyMessagesManyListeners
+[       OK ] MessageQueueTest.manyMessagesManyListeners (0 ms)
+[ RUN      ] MessageQueueTest.interruptWaiting
+[       OK ] MessageQueueTest.interruptWaiting (0 ms)
+[ RUN      ] MessageQueueTest.doubleAddQueueToList
+[       OK ] MessageQueueTest.doubleAddQueueToList (0 ms)
+[----------] 7 tests from MessageQueueTest (1 ms total)
+
+[----------] 1 test from NodeRpcProxyShutdown
+[ RUN      ] NodeRpcProxyShutdown.ShutdownIsBoundedAgainstAnUnresponsiveDaemon
+[       OK ] NodeRpcProxyShutdown.ShutdownIsBoundedAgainstAnUnresponsiveDaemon (301 ms)
+[----------] 1 test from NodeRpcProxyShutdown (301 ms total)
+
+[----------] 4 tests from PathTools
+[ RUN      ] PathTools.NativePathToGeneric
+[       OK ] PathTools.NativePathToGeneric (0 ms)
+[ RUN      ] PathTools.GetExtension
+[       OK ] PathTools.GetExtension (0 ms)
+[ RUN      ] PathTools.RemoveExtension
+[       OK ] PathTools.RemoveExtension (0 ms)
+[ RUN      ] PathTools.SplitPath
+[       OK ] PathTools.SplitPath (0 ms)
+[----------] 4 tests from PathTools (0 ms total)
+
+[----------] 2 tests from peer_list
+[ RUN      ] peer_list.peer_list_general
+4
+[       OK ] peer_list.peer_list_general (0 ms)
+[ RUN      ] peer_list.merge_peer_lists
+[       OK ] peer_list.merge_peer_lists (0 ms)
+[----------] 2 tests from peer_list (0 ms total)
+
+[----------] 1 test from protocol_pack
+[ RUN      ] protocol_pack.protocol_pack_command
+[       OK ] protocol_pack.protocol_pack_command (0 ms)
+[----------] 1 test from protocol_pack (0 ms total)
+
+[----------] 1 test from SignalHandler
+[ RUN      ] SignalHandler.PosixCallbackRunsOutsideRawSignalContext
+[       OK ] SignalHandler.PosixCallbackRunsOutsideRawSignalContext (10 ms)
+[----------] 1 test from SignalHandler (10 ms total)
+
+[----------] 9 tests from SwapWalletRuntime
+[ RUN      ] SwapWalletRuntime.FundingUsesScannedOwnedInputsWithoutRelayOrReservation
+[       OK ] SwapWalletRuntime.FundingUsesScannedOwnedInputsWithoutRelayOrReservation (14 ms)
+[ RUN      ] SwapWalletRuntime.FundingRejectsNetworkRoleAmountAndSpentSnapshot
+[       OK ] SwapWalletRuntime.FundingRejectsNetworkRoleAmountAndSpentSnapshot (17 ms)
+[ RUN      ] SwapWalletRuntime.ClaimPayoutScansAndNextOrdinaryPrepareStillWorks
+[       OK ] SwapWalletRuntime.ClaimPayoutScansAndNextOrdinaryPrepareStillWorks (37 ms)
+[ RUN      ] SwapWalletRuntime.FundingRejectsWrongOwnershipAndInconsistentMultiInputSnapshot
+[       OK ] SwapWalletRuntime.FundingRejectsWrongOwnershipAndInconsistentMultiInputSnapshot (25 ms)
+[ RUN      ] SwapWalletRuntime.MixedPrimaryAndRoutedDepositFundingPreservesSingleKeyIndex
+[       OK ] SwapWalletRuntime.MixedPrimaryAndRoutedDepositFundingPreservesSingleKeyIndex (36 ms)
+[ RUN      ] SwapWalletRuntime.AggregatedDepositAuthorityFailsClosedWithoutChangingOwnedBalance
+[       OK ] SwapWalletRuntime.AggregatedDepositAuthorityFailsClosedWithoutChangingOwnedBalance (24 ms)
+[ RUN      ] SwapWalletRuntime.RefundMaturityAndRoleChecksThenPayoutScans
+[       OK ] SwapWalletRuntime.RefundMaturityAndRoleChecksThenPayoutScans (41 ms)
+[ RUN      ] SwapWalletRuntime.EncryptedWalletReloadAndSeedRestoreKeepRoleAuthority
+[       OK ] SwapWalletRuntime.EncryptedWalletReloadAndSeedRestoreKeepRoleAuthority (36 ms)
+[ RUN      ] SwapWalletRuntime.TrackingAndNonLabWalletsRejectPreparation
+[       OK ] SwapWalletRuntime.TrackingAndNonLabWalletsRejectPreparation (13 ms)
+[----------] 9 tests from SwapWalletRuntime (243 ms total)
+
+[----------] 7 tests from UpgradeDetector_voting_init
+[ RUN      ] UpgradeDetector_voting_init.handlesEmptyBlockchain
+[       OK ] UpgradeDetector_voting_init.handlesEmptyBlockchain (0 ms)
+[ RUN      ] UpgradeDetector_voting_init.votingIsNotCompleteDueShortBlockchain
+[       OK ] UpgradeDetector_voting_init.votingIsNotCompleteDueShortBlockchain (0 ms)
+[ RUN      ] UpgradeDetector_voting_init.votingIsCompleteAfterMinimumNumberOfBlocks
+[       OK ] UpgradeDetector_voting_init.votingIsCompleteAfterMinimumNumberOfBlocks (0 ms)
+[ RUN      ] UpgradeDetector_voting_init.votingIsNotCompleteDueLackOfVoices
+[       OK ] UpgradeDetector_voting_init.votingIsNotCompleteDueLackOfVoices (1 ms)
+[ RUN      ] UpgradeDetector_voting_init.votingIsCompleteAfterMinimumNumberOfVoices
+[       OK ] UpgradeDetector_voting_init.votingIsCompleteAfterMinimumNumberOfVoices (0 ms)
+[ RUN      ] UpgradeDetector_voting_init.handlesOneCompleteUpgrade
+[       OK ] UpgradeDetector_voting_init.handlesOneCompleteUpgrade (1 ms)
+[ RUN      ] UpgradeDetector_voting_init.handlesAFewCompleteUpgrades
+2026-Sep-08 06:26:48.887841 ERROR   [upgrade] Internal error: block at height 4175 has invalid version 4, expected 3 or less
+[       OK ] UpgradeDetector_voting_init.handlesAFewCompleteUpgrades (3 ms)
+[----------] 7 tests from UpgradeDetector_voting_init (5 ms total)
+
+[----------] 4 tests from UpgradeDetector_upgradeHeight_init
+[ RUN      ] UpgradeDetector_upgradeHeight_init.handlesEmptyBlockchain
+[       OK ] UpgradeDetector_upgradeHeight_init.handlesEmptyBlockchain (0 ms)
+[ RUN      ] UpgradeDetector_upgradeHeight_init.handlesBlockchainBeforeUpgrade
+[       OK ] UpgradeDetector_upgradeHeight_init.handlesBlockchainBeforeUpgrade (0 ms)
+[ RUN      ] UpgradeDetector_upgradeHeight_init.handlesBlockchainAtUpgrade
+[       OK ] UpgradeDetector_upgradeHeight_init.handlesBlockchainAtUpgrade (0 ms)
+[ RUN      ] UpgradeDetector_upgradeHeight_init.handlesBlockchainAfterUpgrade
+[       OK ] UpgradeDetector_upgradeHeight_init.handlesBlockchainAfterUpgrade (0 ms)
+[----------] 4 tests from UpgradeDetector_upgradeHeight_init (0 ms total)
+
+[----------] 4 tests from UpgradeDetector_voting
+[ RUN      ] UpgradeDetector_voting.handlesVotingCompleteStartingEmptyBlockchain
+2026-Sep-08 06:26:48.888875 INFO    [upgrade] ###### UPGRADE voting complete at block index 1367! UPGRADE is going to happen after block index 2087!
+[       OK ] UpgradeDetector_voting.handlesVotingCompleteStartingEmptyBlockchain (0 ms)
+[ RUN      ] UpgradeDetector_voting.handlesVotingCompleteStartingNonEmptyBlockchain
+2026-Sep-08 06:26:48.889664 INFO    [upgrade] ###### UPGRADE voting complete at block index 1367! UPGRADE is going to happen after block index 2087!
+[       OK ] UpgradeDetector_voting.handlesVotingCompleteStartingNonEmptyBlockchain (1 ms)
+[ RUN      ] UpgradeDetector_voting.handlesVotingCancelling
+2026-Sep-08 06:26:48.890267 INFO    [upgrade] ###### UPGRADE voting complete at block index 1367! UPGRADE is going to happen after block index 2087!
+2026-Sep-08 06:26:48.890305 INFO    [upgrade] ###### UPGRADE is going to happen after block index 2087 at about 23:40:18 2026.09.08 (in 00d 17h 13m 30s)! Current last block index 1399, hash ea0cc3c34b538f352e7b3d386e4ab310c2b8219c9e0d6ee83a85e1f20593e339
+2026-Sep-08 06:26:48.890335 INFO    [upgrade] ###### UPGRADE is going to happen after block index 2087 at about 22:40:18 2026.09.08 (in 00d 16h 13m 30s)! Current last block index 1439, hash ea0cc3c34b538f352e7b3d386e4ab310c2b8219c9e0d6ee83a85e1f20593e339
+2026-Sep-08 06:26:48.890351 INFO    [upgrade] ###### UPGRADE is going to happen after block index 2087 at about 21:40:18 2026.09.08 (in 00d 15h 13m 30s)! Current last block index 1479, hash ea0cc3c34b538f352e7b3d386e4ab310c2b8219c9e0d6ee83a85e1f20593e339
+2026-Sep-08 06:26:48.890365 INFO    [upgrade] ###### UPGRADE is going to happen after block index 2087 at about 20:40:18 2026.09.08 (in 00d 14h 13m 30s)! Current last block index 1519, hash ea0cc3c34b538f352e7b3d386e4ab310c2b8219c9e0d6ee83a85e1f20593e339
+2026-Sep-08 06:26:48.890379 INFO    [upgrade] ###### UPGRADE is going to happen after block index 2087 at about 19:40:18 2026.09.08 (in 00d 13h 13m 30s)! Current last block index 1559, hash ea0cc3c34b538f352e7b3d386e4ab310c2b8219c9e0d6ee83a85e1f20593e339
+2026-Sep-08 06:26:48.890400 INFO    [upgrade] ###### UPGRADE is going to happen after block index 2087 at about 18:40:18 2026.09.08 (in 00d 12h 13m 30s)! Current last block index 1599, hash ea0cc3c34b538f352e7b3d386e4ab310c2b8219c9e0d6ee83a85e1f20593e339
+2026-Sep-08 06:26:48.890414 INFO    [upgrade] ###### UPGRADE is going to happen after block index 2087 at about 17:40:18 2026.09.08 (in 00d 11h 13m 30s)! Current last block index 1639, hash ea0cc3c34b538f352e7b3d386e4ab310c2b8219c9e0d6ee83a85e1f20593e339
+2026-Sep-08 06:26:48.890428 INFO    [upgrade] ###### UPGRADE is going to happen after block index 2087 at about 16:40:18 2026.09.08 (in 00d 10h 13m 30s)! Current last block index 1679, hash ea0cc3c34b538f352e7b3d386e4ab310c2b8219c9e0d6ee83a85e1f20593e339
+2026-Sep-08 06:26:48.890443 INFO    [upgrade] ###### UPGRADE is going to happen after block index 2087 at about 15:40:18 2026.09.08 (in 00d 09h 13m 30s)! Current last block index 1719, hash ea0cc3c34b538f352e7b3d386e4ab310c2b8219c9e0d6ee83a85e1f20593e339
+2026-Sep-08 06:26:48.890457 INFO    [upgrade] ###### UPGRADE is going to happen after block index 2087 at about 14:40:18 2026.09.08 (in 00d 08h 13m 30s)! Current last block index 1759, hash ea0cc3c34b538f352e7b3d386e4ab310c2b8219c9e0d6ee83a85e1f20593e339
+2026-Sep-08 06:26:48.890470 INFO    [upgrade] ###### UPGRADE is going to happen after block index 2087 at about 13:40:18 2026.09.08 (in 00d 07h 13m 30s)! Current last block index 1799, hash ea0cc3c34b538f352e7b3d386e4ab310c2b8219c9e0d6ee83a85e1f20593e339
+2026-Sep-08 06:26:48.890484 INFO    [upgrade] ###### UPGRADE is going to happen after block index 2087 at about 12:40:18 2026.09.08 (in 00d 06h 13m 30s)! Current last block index 1839, hash ea0cc3c34b538f352e7b3d386e4ab310c2b8219c9e0d6ee83a85e1f20593e339
+2026-Sep-08 06:26:48.890498 INFO    [upgrade] ###### UPGRADE is going to happen after block index 2087 at about 11:40:18 2026.09.08 (in 00d 05h 13m 30s)! Current last block index 1879, hash ea0cc3c34b538f352e7b3d386e4ab310c2b8219c9e0d6ee83a85e1f20593e339
+2026-Sep-08 06:26:48.890511 INFO    [upgrade] ###### UPGRADE is going to happen after block index 2087 at about 10:40:18 2026.09.08 (in 00d 04h 13m 30s)! Current last block index 1919, hash ea0cc3c34b538f352e7b3d386e4ab310c2b8219c9e0d6ee83a85e1f20593e339
+2026-Sep-08 06:26:48.890525 INFO    [upgrade] ###### UPGRADE is going to happen after block index 2087 at about 09:40:18 2026.09.08 (in 00d 03h 13m 30s)! Current last block index 1959, hash ea0cc3c34b538f352e7b3d386e4ab310c2b8219c9e0d6ee83a85e1f20593e339
+2026-Sep-08 06:26:48.890538 INFO    [upgrade] ###### UPGRADE is going to happen after block index 2087 at about 08:40:18 2026.09.08 (in 00d 02h 13m 30s)! Current last block index 1999, hash ea0cc3c34b538f352e7b3d386e4ab310c2b8219c9e0d6ee83a85e1f20593e339
+2026-Sep-08 06:26:48.890583 INFO    [upgrade] ###### UPGRADE is going to happen after block index 2087 at about 07:40:18 2026.09.08 (in 00d 01h 13m 30s)! Current last block index 2039, hash ea0cc3c34b538f352e7b3d386e4ab310c2b8219c9e0d6ee83a85e1f20593e339
+2026-Sep-08 06:26:48.890983 INFO    [upgrade] ###### UPGRADE is going to happen after block index 2087 at about 06:40:18 2026.09.08 (in 00d 00h 13m 30s)! Current last block index 2079, hash ea0cc3c34b538f352e7b3d386e4ab310c2b8219c9e0d6ee83a85e1f20593e339
+2026-Sep-08 06:26:48.891009 INFO    [upgrade] ###### UPGRADE after block index 2087 has been canceled!
+[       OK ] UpgradeDetector_voting.handlesVotingCancelling (2 ms)
+[ RUN      ] UpgradeDetector_voting.handlesVotingAndUpgradeCancelling
+2026-Sep-08 06:26:48.891603 INFO    [upgrade] ###### UPGRADE voting complete at block index 1367! UPGRADE is going to happen after block index 2087!
+2026-Sep-08 06:26:48.891622 INFO    [upgrade] ###### UPGRADE is going to happen after block index 2087 at about 23:40:18 2026.09.08 (in 00d 17h 13m 30s)! Current last block index 1399, hash 7aafa9905e933c6b0ed7697072951d8f46d3eab494fb3ee48dbc7f84f4031762
+2026-Sep-08 06:26:48.891641 INFO    [upgrade] ###### UPGRADE is going to happen after block index 2087 at about 22:40:18 2026.09.08 (in 00d 16h 13m 30s)! Current last block index 1439, hash 7aafa9905e933c6b0ed7697072951d8f46d3eab494fb3ee48dbc7f84f4031762
+2026-Sep-08 06:26:48.891655 INFO    [upgrade] ###### UPGRADE is going to happen after block index 2087 at about 21:40:18 2026.09.08 (in 00d 15h 13m 30s)! Current last block index 1479, hash 7aafa9905e933c6b0ed7697072951d8f46d3eab494fb3ee48dbc7f84f4031762
+2026-Sep-08 06:26:48.891669 INFO    [upgrade] ###### UPGRADE is going to happen after block index 2087 at about 20:40:18 2026.09.08 (in 00d 14h 13m 30s)! Current last block index 1519, hash 7aafa9905e933c6b0ed7697072951d8f46d3eab494fb3ee48dbc7f84f4031762
+2026-Sep-08 06:26:48.891682 INFO    [upgrade] ###### UPGRADE is going to happen after block index 2087 at about 19:40:18 2026.09.08 (in 00d 13h 13m 30s)! Current last block index 1559, hash 7aafa9905e933c6b0ed7697072951d8f46d3eab494fb3ee48dbc7f84f4031762
+2026-Sep-08 06:26:48.891696 INFO    [upgrade] ###### UPGRADE is going to happen after block index 2087 at about 18:40:18 2026.09.08 (in 00d 12h 13m 30s)! Current last block index 1599, hash 7aafa9905e933c6b0ed7697072951d8f46d3eab494fb3ee48dbc7f84f4031762
+2026-Sep-08 06:26:48.891709 INFO    [upgrade] ###### UPGRADE is going to happen after block index 2087 at about 17:40:18 2026.09.08 (in 00d 11h 13m 30s)! Current last block index 1639, hash 7aafa9905e933c6b0ed7697072951d8f46d3eab494fb3ee48dbc7f84f4031762
+2026-Sep-08 06:26:48.891722 INFO    [upgrade] ###### UPGRADE is going to happen after block index 2087 at about 16:40:18 2026.09.08 (in 00d 10h 13m 30s)! Current last block index 1679, hash 7aafa9905e933c6b0ed7697072951d8f46d3eab494fb3ee48dbc7f84f4031762
+2026-Sep-08 06:26:48.891736 INFO    [upgrade] ###### UPGRADE is going to happen after block index 2087 at about 15:40:18 2026.09.08 (in 00d 09h 13m 30s)! Current last block index 1719, hash 7aafa9905e933c6b0ed7697072951d8f46d3eab494fb3ee48dbc7f84f4031762
+2026-Sep-08 06:26:48.891750 INFO    [upgrade] ###### UPGRADE is going to happen after block index 2087 at about 14:40:18 2026.09.08 (in 00d 08h 13m 30s)! Current last block index 1759, hash 7aafa9905e933c6b0ed7697072951d8f46d3eab494fb3ee48dbc7f84f4031762
+2026-Sep-08 06:26:48.891763 INFO    [upgrade] ###### UPGRADE is going to happen after block index 2087 at about 13:40:18 2026.09.08 (in 00d 07h 13m 30s)! Current last block index 1799, hash 7aafa9905e933c6b0ed7697072951d8f46d3eab494fb3ee48dbc7f84f4031762
+2026-Sep-08 06:26:48.891776 INFO    [upgrade] ###### UPGRADE is going to happen after block index 2087 at about 12:40:18 2026.09.08 (in 00d 06h 13m 30s)! Current last block index 1839, hash 7aafa9905e933c6b0ed7697072951d8f46d3eab494fb3ee48dbc7f84f4031762
+2026-Sep-08 06:26:48.891789 INFO    [upgrade] ###### UPGRADE is going to happen after block index 2087 at about 11:40:18 2026.09.08 (in 00d 05h 13m 30s)! Current last block index 1879, hash 7aafa9905e933c6b0ed7697072951d8f46d3eab494fb3ee48dbc7f84f4031762
+2026-Sep-08 06:26:48.891802 INFO    [upgrade] ###### UPGRADE is going to happen after block index 2087 at about 10:40:18 2026.09.08 (in 00d 04h 13m 30s)! Current last block index 1919, hash 7aafa9905e933c6b0ed7697072951d8f46d3eab494fb3ee48dbc7f84f4031762
+2026-Sep-08 06:26:48.891816 INFO    [upgrade] ###### UPGRADE is going to happen after block index 2087 at about 09:40:18 2026.09.08 (in 00d 03h 13m 30s)! Current last block index 1959, hash 7aafa9905e933c6b0ed7697072951d8f46d3eab494fb3ee48dbc7f84f4031762
+2026-Sep-08 06:26:48.891835 INFO    [upgrade] ###### UPGRADE is going to happen after block index 2087 at about 08:40:18 2026.09.08 (in 00d 02h 13m 30s)! Current last block index 1999, hash 7aafa9905e933c6b0ed7697072951d8f46d3eab494fb3ee48dbc7f84f4031762
+2026-Sep-08 06:26:48.891891 INFO    [upgrade] ###### UPGRADE is going to happen after block index 2087 at about 07:40:18 2026.09.08 (in 00d 01h 13m 30s)! Current last block index 2039, hash 7aafa9905e933c6b0ed7697072951d8f46d3eab494fb3ee48dbc7f84f4031762
+2026-Sep-08 06:26:48.891974 INFO    [upgrade] ###### UPGRADE is going to happen after block index 2087 at about 06:40:18 2026.09.08 (in 00d 00h 13m 30s)! Current last block index 2079, hash 7aafa9905e933c6b0ed7697072951d8f46d3eab494fb3ee48dbc7f84f4031762
+2026-Sep-08 06:26:48.891987 INFO    [upgrade] ###### UPGRADE has happened! Starting from block index 2088 blocks with major version below 2 will be rejected!
+2026-Sep-08 06:26:48.892002 INFO    [upgrade] ###### UPGRADE after block index 2087 has been canceled!
+[       OK ] UpgradeDetector_voting.handlesVotingAndUpgradeCancelling (1 ms)
+[----------] 4 tests from UpgradeDetector_voting (4 ms total)
+
+[----------] 6 tests from PqWalletLoadFailure
+[ RUN      ] PqWalletLoadFailure.WrongPasswordLeavesNoResidentSecrets
+2026-Sep-08 06:26:48.902670 ERROR   [WalletGreen/empty] Failed to load container keys: Wrong password: The password is wrong
+[       OK ] PqWalletLoadFailure.WrongPasswordLeavesNoResidentSecrets (10 ms)
+[ RUN      ] PqWalletLoadFailure.CorruptedRecordLeavesNoResidentSecrets
+2026-Sep-08 06:26:48.912992 ERROR   [WalletGreen/empty] Failed to load container keys: Wrong password: The password is wrong
+[       OK ] PqWalletLoadFailure.CorruptedRecordLeavesNoResidentSecrets (11 ms)
+[ RUN      ] PqWalletLoadFailure.FailureAfterRecordsLoadLeavesNoResidentSecrets
+[       OK ] PqWalletLoadFailure.FailureAfterRecordsLoadLeavesNoResidentSecrets (10 ms)
+[ RUN      ] PqWalletLoadFailure.ObjectIsReusableAfterAFailedLoad
+[       OK ] PqWalletLoadFailure.ObjectIsReusableAfterAFailedLoad (14 ms)
+[ RUN      ] PqWalletLoadFailure.ShutdownAfterFailedLoadIsSafe
+2026-Sep-08 06:26:48.947842 ERROR   [WalletGreen/empty] Failed to load container keys: Wrong password: The password is wrong
+2026-Sep-08 06:26:48.947962 ERROR   [WalletGreen/empty] WalletGreen is not initialized. Current state: NOT_INITIALIZED (1)
+[       OK ] PqWalletLoadFailure.ShutdownAfterFailedLoadIsSafe (11 ms)
+[ RUN      ] PqWalletLoadFailure.SuccessfulLoadStillRetainsItsSecrets
+[       OK ] PqWalletLoadFailure.SuccessfulLoadStillRetainsItsSecrets (10 ms)
+[----------] 6 tests from PqWalletLoadFailure (66 ms total)
+
+[----------] 34 tests from PqWalletIntegration
+[ RUN      ] PqWalletIntegration.IncomingTransactionCreditsNativeBalance
+[       OK ] PqWalletIntegration.IncomingTransactionCreditsNativeBalance (8 ms)
+[ RUN      ] PqWalletIntegration.BalanceSurvivesSaveAndReload
+[       OK ] PqWalletIntegration.BalanceSurvivesSaveAndReload (12 ms)
+[ RUN      ] PqWalletIntegration.PaymentIdRoundTrip
+[       OK ] PqWalletIntegration.PaymentIdRoundTrip (13 ms)
+[ RUN      ] PqWalletIntegration.ReorgDetachReversesCredit
+[       OK ] PqWalletIntegration.ReorgDetachReversesCredit (9 ms)
+[ RUN      ] PqWalletIntegration.AggregatedDepositReceivesAndSpends
+[       OK ] PqWalletIntegration.AggregatedDepositReceivesAndSpends (14 ms)
+[ RUN      ] PqWalletIntegration.RestoreFromSeedNeedsDepositCountToRecoverDepositFunds
+[       OK ] PqWalletIntegration.RestoreFromSeedNeedsDepositCountToRecoverDepositFunds (22 ms)
+[ RUN      ] PqWalletIntegration.SingleKeyIndexAttributesDepositsByT
+[       OK ] PqWalletIntegration.SingleKeyIndexAttributesDepositsByT (10 ms)
+[ RUN      ] PqWalletIntegration.DepositRegistrySurvivesCrashAfterCreateTimeSave
+[       OK ] PqWalletIntegration.DepositRegistrySurvivesCrashAfterCreateTimeSave (10 ms)
+[ RUN      ] PqWalletIntegration.SingleKeyIndexContainerWithNoDepositsRoundTrips
+[       OK ] PqWalletIntegration.SingleKeyIndexContainerWithNoDepositsRoundTrips (10 ms)
+[ RUN      ] PqWalletIntegration.RescanPreservesSingleKeyIndexRegistry
+[       OK ] PqWalletIntegration.RescanPreservesSingleKeyIndexRegistry (15 ms)
+[ RUN      ] PqWalletIntegration.RescanPreservesTrackingIdentity
+[       OK ] PqWalletIntegration.RescanPreservesTrackingIdentity (19 ms)
+[ RUN      ] PqWalletIntegration.RescanRecoversLegacyNonzeroTThroughWalletSynchronizer
+[       OK ] PqWalletIntegration.RescanRecoversLegacyNonzeroTThroughWalletSynchronizer (19 ms)
+[ RUN      ] PqWalletIntegration.ManualLegacyWindowSurvivesRescanCycle
+[       OK ] PqWalletIntegration.ManualLegacyWindowSurvivesRescanCycle (18 ms)
+[ RUN      ] PqWalletIntegration.RelayFailureRollsBackReservation
+2026-Sep-08 06:26:49.146321 ERROR   [WalletGreen/empty] PQ transaction relay failed: hash 8b0bec61ceb3ce9868bb636e5cd2530b8ce9c73d79298389027db314c3297dac, error Internal error occurred (5); rolling back ledger reservation
+[       OK ] PqWalletIntegration.RelayFailureRollsBackReservation (15 ms)
+[ RUN      ] PqWalletIntegration.RescanPreservesAndResetDiscardsSentPaymentMetadata
+[       OK ] PqWalletIntegration.RescanPreservesAndResetDiscardsSentPaymentMetadata (28 ms)
+[ RUN      ] PqWalletIntegration.DepositCreditReversedOnReorg
+[       OK ] PqWalletIntegration.DepositCreditReversedOnReorg (10 ms)
+[ RUN      ] PqWalletIntegration.TrackingWalletCannotSpend
+[       OK ] PqWalletIntegration.TrackingWalletCannotSpend (11 ms)
+[ RUN      ] PqWalletIntegration.TrackingContainerFromPastScanHeightKeepsIdentity
+[       OK ] PqWalletIntegration.TrackingContainerFromPastScanHeightKeepsIdentity (21 ms)
+[ RUN      ] PqWalletIntegration.OfflineModeNeverStartsSynchronization
+[       OK ] PqWalletIntegration.OfflineModeNeverStartsSynchronization (21 ms)
+[ RUN      ] PqWalletIntegration.NeverSyncedContainerStillKnowsGenesis
+[       OK ] PqWalletIntegration.NeverSyncedContainerStillKnowsGenesis (10 ms)
+[ RUN      ] PqWalletIntegration.TrackingWalletIssuesSingleKeyIndexSubNumbers
+[       OK ] PqWalletIntegration.TrackingWalletIssuesSingleKeyIndexSubNumbers (13 ms)
+[ RUN      ] PqWalletIntegration.TrackingWalletRefusesAggregatedMultikeyDeposits
+[       OK ] PqWalletIntegration.TrackingWalletRefusesAggregatedMultikeyDeposits (10 ms)
+[ RUN      ] PqWalletIntegration.LockedOutputNotSpendableUntilUnlockHeight
+[       OK ] PqWalletIntegration.LockedOutputNotSpendableUntilUnlockHeight (14 ms)
+[ RUN      ] PqWalletIntegration.RescanRebuildsLedger
+[       OK ] PqWalletIntegration.RescanRebuildsLedger (13 ms)
+[ RUN      ] PqWalletIntegration.IndexHITCReceiveAndSpendByAddressString
+[       OK ] PqWalletIntegration.IndexHITCReceiveAndSpendByAddressString (1130967 ms)
+[ RUN      ] PqWalletIntegration.AggregatedPerSubaddressMessageSigning
+[       OK ] PqWalletIntegration.AggregatedPerSubaddressMessageSigning (10 ms)
+[ RUN      ] PqWalletIntegration.ResetNeverReusesAnIv
+[       OK ] PqWalletIntegration.ResetNeverReusesAnIv (16 ms)
+[ RUN      ] PqWalletIntegration.LegacyContainerIsUpgradedOnOpen
+2026-Sep-08 06:45:40.320655 ERROR   [WalletGreen/empty] Failed to load container keys: Wrong password: The password is wrong
+[       OK ] PqWalletIntegration.LegacyContainerIsUpgradedOnOpen (24 ms)
+[ RUN      ] PqWalletIntegration.MigrationNeverOverwritesAnExistingBackup
+[       OK ] PqWalletIntegration.MigrationNeverOverwritesAnExistingBackup (18 ms)
+[ RUN      ] PqWalletIntegration.EachMigrationTakesTheNextFreeBackupName
+[       OK ] PqWalletIntegration.EachMigrationTakesTheNextFreeBackupName (48 ms)
+[ RUN      ] PqWalletIntegration.LegacyContainerWithAWrongPasswordIsLeftAlone
+2026-Sep-08 06:45:40.395460 ERROR   [WalletGreen/empty] Failed to upgrade wallet file: Wrong password: The password is wrong
+[       OK ] PqWalletIntegration.LegacyContainerWithAWrongPasswordIsLeftAlone (21 ms)
+[ RUN      ] PqWalletIntegration.ClosingAWalletScrubsItsSecrets
+[       OK ] PqWalletIntegration.ClosingAWalletScrubsItsSecrets (9 ms)
+[ RUN      ] PqWalletIntegration.AFailedOpenLeavesNoSecretsBehind
+2026-Sep-08 06:45:40.426430 ERROR   [WalletGreen/empty] Failed to load container keys: Wrong password: The password is wrong
+[       OK ] PqWalletIntegration.AFailedOpenLeavesNoSecretsBehind (10 ms)
+[ RUN      ] PqWalletIntegration.ChangingThePasswordDoesNotStrandTheOldKey
+2026-Sep-08 06:45:40.445380 ERROR   [WalletGreen/empty] Failed to load container keys: Wrong password: The password is wrong
+[       OK ] PqWalletIntegration.ChangingThePasswordDoesNotStrandTheOldKey (19 ms)
+[----------] 34 tests from PqWalletIntegration (1131487 ms total)
+
+[----------] 5 tests from WalletLegacySmoke
+[ RUN      ] WalletLegacySmoke.PqIdentityAndSigning
+[       OK ] WalletLegacySmoke.PqIdentityAndSigning (2 ms)
+[ RUN      ] WalletLegacySmoke.ForwardsSynchronizationActivityState
+[       OK ] WalletLegacySmoke.ForwardsSynchronizationActivityState (2 ms)
+[ RUN      ] WalletLegacySmoke.DetachedSeedNeverReturnsToSavedTrackingWallet
+[       OK ] WalletLegacySmoke.DetachedSeedNeverReturnsToSavedTrackingWallet (29 ms)
+[ RUN      ] WalletLegacySmoke.FailedProtectedMigrationCanRestoreDetachedSeed
+[       OK ] WalletLegacySmoke.FailedProtectedMigrationCanRestoreDetachedSeed (3 ms)
+[ RUN      ] WalletLegacySmoke.RescanPreservesAndResetDiscardsStoredRecipientAndPaymentProof
+[       OK ] WalletLegacySmoke.RescanPreservesAndResetDiscardsStoredRecipientAndPaymentProof (65 ms)
+[----------] 5 tests from WalletLegacySmoke (101 ms total)
+
+[----------] 7 tests from WalletServiceTest
+[ RUN      ] WalletServiceTest.RescanAndResetRouteToDistinctWalletOperations
+2026-Sep-08 06:45:40.547647 INFO    [WalletService] Loading wallet
+2026-Sep-08 06:45:40.547678 INFO    [WalletService] Wallet loading is finished.
+2026-Sep-08 06:45:40.547689 INFO    [WalletService] Rescanning wallet
+2026-Sep-08 06:45:40.547698 DEBUG   [WalletService] Refresh is started
+2026-Sep-08 06:45:40.547725 DEBUG   [WalletService] refresh is stopped: Operation canceled
+2026-Sep-08 06:45:40.547734 INFO    [WalletService] Wallet has been rescanned starting from height 123
+2026-Sep-08 06:45:40.547742 INFO    [WalletService] Resetting wallet
+2026-Sep-08 06:45:40.547749 DEBUG   [WalletService] Refresh is started
+2026-Sep-08 06:45:40.547759 DEBUG   [WalletService] refresh is stopped: Operation canceled
+2026-Sep-08 06:45:40.547766 INFO    [WalletService] Wallet has been reset starting scanning from height 456
+2026-Sep-08 06:45:40.547774 DEBUG   [WalletService] Refresh is started
+2026-Sep-08 06:45:40.547783 DEBUG   [WalletService] refresh is stopped: Operation canceled
+[       OK ] WalletServiceTest.RescanAndResetRouteToDistinctWalletOperations (1 ms)
+[ RUN      ] WalletServiceTest.DefaultRescanAndResetStartFromGenesis
+2026-Sep-08 06:45:40.548479 INFO    [WalletService] Loading wallet
+2026-Sep-08 06:45:40.548492 INFO    [WalletService] Wallet loading is finished.
+2026-Sep-08 06:45:40.548499 INFO    [WalletService] Rescanning wallet
+2026-Sep-08 06:45:40.548504 DEBUG   [WalletService] Refresh is started
+2026-Sep-08 06:45:40.548514 DEBUG   [WalletService] refresh is stopped: Operation canceled
+2026-Sep-08 06:45:40.548519 INFO    [WalletService] Wallet has been rescanned starting from height 0
+2026-Sep-08 06:45:40.548524 INFO    [WalletService] Resetting wallet
+2026-Sep-08 06:45:40.548528 DEBUG   [WalletService] Refresh is started
+2026-Sep-08 06:45:40.548534 DEBUG   [WalletService] refresh is stopped: Operation canceled
+2026-Sep-08 06:45:40.548539 INFO    [WalletService] Wallet has been reset starting scanning from height 0
+2026-Sep-08 06:45:40.548544 DEBUG   [WalletService] Refresh is started
+2026-Sep-08 06:45:40.548549 DEBUG   [WalletService] refresh is stopped: Operation canceled
+[       OK ] WalletServiceTest.DefaultRescanAndResetStartFromGenesis (1 ms)
+[ RUN      ] WalletServiceTest.FailedRebuildCanBeRetriedWithoutLosingTheEventLoop
+2026-Sep-08 06:45:40.549163 INFO    [WalletService] Loading wallet
+2026-Sep-08 06:45:40.549174 INFO    [WalletService] Wallet loading is finished.
+2026-Sep-08 06:45:40.549179 INFO    [WalletService] Rescanning wallet
+2026-Sep-08 06:45:40.549184 DEBUG   [WalletService] Refresh is started
+2026-Sep-08 06:45:40.549193 DEBUG   [WalletService] refresh is stopped: Operation canceled
+2026-Sep-08 06:45:40.549204 WARNING [WalletService] Error while rescanning wallet: injected rescan failure
+2026-Sep-08 06:45:40.549210 INFO    [WalletService] Rescanning wallet
+2026-Sep-08 06:45:40.549214 DEBUG   [WalletService] Refresh is started
+2026-Sep-08 06:45:40.549220 DEBUG   [WalletService] refresh is stopped: Operation canceled
+2026-Sep-08 06:45:40.549224 INFO    [WalletService] Wallet has been rescanned starting from height 12
+2026-Sep-08 06:45:40.549229 INFO    [WalletService] Resetting wallet
+2026-Sep-08 06:45:40.549233 DEBUG   [WalletService] Refresh is started
+2026-Sep-08 06:45:40.549239 DEBUG   [WalletService] refresh is stopped: Operation canceled
+2026-Sep-08 06:45:40.549246 WARNING [WalletService] Error while resetting wallet: injected reset failure
+2026-Sep-08 06:45:40.549251 INFO    [WalletService] Resetting wallet
+2026-Sep-08 06:45:40.549255 DEBUG   [WalletService] Refresh is started
+2026-Sep-08 06:45:40.549260 DEBUG   [WalletService] refresh is stopped: Operation canceled
+2026-Sep-08 06:45:40.549265 INFO    [WalletService] Wallet has been reset starting scanning from height 22
+2026-Sep-08 06:45:40.549270 DEBUG   [WalletService] Refresh is started
+2026-Sep-08 06:45:40.549275 DEBUG   [WalletService] refresh is stopped: Operation canceled
+[       OK ] WalletServiceTest.FailedRebuildCanBeRetriedWithoutLosingTheEventLoop (1 ms)
+[ RUN      ] WalletServiceTest.PostShutdownRebuildFailureReloadsWalletAndAllowsRetry
+2026-Sep-08 06:45:40.550098 INFO    [WalletService] Loading wallet
+2026-Sep-08 06:45:40.550110 INFO    [WalletService] Wallet loading is finished.
+2026-Sep-08 06:45:40.550118 DEBUG   [WalletService] Refresh is started
+2026-Sep-08 06:45:40.550123 INFO    [WalletService] Rescanning wallet
+2026-Sep-08 06:45:40.550132 DEBUG   [WalletService] refresh is stopped: Operation canceled
+2026-Sep-08 06:45:40.550143 INFO    [WalletService] Loading wallet
+2026-Sep-08 06:45:40.550147 INFO    [WalletService] Wallet loading is finished.
+2026-Sep-08 06:45:40.550154 WARNING [WalletService] Error while rescanning wallet: injected post-shutdown rescan failure: Wrong version
+2026-Sep-08 06:45:40.550159 DEBUG   [WalletService] Refresh is started
+2026-Sep-08 06:45:40.550164 INFO    [WalletService] Rescanning wallet
+2026-Sep-08 06:45:40.550170 DEBUG   [WalletService] refresh is stopped: Operation canceled
+2026-Sep-08 06:45:40.550175 INFO    [WalletService] Wallet has been rescanned starting from height 32
+2026-Sep-08 06:45:40.550180 DEBUG   [WalletService] Refresh is started
+2026-Sep-08 06:45:40.550184 INFO    [WalletService] Resetting wallet
+2026-Sep-08 06:45:40.550189 DEBUG   [WalletService] refresh is stopped: Operation canceled
+2026-Sep-08 06:45:40.550197 INFO    [WalletService] Loading wallet
+2026-Sep-08 06:45:40.550201 INFO    [WalletService] Wallet loading is finished.
+2026-Sep-08 06:45:40.550207 WARNING [WalletService] Error while resetting wallet: injected post-shutdown reset failure: Wrong version
+2026-Sep-08 06:45:40.550212 DEBUG   [WalletService] Refresh is started
+2026-Sep-08 06:45:40.550216 INFO    [WalletService] Resetting wallet
+2026-Sep-08 06:45:40.550221 DEBUG   [WalletService] refresh is stopped: Operation canceled
+2026-Sep-08 06:45:40.550226 INFO    [WalletService] Wallet has been reset starting scanning from height 42
+2026-Sep-08 06:45:40.550231 DEBUG   [WalletService] Refresh is started
+2026-Sep-08 06:45:40.550236 DEBUG   [WalletService] refresh is stopped: Operation canceled
+[       OK ] WalletServiceTest.PostShutdownRebuildFailureReloadsWalletAndAllowsRetry (1 ms)
+[ RUN      ] WalletServiceTest.UnrecoverableReloadMarksServiceNotInitializedWithoutRefreshOrShutdown
+2026-Sep-08 06:45:40.550866 INFO    [WalletService] Loading wallet
+2026-Sep-08 06:45:40.550878 INFO    [WalletService] Wallet loading is finished.
+2026-Sep-08 06:45:40.550884 DEBUG   [WalletService] Refresh is started
+2026-Sep-08 06:45:40.550889 INFO    [WalletService] Rescanning wallet
+2026-Sep-08 06:45:40.550898 DEBUG   [WalletService] refresh is stopped: Operation canceled
+2026-Sep-08 06:45:40.550906 INFO    [WalletService] Loading wallet
+2026-Sep-08 06:45:40.550914 ERROR   [WalletService] Failed to restore wallet after rebuild error: injected recovery load failure: The password is wrong
+2026-Sep-08 06:45:40.550921 WARNING [WalletService] Error while rescanning wallet: injected post-shutdown rescan failure: Wrong version
+2026-Sep-08 06:45:40.550927 INFO    [WalletService] Rescanning wallet
+2026-Sep-08 06:45:40.550931 WARNING [WalletService] Rescan impossible: Wallet Service is not initialized
+2026-Sep-08 06:45:40.550937 INFO    [WalletService] Loading wallet
+2026-Sep-08 06:45:40.550941 INFO    [WalletService] Wallet loading is finished.
+2026-Sep-08 06:45:40.550945 DEBUG   [WalletService] Refresh is started
+2026-Sep-08 06:45:40.550949 INFO    [WalletService] Resetting wallet
+2026-Sep-08 06:45:40.550955 DEBUG   [WalletService] refresh is stopped: Operation canceled
+2026-Sep-08 06:45:40.550963 INFO    [WalletService] Loading wallet
+2026-Sep-08 06:45:40.550969 ERROR   [WalletService] Failed to restore wallet after rebuild error: injected recovery load failure: The password is wrong
+2026-Sep-08 06:45:40.550975 WARNING [WalletService] Error while resetting wallet: injected post-shutdown reset failure: Wrong version
+2026-Sep-08 06:45:40.550980 INFO    [WalletService] Resetting wallet
+2026-Sep-08 06:45:40.550984 WARNING [WalletService] Reset impossible: Wallet Service is not initialized
+[       OK ] WalletServiceTest.UnrecoverableReloadMarksServiceNotInitializedWithoutRefreshOrShutdown (1 ms)
+[ RUN      ] WalletServiceTest.RpcResetRequiresExplicitDestructiveConfirmation
+2026-Sep-08 06:45:40.551583 INFO    [WalletService] Loading wallet
+2026-Sep-08 06:45:40.551592 INFO    [WalletService] Wallet loading is finished.
+2026-Sep-08 06:45:40.551617 DEBUG   [PaymentServiceJsonRpcServer] reset request came
+2026-Sep-08 06:45:40.551632 DEBUG   [PaymentServiceJsonRpcServer] reset request came
+2026-Sep-08 06:45:40.551637 INFO    [WalletService] Resetting wallet
+2026-Sep-08 06:45:40.551642 DEBUG   [WalletService] Refresh is started
+2026-Sep-08 06:45:40.551651 DEBUG   [WalletService] refresh is stopped: Operation canceled
+2026-Sep-08 06:45:40.551656 INFO    [WalletService] Wallet has been reset starting scanning from height 77
+2026-Sep-08 06:45:40.551665 DEBUG   [WalletService] Refresh is started
+2026-Sep-08 06:45:40.551671 DEBUG   [WalletService] refresh is stopped: Operation canceled
+[       OK ] WalletServiceTest.RpcResetRequiresExplicitDestructiveConfirmation (0 ms)
+[ RUN      ] WalletServiceTest.RpcRescanUsesSafeWalletOperationWithoutDestructiveConfirmation
+2026-Sep-08 06:45:40.552274 INFO    [WalletService] Loading wallet
+2026-Sep-08 06:45:40.552284 INFO    [WalletService] Wallet loading is finished.
+2026-Sep-08 06:45:40.552300 DEBUG   [PaymentServiceJsonRpcServer] rescan request came
+2026-Sep-08 06:45:40.552306 INFO    [WalletService] Rescanning wallet
+2026-Sep-08 06:45:40.552311 DEBUG   [WalletService] Refresh is started
+2026-Sep-08 06:45:40.552319 DEBUG   [WalletService] refresh is stopped: Operation canceled
+2026-Sep-08 06:45:40.552325 INFO    [WalletService] Wallet has been rescanned starting from height 88
+2026-Sep-08 06:45:40.552332 DEBUG   [WalletService] Refresh is started
+2026-Sep-08 06:45:40.552339 DEBUG   [WalletService] refresh is stopped: Operation canceled
+[       OK ] WalletServiceTest.RpcRescanUsesSafeWalletOperationWithoutDestructiveConfirmation (1 ms)
+[----------] 7 tests from WalletServiceTest (6 ms total)
+
+[----------] 5 tests from WalletServiceTest_createAddress
+[ RUN      ] WalletServiceTest_createAddress.returnsCorrectAddress
+2026-Sep-08 06:45:40.553006 DEBUG   [WalletService] Creating address
+2026-Sep-08 06:45:40.553016 DEBUG   [WalletService] Created address correctAddress
+[       OK ] WalletServiceTest_createAddress.returnsCorrectAddress (1 ms)
+[ RUN      ] WalletServiceTest_createAddress.invalidSecretKey
+2026-Sep-08 06:45:40.553855 DEBUG   [WalletService] Creating address
+2026-Sep-08 06:45:40.553866 WARNING [WalletService] Wrong key format: wrong key
+[       OK ] WalletServiceTest_createAddress.invalidSecretKey (0 ms)
+[ RUN      ] WalletServiceTest_createAddress.invalidPublicKey
+2026-Sep-08 06:45:40.554471 DEBUG   [WalletService] Creating tracking address
+2026-Sep-08 06:45:40.554478 WARNING [WalletService] Wrong key format: wrong key
+[       OK ] WalletServiceTest_createAddress.invalidPublicKey (1 ms)
+[ RUN      ] WalletServiceTest_createAddress.correctSecretKey
+2026-Sep-08 06:45:40.555118 DEBUG   [WalletService] Creating address
+2026-Sep-08 06:45:40.555129 DEBUG   [WalletService] Created address correctAddress
+[       OK ] WalletServiceTest_createAddress.correctSecretKey (1 ms)
+[ RUN      ] WalletServiceTest_createAddress.correctPublicKey
+2026-Sep-08 06:45:40.555724 DEBUG   [WalletService] Creating tracking address
+2026-Sep-08 06:45:40.555733 DEBUG   [WalletService] Created address correctAddress
+[       OK ] WalletServiceTest_createAddress.correctPublicKey (0 ms)
+[----------] 5 tests from WalletServiceTest_createAddress (3 ms total)
+
+[----------] 1 test from WalletServiceTest_getSpendKeys
+[ RUN      ] WalletServiceTest_getSpendKeys.returnsKeysCorrectly
+[       OK ] WalletServiceTest_getSpendKeys.returnsKeysCorrectly (1 ms)
+[----------] 1 test from WalletServiceTest_getSpendKeys (1 ms total)
+
+[----------] 2 tests from WalletServiceTest_getBalance
+[ RUN      ] WalletServiceTest_getBalance.returnsCorrectBalance
+2026-Sep-08 06:45:40.557044 DEBUG   [WalletService] Getting wallet balance
+2026-Sep-08 06:45:40.557054 DEBUG   [WalletService] Wallet actual balance: 345466, pending: 12121
+[       OK ] WalletServiceTest_getBalance.returnsCorrectBalance (1 ms)
+[ RUN      ] WalletServiceTest_getBalance.returnsCorrectBalanceByAddress
+2026-Sep-08 06:45:40.557727 DEBUG   [WalletService] Getting balance for address address
+2026-Sep-08 06:45:40.557736 DEBUG   [WalletService] address actual balance: 345466, pending: 12121
+[       OK ] WalletServiceTest_getBalance.returnsCorrectBalanceByAddress (0 ms)
+[----------] 2 tests from WalletServiceTest_getBalance (1 ms total)
+
+[----------] 2 tests from WalletServiceTest_getBlockHashes
+[ RUN      ] WalletServiceTest_getBlockHashes.returnsEmptyBlockHashes
+[       OK ] WalletServiceTest_getBlockHashes.returnsEmptyBlockHashes (1 ms)
+[ RUN      ] WalletServiceTest_getBlockHashes.returnsBlockHashes
+[       OK ] WalletServiceTest_getBlockHashes.returnsBlockHashes (1 ms)
+[----------] 2 tests from WalletServiceTest_getBlockHashes (2 ms total)
+
+[----------] 1 test from WalletServiceTest_getViewKey
+[ RUN      ] WalletServiceTest_getViewKey.returnsCorrectValue
+[       OK ] WalletServiceTest_getViewKey.returnsCorrectValue (0 ms)
+[----------] 1 test from WalletServiceTest_getViewKey (0 ms total)
+
+[----------] 9 tests from WalletServiceTest_getTransactions
+[ RUN      ] WalletServiceTest_getTransactions.addressesFilter_emptyReturnsTransaction
+[       OK ] WalletServiceTest_getTransactions.addressesFilter_emptyReturnsTransaction (1 ms)
+[ RUN      ] WalletServiceTest_getTransactions.addressesFilter_existentReturnsTransaction
+[       OK ] WalletServiceTest_getTransactions.addressesFilter_existentReturnsTransaction (1 ms)
+[ RUN      ] WalletServiceTest_getTransactions.addressesFilter_nonExistentReturnsNoTransactions
+[       OK ] WalletServiceTest_getTransactions.addressesFilter_nonExistentReturnsNoTransactions (2 ms)
+[ RUN      ] WalletServiceTest_getTransactions.addressesFilter_existentAndNonExistentReturnsTransaction
+[       OK ] WalletServiceTest_getTransactions.addressesFilter_existentAndNonExistentReturnsTransaction (1 ms)
+[ RUN      ] WalletServiceTest_getTransactions.paymentIdFilter_existentReturnsTransaction
+[       OK ] WalletServiceTest_getTransactions.paymentIdFilter_existentReturnsTransaction (1 ms)
+[ RUN      ] WalletServiceTest_getTransactions.paymentIdFilter_nonExistentReturnsNoTransaction
+[       OK ] WalletServiceTest_getTransactions.paymentIdFilter_nonExistentReturnsNoTransaction (1 ms)
+[ RUN      ] WalletServiceTest_getTransactions.invalidAddress
+[       OK ] WalletServiceTest_getTransactions.invalidAddress (1 ms)
+[ RUN      ] WalletServiceTest_getTransactions.invalidPaymentId
+[       OK ] WalletServiceTest_getTransactions.invalidPaymentId (2 ms)
+[ RUN      ] WalletServiceTest_getTransactions.blockNotFound
+[       OK ] WalletServiceTest_getTransactions.blockNotFound (1 ms)
+[----------] 9 tests from WalletServiceTest_getTransactions (11 ms total)
+
+[----------] 3 tests from WalletServiceTest_getTransaction
+[ RUN      ] WalletServiceTest_getTransaction.wrongHash
+[       OK ] WalletServiceTest_getTransaction.wrongHash (1 ms)
+[ RUN      ] WalletServiceTest_getTransaction.returnsCorrectFields
+[       OK ] WalletServiceTest_getTransaction.returnsCorrectFields (1 ms)
+[ RUN      ] WalletServiceTest_getTransaction.transactionNotFound
+[       OK ] WalletServiceTest_getTransaction.transactionNotFound (1 ms)
+[----------] 3 tests from WalletServiceTest_getTransaction (3 ms total)
+
+[----------] 3 tests from WalletServiceTest_sendTransaction
+[ RUN      ] WalletServiceTest_sendTransaction.passesCorrectParameters
+[       OK ] WalletServiceTest_sendTransaction.passesCorrectParameters (1 ms)
+[ RUN      ] WalletServiceTest_sendTransaction.incorrectSourceAddress
+[       OK ] WalletServiceTest_sendTransaction.incorrectSourceAddress (2 ms)
+[ RUN      ] WalletServiceTest_sendTransaction.incorrectTransferAddress
+[       OK ] WalletServiceTest_sendTransaction.incorrectTransferAddress (1 ms)
+[----------] 3 tests from WalletServiceTest_sendTransaction (4 ms total)
+
+[----------] 4 tests from WalletServiceTest_getUnconfirmedTransactionHashes
+[ RUN      ] WalletServiceTest_getUnconfirmedTransactionHashes.returnsAllHashesWithoutAddresses
+[       OK ] WalletServiceTest_getUnconfirmedTransactionHashes.returnsAllHashesWithoutAddresses (1 ms)
+[ RUN      ] WalletServiceTest_getUnconfirmedTransactionHashes.returnsOneTransactionWithAddressFilter
+[       OK ] WalletServiceTest_getUnconfirmedTransactionHashes.returnsOneTransactionWithAddressFilter (1 ms)
+[ RUN      ] WalletServiceTest_getUnconfirmedTransactionHashes.returnsTwoTransactionsWithAddressFilter
+[       OK ] WalletServiceTest_getUnconfirmedTransactionHashes.returnsTwoTransactionsWithAddressFilter (1 ms)
+[ RUN      ] WalletServiceTest_getUnconfirmedTransactionHashes.wrongAddressFilter
+[       OK ] WalletServiceTest_getUnconfirmedTransactionHashes.wrongAddressFilter (2 ms)
+[----------] 4 tests from WalletServiceTest_getUnconfirmedTransactionHashes (5 ms total)
+
+[----------] Global test environment tear-down
+[==========] 676 tests from 64 test cases ran. (2292640 ms total)
+[  PASSED  ] 676 tests.
+
+  YOU HAVE 1 DISABLED TEST
+
+<end of output>
+Test time = 2292.65 sec
+----------------------------------------------------------
+Test Passed.
+"UnitTests" end time: Sep 08 06:45 UTC
+"UnitTests" time elapsed: 00:38:12
+----------------------------------------------------------
+
+End testing: Sep 08 06:45 UTC

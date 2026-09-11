@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "utc": "2026-09-08T04:41:24.999463+00:00",
+  "status": "PREPARED_NOT_FROZEN_PENDING_AUTHOR_FINAL_AND_MECHANICAL_REVIEW",
+  "program": {
+    "local_path": "C:\\ChatGPT-Knowledge-Migration\\knowledge-base\\projects\\discrete-core\\evidence\\swap-vps-v05\\sbf-v3\\solana_escrow.so",
+    "sha256": "30c22daccdd194896ddec53543410b1163c27fea378a58942c018033820f50b7",
+    "bytes": 32912,
+    "implementation": "new Rust SBPFv3; prior C SBPFv0 artifact remains separate"
+  },
+  "program_sources": {
+    "sbf-v3/src/lib.rs": "6fa662506bd667f6e510aaa3ea9aea74edaadeebdc829bd82bcfc05325b60eea",
+    "sbf-v3/Cargo.toml": "95fbea4c3925ab8043baa328dd2bdc0509883841474ee8c811af10356e02e965",
+    "sbf-v3/Cargo.lock": "ecb88b8469a190be6c5587f4762eaef619f4e8bdaaa45171821f6ea4c41f2102"
+  },
+  "old_program_sha256": "91004de413fa707ebd61d743cb01a2bfea80b0077fef3e15bc1f11bdb6100a89",
+  "original_driver_sha256": "4613ff1f723e218ace3c7979d2e97a994dd1a4edcbbc4a65c05167704f724410",
+  "driver_sha256": "1d866b3887dfaf0eff56cad2285ff87e8fe29fbecfe8d287e40e2c131ecec6a3",
+  "wrapper_sha256": "0d2c551b0b8a2a918586dc1f8f52d81c89cec9866f4451905febdfee4833c400",
+  "runtime_scope": "No new program runtime outcome asserted by this staging receipt; offline tests pending",
+  "code_changes": [
+    "driver SBF_SHA/SBF_SIZE",
+    "paired bindings driver hash",
+    "root wrapper PACKAGE/EXPECTED_DRIVER/program path"
+  ]
+}

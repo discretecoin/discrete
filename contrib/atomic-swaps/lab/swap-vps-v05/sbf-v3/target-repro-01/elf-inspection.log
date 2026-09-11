@@ -1,0 +1,116 @@
+ELF Header:
+  Magic:   7f 45 4c 46 02 01 01 00 00 00 00 00 00 00 00 00
+  Class:                             ELF64
+  Data:                              2's complement, little endian
+  Version:                           1 (current)
+  OS/ABI:                            UNIX - System V
+  ABI Version:                       0
+  Type:                              DYN (Shared object file)
+  Machine:                           EM_BPF
+  Version:                           0x1
+  Entry point address:               0x1000016c0
+  Start of program headers:          64 (bytes into file)
+  Start of section headers:          32528 (bytes into file)
+  Flags:                             0x3
+  Size of this header:               64 (bytes)
+  Size of program headers:           56 (bytes)
+  Number of program headers:         3
+  Size of section headers:           64 (bytes)
+  Number of section headers:         6
+  Section header string table index: 4
+
+Elf file type is DYN (Shared object file)
+Entry point 0x1000016c0
+There are 3 program headers, starting at offset 64
+
+Program Headers:
+  Type           Offset   VirtAddr           PhysAddr           FileSiz  MemSiz   Flg Align
+  LOAD           0x0000e8 0x0000000000000000 0x0000000000000000 0x000828 0x000828 R   0x8
+  LOAD           0x000910 0x0000000100000000 0x0000000100000000 0x005f38 0x005f38   E 0x8
+  NULL           0x000000 0x0000000000000000 0x0000000000000000 0x000000 0x000000     0x0
+
+ Section to Segment mapping:
+  Segment Sections...
+   00     .rodata 
+   01     .text 
+   02     
+   None   .symtab .shstrtab .strtab 
+
+Symbol table '.symtab' contains 76 entries:
+   Num:    Value          Size Type    Bind   Vis       Ndx Name
+     0: 0000000000000000     0 NOTYPE  LOCAL  DEFAULT   UND 
+     1: 0000000000000000     0 FILE    LOCAL  DEFAULT   ABS xds_swap_sbpfv3.8a31d78d99ac34e5-cgu.0
+     2: 0000000100000000   152 FUNC    LOCAL  DEFAULT     2 _RINvNvMs2_NtCs5YvB0t6enPX_5alloc7raw_vecINtB8_11RawVecInnerpE7reserve21do_reserve_and_handleNtNtBa_5alloc6GlobalECsbRBDLOvnLgf_15xds_swap_sbpfv3
+     3: 00000001000013e8   608 FUNC    LOCAL  DEFAULT     2 _RNvMs4_NtCs5YvB0t6enPX_5alloc7raw_vecNtB5_11RawVecInner11finish_growCsbRBDLOvnLgf_15xds_swap_sbpfv3
+     4: 00000001000040b8    24 FUNC    LOCAL  DEFAULT     2 _RNvNtCs5YvB0t6enPX_5alloc7raw_vec12handle_error
+     5: 0000000100000098   200 FUNC    LOCAL  DEFAULT     2 _RNvCsbRBDLOvnLgf_15xds_swap_sbpfv312token_amount
+     6: 00000000000004c8    24 OBJECT  LOCAL  DEFAULT     1 .Lanon.aefd674c68980197284112e34de522ac.1
+     7: 0000000100004c70   456 FUNC    LOCAL  DEFAULT     2 _RNvNtNtCskXIvWxbO49l_4core5slice5index16slice_index_fail
+     8: 0000000100000160   472 FUNC    LOCAL  DEFAULT     2 _RNvCsbRBDLOvnLgf_15xds_swap_sbpfv313token_account
+     9: 0000000100004ec0   104 FUNC    LOCAL  DEFAULT     2 _RNvNtCskXIvWxbO49l_4core4cell30panic_already_mutably_borrowed
+    10: 0000000100000338  4272 FUNC    LOCAL  DEFAULT     2 _RNvCsbRBDLOvnLgf_15xds_swap_sbpfv38transfer
+    11: 0000000000000430   104 OBJECT  LOCAL  DEFAULT     1 .Lswitch.table._RNvXs2_Csg5ToW0zKdJV_20solana_program_errorNtB5_12ProgramErrorINtNtCskXIvWxbO49l_4core7convert4FromyE4from
+    12: 0000000100005ef0    40 FUNC    LOCAL  DEFAULT     2 _RNvNtCsjOIShPwNhHt_3std5alloc8rust_oom
+    13: 0000000100004360   152 FUNC    LOCAL  DEFAULT     2 _RNvMs3_NtCs5YvB0t6enPX_5alloc7raw_vecINtB5_6RawVechE8grow_oneB7_
+    14: 0000000100005b18    64 FUNC    LOCAL  DEFAULT     2 _RNvMs3_NtCs5YvB0t6enPX_5alloc7raw_vecINtB5_6RawVecNtCsfRA1GHDIf0w_19solana_account_info11AccountInfoE8grow_oneCs1cb9aO9xBnD_25solana_program_entrypoint
+    15: 0000000100005af0    40 FUNC    LOCAL  DEFAULT     2 _RNvMs6_NtCs5YvB0t6enPX_5alloc2rcINtB5_2RcINtNtCskXIvWxbO49l_4core4cell7RefCellQShEE9drop_slowCsfRA1GHDIf0w_19solana_account_info
+    16: 0000000000000300    11 OBJECT  LOCAL  DEFAULT     1 .Lanon.aefd674c68980197284112e34de522ac.7
+    17: 00000000000006d8    24 OBJECT  LOCAL  DEFAULT     1 .Lanon.0a7b2d00c23048ec24ae58714a0e43f4.3
+    18: 0000000100005a30    40 FUNC    LOCAL  DEFAULT     2 _RNvNtNtCskXIvWxbO49l_4core9panicking11panic_const24panic_const_add_overflow
+    19: 00000000000007e0    24 OBJECT  LOCAL  DEFAULT     1 .Lanon.0a7b2d00c23048ec24ae58714a0e43f4.21
+    20: 00000000000006f0    24 OBJECT  LOCAL  DEFAULT     1 .Lanon.0a7b2d00c23048ec24ae58714a0e43f4.4
+    21: 0000000000000708    24 OBJECT  LOCAL  DEFAULT     1 .Lanon.0a7b2d00c23048ec24ae58714a0e43f4.5
+    22: 0000000100004e38   136 FUNC    LOCAL  DEFAULT     2 _RNvNtCskXIvWxbO49l_4core9panicking18panic_bounds_check
+    23: 00000000000007c8    24 OBJECT  LOCAL  DEFAULT     1 .Lanon.0a7b2d00c23048ec24ae58714a0e43f4.20
+    24: 0000000000000720    24 OBJECT  LOCAL  DEFAULT     1 .Lanon.0a7b2d00c23048ec24ae58714a0e43f4.13
+    25: 0000000000000768    24 OBJECT  LOCAL  DEFAULT     1 .Lanon.0a7b2d00c23048ec24ae58714a0e43f4.16
+    26: 0000000000000780    24 OBJECT  LOCAL  DEFAULT     1 .Lanon.0a7b2d00c23048ec24ae58714a0e43f4.17
+    27: 0000000000000810    24 OBJECT  LOCAL  DEFAULT     1 .Lanon.0a7b2d00c23048ec24ae58714a0e43f4.23
+    28: 0000000000000750    24 OBJECT  LOCAL  DEFAULT     1 .Lanon.0a7b2d00c23048ec24ae58714a0e43f4.15
+    29: 0000000000000798    24 OBJECT  LOCAL  DEFAULT     1 .Lanon.0a7b2d00c23048ec24ae58714a0e43f4.18
+    30: 00000000000007b0    24 OBJECT  LOCAL  DEFAULT     1 .Lanon.0a7b2d00c23048ec24ae58714a0e43f4.19
+    31: 0000000000000738    24 OBJECT  LOCAL  DEFAULT     1 .Lanon.0a7b2d00c23048ec24ae58714a0e43f4.14
+    32: 00000000000007f8    24 OBJECT  LOCAL  DEFAULT     1 .Lanon.0a7b2d00c23048ec24ae58714a0e43f4.22
+    33: 00000000000006a8    24 OBJECT  LOCAL  DEFAULT     1 .Lanon.0a7b2d00c23048ec24ae58714a0e43f4.1
+    34: 00000000000006c0    24 OBJECT  LOCAL  DEFAULT     1 .Lanon.0a7b2d00c23048ec24ae58714a0e43f4.2
+    35: 00000000000004e0    24 OBJECT  LOCAL  DEFAULT     1 .Lanon.aefd674c68980197284112e34de522ac.8
+    36: 00000000000004f8    24 OBJECT  LOCAL  DEFAULT     1 .Lanon.aefd674c68980197284112e34de522ac.9
+    37: 0000000000000510    24 OBJECT  LOCAL  DEFAULT     1 .Lanon.aefd674c68980197284112e34de522ac.10
+    38: 0000000100005a58   152 FUNC    LOCAL  DEFAULT     2 _RNvNvNtCskXIvWxbO49l_4core5slice20copy_from_slice_impl17len_mismatch_fail
+    39: 0000000000000540    24 OBJECT  LOCAL  DEFAULT     1 .Lanon.aefd674c68980197284112e34de522ac.12
+    40: 0000000000000558    24 OBJECT  LOCAL  DEFAULT     1 .Lanon.aefd674c68980197284112e34de522ac.13
+    41: 0000000000000660    24 OBJECT  LOCAL  DEFAULT     1 .Lanon.aefd674c68980197284112e34de522ac.24
+    42: 0000000000000570    24 OBJECT  LOCAL  DEFAULT     1 .Lanon.aefd674c68980197284112e34de522ac.14
+    43: 0000000000000588    24 OBJECT  LOCAL  DEFAULT     1 .Lanon.aefd674c68980197284112e34de522ac.15
+    44: 00000000000005a0    24 OBJECT  LOCAL  DEFAULT     1 .Lanon.aefd674c68980197284112e34de522ac.16
+    45: 00000000000005b8    24 OBJECT  LOCAL  DEFAULT     1 .Lanon.aefd674c68980197284112e34de522ac.17
+    46: 00000000000005d0    24 OBJECT  LOCAL  DEFAULT     1 .Lanon.aefd674c68980197284112e34de522ac.18
+    47: 00000000000005e8    24 OBJECT  LOCAL  DEFAULT     1 .Lanon.aefd674c68980197284112e34de522ac.19
+    48: 0000000000000600    24 OBJECT  LOCAL  DEFAULT     1 .Lanon.aefd674c68980197284112e34de522ac.20
+    49: 0000000000000618    24 OBJECT  LOCAL  DEFAULT     1 .Lanon.aefd674c68980197284112e34de522ac.21
+    50: 0000000000000630    24 OBJECT  LOCAL  DEFAULT     1 .Lanon.aefd674c68980197284112e34de522ac.22
+    51: 0000000000000648    24 OBJECT  LOCAL  DEFAULT     1 .Lanon.aefd674c68980197284112e34de522ac.23
+    52: 0000000100004330    48 FUNC    LOCAL  DEFAULT     2 _RNvNtCs5YvB0t6enPX_5alloc7raw_vec17capacity_overflow
+    53: 00000001000040d0   608 FUNC    LOCAL  DEFAULT     2 _RNvMs4_NtCs5YvB0t6enPX_5alloc7raw_vecNtB5_11RawVecInner11finish_growB7_
+    54: 0000000000000310    17 OBJECT  LOCAL  DEFAULT     1 .Lanon.0bb442594c9c564a21c34b03167d7679.24
+    55: 0000000000000678    24 OBJECT  LOCAL  DEFAULT     1 .Lanon.0bb442594c9c564a21c34b03167d7679.25
+    56: 00000001000043f8    80 FUNC    LOCAL  DEFAULT     2 _RNvNtCskXIvWxbO49l_4core9panicking9panic_fmt
+    57: 0000000100005ee8     8 FUNC    LOCAL  DEFAULT     2 _RNvCs6GJaa0HwATA_7___rustc17rust_begin_unwind
+    58: 0000000100004448  1912 FUNC    LOCAL  DEFAULT     2 _RNvXsi_NtNtNtCskXIvWxbO49l_4core3fmt3num3impjNtB9_7Display3fmt
+    59: 0000000000000328   200 OBJECT  LOCAL  DEFAULT     1 .Lanon.bba4490c981218fcd10bee33706022fc.145
+    60: 0000000100004bc0   176 FUNC    LOCAL  DEFAULT     2 _RNvNvMsa_NtCskXIvWxbO49l_4core3fmtNtB7_9Formatter12pad_integral12write_prefix
+    61: 0000000100004f28  2824 FUNC    LOCAL  DEFAULT     2 _RNvXsq_NtCskXIvWxbO49l_4core4cellNtB5_11BorrowErrorNtNtB7_3fmt7Display3fmt
+    62: 0000000000000690    24 OBJECT  LOCAL  DEFAULT     1 .Lanon.c35b62c9dc2baae0f020028196469aeb.24
+    63: 00000000000003f0    28 OBJECT  LOCAL  DEFAULT     1 .Lanon.bba4490c981218fcd10bee33706022fc.150
+    64: 0000000000000528    24 OBJECT  LOCAL  DEFAULT     1 .Lanon.aefd674c68980197284112e34de522ac.11
+    65: 0000000100005b58   200 FUNC    LOCAL  DEFAULT     2 _RNvMs4_NtCs5YvB0t6enPX_5alloc7raw_vecNtB5_11RawVecInner14grow_amortizedCs1cb9aO9xBnD_25solana_program_entrypoint
+    66: 0000000100005c20   680 FUNC    LOCAL  DEFAULT     2 _RNvMs4_NtCs5YvB0t6enPX_5alloc7raw_vecNtB5_11RawVecInner11finish_growCs1cb9aO9xBnD_25solana_program_entrypoint
+    67: 0000000100005ec8     8 FUNC    LOCAL  DEFAULT     2 _RNvNtNtNtCsjOIShPwNhHt_3std3sys3pal3sbf5panic
+    68: 0000000100005ed8     8 FUNC    LOCAL  DEFAULT     2 _RNvNtCsjOIShPwNhHt_3std7process5abort
+    69: 0000000100005ee0     8 FUNC    LOCAL  DEFAULT     2 _RNvNtNtNtCsjOIShPwNhHt_3std3sys3pal3sbf14abort_internal
+    70: 0000000000000498    46 OBJECT  LOCAL  DEFAULT     1 .Lanon.bf1c3188e96e35a81a6230cc2f7b8377.134
+    71: 0000000000000000     0 FILE    LOCAL  DEFAULT   ABS compiler_builtins.fef55fba0c22c468-cgu.114
+    72: 0000000100005f18    32 FUNC    LOCAL  HIDDEN      2 memcpy
+    73: 0000000100001648   120 FUNC    GLOBAL DEFAULT     2 custom_panic
+    74: 00000001000016c0 10744 FUNC    GLOBAL DEFAULT     2 entrypoint
+    75: 0000000100005ed0     8 FUNC    GLOBAL DEFAULT     2 abort

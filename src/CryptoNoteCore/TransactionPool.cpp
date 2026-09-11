@@ -1,3 +1,4 @@
+#include "CryptoNoteCore/SwapValidation.h"
 // Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 // Copyright (c) 2016, The Forknote developers
 // Copyright (c) 2016-2026, The Karbo developers
@@ -67,14 +68,16 @@ bool getPqAccountRegistrationId(const Transaction& tx, Crypto::Hash& accountId) 
   //---------------------------------------------------------------------------------
   class BlockTemplate {
   public:
+    explicit BlockTemplate(const Crypto::Hash& chain) : m_chain(chain) {}
 
     bool addTransaction(const Crypto::Hash& txid, const Transaction& tx) {
       if (!canAdd(tx))
         return false;
 
       for (const auto& in : tx.inputs) {
-        if (in.type() == typeid(PqInput)) {
-          auto r = m_keyImages.insert(pqInputNullifierAsKeyImage(boost::get<PqInput>(in)));
+        Crypto::KeyImage tag{};
+        if (transactionSpendTag(in, m_chain, tag)) {
+          auto r = m_keyImages.insert(tag);
           (void)r;
           assert(r.second);
         }
@@ -100,10 +103,12 @@ bool getPqAccountRegistrationId(const Transaction& tx, Crypto::Hash& accountId) 
 
   private:
 
+    Crypto::Hash m_chain;
     bool canAdd(const Transaction& tx) {
       for (const auto& in : tx.inputs) {
-        if (in.type() == typeid(PqInput)) {
-          if (m_keyImages.count(pqInputNullifierAsKeyImage(boost::get<PqInput>(in)))) {
+        Crypto::KeyImage tag{};
+        if (transactionSpendTag(in, m_chain, tag)) {
+          if (m_keyImages.count(tag)) {
             return false;
           }
         }
@@ -159,7 +164,8 @@ bool getPqAccountRegistrationId(const Transaction& tx, Crypto::Hash& accountId) 
     // the input — get_inputs_money_amount would read 0 and falsely reject. Its
     // balance and PQ fee floor are enforced by checkTransactionInputs ->
     // checkPqInputs below.
-    const bool pqOnlyInputs = tx.version >= TRANSACTION_VERSION_1 && isPqTransfer(tx.txType);
+    const bool pqOnlyInputs = tx.version >= TRANSACTION_VERSION_1 &&
+      (isPqTransfer(tx.txType) || isSwapTransaction(tx));
     const bool freeRegTransaction = tx.version >= TRANSACTION_VERSION_1 && tx.txType == TX_FREE_REG;
     uint64_t fee = 0;
     if (!pqOnlyInputs) {
@@ -408,6 +414,12 @@ bool getPqAccountRegistrationId(const Transaction& tx, Crypto::Hash& accountId) 
     return true;
   }
   //---------------------------------------------------------------------------------
+  bool tx_memory_pool::haveSpendTag(const Crypto::KeyImage& tag) const {
+    std::lock_guard<std::recursive_mutex> lock(m_transactions_lock);
+    const auto entry = m_spent_key_images.find(tag);
+    return entry != m_spent_key_images.end() && !entry->second.empty();
+  }
+
   bool tx_memory_pool::have_tx(const Crypto::Hash &id) const {
     std::lock_guard<std::recursive_mutex> lock(m_transactions_lock);
     if (m_transactions.count(id)) {
@@ -478,7 +490,19 @@ bool getPqAccountRegistrationId(const Transaction& tx, Crypto::Hash& accountId) 
     size_t max_total_size = (125 * median_size) / 100;
     max_total_size = std::min(max_total_size, maxCumulativeSize) - m_currency.minerTxBlobReservedSize();
 
-    BlockTemplate blockTemplate;
+    BlockTemplate blockTemplate(m_currency.genesisBlockHash());
+
+    // A kept-by-block swap may have entered before its inputs were usable, with
+    // no resolved fee. Refresh it before fee ordering and coinbase construction.
+    // Iterate the hash index: changing the fee can reorder the other index.
+    for (auto i = m_transactions.begin(); i != m_transactions.end(); ++i) {
+      if (isSwapTransaction(i->tx) && i->fee == 0) {
+        uint64_t resolvedFee = 0;
+        if (m_core.getPqTransactionFee(i->tx, resolvedFee)) {
+          m_transactions.modify(i, [resolvedFee](TransactionDetails& item) { item.fee = resolvedFee; });
+        }
+      }
+    }
 
     for (auto i = m_fee_index.begin(); i != m_fee_index.end(); ++i) {
       const auto& txd = *i;
@@ -729,11 +753,7 @@ bool getPqAccountRegistrationId(const Transaction& tx, Crypto::Hash& accountId) 
   bool tx_memory_pool::removeTransactionInputs(const Crypto::Hash& tx_id, const Transaction& tx, bool keptByBlock) {
     for (const auto& in : tx.inputs) {
       Crypto::KeyImage image;
-      if (in.type() == typeid(PqInput)) {
-        image = pqInputNullifierAsKeyImage(boost::get<PqInput>(in));
-      } else {
-        continue;
-      }
+      if (!transactionSpendTag(in, m_currency.genesisBlockHash(), image)) continue;
       {
         const Crypto::KeyImage& txinImage = image;
         auto it = m_spent_key_images.find(txinImage);
@@ -787,11 +807,7 @@ bool getPqAccountRegistrationId(const Transaction& tx, Crypto::Hash& accountId) 
     // should not fail
     for (const auto& in : tx.inputs) {
       Crypto::KeyImage image;
-      if (in.type() == typeid(PqInput)) {
-        image = pqInputNullifierAsKeyImage(boost::get<PqInput>(in));
-      } else {
-        continue;
-      }
+      if (!transactionSpendTag(in, m_currency.genesisBlockHash(), image)) continue;
       std::unordered_set<Crypto::Hash>& kei_image_set = m_spent_key_images[image];
       if (!(keptByBlock || kei_image_set.size() == 0)) {
         logger(ERROR, BRIGHT_RED)
@@ -834,8 +850,9 @@ bool getPqAccountRegistrationId(const Transaction& tx, Crypto::Hash& accountId) 
   //---------------------------------------------------------------------------------
   bool tx_memory_pool::haveSpentInputs(const Transaction& tx) const {
     for (const auto& in : tx.inputs) {
-      if (in.type() == typeid(PqInput)) {
-        if (m_spent_key_images.count(pqInputNullifierAsKeyImage(boost::get<PqInput>(in)))) {
+      Crypto::KeyImage tag{};
+      if (transactionSpendTag(in, m_currency.genesisBlockHash(), tag)) {
+        if (m_spent_key_images.count(tag)) {
           return true;
         }
       }

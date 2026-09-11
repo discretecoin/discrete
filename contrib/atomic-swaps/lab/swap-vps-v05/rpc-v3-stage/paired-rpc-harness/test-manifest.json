@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "artifact": "V05 staged paired XDS wallet and real Solana RPC / new SBPFv3 candidate",
+  "runtime_status": "NOT_RUN_FOR_THIS_SBF_V3_CANDIDATE",
+  "offline_tests": 20,
+  "commitment": "finalized",
+  "runtime_cases": [
+    {
+      "name": "success",
+      "xds_alice_delta_atoms": -1002,
+      "xds_bob_delta_atoms": 1000,
+      "solana_principal_units": 1234567,
+      "terminal_state": 2,
+      "foreign_secret_source": "public mined node-3 XDS claim only"
+    },
+    {
+      "name": "abandonment",
+      "xds_alice_delta_atoms": -2,
+      "xds_bob_delta_atoms": 0,
+      "solana_principal_units": 1234567,
+      "terminal_state": 3,
+      "secret_bearing_intents": 0
+    }
+  ],
+  "negative_controls": {
+    "underconfirmed_xds": "actual journal handoff refusal, followed by exact-byte admission at 11 confirmations",
+    "foreign_margin": "actual slots and admission read; abandonment has no claim intent",
+    "foreign_absent": "actual finalized account predicate before setup and coordinator registration",
+    "foreign_consumed": "actual finalized refunded-state predicate; no disclosure attempted",
+    "isolated_conditions_and_uncertainty": "offline guards only"
+  },
+  "no_changes": [
+    "V03",
+    "V04",
+    "Core",
+    "linux-harness",
+    "solana-rpc-harness",
+    "remote host"
+  ],
+  "remaining_gates": [
+    "mechanical staging review",
+    "parent standalone RPC qualification for new ELF",
+    "parent paired runtime for new ELF",
+    "combined resource measurements",
+    "process-death and blockhash renewal recovery",
+    "production qualification"
+  ],
+  "program_sha256": "30c22daccdd194896ddec53543410b1163c27fea378a58942c018033820f50b7",
+  "program_bytes": 32912,
+  "staged_offline_evidence": "separate V05 audit receipt; previous 20-guard author result not imported"
+}

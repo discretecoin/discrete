@@ -193,6 +193,7 @@ namespace CryptoNote
     uint32_t m_external_port;
     uint32_t m_ip_address;
     bool m_allow_local_ip = false;
+    bool m_swapLab = false;
     bool m_hide_my_port = false;
     std::string m_p2p_state_filename;
 

@@ -1,0 +1,47 @@
+--- solana-rpc-harness/driver.py
++++ rpc-v3-stage/solana-rpc-harness/driver.py
+@@ -31,8 +31,8 @@
+ TOKEN = Pubkey.from_string("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
+ LOADER = "BPFLoaderUpgradeab1e11111111111111111111111"
+ LEGACY_LOADERS = {"BPFLoader1111111111111111111111111111111111", "BPFLoader2111111111111111111111111111111111"}
+-SBF_SHA = "91004de413fa707ebd61d743cb01a2bfea80b0077fef3e15bc1f11bdb6100a89"
+-SBF_SIZE = 9248
++SBF_SHA = "30c22daccdd194896ddec53543410b1163c27fea378a58942c018033820f50b7"
++SBF_SIZE = 32912
+ AMOUNT = 1_234_567
+ SUPPLY = 10_000_000
+ RELAYER_SOL = 50_000_000
+--- paired-rpc-harness/bindings.py
++++ rpc-v3-stage/paired-rpc-harness/bindings.py
+@@ -8,7 +8,7 @@
+ ROOT = Path(__file__).resolve().parent
+ V05 = ROOT.parent
+ PINS = {
+-    "solana-rpc-harness/driver.py": "4613ff1f723e218ace3c7979d2e97a994dd1a4edcbbc4a65c05167704f724410",
++    "solana-rpc-harness/driver.py": "1d866b3887dfaf0eff56cad2285ff87e8fe29fbecfe8d287e40e2c131ecec6a3",
+     "linux-harness/test_xds_wallet_network.py": "c85067f1ea0ea50e2e57de01845dc87a290f2b742cce85348b35720a3ce52330",
+     "linux-harness/swap_journal.py": "8e935ecceaae034e1ae5ab0c8bccb4ed01ae4c78c799d9a0846eb084cf1c4792",
+     "linux-harness/xds_localnet.py": "a44ea85438c46850937dc2af635bcacf86771e07bad5911838ffb387435079c5",
+--- run_solana_rpc.py
++++ run_solana_rpc_v3.py
+@@ -2,9 +2,9 @@
+ import argparse, datetime, hashlib, importlib.metadata, json, os, pathlib, subprocess, sys, time
+ 
+ BASE = pathlib.Path('/var/lib/discrete-swap-lab')
+-PACKAGE = BASE / 'solana-rpc-harness'
++PACKAGE = BASE / 'rpc-v3-stage/solana-rpc-harness'
+ CGROUP = pathlib.Path('/sys/fs/cgroup/discrete.slice/discrete-swap.slice/discrete-swap-solana.slice')
+-EXPECTED_DRIVER = '4613ff1f723e218ace3c7979d2e97a994dd1a4edcbbc4a65c05167704f724410'
++EXPECTED_DRIVER = '1d866b3887dfaf0eff56cad2285ff87e8fe29fbecfe8d287e40e2c131ecec6a3'
+ 
+ 
+ def sha(path):
+@@ -23,7 +23,7 @@
+     result['package-hashes.json'] = sha(PACKAGE / 'package-hashes.json')
+     result['runner'] = sha(pathlib.Path(__file__))
+     result['validator_binary'] = sha(pathlib.Path('/opt/discrete-swap-lab/releases/solana-release/bin/solana-test-validator'))
+-    result['sbf_file'] = sha(pathlib.Path('/opt/discrete-swap-lab/program/solana_escrow.so'))
++    result['sbf_file'] = sha(pathlib.Path('/opt/discrete-swap-lab/program-v3/solana_escrow.so'))
+     return result
+ 
+ 

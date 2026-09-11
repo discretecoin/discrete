@@ -1,0 +1,4 @@
+__pycache__/
+target/
+*.so
+*-keypair.json

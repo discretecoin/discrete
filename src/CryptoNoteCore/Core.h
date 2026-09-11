@@ -158,6 +158,7 @@ namespace CryptoNote {
 
      std::vector<Transaction> getPoolTransactions() override;
      bool getPoolTransaction(const Crypto::Hash& tx_hash, Transaction& transaction) override;
+     bool poolHasSpendTag(const Crypto::KeyImage& tag) const;
      virtual size_t getPoolTransactionsCount() override;
      virtual size_t getBlockchainTotalTransactions() override;
      //bool get_outs(uint64_t amount, std::list<Crypto::PublicKey>& pkeys);

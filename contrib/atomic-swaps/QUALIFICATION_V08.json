@@ -1,0 +1,417 @@
+{
+  "schema": 1,
+  "revision": "0.8",
+  "date_utc": "2026-09-11",
+  "baseline": "1df1367b3b829fadcde9310794a95acd2798b31c",
+  "qualification_document": "QUALIFICATION_V08.md",
+  "source_identity_note": "SHA-256 binds tested working-copy bytes; Git blob IDs bind repository content after the configured Git text conversion.",
+  "offline": {
+    "scope": "offline unit, crypto, abrupt process exit, loopback HTTP/TLS, CLI processes and compiled-ELF LiteSVM",
+    "tests_run": 486,
+    "skipped": 0,
+    "failures": 0,
+    "errors": 0,
+    "seconds": 55.912,
+    "source_unchanged": true,
+    "pass": true
+  },
+  "final_native": {
+    "build": "Windows Release ALL_BUILD",
+    "source_files": 646,
+    "focused_tests_passed": 26,
+    "adjacent_ctest_suites_passed": 3
+  },
+  "final_actual_pairs": [
+    {
+      "suite": "test_owner_hardening_rpc_integration",
+      "chain": "XDS/Bitcoin",
+      "passed": 2,
+      "seconds": 48.433
+    },
+    {
+      "suite": "test_owner_rpc_integration",
+      "chain": "XDS/Bitcoin",
+      "passed": 3,
+      "seconds": 50.88
+    },
+    {
+      "suite": "test_owner_hardening_solana_rpc_integration",
+      "chain": "XDS/Solana",
+      "passed": 1,
+      "seconds": 103.603
+    }
+  ],
+  "solana_elf_sha256": "561e0b7ad5e4be59a3056482ea94370064d201f45a378964d0fdb9f0ff76a901",
+  "receipt_sha256": {
+    "offline-final-03/receipt.json": "bfaa0ce09309e9c34c934f8c391f1897c15a19c227542df0355357a7ba49e802",
+    "native/build-final-05.json": "e28a05a31a792d2d9e1d7f7a9a19ceed65590da79165fe97f50fc055ad69f793",
+    "native/native-targeted-02.json": "eb11e5066af90c83f24c90ff9acd73f7e672f88458d118d6f5bf9f63cfdd77ed",
+    "native/ctest-adjacent-final-02.json": "7ac21142602033e5ba782447c8d01497927b3601f93e201579fad877f97706b0",
+    "native/owner-rpc-hardened/run-04.json": "a5086985bd66693bb54d2b6ea57acdab1b000c8560a7fec6787b4a10e5a6c009",
+    "native/owner-rpc-legacy/run-01.json": "4cb45d75cf5c9ffdc6c2bb8782b6e843f3133c5db6b83166ecd03715ae65b27a",
+    "native/native-final-audit-01.json": "aea939c8d32859f2b3c11ecc7037ce1c30e1f957e185cd9c00d5e21810d5df98",
+    "solana/public-fixture-evidence/owner-hardened-public-pair-01.json": "bab1d0ece1000a54d3c71a15ed8eeb2c670dba1afd7eb6f57a3668aac1cfddb9",
+    "solana/public-fixture-evidence/server-final-audit.json": "8100a8e9ed95ea28733955415d84da48a556134cde3cb7dd7bf29f58138743cb"
+  },
+  "source_files": {
+    "contrib/atomic-swaps/lab/swap-vps-v05/sbf-v3/test_solana_vm.py": {
+      "tested_bytes_sha256": "48187e48a95a1a94f92ba99e4ea6e3755289e0592c8d94d874c4d4d861892c54",
+      "git_blob": "eca4a7f4e44b9aa8ed914bb1c08ceede6a60ac09"
+    },
+    "contrib/atomic-swaps/runtime/qualify.py": {
+      "tested_bytes_sha256": "fbb6227beb9e0a8db9b232b489309927ed030377c2e30a76230075541122670b",
+      "git_blob": "8866bc0bdf16052362f04e4d8d037dd34d9655b6"
+    },
+    "contrib/atomic-swaps/runtime/requirements.txt": {
+      "tested_bytes_sha256": "e81d003f7659e655d80758a1077de680ae8575a423ef6f70858a397fbe75537c",
+      "git_blob": "9f58d8ebe25745f71d28fc1fe5168e068d11ee8c"
+    },
+    "contrib/atomic-swaps/runtime/solana_fixture/__init__.py": {
+      "tested_bytes_sha256": "9aa908ecfdfca1664141acddc32923cedcc8d3e08042eafef09abc210425decd",
+      "git_blob": "bd3e921a5160996e48c6d02e4272e1bc5562cccd"
+    },
+    "contrib/atomic-swaps/runtime/solana_fixture/__main__.py": {
+      "tested_bytes_sha256": "f0181b8157f3ba3e4ea44560efc6ee06ab9017835ae5afd16a8188dcd1e2115a",
+      "git_blob": "f0d029dd4f5706bcece9345ee7510b708f1ba61a"
+    },
+    "contrib/atomic-swaps/runtime/solana_fixture/bridge.py": {
+      "tested_bytes_sha256": "0616753e2ddf02bcc2cf6c6b736791037c4459f0988c58734a9339606bb4c760",
+      "git_blob": "88c2ab0b29aa80d6d3a735be1ef1f1b414e7821e"
+    },
+    "contrib/atomic-swaps/runtime/solana_fixture/runner.py": {
+      "tested_bytes_sha256": "71abafa5848323daa2c002beb9d8562e7d9669afa533eb6b17177ca2459c1f57",
+      "git_blob": "caae911e86eb84a47610af8f21cc9ac0a87f52b2"
+    },
+    "contrib/atomic-swaps/runtime/solana_fixture/support.py": {
+      "tested_bytes_sha256": "433dd7fe0b5cbf7f55f87b161710cc124ef3286e787203298db5e9e51af3cd70",
+      "git_blob": "384413f3401cb3dd054ff33fd6f4a3c36a706c1f"
+    },
+    "contrib/atomic-swaps/runtime/swap_runtime/__init__.py": {
+      "tested_bytes_sha256": "001e2c965afad8738de23d8bf79de02db468f9ff86b116905fb73f011bb7379a",
+      "git_blob": "1b958db06e010bfbd74dc2763632f23aa8b3adb7"
+    },
+    "contrib/atomic-swaps/runtime/swap_runtime/__main__.py": {
+      "tested_bytes_sha256": "c3464bb65cfa0db863afd9597235e06d07dbc86ecbd205505bd17d95bc75090a",
+      "git_blob": "b168640f68e845d6f999d943d0304bcdc34172f3"
+    },
+    "contrib/atomic-swaps/runtime/swap_runtime/anchor.py": {
+      "tested_bytes_sha256": "4aa40dc8027285c7fc19137860025b5ca6ce8cee05aade257f45facd85083022",
+      "git_blob": "a6b409d72239304d6722c3b9a0aef13203a550ad"
+    },
+    "contrib/atomic-swaps/runtime/swap_runtime/anchored_owner.py": {
+      "tested_bytes_sha256": "b18cdcc8413b9383a98829174bdd962890b3de7d8eb1a598ce3f4b5305b7733d",
+      "git_blob": "ae64201d243c323791510db26febfb7ebcb6d04b"
+    },
+    "contrib/atomic-swaps/runtime/swap_runtime/bitcoin.py": {
+      "tested_bytes_sha256": "6268a283c313aadef19172575f2b5033e75e3b64841e6ec8dc14a8a3dd48acfa",
+      "git_blob": "ec13f3936d66bde6cb50439a8a87c3ab92dd10c4"
+    },
+    "contrib/atomic-swaps/runtime/swap_runtime/bitcoin_funding.py": {
+      "tested_bytes_sha256": "780624b57d06fbef861959097c01a7286f6393f463a5b285f037117f00d3a82f",
+      "git_blob": "977ef9b113ef96f592be778b94df0bc8e76816e2"
+    },
+    "contrib/atomic-swaps/runtime/swap_runtime/common.py": {
+      "tested_bytes_sha256": "16bb0dbb1e4cad07ad6b822d62eaefb9c72b364a6bad8dffec104ca2461e38e7",
+      "git_blob": "a597ad782bc1e63af1dcad6fb3b72409be0cc61c"
+    },
+    "contrib/atomic-swaps/runtime/swap_runtime/journal.py": {
+      "tested_bytes_sha256": "c6a00c9897d8541bf7c47a4f6e1bc78e2b422bee6b110cc0abe1d38f59fa61f5",
+      "git_blob": "2fc40a6440da391afe34d9ac350851cbd8a9015f"
+    },
+    "contrib/atomic-swaps/runtime/swap_runtime/lifecycle.py": {
+      "tested_bytes_sha256": "f603a851205adb8a2597eb509fdc47f292df43375391d307333ab13535fcf145",
+      "git_blob": "a6cb400a7eeecdbe2ce341e0b194968ea2b8edb4"
+    },
+    "contrib/atomic-swaps/runtime/swap_runtime/lifecycle_settlement.py": {
+      "tested_bytes_sha256": "225b6ca98bcac88693b33d7cc55b0f34225ca1b7180fb7b0db741c7204d4a238",
+      "git_blob": "5066f9d301c8516cca66c59c4355111cfd5e8b0a"
+    },
+    "contrib/atomic-swaps/runtime/swap_runtime/lifecycle_store.py": {
+      "tested_bytes_sha256": "b52e02c2d0a1bc0fa5f5ae40471a9bd3c5e0794d9727cc204a539fa72d8a6f2e",
+      "git_blob": "338381828b812461c0f512087b64504ceb0ce2ed"
+    },
+    "contrib/atomic-swaps/runtime/swap_runtime/owner_cli.py": {
+      "tested_bytes_sha256": "930146b3ec16fe0a2c8bc980f6fd93aad749af9e88bd1e660b2064825458ccb1",
+      "git_blob": "fc31260c1cb2be2dd694532ca24c0896ede542ec"
+    },
+    "contrib/atomic-swaps/runtime/swap_runtime/owner_protocol.py": {
+      "tested_bytes_sha256": "e171306ee8f00f8f0e4a4bdb076b5621c10020eef981b2c14b03f996db815d76",
+      "git_blob": "dd58850d66c301c21dbff08117dd4f00312bd18f"
+    },
+    "contrib/atomic-swaps/runtime/swap_runtime/rpc.py": {
+      "tested_bytes_sha256": "e46f4793144c500e370eb5f49ea00502241ac7131c80fe9dc3473abb450dad54",
+      "git_blob": "e4536fab24e837f020f435783c125a8d7f43761f"
+    },
+    "contrib/atomic-swaps/runtime/swap_runtime/session.py": {
+      "tested_bytes_sha256": "f6518982b399c982cba22311fe13bc60dabcc3883f284bc94f503dda623a647b",
+      "git_blob": "c7b54076d717aba21151fb07b10df7e8ec6f2f3b"
+    },
+    "contrib/atomic-swaps/runtime/swap_runtime/solana.py": {
+      "tested_bytes_sha256": "11ce55928bffff4b8b9ac3be312a522e63cc1e18e3710028f7ecfdd2a0889692",
+      "git_blob": "d6b44ab4ed5ead73c4a6a2b85af3f8f6830726ec"
+    },
+    "contrib/atomic-swaps/runtime/swap_runtime/solana_funding.py": {
+      "tested_bytes_sha256": "0153c76d557d80a77ae6afa97c34477f1eb7ba4298630de7bb0178e2e34483c8",
+      "git_blob": "7a29a9d2a9a0e2fbe30a89e971b436f304808a8b"
+    },
+    "contrib/atomic-swaps/runtime/swap_runtime/xds.py": {
+      "tested_bytes_sha256": "4a24120f49a88b679e7f7caaca7ce06e38ee0bd0ca44b498e757ca53155b637f",
+      "git_blob": "38e57910a149744d0617d10aa29ecb999a29c14a"
+    },
+    "contrib/atomic-swaps/runtime/swap_runtime/xds_discovery.py": {
+      "tested_bytes_sha256": "c17aad82842e9393a85e4eed5d052c0f2b3746b4e0cbcd9fbea49649f679ead2",
+      "git_blob": "dc19ad2e931c9662893b7e5be2c24b357d9c025a"
+    },
+    "contrib/atomic-swaps/runtime/swap_runtime/xds_funding.py": {
+      "tested_bytes_sha256": "e8c93be8f9e48d6cc8bfd238aa26714fca3fbb4d03af33a48117a3361a89270f",
+      "git_blob": "7fd7660573dcbe7f40b755bb5869bc2cf35c324d"
+    },
+    "contrib/atomic-swaps/runtime/swap_runtime/xds_preparation.py": {
+      "tested_bytes_sha256": "bf1f3fb28ace46731fbed405ab8fa6d1647f9d2dea6c85aad58cab6b6f7ce00c",
+      "git_blob": "6ff289b385a8672d7c1312ad559e30290a81ba47"
+    },
+    "contrib/atomic-swaps/runtime/tests/fixtures/solana-v06/build-manifest.json": {
+      "tested_bytes_sha256": "3280a82ad13cd2671b558f001678615ced7fee1b8dbfae820071f87836f7bd7f",
+      "git_blob": "4167e7091823a062cf7f710b039e02632837129c"
+    },
+    "contrib/atomic-swaps/runtime/tests/fixtures/solana-v06/solana_escrow.so": {
+      "tested_bytes_sha256": "561e0b7ad5e4be59a3056482ea94370064d201f45a378964d0fdb9f0ff76a901",
+      "git_blob": "d2f47861b32eed29f3fdea0e0d9ae15de4518b48"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_anchor.py": {
+      "tested_bytes_sha256": "28e023cb95d18b26c54bda6234a2292472d2fcb6b029d0145ebc31d49b81fddf",
+      "git_blob": "49e4ca56a272996fef659920a6fcd94a8d0a906a"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_anchored_owner.py": {
+      "tested_bytes_sha256": "b2db84abecab13fd93cbd221a3f0adacd00421acfc0eacf657cdbe43e864f6cb",
+      "git_blob": "5de2eb7e959d4a5de30b6bbf3c4935362123925b"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_bitcoin.py": {
+      "tested_bytes_sha256": "2856d874a9d2cac43c8331a95ee07083ba07b68357c9bb9bbddf523d33e1f215",
+      "git_blob": "0673d9802f374ba9be78313d310029b3ec0d4237"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_bitcoin_funding.py": {
+      "tested_bytes_sha256": "860debf43e1ff49b35ff1b1cd52865730f8bce301797c45d813f9101baf0cd56",
+      "git_blob": "c698d32f4b64fa4ebcf82d0cab884d0248370348"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_bitcoin_funding_rpc_integration.py": {
+      "tested_bytes_sha256": "baf91875b1c366984bd9882fddc8e71490ef3e09d0ae4680419631e766602ede",
+      "git_blob": "ff5baa05236145ef6a1b1137e973a8ea9b52e674"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_bitcoin_rpc_integration.py": {
+      "tested_bytes_sha256": "ea4fc43d0871d1356e4683ef72a946f6774a2a57d1e150674567c092cc7f71c5",
+      "git_blob": "8006813a8344aba3d893eecc15cfe52b98305133"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_journal.py": {
+      "tested_bytes_sha256": "8af576fc87951a3fb0f3fe5f205af7db7e63b4d212e7ed4d1351fbce4d59111e",
+      "git_blob": "75a8d41fda9cd90b0028a203a7a2aba374e9aa50"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_lifecycle_settlement.py": {
+      "tested_bytes_sha256": "43e8d1975fcd61d76bcab26119ce87296f54bc762e4934b11ebd6e9e71e2f4bf",
+      "git_blob": "0bd14821b02089bf8b794f72588f5abb8496fb7c"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_lifecycle_store.py": {
+      "tested_bytes_sha256": "f507afffb1743477464eae52fb7a801b855216cf886bcf9f001eccc280c8da85",
+      "git_blob": "4db77db0ab7b8bc76e78fdfa4d4cc040e42dc0f8"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_owner.py": {
+      "tested_bytes_sha256": "78071213c9a1259e4963616c39e0ecf52c744db46589641d179ce53ae1f416d4",
+      "git_blob": "c1a769c8f9a075747d37d9658fbd14a0a73a136f"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_owner_cli.py": {
+      "tested_bytes_sha256": "df04393022897b98f8260e6adfe8c2b9776ee9cc1f793eea7536dee2f84b9f4e",
+      "git_blob": "4bfc50ce5c17c624c65958bebffa9f00b23f73dc"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_owner_hardening_cli.py": {
+      "tested_bytes_sha256": "07b9784714a37341bae34f86e722a1450d1cb52725f6b574514c5a629dba9128",
+      "git_blob": "d1f1da207bec9ae81105ce20fc87a6c755efdbfb"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_owner_hardening_rpc_integration.py": {
+      "tested_bytes_sha256": "68fc3a0474cdf05a3fa728365e98466170b32c84d93fcd0fb362c2b952ecaf57",
+      "git_blob": "d706a9c135198c7bdc41d1dffa5f9ab5094c20b9"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_owner_hardening_solana_rpc_integration.py": {
+      "tested_bytes_sha256": "148fa8e1625af994a097772e78905e51804cc57d45d418dd03cc5963754fd0fb",
+      "git_blob": "311f34a5564f47633ac389627d0ecddc7b9a5cde"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_owner_protocol.py": {
+      "tested_bytes_sha256": "fac5ff41516982b6dd2f9e1ca3c02e22b5eec31cff2174515728a04adb677ec8",
+      "git_blob": "00f81081961584f51609899929cae766a6f60e9e"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_owner_recovery.py": {
+      "tested_bytes_sha256": "7fe0a4f5f383680f912f0d12bff1661a47c24320bfb8fd6321108580c80bfa87",
+      "git_blob": "1d54e4a04b994f0d48969e71040e24ecb07a7ab1"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_owner_rpc_integration.py": {
+      "tested_bytes_sha256": "28b81ab03ad9ea16bd9a48b6da197e324b61632c608d6c155dd148e713013d13",
+      "git_blob": "84c8a21a086769e271f532a9ffe388f7de34e7ca"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_owner_solana.py": {
+      "tested_bytes_sha256": "1cbf24389ef6dc2541f85c4590056bb14c4d7f25fd8c99aeb4ef7988e0f2fb78",
+      "git_blob": "b5a5d4e2069df98b7064ddff7acf772fdbc5a843"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_owner_solana_rpc_integration.py": {
+      "tested_bytes_sha256": "587da6a4e7408c32e1bc6a1c5fe2a5a63db6c6fb399a8297525d8d9583f92434",
+      "git_blob": "9ae6e9dc13f1de9b2acfff2c34769364e1903f67"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_pair_rpc_integration.py": {
+      "tested_bytes_sha256": "b025edd9ea4b41f7090386b48798e090e79c016fb99555b2d06ed9ebddd2a981",
+      "git_blob": "0273d40dcf78a710ba15520aba90dc2fd6b6fdd7"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_pair_solana_rpc_integration.py": {
+      "tested_bytes_sha256": "b767f3c12e6c2ef80d6ab9738def470e6d5ad965eaaaa1993b9a4e5b87ce7a07",
+      "git_blob": "3aa0b51f201cb7b80d450656bd4078487f1b4583"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_session.py": {
+      "tested_bytes_sha256": "c3c5d244d3567fcaa99bca919bd224acb0f4a99a75b4086daa370cb1c9fedde8",
+      "git_blob": "b23a58ee8b46ad4c50b6a348e873cf75e5154d50"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_solana.py": {
+      "tested_bytes_sha256": "d88b2b6968290a2ee06f2574cdf3da6c34eb28581c53777cfd987ea785a869f8",
+      "git_blob": "7cad0a9f1521561bfd0a5bef34aa5aa78475ef1a"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_solana_fixture.py": {
+      "tested_bytes_sha256": "c555bdd9914181db99c036d8457710cf4a354625d908d94aee997ef93f94ab1c",
+      "git_blob": "cf672c28dd87dabdd883dd664dfb07d7673d1582"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_solana_fixture_rpc_integration.py": {
+      "tested_bytes_sha256": "10f0def8f89332d8208682e4e3798a8681e12376c6b7c31142d3a1fb40e4a52d",
+      "git_blob": "fc8cea6320c2330a7e30c5276c4f200632e3db22"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_solana_funding.py": {
+      "tested_bytes_sha256": "8e35ddd221fcf217d1eaf7759c8ded40ecd750faa3c36136fedd6a6e47265211",
+      "git_blob": "0ba8f0edd29a5b71c0c2e3fd28f50a33bfeca241"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_solana_rpc_integration.py": {
+      "tested_bytes_sha256": "f5e5b167127d46e993698f80bd200914eb7ac90c959ede2f887df3e9f848c671",
+      "git_blob": "d540f90da606fa2b129a235fda0accd342fb510b"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_transport_cli.py": {
+      "tested_bytes_sha256": "c9b1853f901ecb56f77fe16b4f21f8c57041911341e0d86df73ccbe48fc79c42",
+      "git_blob": "4ee9def81cee4dcd6e3394ffb3ff61b54841322e"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_xds.py": {
+      "tested_bytes_sha256": "7f86eafd5538af326d3e55fc946a4d29dd47554b4ab2be6f7cd9a7e5b623c261",
+      "git_blob": "e88c0ffd1ceb6e3679e6e948b2a35eda9a5f1796"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_xds_discovery.py": {
+      "tested_bytes_sha256": "36a408748fc41f418ee9934d2700467373628e7bce1161ab6e2f5946f35d08f6",
+      "git_blob": "7d78ec392248f33bed213be1aadff25e6459b392"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_xds_funding.py": {
+      "tested_bytes_sha256": "873e42e6e649857bc984212249a5f6b8947ef79ca5e3b7e15451504d9248b021",
+      "git_blob": "01cb65c6aa2831a9085facb0292821111309b515"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_xds_funding_rpc_integration.py": {
+      "tested_bytes_sha256": "47c760800e850cf89f9d0f3e790c0e7be407bf9cd08bd48be6ad1e6684965565",
+      "git_blob": "1a6d1c1a0019e3232217ab42c3c71705e8e885a6"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_xds_preparation.py": {
+      "tested_bytes_sha256": "2b472e09f018d94ae7f9dd11777daa3b5bb659619b27d07211b59222f59fdfd7",
+      "git_blob": "5128d855e9a7d4d175d0eedd335d178610823ab1"
+    },
+    "contrib/atomic-swaps/runtime/tests/test_xds_rpc_integration.py": {
+      "tested_bytes_sha256": "1773fdeb549a4511f85d3cf6414b65040fc4a3212f8967c71edfcb6658894753",
+      "git_blob": "e324ba1ee6d9e1e593c9e48f6a3fe49c1ebd4ab0"
+    },
+    "contrib/atomic-swaps/solana/Cargo.lock": {
+      "tested_bytes_sha256": "19826f438acf267f8f698288961908d995f2ae1523f8e81028ff8fea95614078",
+      "git_blob": "8fb288d3e7fedcfc12702fc18086983a51bf08a6"
+    },
+    "contrib/atomic-swaps/solana/Cargo.toml": {
+      "tested_bytes_sha256": "1093d3a7e38a97322338e03048cb9e7afcfc0a3e46766b1b3bcad5a9e9884b58",
+      "git_blob": "34379d254673d75ae91d0023c7250848e8d6fa56"
+    },
+    "contrib/atomic-swaps/solana/build.py": {
+      "tested_bytes_sha256": "f41c38846af86708c76b1b6b719a9b3adeea5ea87023082dab518bea4506e44b",
+      "git_blob": "33d7af701918f50841e9edecdec847c16b07b1d4"
+    },
+    "contrib/atomic-swaps/solana/profile.py": {
+      "tested_bytes_sha256": "2efbad2de0b4bc0e04748262b5ac1cd8785a439deb7c792bc77ba004f7b46c17",
+      "git_blob": "0c1c7c551d8f7509ad1686574bf85f695f397a15"
+    },
+    "contrib/atomic-swaps/solana/src/lib.rs": {
+      "tested_bytes_sha256": "ef524a97f7ac31a52b6e2b70d593cd894e4aa798e146cadef6395e824dabfe66",
+      "git_blob": "11f7ff9135d2728d4db396a528a46ce6c854964e"
+    },
+    "contrib/atomic-swaps/solana/src/profile.rs": {
+      "tested_bytes_sha256": "b8ae7dd9bf216d89627d9f7c685c4074711d1d3b9f914cfe51a90aaf1ba91266",
+      "git_blob": "064e335badf56e17d3a3ec0785edd06d26ede7bc"
+    },
+    "contrib/atomic-swaps/solana/tests/test_profile.py": {
+      "tested_bytes_sha256": "ec72da3802ad03c2929b6e771b0a7a249c8b8af367ba737c78da34e74e48fec2",
+      "git_blob": "65cf0224640a99981faa24861c181b5e40570c4f"
+    },
+    "contrib/atomic-swaps/solana/tests/test_vm.py": {
+      "tested_bytes_sha256": "6b3f30252ee59ec6d5bcc7094382efb826acabb1126729f087a3b4ea97524f71",
+      "git_blob": "31788922f4b1a214ff8e76c3a84e76391248850b"
+    },
+    "contrib/atomic-swaps/solana/verify_deployment.py": {
+      "tested_bytes_sha256": "51deaf8710f193eb9d6ab34e65c6964b17b6f88aba8e56160fa9258df8f34cdf",
+      "git_blob": "0198e042f5864b2d7adf7fea7fd082a879bf1298"
+    },
+    "src/Wallet/SwapFundingPreparation.cpp": {
+      "tested_bytes_sha256": "3616062435b2254658c6efc9310b3408e7752b583868137ce98a6eb8b135845b",
+      "git_blob": "1f3c4449a21c95bcbfbe057c62bd4f07aecc178c"
+    },
+    "src/Wallet/SwapFundingStore.cpp": {
+      "tested_bytes_sha256": "66a988fc4f20c972fa9474e6affe88b4c0d0bfe9d1022e3b82d075bc997d3071",
+      "git_blob": "63f1d68603b9ab044bfd9f88746053ce931ab4f5"
+    },
+    "src/Wallet/SwapFundingStore.h": {
+      "tested_bytes_sha256": "1a60165cab01e4d5417dded33b6a84235f218ff398f72f6f1517d11e5157ab85",
+      "git_blob": "6943c50a40f61300ecdec50e3fd7b2c5c28e74a2"
+    },
+    "src/Wallet/SwapTransactionBuilder.cpp": {
+      "tested_bytes_sha256": "579d679be1e306434fb666a30cbb091923333dd76c0a9063d0da371408849611",
+      "git_blob": "db7bb424ca36a58b9c3c69063fe437b430031633"
+    },
+    "src/Wallet/SwapTransactionBuilder.h": {
+      "tested_bytes_sha256": "4533743d885564c09212f304f7352a7534d7ee06d46db4d933ca51433124e587",
+      "git_blob": "5f6528af433c52a3daedc9039c82c51976d82714"
+    },
+    "src/Wallet/SwapWallet.cpp": {
+      "tested_bytes_sha256": "300b08a8a7622d2bc140a022d8b6771f74868cfbeb6c366b3c4b9161e1e7cb78",
+      "git_blob": "ec3741b5f3b705ffdcf75425c2aab83d7b9b0719"
+    },
+    "src/Wallet/SwapWallet.h": {
+      "tested_bytes_sha256": "8d0c61a74c85c4815c56eaada2176a0f096414a246b004c461d5f7b840e49e48",
+      "git_blob": "1b7c726b666fd04c0fe4511455bf4a4ab9dbb710"
+    },
+    "src/Wallet/WalletRpcServer.cpp": {
+      "tested_bytes_sha256": "b441f71bf83485d1243b2701352d4099ec7af99b00f1eedebd50b4baa98d8ed8",
+      "git_blob": "ae2cfa32516eb67afc5040de9bb87664bfe10e62"
+    },
+    "src/Wallet/WalletRpcServer.h": {
+      "tested_bytes_sha256": "3049bd52a4f8bd4dbca7ccdbb83ea0f699a4efc9ac83c578cae424e132bdba81",
+      "git_blob": "fa5055cf0553ae8ab9b8a4e474245f9ec901934f"
+    },
+    "src/Wallet/WalletRpcServerCommandsDefinitions.h": {
+      "tested_bytes_sha256": "9617bf1c717d68d336d54216622172497c2631747f5209f546bed1c29c59be37",
+      "git_blob": "2a7ef326d9184524cfb0d37601159ea78d60a8ea"
+    },
+    "src/WalletLegacy/WalletLegacy.cpp": {
+      "tested_bytes_sha256": "280bc3b5266ce47bd958ea51e521f2947ff49d55259dd0d55913ee5bfff31b66",
+      "git_blob": "4cc09fe90a8ae2f8766d480ee5cdac8e26a8107a"
+    },
+    "src/WalletLegacy/WalletLegacy.h": {
+      "tested_bytes_sha256": "f4ede35a8a3966ba96d7c53b3db0a2c67ca01aaa55542cc7fea2f11c9a7fd1f3",
+      "git_blob": "ae2f532ef56e489347198403c12edd592435306f"
+    },
+    "tests/UnitTests/TestSwapFundingStore.cpp": {
+      "tested_bytes_sha256": "e9bba9869441716e1c20935867fbb968302251d9fb50b3f6b4c9aec8e35a54ee",
+      "git_blob": "220723b05a93a20c2bf0f7cc6da0bfba02f3c0bf"
+    },
+    "tests/UnitTests/TestSwapWallet.cpp": {
+      "tested_bytes_sha256": "c6ef6442bb70fced6d3bd8bdff574630e855d1293320bae5192cea0a55df9de6",
+      "git_blob": "d35ab942200b316bf8c89d833a6b49908450b613"
+    }
+  },
+  "limitations": [
+    "synthetic assets and isolated ledgers",
+    "integration anchors are separate in-process services; pinned HTTPS tested separately",
+    "independent provider history assumed; joint rollback not detected",
+    "no CAS-to-chain atomicity",
+    "no mainnet, real USDC, GUI or sustained production qualification"
+  ]
+}

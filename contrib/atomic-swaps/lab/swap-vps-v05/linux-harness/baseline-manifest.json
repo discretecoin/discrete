@@ -1,0 +1,78 @@
+{
+  "core_head": "1e947a8e66ec963e8e634b14fec29343ef7d8822",
+  "source_root": "C:/ChatGPT-Knowledge-Migration/knowledge-base/projects/discrete-core/evidence/swap-localnet-v04",
+  "files": [
+    {
+      "path": "bitcoin_adapter.py",
+      "baseline_sha256": "c1494760cc4b852135beefdf0d4c6d00f9415c14c4404a980a6b297b9628c496"
+    },
+    {
+      "path": "run_evidence.py",
+      "baseline_sha256": "8d6b59306182888a1f98c567aa3dd314d2b69b3d50059ee3be997411570911d3"
+    },
+    {
+      "path": "solana_journal_adapter.py",
+      "baseline_sha256": "9e0119533919f7514607390bd3acca570cbd37445fde174174a04dfc5bf19d9c"
+    },
+    {
+      "path": "swap_journal.py",
+      "baseline_sha256": "8e935ecceaae034e1ae5ab0c8bccb4ed01ae4c78c799d9a0846eb084cf1c4792"
+    },
+    {
+      "path": "test_bitcoin_regtest.py",
+      "baseline_sha256": "d5226ffab8b2dd84e2ef563b23c298e8a8acbbcdeb1dcc899f1a775b64bc9689"
+    },
+    {
+      "path": "test_cross_chain.py",
+      "baseline_sha256": "a24a78739e2bf547230134423b51fbcf1c43c7d8898f79704384e2bdeb92af1c"
+    },
+    {
+      "path": "test_journal_recovery.py",
+      "baseline_sha256": "da3a3f3be729e9e056c3d707572a92c0216eddf102958214d3050454f7d8ea7c"
+    },
+    {
+      "path": "test_localnet_boundaries.py",
+      "baseline_sha256": "0c154ba052100d017ce4d10a873b39da3ed0c3ffbd03641a493ee6921a1337ae"
+    },
+    {
+      "path": "test_network_cross_chain.py",
+      "baseline_sha256": "bf0618d626d32aa6b3d457fd599550fb772e3a0fae3e5f4acd851389089d336b"
+    },
+    {
+      "path": "test_solana_journal.py",
+      "baseline_sha256": "8a3def877897d3fcacb00af2a569e63a093186ec7b928a4da9597c59bcf11597"
+    },
+    {
+      "path": "test_solana_vm.py",
+      "baseline_sha256": "48187e48a95a1a94f92ba99e4ea6e3755289e0592c8d94d874c4d4d861892c54"
+    },
+    {
+      "path": "test_swap_journal.py",
+      "baseline_sha256": "13f8cdd53363c3d4010fb82ccd3b7fd5069f2234a328e68ad1f31b51f7103015"
+    },
+    {
+      "path": "test_xds_wallet_network.py",
+      "baseline_sha256": "c85067f1ea0ea50e2e57de01845dc87a290f2b742cce85348b35720a3ce52330"
+    },
+    {
+      "path": "xds_localnet.py",
+      "baseline_sha256": "a18a7537a4e02208504652d9e0be8a1fb3bda5a163e9df443f88d3796e4482d9"
+    },
+    {
+      "path": "solana_escrow.c",
+      "baseline_sha256": "c64e6f25aa506565d553c5959c5fc3a7c27895c7b22ecffc643091d8c9bf2123"
+    },
+    {
+      "path": "solana_profile.h",
+      "baseline_sha256": "cc86c7703a1e7edf9b2ec7c1a8bbcaa60788f5f375b9292cef8207eb56666551"
+    },
+    {
+      "path": "solana_escrow.so",
+      "baseline_sha256": "91004de413fa707ebd61d743cb01a2bfea80b0077fef3e15bc1f11bdb6100a89"
+    },
+    {
+      "path": "solana-build.json",
+      "baseline_sha256": "f2896e079aa14d05489a3b6ab7fbaca22625adcedb7f1ddd61876aae152074ef"
+    }
+  ]
+}

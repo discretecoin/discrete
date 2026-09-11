@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "utc": "2026-09-08T04:35:30.700335+00:00",
+  "status": "COPIED_NOT_FROZEN_PENDING_SBF_CANDIDATE",
+  "source_manifests": {
+    "solana-rpc-harness/package-hashes.json": "aa7bbecd6fc77a2eea65f876fed5da6958db58006fa274e7a0346ca2f42e7667",
+    "paired-rpc-harness/package-hashes.json": "d083413431417696f84ebc3399911cab2fe62984ca9ac03fbc25b123bf69146d"
+  },
+  "reviewed_wrapper_sha256": "eac74feca1ab00fa2f54c52a1dacdeb15f2c1ddf7cee3843dfa8533c8ca39439",
+  "copies": {
+    "solana-rpc-harness/driver.py": "4613ff1f723e218ace3c7979d2e97a994dd1a4edcbbc4a65c05167704f724410",
+    "solana-rpc-harness/README.md": "e8216ea7209ba687bc17774c48a5210b9b24e3fc81a818ea36f5416297253e59",
+    "solana-rpc-harness/requirements.txt": "5662e2cc75609ec896467d4e93309530c879d37b13b48b579fefeb5fb0c16615",
+    "solana-rpc-harness/test_guards.py": "5877efa5ef29fe0eb972149fde53b0d6b74d97c6a9ff4f333e660b57a304bcc1",
+    "solana-rpc-harness/test-manifest.json": "0d66db1975e7d19321a9c7115cdf12544f9bb1c9da31f64dfc1219931e11c5f5",
+    "paired-rpc-harness/bindings.py": "6af080a698f544831ab8fb64da7ddabde9ad1c001b68b36e04c0f3966e70ae11",
+    "paired-rpc-harness/paired.py": "88340b6abb61d18fc7d780ec910870a5deb1df3d30efe69999222741cde640fb",
+    "paired-rpc-harness/runner.py": "f1cae09c056b8ab3cbedb21cc7e92c7e548a2713f348b9bd669290a43d8a3107",
+    "paired-rpc-harness/test_guards.py": "24c4646ec9a04aee756627a02f2e40a4e63f61ba8c7ca5f3ddf096f91c753492",
+    "paired-rpc-harness/README.md": "e1fc6705e0b403718d83842083ed7c298073fc531eab277d410ba4e0631b91b8",
+    "paired-rpc-harness/test-manifest.json": "2ed8c5cd9732be3128ea2feb0bba43f6c739b09252cb209919317ea3ad9d99e7",
+    "paired-rpc-harness/fixture-overrides.diff": "d68d63717d13573a742b7d1ec4d72658e1797dc51cd8008294c30eae389a6f09",
+    "paired-rpc-harness/freshness-review.diff": "a4d49578d34f1bf8d51ac457d160894c571baaf6ecfcefe2ce15d540c6de471d",
+    "linux-harness/runtime_paths.py": "55d36a11c3346cd358789fb271910ee6d11167f8fa55a39bd9d59a66d0315210",
+    "linux-harness/swap_journal.py": "8e935ecceaae034e1ae5ab0c8bccb4ed01ae4c78c799d9a0846eb084cf1c4792",
+    "linux-harness/test_xds_wallet_network.py": "c85067f1ea0ea50e2e57de01845dc87a290f2b742cce85348b35720a3ce52330",
+    "linux-harness/xds_localnet.py": "a44ea85438c46850937dc2af635bcacf86771e07bad5911838ffb387435079c5"
+  }
+}
