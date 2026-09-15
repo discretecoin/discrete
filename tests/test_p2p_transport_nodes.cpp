@@ -23,6 +23,7 @@
 
 using namespace CryptoNote;
 
+#ifndef P2P_TRANSPORT_BASELINE
 namespace CryptoNote {
 class NodeServerTestAccess {
 public:
@@ -30,6 +31,7 @@ public:
   static bool isAddressConnected(const NodeServer& node, const NetworkAddress& address) { return node.is_addr_connected(address); }
 };
 }
+#endif
 
 namespace {
 using Clock = std::chrono::steady_clock;
@@ -91,6 +93,7 @@ struct Node {
   ~Node() { try { stop(); } catch (...) {} }
 };
 
+#ifndef P2P_TRANSPORT_BASELINE
 int connectionCapFixture(const std::filesystem::path& base, const std::string& mode) {
   check(!std::filesystem::exists(base), "Connection-cap fixture directory must not already exist");
   std::filesystem::create_directories(base);
@@ -162,6 +165,7 @@ int connectionCapFixture(const std::filesystem::path& base, const std::string& m
     << ",\"promotion\":true,\"retry\":true,\"eviction\":true,\"churn\":true,\"passed\":true}\n";
   return 0;
 }
+#endif
 
 void mine(Node& node, const Currency& currency, test_generator& generator, const AccountBase& miner,
           uint64_t timestamp, const std::list<Transaction>& txs = {}, bool relay = false) {
@@ -279,10 +283,12 @@ int processFixture(int argc, char** argv) {
 int main(int argc, char** argv) {
   try {
     if (argc > 1 && std::string(argv[1]) == "--process") return processFixture(argc, argv);
+#ifndef P2P_TRANSPORT_BASELINE
     if (argc > 1 && std::string(argv[1]) == "--connection-cap") {
       check(argc == 4, "Usage: P2pTransportNodeTests --connection-cap directory mode");
       return connectionCapFixture(argv[2], argv[3]);
     }
+#endif
     check(argc >= 4, "Usage: P2pTransportNodeTests new-directory source-mode sink-mode [exclusive|priority]");
     const std::filesystem::path base(argv[1]);
     check(!std::filesystem::exists(base), "Fixture directory must not already exist");
