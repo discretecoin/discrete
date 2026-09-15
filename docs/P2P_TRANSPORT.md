@@ -189,8 +189,9 @@ WSL-forwarded listener ports.
 
 `run-functional-matrix.sh` in the same directory pairs candidate and baseline
 fixture executables in one isolated namespace. It generates a shared chain, then
-checks old/new, new/old and required/required processes, including three-node seed
-discovery and persisted-peer reconnect. The dedicated `PQ P2P transport` workflow
+checks that gray-peer housekeeping does not exceed the configured ordinary-outgoing
+limit, then checks old/new, new/old and required/required processes, including
+three-node seed discovery and persisted-peer reconnect. The dedicated `PQ P2P transport` workflow
 builds the pinned OpenSSL dependency and runs these checks; its baseline remains
 the explicit pre-transport commit until deliberately updated.
 

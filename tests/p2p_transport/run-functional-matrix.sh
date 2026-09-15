@@ -14,6 +14,7 @@ ip -j address > "$output/network.json"
 # Both binaries consume exactly these blocks; generation is outside timings.
 timeout 100 "$baseline" "$output/freeze" off off exclusive "$output/chain.txt" > "$output/freeze.log" 2>&1
 sha256sum "$output/chain.txt" "$candidate" "$baseline" > "$output/inputs.sha256"
+timeout 30 "$candidate" --connection-cap "$output/connection-cap" off > "$output/connection-cap.log" 2>&1
 
 server_pid=''
 cleanup() {
