@@ -22,10 +22,28 @@
 #include <list>
 
 using namespace CryptoNote;
+
+namespace CryptoNote {
+class NodeServerTestAccess {
+public:
+  static bool grayPeerlistHousekeeping(NodeServer& node) { return node.gray_peerlist_housekeeping(); }
+  static bool isAddressConnected(const NodeServer& node, const NetworkAddress& address) { return node.is_addr_connected(address); }
+};
+}
+
 namespace {
 using Clock = std::chrono::steady_clock;
 void check(bool ok, const std::string& message) { if (!ok) throw std::runtime_error(message); }
 double elapsed(Clock::time_point start) { return std::chrono::duration<double, std::milli>(Clock::now() - start).count(); }
+
+template<class Condition>
+void until(System::Dispatcher& dispatcher, Condition condition, const std::string& message, int seconds = 30) {
+  const auto start = Clock::now();
+  while (!condition()) {
+    check(elapsed(start) < seconds * 1000, message);
+    System::Timer(dispatcher).sleep(std::chrono::milliseconds(2));
+  }
+}
 
 struct Node {
   System::Dispatcher& dispatcher;
@@ -37,18 +55,23 @@ struct Node {
 
   Node(System::Dispatcher& d, const Currency& currency, Logging::ILogger& log,
        const std::string& directory, uint16_t port, uint16_t peerPort, const std::string& mode,
-       const std::string& route = "exclusive")
+       const std::string& route = "exclusive", uint32_t connections = 1)
     : dispatcher(d), core(currency, nullptr, log, d), protocol(currency, d, core, nullptr, log, 1), p2p(d, protocol, log) {
     std::filesystem::create_directories(directory);
     protocol.set_p2p_endpoint(&p2p); core.set_cryptonote_protocol(&protocol);
     NetNodeConfig config;
     config.setTestnet(true); config.setBindIp("192.0.2.1"); config.setBindPort(port);
     config.setConfigFolder(directory); config.setP2pStateFilename("p2pstate.bin");
-    config.setAllowLocalIp(true); config.setConnectionsCount(1);
+    config.setAllowLocalIp(true); config.setConnectionsCount(connections);
     const NetworkAddress peer{Common::stringToIpAddress("192.0.2.1"), peerPort};
     if (route == "priority") config.setPriorityNodes({peer});
     else if (route == "seed") config.setSeedNodes({peer});
-    else config.setExclusiveNodes({peer});
+    else if (route == "peer") {
+      PeerlistEntry entry{}; entry.adr = peer; entry.id = peerPort;
+      entry.last_seen = static_cast<uint64_t>(std::time(nullptr));
+      config.setPeers({entry});
+    } else if (route == "exclusive") config.setExclusiveNodes({peer});
+    else check(route == "none", "Invalid peer route");
 #ifndef P2P_TRANSPORT_BASELINE
     P2pTransportConfig transport; transport.mode = P2pTransportConfig::parseMode(mode);
     config.setTransportConfig(transport);
@@ -68,13 +91,76 @@ struct Node {
   ~Node() { try { stop(); } catch (...) {} }
 };
 
-template<class Condition>
-void until(System::Dispatcher& dispatcher, Condition condition, const std::string& message, int seconds = 30) {
-  const auto start = Clock::now();
-  while (!condition()) {
-    check(elapsed(start) < seconds * 1000, message);
-    System::Timer(dispatcher).sleep(std::chrono::milliseconds(2));
-  }
+int connectionCapFixture(const std::filesystem::path& base, const std::string& mode) {
+  check(!std::filesystem::exists(base), "Connection-cap fixture directory must not already exist");
+  std::filesystem::create_directories(base);
+  std::ofstream logFile(base / "nodes.log");
+  Logging::StreamLogger logger(logFile, Logging::DEBUGGING);
+  System::Dispatcher dispatcher;
+  const auto currency = CurrencyBuilder(logger).testnet(true)
+    .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1).upgradeHeightV5(11).upgradeHeightV6(12).currency();
+
+  Node first(dispatcher, currency, logger, (base / "first").string(), 39300, 1, mode, "none", 0);
+  Node promoted(dispatcher, currency, logger, (base / "promoted").string(), 39301, 1, mode, "none", 0);
+  Node client(dispatcher, currency, logger, (base / "client").string(), 39302, 39300, mode, "peer", 1);
+  first.start(); promoted.start(); client.start();
+  until(dispatcher, [&] { return client.p2p.get_outgoing_connections_count() == 1; }, "Initial ordinary outgoing connection");
+  const NetworkAddress firstAddress{Common::stringToIpAddress("192.0.2.1"), 39300};
+  check(NodeServerTestAccess::isAddressConnected(client.p2p, firstAddress), "Initial ordinary peer is connected");
+
+  std::list<AnchorPeerlistEntry> anchors;
+  std::vector<PeerlistEntry> gray;
+  std::vector<PeerlistEntry> white;
+  check(client.p2p.getPeerlistManager().get_peerlist_full(anchors, gray, white), "Read initial peer lists");
+  for (auto entry : gray) check(client.p2p.getPeerlistManager().remove_from_peer_gray(entry), "Clear handshake-discovered gray peer");
+
+  PeerlistEntry candidate{};
+  candidate.adr = NetworkAddress{Common::stringToIpAddress("192.0.2.1"), 39301};
+  candidate.id = 39301; candidate.last_seen = static_cast<uint64_t>(std::time(nullptr));
+  check(client.p2p.getPeerlistManager().append_with_peer_gray(candidate), "Add gray housekeeping candidate");
+  check(client.p2p.getPeerlistManager().get_gray_peers_count() == 1, "Gray candidate retained before housekeeping");
+  check(NodeServerTestAccess::grayPeerlistHousekeeping(client.p2p), "Successful gray housekeeping");
+  const auto afterHousekeeping = client.p2p.get_outgoing_connections_count();
+  check(afterHousekeeping == 1, "Housekeeping exceeded configured outgoing count: expected 1, got " + std::to_string(afterHousekeeping));
+  check(client.protocol.getPeerCount() == 1, "Transient housekeeping leaked the protocol peer count");
+
+  anchors.clear(); gray.clear(); white.clear();
+  check(client.p2p.getPeerlistManager().get_peerlist_full(anchors, gray, white), "Read promoted peer lists");
+  const auto hasAddress = [&](const auto& entries, const NetworkAddress& address) {
+    return std::any_of(entries.begin(), entries.end(), [&](const auto& entry) { return entry.adr == address; });
+  };
+  check(!hasAddress(gray, candidate.adr), "Successful housekeeping removes candidate from gray list");
+  check(hasAddress(white, candidate.adr), "Successful housekeeping promotes candidate to white list");
+  check(hasAddress(anchors, candidate.adr), "Successful housekeeping preserves anchor promotion");
+
+  anchors.clear(); gray.clear(); white.clear();
+  check(client.p2p.getPeerlistManager().get_peerlist_full(anchors, gray, white), "Read post-housekeeping peer lists");
+  for (auto entry : gray) check(client.p2p.getPeerlistManager().remove_from_peer_gray(entry), "Clear handshake-discovered gray peer before retry test");
+
+  PeerlistEntry retry{};
+  retry.adr = NetworkAddress{Common::stringToIpAddress("192.0.2.1"), 39303};
+  retry.id = 39303; retry.last_seen = static_cast<uint64_t>(std::time(nullptr));
+  check(client.p2p.getPeerlistManager().append_with_peer_gray(retry), "Add retry candidate");
+  check(client.p2p.getPeerlistManager().get_gray_peers_count() == 1, "Retry candidate is the sole gray peer");
+  check(NodeServerTestAccess::grayPeerlistHousekeeping(client.p2p), "Failed recent gray housekeeping attempt");
+  check(client.p2p.getPeerlistManager().get_gray_peers_count() == 1, "Recent failed gray peer remains retryable");
+  check(client.p2p.get_outgoing_connections_count() == 1, "Failed housekeeping changed outgoing count");
+
+  check(client.p2p.getPeerlistManager().get_gray_peer_by_index(retry, 0), "Read retry candidate");
+  check(client.p2p.getPeerlistManager().remove_from_peer_gray(retry), "Remove retry candidate for aging");
+  retry.last_seen = static_cast<uint64_t>(std::time(nullptr) - 11 * 24 * 60 * 60);
+  check(client.p2p.getPeerlistManager().append_with_peer_gray(retry), "Age retry candidate");
+  check(NodeServerTestAccess::grayPeerlistHousekeeping(client.p2p), "Failed stale gray housekeeping attempt");
+  check(client.p2p.getPeerlistManager().get_gray_peers_count() == 0, "Stale failed gray peer evicted");
+
+  first.stop();
+  until(dispatcher, [&] { return NodeServerTestAccess::isAddressConnected(client.p2p, candidate.adr); }, "Promoted peer replaces closed ordinary connection");
+  check(!NodeServerTestAccess::isAddressConnected(client.p2p, firstAddress), "Closed ordinary peer is no longer connected");
+  check(client.p2p.get_outgoing_connections_count() == 1, "Connection churn preserves configured outgoing count");
+  client.stop(); promoted.stop();
+  std::cout << "{\"configured\":1,\"after_housekeeping\":" << afterHousekeeping
+    << ",\"promotion\":true,\"retry\":true,\"eviction\":true,\"churn\":true,\"passed\":true}\n";
+  return 0;
 }
 
 void mine(Node& node, const Currency& currency, test_generator& generator, const AccountBase& miner,
@@ -193,6 +279,10 @@ int processFixture(int argc, char** argv) {
 int main(int argc, char** argv) {
   try {
     if (argc > 1 && std::string(argv[1]) == "--process") return processFixture(argc, argv);
+    if (argc > 1 && std::string(argv[1]) == "--connection-cap") {
+      check(argc == 4, "Usage: P2pTransportNodeTests --connection-cap directory mode");
+      return connectionCapFixture(argv[2], argv[3]);
+    }
     check(argc >= 4, "Usage: P2pTransportNodeTests new-directory source-mode sink-mode [exclusive|priority]");
     const std::filesystem::path base(argv[1]);
     check(!std::filesystem::exists(base), "Fixture directory must not already exist");

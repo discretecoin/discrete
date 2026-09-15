@@ -94,7 +94,10 @@ namespace CryptoNote
 
   private:
 
+    friend class NodeServerTestAccess;
+
     enum PeerType { anchor = 0, white, gray };
+    enum class ConnectionLifetime { Persistent, Transient };
 
     int handleCommand(const LevinProtocol::Command& cmd, BinaryArray& buff_out, P2pConnectionContext& context, bool& handled);
 
@@ -140,7 +143,7 @@ namespace CryptoNote
     bool connections_maker();
     bool make_new_connection_from_peerlist(bool use_white_list);
     bool make_new_connection_from_anchor_peerlist(const std::vector<AnchorPeerlistEntry>& anchor_peerlist);
-    bool try_to_connect_and_handshake_with_new_peer(const NetworkAddress& na, bool just_take_peerlist = false, uint64_t last_seen_stamp = 0, PeerType peer_type = white, uint64_t first_seen_stamp = 0);
+    bool try_to_connect_and_handshake_with_new_peer(const NetworkAddress& na, bool just_take_peerlist = false, uint64_t last_seen_stamp = 0, PeerType peer_type = white, uint64_t first_seen_stamp = 0, ConnectionLifetime connection_lifetime = ConnectionLifetime::Persistent);
     bool is_peer_used(const PeerlistEntry& peer) const;
     bool is_peer_used(const AnchorPeerlistEntry& peer) const;
     bool is_addr_connected(const NetworkAddress& peer) const;
