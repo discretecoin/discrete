@@ -1985,6 +1985,20 @@ TEST(WalletLegacySmoke, ConsolidationReservesInputsAndRollsBackRelayFailure) {
   EXPECT_EQ(afterFailure.selectedInputs, before.selectedInputs);
   EXPECT_EQ(wallet.pqSpendableInputs().size(), kFundingOutputs);
 
+  // Preserve the last durable image from before relay. Reloading this image
+  // after the daemon accepts the transaction models an abrupt process crash
+  // before the GUI's post-relay save can complete.
+  std::stringstream beforeRelay;
+  CryptoNote::WalletHelper::SaveWalletResultObserver beforeRelaySaveObserver;
+  {
+    CryptoNote::WalletHelper::IWalletRemoveObserverGuard guard(
+        wallet, beforeRelaySaveObserver);
+    std::future<std::error_code> saved =
+        beforeRelaySaveObserver.saveResult.get_future();
+    wallet.save(beforeRelay, true, true);
+    ASSERT_FALSE(saved.get());
+  }
+
   node.setNextTransactionToPool();
   const CryptoNote::PqConsolidationResult accepted =
       wallet.consolidatePqOutputs();
@@ -1994,18 +2008,41 @@ TEST(WalletLegacySmoke, ConsolidationReservesInputsAndRollsBackRelayFailure) {
   EXPECT_EQ(wallet.pqSpendableInputs().size(), 1u);
   EXPECT_EQ(node.relayCount(), 2u);
 
+  wallet.shutdown();
+  beforeRelay.seekg(0);
+  CryptoNote::WalletLegacy crashRecovered(currency, node, logger);
+  CryptoNote::WalletHelper::InitWalletResultObserver crashInitObserver;
+  {
+    CryptoNote::WalletHelper::IWalletRemoveObserverGuard guard(
+        crashRecovered, crashInitObserver);
+    std::future<std::error_code> loaded =
+        crashInitObserver.initResult.get_future();
+    crashRecovered.initAndLoad(beforeRelay, "pass");
+    ASSERT_FALSE(loaded.get());
+  }
+  const auto crashRecoveryDeadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(20);
+  while ((!crashRecovered.pqHasUnconfirmedTransactions() ||
+          crashRecovered.pqSpendableInputs().size() != 1u) &&
+         std::chrono::steady_clock::now() < crashRecoveryDeadline) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  EXPECT_TRUE(crashRecovered.pqHasUnconfirmedTransactions());
+  EXPECT_EQ(crashRecovered.pqSpendableInputs().size(), 1u);
+
   // Persist the accepted pool transaction, then reopen the wallet. The input
   // reservation and the one still-unselected funding output must survive the
   // restart, so automation cannot race a second batch after process restart.
   std::stringstream serialized;
   CryptoNote::WalletHelper::SaveWalletResultObserver saveObserver;
   {
-    CryptoNote::WalletHelper::IWalletRemoveObserverGuard guard(wallet, saveObserver);
+    CryptoNote::WalletHelper::IWalletRemoveObserverGuard guard(
+        crashRecovered, saveObserver);
     std::future<std::error_code> saved = saveObserver.saveResult.get_future();
-    wallet.save(serialized, true, true);
+    crashRecovered.save(serialized, true, true);
     ASSERT_FALSE(saved.get());
   }
-  wallet.shutdown();
+  crashRecovered.shutdown();
 
   serialized.seekg(0);
   CryptoNote::WalletLegacy reloaded(currency, node, logger);
