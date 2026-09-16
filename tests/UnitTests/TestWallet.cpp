@@ -1966,6 +1966,8 @@ TEST(WalletLegacySmoke, ConsolidationReservesInputsAndRollsBackRelayFailure) {
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
   ASSERT_EQ(wallet.pqSpendableInputs().size(), kFundingOutputs);
+  const uint64_t fundedBalance = wallet.pqActualBalance();
+  ASSERT_EQ(fundedBalance, 100000u * kFundingOutputs);
 
   const CryptoNote::PqConsolidationPlan before =
       wallet.pqConsolidationPlan();
@@ -1992,7 +1994,86 @@ TEST(WalletLegacySmoke, ConsolidationReservesInputsAndRollsBackRelayFailure) {
   EXPECT_EQ(wallet.pqSpendableInputs().size(), 1u);
   EXPECT_EQ(node.relayCount(), 2u);
 
+  // Persist the accepted pool transaction, then reopen the wallet. The input
+  // reservation and the one still-unselected funding output must survive the
+  // restart, so automation cannot race a second batch after process restart.
+  std::stringstream serialized;
+  CryptoNote::WalletHelper::SaveWalletResultObserver saveObserver;
+  {
+    CryptoNote::WalletHelper::IWalletRemoveObserverGuard guard(wallet, saveObserver);
+    std::future<std::error_code> saved = saveObserver.saveResult.get_future();
+    wallet.save(serialized, true, true);
+    ASSERT_FALSE(saved.get());
+  }
   wallet.shutdown();
+
+  serialized.seekg(0);
+  CryptoNote::WalletLegacy reloaded(currency, node, logger);
+  CryptoNote::WalletHelper::InitWalletResultObserver initObserver;
+  {
+    CryptoNote::WalletHelper::IWalletRemoveObserverGuard guard(reloaded, initObserver);
+    std::future<std::error_code> loaded = initObserver.initResult.get_future();
+    reloaded.initAndLoad(serialized, "pass");
+    ASSERT_FALSE(loaded.get());
+  }
+  EXPECT_TRUE(reloaded.pqHasUnconfirmedTransactions());
+  EXPECT_EQ(reloaded.pqSpendableInputs().size(), 1u);
+
+  // If the daemon evicts the consolidation from its pool, the wallet must
+  // release every reserved input and allow the same maintenance batch again.
+  node.cleanTransactionPool();
+  node.sendPoolChanged();
+  const auto evictionDeadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(20);
+  while ((reloaded.pqHasUnconfirmedTransactions() ||
+          reloaded.pqSpendableInputs().size() != kFundingOutputs) &&
+         std::chrono::steady_clock::now() < evictionDeadline) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  EXPECT_FALSE(reloaded.pqHasUnconfirmedTransactions());
+  ASSERT_EQ(reloaded.pqSpendableInputs().size(), kFundingOutputs);
+  EXPECT_EQ(reloaded.pqActualBalance(), fundedBalance);
+
+  // Retry, mine the exact consolidation, then detach its block. Confirmation
+  // exposes the reduced output set; the reorg must remove those outputs and
+  // restore the original 33 inputs and full pre-fee balance.
+  node.setNextTransactionToPool();
+  const CryptoNote::PqConsolidationResult retried =
+      reloaded.consolidatePqOutputs();
+  const uint32_t detachHeight =
+      static_cast<uint32_t>(generator.getBlockchain().size());
+  generator.setTxFee(CryptoNote::getObjectHash(retried.transaction.tx),
+                     retried.plan.fee);
+  node.includeTransactionsFromPoolToBlock();
+  node.updateObservers();
+  const std::size_t confirmedOutputs =
+      retried.plan.resultingOutputs + (kFundingOutputs - retried.plan.selectedInputs);
+  const auto confirmationDeadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(20);
+  while ((reloaded.pqHasUnconfirmedTransactions() ||
+          reloaded.pqSpendableInputs().size() != confirmedOutputs) &&
+         std::chrono::steady_clock::now() < confirmationDeadline) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  EXPECT_FALSE(reloaded.pqHasUnconfirmedTransactions());
+  ASSERT_EQ(reloaded.pqSpendableInputs().size(), confirmedOutputs);
+  EXPECT_EQ(reloaded.pqActualBalance(), fundedBalance - retried.plan.fee);
+
+  node.startAlternativeChain(detachHeight);
+  generator.generateEmptyBlocks(3);
+  node.updateObservers();
+  const auto reorgDeadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(20);
+  while (reloaded.pqSpendableInputs().size() != kFundingOutputs &&
+         std::chrono::steady_clock::now() < reorgDeadline) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  EXPECT_FALSE(reloaded.pqHasUnconfirmedTransactions());
+  ASSERT_EQ(reloaded.pqSpendableInputs().size(), kFundingOutputs);
+  EXPECT_EQ(reloaded.pqActualBalance(), fundedBalance);
+  EXPECT_TRUE(reloaded.pqConsolidationPlan().useful());
+
+  reloaded.shutdown();
 }
 
 TEST(WalletLegacySmoke, ForwardsSynchronizationActivityState) {

@@ -620,6 +620,7 @@ void WalletLegacy::doLoad(std::istream& source) {
         if (m_pqConsumer && !pqSections.pqState.empty()) {
           std::stringstream ps(pqSections.pqState);
           m_pqConsumer->state().load(ps);
+          m_pqConsumer->restoreKnownPoolTxIdsFromState();
         }
       }
     } catch (const std::exception& e) {
