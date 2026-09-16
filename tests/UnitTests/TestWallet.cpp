@@ -1923,6 +1923,78 @@ TEST(WalletLegacySmoke, PqIdentityAndSigning) {
   wallet.shutdown();
 }
 
+TEST(WalletLegacySmoke, ConsolidationReservesInputsAndRollsBackRelayFailure) {
+  System::Dispatcher dispatcher;
+  (void)dispatcher;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(1000000).upgradeHeightV6(1000000)
+      .currency();
+  TestBlockchainGenerator generator(currency);
+  INodeTrivialRefreshStub node(generator);
+
+  CryptoNote::WalletLegacy wallet(currency, node, logger);
+  wallet.initAndGenerate("pass");
+
+  CryptoNote::AccountKeys accountKeys;
+  wallet.getAccountKeys(accountKeys);
+  const CryptoNote::PqWalletKeys mine =
+      CryptoNote::derivePqWalletKeys(accountKeys.spendSecretKey);
+  Crypto::SecretKey senderSecret{};
+  for (std::size_t i = 0; i < sizeof(senderSecret.data); ++i) {
+    senderSecret.data[i] = static_cast<uint8_t>(i * 7 + 3);
+  }
+  const CryptoNote::PqWalletKeys sender =
+      CryptoNote::derivePqWalletKeys(senderSecret);
+
+  constexpr std::size_t kFundingOutputs =
+      CryptoNote::parameters::MAX_PQ_INPUTS_PER_TX + 1;
+  for (std::size_t i = 0; i < kFundingOutputs; ++i) {
+    CryptoNote::Transaction funding = makePqPayTo(
+        sender, mine, 200000, 100000, static_cast<uint8_t>(0x40 + i));
+    generator.setTxFee(CryptoNote::getObjectHash(funding), 100000);
+    generator.addTxToBlockchain(funding);
+  }
+  node.updateObservers();
+
+  const auto syncDeadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(20);
+  while (wallet.pqSpendableInputs().size() != kFundingOutputs &&
+         std::chrono::steady_clock::now() < syncDeadline) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  ASSERT_EQ(wallet.pqSpendableInputs().size(), kFundingOutputs);
+
+  const CryptoNote::PqConsolidationPlan before =
+      wallet.pqConsolidationPlan();
+  ASSERT_TRUE(before.useful());
+  EXPECT_EQ(before.availableInputs, kFundingOutputs);
+  EXPECT_EQ(before.selectedInputs,
+            CryptoNote::parameters::MAX_PQ_INPUTS_PER_TX);
+
+  node.setNextTransactionError();
+  EXPECT_THROW(wallet.consolidatePqOutputs(), std::system_error);
+  EXPECT_FALSE(wallet.pqHasUnconfirmedTransactions());
+  const CryptoNote::PqConsolidationPlan afterFailure =
+      wallet.pqConsolidationPlan();
+  EXPECT_EQ(afterFailure.availableInputs, before.availableInputs);
+  EXPECT_EQ(afterFailure.selectedInputs, before.selectedInputs);
+  EXPECT_EQ(wallet.pqSpendableInputs().size(), kFundingOutputs);
+
+  node.setNextTransactionToPool();
+  const CryptoNote::PqConsolidationResult accepted =
+      wallet.consolidatePqOutputs();
+  EXPECT_EQ(accepted.plan.selectedInputs, before.selectedInputs);
+  EXPECT_LT(accepted.plan.resultingOutputs, accepted.plan.selectedInputs);
+  EXPECT_TRUE(wallet.pqHasUnconfirmedTransactions());
+  EXPECT_EQ(wallet.pqSpendableInputs().size(), 1u);
+  EXPECT_EQ(node.relayCount(), 2u);
+
+  wallet.shutdown();
+}
+
 TEST(WalletLegacySmoke, ForwardsSynchronizationActivityState) {
   class ActivityObserver : public CryptoNote::IWalletLegacyObserver {
   public:

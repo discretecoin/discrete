@@ -134,6 +134,10 @@ public:
   // difference pqActualBalance() - pqUnlockedBalance() is still locked.
   uint64_t pqUnlockedBalance() const;
   std::vector<PqSpendInput> pqSpendableInputs() const;
+  // Read-only preview of the next useful maintenance batch. An empty/non-useful
+  // plan means that consolidating now would not reduce the output count.
+  PqConsolidationPlan pqConsolidationPlan(uint64_t fee = 0) const;
+  bool pqHasUnconfirmedTransactions() const;
   uint32_t pqSyncedHeight() const;
   bool pqScannerHasSpendSeed() const;
   bool getPqTrackingKeys(PqTrackingKeys& keys) const;
@@ -165,6 +169,12 @@ public:
                                       uint64_t fee = 0, uint64_t unlockHeight = 0,
                                       const std::vector<uint8_t>& extra = {},
                                       const std::vector<std::string>& recipientAddresses = {});
+  // Consolidate the smallest spendable PQ outputs back to this wallet. Inputs
+  // are reserved before relay and released again if relay fails. Tracking or
+  // externally protected wallets must use the explicit-seed overload.
+  PqConsolidationResult consolidatePqOutputs(uint64_t fee = 0);
+  PqConsolidationResult consolidatePqOutputsWithSeed(
+      const CryptoPQ::SeedMaster& seedMaster, uint64_t fee = 0);
   PqSendResult preparePqTransferWithSeed(const CryptoPQ::SeedMaster& seedMaster,
                                          const std::vector<PqSendOutput>& recipients,
                                          uint64_t fee = 0, uint64_t unlockHeight = 0,

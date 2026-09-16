@@ -1030,6 +1030,28 @@ std::vector<PqSpendInput> WalletLegacy::pqSpendableInputs() const {
   return m_pqConsumer->state().spendableInputs();
 }
 
+PqConsolidationPlan WalletLegacy::pqConsolidationPlan(uint64_t fee) const {
+  std::unique_lock<std::mutex> lock(m_cacheMutex);
+  if (!m_pqConsumer) {
+    return {};
+  }
+  return planPqConsolidation(m_pqConsumer->state().spendableInputs(), fee);
+}
+
+bool WalletLegacy::pqHasUnconfirmedTransactions() const {
+  std::unique_lock<std::mutex> lock(m_cacheMutex);
+  if (!m_pqConsumer) {
+    return false;
+  }
+  for (const PqWalletTransaction& transaction :
+       m_pqConsumer->state().history()) {
+    if (transaction.height == WalletLedger::UNCONFIRMED_HEIGHT) {
+      return true;
+    }
+  }
+  return false;
+}
+
 uint32_t WalletLegacy::pqSigningHeight() const {
   return m_node.getLocalBlockCount();
 }
@@ -1390,6 +1412,112 @@ PqSendResult WalletLegacy::sendPqTransferWithSeed(
     throw std::system_error(ec, "failed to relay transaction");
   }
   m_logger(INFO) << "PQ transaction relay accepted: " << Common::podToHex(txid);
+  return result;
+}
+
+PqConsolidationResult WalletLegacy::consolidatePqOutputs(uint64_t fee) {
+  if (!pqEnabled()) {
+    throw std::runtime_error("Spending is unavailable for this wallet");
+  }
+  AccountKeys keys;
+  Tools::SecretLock scrubSpendSecret(
+      keys.spendSecretKey.data, sizeof(keys.spendSecretKey.data));
+  getAccountKeys(keys);
+  if (keys.spendSecretKey == NULL_SECRET_KEY) {
+    throw std::runtime_error("tracking wallet cannot spend");
+  }
+  CryptoPQ::SeedMaster seedMaster =
+      pqSeedMasterFromSpendSecret(keys.spendSecretKey);
+  Tools::SecretLock scrubSeed(seedMaster.data(), seedMaster.size());
+  return consolidatePqOutputsWithSeed(seedMaster, fee);
+}
+
+PqConsolidationResult WalletLegacy::consolidatePqOutputsWithSeed(
+    const CryptoPQ::SeedMaster& seedMaster, uint64_t fee) {
+  if (!pqEnabled()) {
+    throw std::runtime_error("Spending is unavailable for this wallet");
+  }
+
+  PqWalletKeys pq = deriveVerifiedSpendKeys(seedMaster);
+  Tools::SecretLock scrub(&pq, sizeof(pq));
+
+  PqConsolidationRequest request;
+  request.explicitFee = fee;
+  std::memcpy(request.genesisId.data(), m_currency.genesisBlockHash().data,
+              request.genesisId.size());
+  request.signingHeight = pqSigningHeight();
+  request.scheme = PqDepositScheme::SingleKeyIndex;
+
+  // Build and reserve under one ledger lock. This prevents an adjacent send or
+  // sync update from selecting the same inputs between planning and reservation.
+  PqConsolidationResult result;
+  Crypto::Hash txid{};
+  {
+    std::unique_lock<std::mutex> lock(m_cacheMutex);
+    throwIfNotInitialised();
+    if (!m_pqConsumer) {
+      throw std::runtime_error("Spending is unavailable for this wallet");
+    }
+
+    const std::vector<PqSpendInput> spendable =
+        m_pqConsumer->state().spendableInputs();
+    m_logger(INFO) << "Building PQ consolidation: available inputs "
+                   << spendable.size()
+                   << ", requested fee atomic units " << fee;
+    result = buildPqConsolidation(spendable, pq, request);
+    txid = getObjectHash(result.transaction.tx);
+    auto reader = createTransactionPrefix(result.transaction.tx);
+    const std::error_code reserveError =
+        m_pqConsumer->addUnconfirmedTransaction(*reader);
+    if (reserveError) {
+      m_pqConsumer->removeUnconfirmedTransaction(txid);
+      throw std::system_error(reserveError,
+                              "failed to reserve consolidation inputs");
+    }
+  }
+
+  m_logger(INFO) << "PQ consolidation built and reserved: hash "
+                 << Common::podToHex(txid)
+                 << ", inputs " << result.plan.selectedInputs
+                 << ", outputs " << result.plan.resultingOutputs
+                 << ", fee atomic units " << result.plan.fee;
+
+  // Relay outside m_cacheMutex. A network round trip must not block scanning;
+  // on failure, undo only this still-unconfirmed transaction's ledger effects.
+  std::error_code relayError;
+  try {
+    std::promise<std::error_code> promise;
+    auto future = promise.get_future();
+    m_node.relayTransaction(
+        result.transaction.tx,
+        [&promise](std::error_code ec) { promise.set_value(ec); });
+    relayError = future.get();
+  } catch (...) {
+    std::unique_lock<std::mutex> lock(m_cacheMutex);
+    if (m_pqConsumer) {
+      m_pqConsumer->removeUnconfirmedTransaction(txid);
+    }
+    throw;
+  }
+  if (relayError) {
+    {
+      std::unique_lock<std::mutex> lock(m_cacheMutex);
+      if (m_pqConsumer) {
+        m_pqConsumer->removeUnconfirmedTransaction(txid);
+      }
+    }
+    m_logger(ERROR) << "Failed to relay PQ consolidation "
+                    << Common::podToHex(txid) << ": "
+                    << relayError.message() << " (" << relayError.value()
+                    << "); ledger reservation rolled back";
+    throw std::system_error(relayError,
+                            "failed to relay consolidation transaction");
+  }
+
+  m_logger(INFO) << "PQ consolidation relay accepted: "
+                 << Common::podToHex(txid);
+  notifyExternalTransactions();
+  notifyIfBalanceChanged();
   return result;
 }
 
