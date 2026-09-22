@@ -472,6 +472,27 @@ TEST(PqConsolidation, FeeCannotConsumeTheSelectedValue) {
     EXPECT_THROW(buildPqConsolidation(inputs, me, req), PqSendError);
 }
 
+TEST(PqConsolidation, DeclaresTheDeliverySubtypeForItsSigningHeight) {
+    PqWalletKeys me = derivePqWalletKeys(spendSecret(53, 31));
+    std::vector<PqSpendInput> inputs = {
+        mkInput(1, 0x41), mkInput(1, 0x42), mkInput(1, 0x43)};
+
+    PqConsolidationRequest req;
+    req.genesisId = testGenesis();
+    req.scheme = PqDepositScheme::SingleKeyIndex;
+    req.signingHeight = 100;
+
+    // Below the delivery-v2 activation the consolidation is an ordinary TX_PQ.
+    req.deliveryV2Height = 101;
+    EXPECT_EQ(buildPqConsolidation(inputs, me, req).transaction.tx.txType, TX_PQ);
+    // At activation it must declare TX_PQ_V2 like every other wallet transfer,
+    // or consensus rejects it (Currency::isPqTransferTypeAllowedAt).
+    req.deliveryV2Height = 100;
+    EXPECT_EQ(buildPqConsolidation(inputs, me, req).transaction.tx.txType, TX_PQ_V2);
+    // The default keeps direct callers on v1, matching PqSendRequest.
+    EXPECT_EQ(buildPqConsolidation(inputs, me).transaction.tx.txType, TX_PQ);
+}
+
 TEST(PqConsolidation, AggregatedDepositsUseTheirOwnSigningKeys) {
     PqWalletKeys me = derivePqWalletKeys(spendSecret(49, 29));
     const auto dep3 = CryptoPQ::deriveDepositSpendKeys(me.seedMaster, 3);

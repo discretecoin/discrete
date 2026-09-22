@@ -108,6 +108,10 @@ struct PqConsolidationRequest {
   uint64_t explicitFee = 0;       // 0 = current TX_PQ fee floor
   CryptoPQ::Hash256 genesisId{};
   uint32_t signingHeight = 0;
+  // Same meaning as PqSendRequest::deliveryV2Height: the consolidation is an
+  // ordinary transfer and must declare the subtype consensus expects at
+  // signingHeight, or it is rejected once TX_PQ_V2 activates.
+  uint32_t deliveryV2Height = 0xFFFFFFFFu;
   PqDepositScheme scheme = PqDepositScheme::AggregatedMultikey;
 };
 

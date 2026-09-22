@@ -452,6 +452,7 @@ PqConsolidationResult buildPqConsolidation(
   send.explicitFee = selection.plan.fee;
   send.genesisId = req.genesisId;
   send.signingHeight = req.signingHeight;
+  send.deliveryV2Height = req.deliveryV2Height;
   send.scheme = req.scheme;
 
   PqSendResult transaction = buildPqSend(selection.inputs, keys, send);

@@ -1447,6 +1447,7 @@ PqConsolidationResult WalletLegacy::consolidatePqOutputsWithSeed(
   std::memcpy(request.genesisId.data(), m_currency.genesisBlockHash().data,
               request.genesisId.size());
   request.signingHeight = pqSigningHeight();
+  request.deliveryV2Height = m_currency.pqDeliveryV2Height();
   request.scheme = PqDepositScheme::SingleKeyIndex;
 
   // Build and reserve under one ledger lock. This prevents an adjacent send or
