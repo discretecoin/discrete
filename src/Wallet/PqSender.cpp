@@ -18,6 +18,7 @@
 #include "PqSender.h"
 
 #include <algorithm>
+#include <cstring>
 #include <limits>
 #include <optional>
 #include <unordered_set>
@@ -51,6 +52,62 @@ struct FittingBuild {
   PqTransactionBuildResult transaction;
   std::vector<std::optional<std::size_t>> recipientIndexes;
 };
+
+struct ConsolidationSelection {
+  PqConsolidationPlan plan;
+  std::vector<PqSpendInput> inputs;
+};
+
+bool consolidationInputLess(const PqSpendInput& lhs, const PqSpendInput& rhs) {
+  if (lhs.amount != rhs.amount) return lhs.amount < rhs.amount;
+  const int hashOrder = std::memcmp(lhs.prevTxid.data, rhs.prevTxid.data,
+                                    sizeof(lhs.prevTxid.data));
+  if (hashOrder != 0) return hashOrder < 0;
+  return lhs.prevOutIndex < rhs.prevOutIndex;
+}
+
+ConsolidationSelection selectConsolidationInputs(
+    const std::vector<PqSpendInput>& available, uint64_t explicitFee) {
+  ConsolidationSelection selection;
+  selection.plan.availableInputs = available.size();
+  selection.plan.fee = explicitFee != 0
+                           ? explicitFee
+                           : P::pqTxFeeFloor(P::MINIMUM_FEE, 0);
+
+  if (available.size() < 2) return selection;
+
+  std::vector<PqSpendInput> sorted = available;
+  std::sort(sorted.begin(), sorted.end(), consolidationInputLess);
+  const std::size_t maximum = std::min<std::size_t>(
+      sorted.size(), static_cast<std::size_t>(P::MAX_PQ_INPUTS_PER_TX));
+
+  // Prefer the largest useful batch. If 32 unusually large inputs would expand
+  // into 32 or more canonical outputs, a smaller prefix may still be useful.
+  for (std::size_t count = maximum; count >= 2; --count) {
+    uint64_t total = 0;
+    bool overflow = false;
+    for (std::size_t i = 0; i < count; ++i) {
+      if (total > std::numeric_limits<uint64_t>::max() - sorted[i].amount) {
+        overflow = true;
+        break;
+      }
+      total += sorted[i].amount;
+    }
+    if (overflow || total <= selection.plan.fee) continue;
+
+    const uint64_t amount = total - selection.plan.fee;
+    const std::size_t outputCount = decomposeToDenominations(amount).size();
+    if (outputCount >= count || outputCount > P::MAX_PQ_OUTPUTS_PER_TX) continue;
+
+    selection.plan.selectedInputs = count;
+    selection.plan.resultingOutputs = outputCount;
+    selection.plan.amount = amount;
+    selection.inputs.assign(sorted.begin(), sorted.begin() + count);
+    return selection;
+  }
+
+  return selection;
+}
 
 // Greedily append inputs (already sorted descending by amount) until the running
 // sum covers `target` or MAX_PQ_INPUTS_PER_TX is reached. `selected` is always a
@@ -370,6 +427,44 @@ PqSendResult buildPqSend(const std::vector<PqSpendInput>& available,
   result.proofs = std::move(proofs);
   finalBuild.transaction.clearWitnesses();
   return result;
+}
+
+PqConsolidationPlan planPqConsolidation(
+    const std::vector<PqSpendInput>& available, uint64_t explicitFee) {
+  return selectConsolidationInputs(available, explicitFee).plan;
+}
+
+PqConsolidationResult buildPqConsolidation(
+    const std::vector<PqSpendInput>& available,
+    const PqWalletKeys& keys,
+    const PqConsolidationRequest& req) {
+  ConsolidationSelection selection =
+      selectConsolidationInputs(available, req.explicitFee);
+  if (!selection.plan.useful()) {
+    throw PqSendError(
+        PqSendErrorCode::TooLarge,
+        "no useful consolidation batch (canonical outputs would not reduce the input count)");
+  }
+
+  PqSendRequest send;
+  send.recipients.push_back(PqSendOutput{
+      keys.viewPub, keys.spendPub, selection.plan.amount, 0, 0});
+  send.explicitFee = selection.plan.fee;
+  send.genesisId = req.genesisId;
+  send.signingHeight = req.signingHeight;
+  send.deliveryV2Height = req.deliveryV2Height;
+  send.scheme = req.scheme;
+
+  PqSendResult transaction = buildPqSend(selection.inputs, keys, send);
+  if (transaction.selected.size() != selection.plan.selectedInputs ||
+      transaction.tx.outputs.size() != selection.plan.resultingOutputs ||
+      transaction.change != 0 || transaction.sent != selection.plan.amount ||
+      transaction.fee != selection.plan.fee ||
+      transaction.tx.outputs.size() >= transaction.tx.inputs.size()) {
+    throw std::runtime_error("buildPqConsolidation: final transaction does not match its plan");
+  }
+
+  return PqConsolidationResult{selection.plan, std::move(transaction)};
 }
 
 }  // namespace CryptoNote

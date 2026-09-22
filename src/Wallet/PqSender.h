@@ -89,6 +89,37 @@ struct PqSendResult {
   std::vector<PqPaymentProof> proofs;     // exactly one per request recipient row
 };
 
+// A dry-run description of one maintenance transaction. Consolidation is useful
+// only when the canonical outputs it creates are fewer than the inputs it consumes;
+// callers must never pay a fee for a zero- or negative-reduction transaction.
+struct PqConsolidationPlan {
+  std::size_t availableInputs = 0;
+  std::size_t selectedInputs = 0;
+  std::size_t resultingOutputs = 0;
+  uint64_t amount = 0;  // value returned to the wallet, after the fee
+  uint64_t fee = 0;
+
+  bool useful() const noexcept {
+    return selectedInputs >= 2 && resultingOutputs < selectedInputs && amount > 0;
+  }
+};
+
+struct PqConsolidationRequest {
+  uint64_t explicitFee = 0;       // 0 = current TX_PQ fee floor
+  CryptoPQ::Hash256 genesisId{};
+  uint32_t signingHeight = 0;
+  // Same meaning as PqSendRequest::deliveryV2Height: the consolidation is an
+  // ordinary transfer and must declare the subtype consensus expects at
+  // signingHeight, or it is rejected once TX_PQ_V2 activates.
+  uint32_t deliveryV2Height = 0xFFFFFFFFu;
+  PqDepositScheme scheme = PqDepositScheme::AggregatedMultikey;
+};
+
+struct PqConsolidationResult {
+  PqConsolidationPlan plan;
+  PqSendResult transaction;
+};
+
 enum class PqSendErrorCode {
   NoRecipients,
   ZeroAmount,
@@ -110,5 +141,20 @@ struct PqSendError : std::runtime_error {
 PqSendResult buildPqSend(const std::vector<PqSpendInput>& available,
                          const PqWalletKeys& keys,
                          const PqSendRequest& req);
+
+// Selects up to MAX_PQ_INPUTS_PER_TX of the smallest spendable inputs and checks
+// whether returning their value to the wallet in canonical denominations would
+// strictly reduce the output count. This is read-only and does not sign.
+PqConsolidationPlan planPqConsolidation(
+    const std::vector<PqSpendInput>& available,
+    uint64_t explicitFee = 0);
+
+// Builds a self-transfer from the exact inputs selected by planPqConsolidation.
+// The transaction has no tx_extra, no change, and one logical recipient: the
+// wallet's primary PQ identity. Throws TooLarge when no useful plan exists.
+PqConsolidationResult buildPqConsolidation(
+    const std::vector<PqSpendInput>& available,
+    const PqWalletKeys& keys,
+    const PqConsolidationRequest& req = {});
 
 }  // namespace CryptoNote

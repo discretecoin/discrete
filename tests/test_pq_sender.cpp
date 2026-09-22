@@ -405,6 +405,114 @@ TEST(PqSender, SizeRetryReturnsOnlyAcceptedTransactionWitnesses) {
     EXPECT_EQ(result.proofs[0].entries.size(), result.tx.outputs.size());
 }
 
+TEST(PqConsolidation, PlansAndBuildsFromTheThirtyTwoSmallestInputs) {
+    PqWalletKeys me = derivePqWalletKeys(spendSecret(41, 17));
+    std::vector<PqSpendInput> inputs;
+    for (uint8_t i = 0; i < 32; ++i) inputs.push_back(mkInput(1, i));
+    inputs.push_back(mkInput(500, 0x80));
+    inputs.push_back(mkInput(1000, 0x90));
+
+    PqConsolidationPlan plan = planPqConsolidation(inputs);
+    ASSERT_TRUE(plan.useful());
+    EXPECT_EQ(plan.availableInputs, 34u);
+    EXPECT_EQ(plan.selectedInputs, 32u);
+    EXPECT_EQ(plan.resultingOutputs, 2u);  // 31 au -> 30 + 1
+    EXPECT_EQ(plan.fee, 1u);
+    EXPECT_EQ(plan.amount, 31u);
+
+    PqConsolidationRequest req;
+    req.genesisId = testGenesis();
+    req.scheme = PqDepositScheme::SingleKeyIndex;
+    PqConsolidationResult result = buildPqConsolidation(inputs, me, req);
+
+    EXPECT_EQ(result.plan.selectedInputs, plan.selectedInputs);
+    ASSERT_EQ(result.transaction.tx.inputs.size(), 32u);
+    ASSERT_EQ(result.transaction.tx.outputs.size(), 2u);
+    EXPECT_EQ(outputSum(result.transaction.tx), 31u);
+    EXPECT_EQ(result.transaction.change, 0u);
+    EXPECT_EQ(result.transaction.fee, 1u);
+    for (const auto& selected : result.transaction.selected) {
+        EXPECT_EQ(selected.amount, 1u);  // the two large inputs were preserved
+    }
+
+    ASSERT_EQ(result.transaction.proofs.size(), 1u);
+    PqPaymentProofTransaction proofTx =
+        makePqPaymentProofTransaction(result.transaction.tx);
+    ResolvedRecipient own{me.viewPub, me.spendPub, 0};
+    EXPECT_EQ(verifyPqPaymentProof(
+                  result.transaction.proofs[0], req.genesisId, proofTx, own),
+              plan.amount);
+}
+
+TEST(PqConsolidation, RefusesAZeroReductionBatch) {
+    PqWalletKeys me = derivePqWalletKeys(spendSecret(43, 19));
+    // 56 + 56 - 1 fee = 111 -> canonical outputs 100 + 10 + 1. Turning two
+    // inputs into three outputs is not consolidation and must never be signed.
+    std::vector<PqSpendInput> inputs = {
+        mkInput(56, 0x11), mkInput(56, 0x22)};
+
+    PqConsolidationPlan plan = planPqConsolidation(inputs);
+    EXPECT_FALSE(plan.useful());
+    EXPECT_EQ(plan.availableInputs, 2u);
+    EXPECT_EQ(plan.selectedInputs, 0u);
+    EXPECT_THROW(buildPqConsolidation(inputs, me), PqSendError);
+}
+
+TEST(PqConsolidation, FeeCannotConsumeTheSelectedValue) {
+    PqWalletKeys me = derivePqWalletKeys(spendSecret(47, 23));
+    std::vector<PqSpendInput> inputs = {
+        mkInput(1, 0x31), mkInput(1, 0x32)};
+
+    PqConsolidationPlan plan = planPqConsolidation(inputs, 2);
+    EXPECT_FALSE(plan.useful());
+    EXPECT_EQ(plan.fee, 2u);
+
+    PqConsolidationRequest req;
+    req.explicitFee = 2;
+    EXPECT_THROW(buildPqConsolidation(inputs, me, req), PqSendError);
+}
+
+TEST(PqConsolidation, DeclaresTheDeliverySubtypeForItsSigningHeight) {
+    PqWalletKeys me = derivePqWalletKeys(spendSecret(53, 31));
+    std::vector<PqSpendInput> inputs = {
+        mkInput(1, 0x41), mkInput(1, 0x42), mkInput(1, 0x43)};
+
+    PqConsolidationRequest req;
+    req.genesisId = testGenesis();
+    req.scheme = PqDepositScheme::SingleKeyIndex;
+    req.signingHeight = 100;
+
+    // Below the delivery-v2 activation the consolidation is an ordinary TX_PQ.
+    req.deliveryV2Height = 101;
+    EXPECT_EQ(buildPqConsolidation(inputs, me, req).transaction.tx.txType, TX_PQ);
+    // At activation it must declare TX_PQ_V2 like every other wallet transfer,
+    // or consensus rejects it (Currency::isPqTransferTypeAllowedAt).
+    req.deliveryV2Height = 100;
+    EXPECT_EQ(buildPqConsolidation(inputs, me, req).transaction.tx.txType, TX_PQ_V2);
+    // The default keeps direct callers on v1, matching PqSendRequest.
+    EXPECT_EQ(buildPqConsolidation(inputs, me).transaction.tx.txType, TX_PQ);
+}
+
+TEST(PqConsolidation, AggregatedDepositsUseTheirOwnSigningKeys) {
+    PqWalletKeys me = derivePqWalletKeys(spendSecret(49, 29));
+    const auto dep3 = CryptoPQ::deriveDepositSpendKeys(me.seedMaster, 3);
+    const auto dep7 = CryptoPQ::deriveDepositSpendKeys(me.seedMaster, 7);
+    std::vector<PqSpendInput> inputs = {
+        mkBucketInput(4, 0x10, PQ_PRIMARY_DEPOSIT),
+        mkBucketInput(4, 0x20, 3),
+        mkBucketInput(4, 0x30, 7)};
+
+    PqConsolidationRequest req;
+    req.scheme = PqDepositScheme::AggregatedMultikey;
+    PqConsolidationResult result = buildPqConsolidation(inputs, me, req);
+
+    ASSERT_EQ(result.transaction.tx.inputs.size(), 3u);
+    EXPECT_TRUE(authPubIs(result.transaction.tx, 0, me.spendPub));
+    EXPECT_TRUE(authPubIs(result.transaction.tx, 1, dep3.first));
+    EXPECT_TRUE(authPubIs(result.transaction.tx, 2, dep7.first));
+    EXPECT_LT(result.transaction.tx.outputs.size(), result.transaction.tx.inputs.size());
+}
+
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

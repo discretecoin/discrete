@@ -2386,6 +2386,7 @@ void WalletGreen::restorePqStateBlob() {
     if (!stateBlob.empty()) {
       std::stringstream ss(stateBlob);
       m_pqConsumer->state().load(ss);
+      m_pqConsumer->restoreKnownPoolTxIdsFromState();
     }
     // Deposit metadata (third section; absent on pre-deposit containers).
     if (depositBlob.size() >= 5) {

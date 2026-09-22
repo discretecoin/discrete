@@ -37,6 +37,29 @@ SynchronizationStart WalletLedgerConsumer::getSyncStart() {
   return m_syncStart;
 }
 
+void WalletLedgerConsumer::restoreKnownPoolTxIdsFromState() {
+  m_poolTxs.clear();
+  for (const auto& row : m_state.history()) {
+    if (row.height == WalletLedger::UNCONFIRMED_HEIGHT) {
+      m_poolTxs.insert(row.txid);
+    }
+  }
+
+  // Current caches have history rows, but derive from outputs as well so a
+  // pre-history cache can still recover pool tracking instead of stranding a
+  // reservation until a full rescan.
+  for (const auto& output : m_state.outputs()) {
+    if (output.height == WalletLedger::UNCONFIRMED_HEIGHT) {
+      m_poolTxs.insert(output.txid);
+    }
+    if (output.spent &&
+        output.spentHeight == WalletLedger::UNCONFIRMED_HEIGHT &&
+        output.spentTxid != Crypto::Hash{}) {
+      m_poolTxs.insert(output.spentTxid);
+    }
+  }
+}
+
 bool WalletLedgerConsumer::scanReader(const ITransactionReader& reader, uint32_t height, uint64_t timestamp) {
   // The synchronizer hands us prefix-only readers; getTransactionData() returns
   // the serialized TransactionPrefix. That carries everything PQ scanning needs

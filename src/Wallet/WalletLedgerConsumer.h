@@ -48,6 +48,11 @@ public:
   WalletLedger& state() { return m_state; }
   const WalletLedger& state() const { return m_state; }
 
+  // Rebuild the synchronizer's pool identity set after WalletLedger::load().
+  // Without this, an unconfirmed spend survives restart in the ledger but its
+  // later pool eviction is invisible because getKnownPoolTxIds() returns empty.
+  void restoreKnownPoolTxIdsFromState();
+
   // IBlockchainConsumer
   SynchronizationStart getSyncStart() override;
   void onBlockchainDetach(uint32_t height) override;
