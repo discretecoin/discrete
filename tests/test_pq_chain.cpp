@@ -1585,6 +1585,7 @@ bool runDeliveryV2HistoricalSpend() {
       .upgradeHeightV5(11).upgradeHeightV6(12).pqDeliveryV2Height(15).currency();
   const std::filesystem::path dataDir("pq_delivery_v2_positive_test_data");
   std::error_code ec;
+  std::filesystem::remove_all(dataDir, ec);
   std::filesystem::create_directories(dataDir, ec);
   System::Dispatcher dispatcher;
   Core core(currency, nullptr, logger, dispatcher);
