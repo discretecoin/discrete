@@ -869,7 +869,7 @@ namespace CryptoNote
     }
   }
 
-  bool NodeServer::try_to_connect_and_handshake_with_new_peer(const NetworkAddress& na, bool just_take_peerlist, uint64_t last_seen_stamp, PeerType peer_type, uint64_t first_seen_stamp)  {
+  bool NodeServer::try_to_connect_and_handshake_with_new_peer(const NetworkAddress& na, bool just_take_peerlist, uint64_t last_seen_stamp, PeerType peer_type, uint64_t first_seen_stamp, ConnectionLifetime connection_lifetime)  {
     if (m_swapLab && Common::ipAddressToString(na.ip) != "127.0.0.1") return false;
 
     logger(DEBUGGING) << "Connecting to " << na << " (peer_type=" << peer_type << ", last_seen: "
@@ -926,6 +926,13 @@ namespace CryptoNote
 
       if (m_stop) {
         throw System::InterruptedException();
+      }
+
+      if (connection_lifetime == ConnectionLifetime::Transient) {
+        logger(Logging::DEBUGGING, Logging::BRIGHT_GREEN) << ctx << "CONNECTION HANDSHAKED OK AND CLOSED.";
+        on_connection_new(ctx);
+        on_connection_close(ctx);
+        return true;
       }
 
       auto iter = m_connections.emplace(ctx.m_connection_id, std::move(ctx)).first;
@@ -1488,7 +1495,7 @@ namespace CryptoNote
     if (!m_peerlist.get_gray_peer_by_index(pe, random_index))
       return false;
 
-    if (!try_to_connect_and_handshake_with_new_peer(pe.adr, false, pe.last_seen, gray, 0)) {
+    if (!try_to_connect_and_handshake_with_new_peer(pe.adr, false, pe.last_seen, gray, 0, ConnectionLifetime::Transient)) {
       time_t now = time(nullptr);
       if (now - pe.last_seen >= LAST_SEEN_EVICT_THRESHOLD) {
         m_peerlist.remove_from_peer_gray(pe);
