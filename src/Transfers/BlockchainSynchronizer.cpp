@@ -445,7 +445,7 @@ void BlockchainSynchronizer::getPoolUnionAndIntersection(std::unordered_set<Cryp
   ++itConsumers;
 
   for (; itConsumers != m_consumers.end(); ++itConsumers) {
-    const std::unordered_set<Crypto::Hash>& consumerKnownIds = itConsumers->first->getKnownPoolTxIds();
+    const std::unordered_set<Crypto::Hash> consumerKnownIds = itConsumers->first->getKnownPoolTxIds();
 
     poolUnion.insert(consumerKnownIds.begin(), consumerKnownIds.end());
 
