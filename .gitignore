@@ -10,8 +10,6 @@ Debug
 CMakeSettings.json
 out/
 *.bak
-release-gap-report.json
-release-gap-report.md
 
 # Genesis preallocation recipient SECRETS (mnemonics). Never commit — keep offline.
 /genesis/
