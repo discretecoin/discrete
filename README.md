@@ -1,5 +1,9 @@
 # Discrete
 
+[![Release monitor health](https://github.com/discretecoin/discrete/actions/workflows/release-gap-monitor.yml/badge.svg)](https://github.com/discretecoin/discrete/actions/workflows/release-gap-monitor.yml)
+
+[Release/deployment dashboard](https://github.com/discretecoin/discrete/issues?q=is%3Aissue+in%3Atitle+release%2Fdeployment+sort%3Aupdated-desc) · the badge reports monitor health, while an open dashboard issue means operator action is required.
+
 **Discrete is a post-quantum-only cryptocurrency** — a CryptoNote-family chain in
 which *every block and every transaction is post-quantum from genesis*. There is
 no legacy elliptic-curve (ECC) chain, no ring signatures, and no migration
