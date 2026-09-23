@@ -38,6 +38,7 @@ SynchronizationStart WalletLedgerConsumer::getSyncStart() {
 }
 
 void WalletLedgerConsumer::restoreKnownPoolTxIdsFromState() {
+  std::lock_guard<std::mutex> lock(m_mutex);
   m_poolTxs.clear();
   for (const auto& row : m_state.history()) {
     if (row.height == WalletLedger::UNCONFIRMED_HEIGHT) {
@@ -102,29 +103,34 @@ uint32_t WalletLedgerConsumer::onNewBlocks(const CompleteBlock* blocks, uint32_t
 
   uint32_t processed = 0;
   std::size_t affectedTransactions = 0;
+  uint32_t cursor = 0;
   std::vector<Crypto::Hash> blockHashes;
   blockHashes.reserve(count);
-  try {
-    for (uint32_t i = 0; i < count; ++i) {
-      const CompleteBlock& cb = blocks[i];
-      uint32_t height = startHeight + i;
-      if (cb.block.is_initialized()) {
-        uint64_t timestamp = cb.block->timestamp;
-        for (const auto& tx : cb.transactions) {
-          if (tx) {
-            if (scanReader(*tx, height, timestamp)) {
-              ++affectedTransactions;
+  {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    try {
+      for (uint32_t i = 0; i < count; ++i) {
+        const CompleteBlock& cb = blocks[i];
+        uint32_t height = startHeight + i;
+        if (cb.block.is_initialized()) {
+          uint64_t timestamp = cb.block->timestamp;
+          for (const auto& tx : cb.transactions) {
+            if (tx) {
+              if (scanReader(*tx, height, timestamp)) {
+                ++affectedTransactions;
+              }
             }
           }
         }
+        blockHashes.push_back(cb.blockHash);
+        ++processed;
+        m_state.setLastScannedHeight(height);
       }
-      blockHashes.push_back(cb.blockHash);
-      ++processed;
-      m_state.setLastScannedHeight(height);
+    } catch (const std::exception& e) {
+      m_logger(Logging::ERROR, Logging::BRIGHT_RED)
+          << "PQ scan failed at block " << (startHeight + processed) << ": " << e.what();
     }
-  } catch (const std::exception& e) {
-    m_logger(Logging::ERROR, Logging::BRIGHT_RED)
-        << "PQ scan failed at block " << (startHeight + processed) << ": " << e.what();
+    cursor = m_state.lastScannedHeight();
   }
 
   // Feed the wallet's block-hash list (the front-end's m_blockchain). Previously
@@ -137,17 +143,18 @@ uint32_t WalletLedgerConsumer::onNewBlocks(const CompleteBlock* blocks, uint32_t
     m_logger(Logging::DEBUGGING) << "Ledger scan batch: blocks " << startHeight << "-"
         << (startHeight + processed - 1) << ", processed " << processed
         << ", affected transactions " << affectedTransactions
-        << ", cursor " << m_state.lastScannedHeight();
+        << ", cursor " << cursor;
   }
   return processed;
 }
 
 void WalletLedgerConsumer::onBlockchainDetach(uint32_t height) {
+  m_observerManager.notify(&IBlockchainConsumerObserver::onBlockchainDetach, this, height);
+  std::lock_guard<std::mutex> lock(m_mutex);
   const std::size_t outputsBefore = m_state.ownedCount();
   const std::size_t unspentBefore = m_state.unspentCount();
   const std::size_t historyBefore = m_state.historyCount();
   const uint64_t balanceBefore = m_state.balance();
-  m_observerManager.notify(&IBlockchainConsumerObserver::onBlockchainDetach, this, height);
   m_state.rollbackToHeight(height);
   m_logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Ledger rollback to height " << height
       << ": outputs " << outputsBefore << " -> " << m_state.ownedCount()
@@ -160,12 +167,10 @@ void WalletLedgerConsumer::onBlockchainDetach(uint32_t height) {
 std::error_code WalletLedgerConsumer::onPoolUpdated(
     const std::vector<std::unique_ptr<ITransactionReader>>& addedTransactions,
     const std::vector<Crypto::Hash>& deletedTransactions) {
+  std::lock_guard<std::mutex> lock(m_mutex);
   for (const auto& tx : addedTransactions) {
     if (!tx) continue;
-    Crypto::Hash h = tx->getTransactionHash();
-    if (scanReader(*tx, WalletLedger::UNCONFIRMED_HEIGHT, 0)) {
-      m_poolTxs.insert(h);
-    }
+    addUnconfirmedIfNew(*tx);
   }
   for (const auto& h : deletedTransactions) {
     m_poolTxs.erase(h);
@@ -181,20 +186,35 @@ std::error_code WalletLedgerConsumer::onPoolUpdated(
   return std::error_code();
 }
 
-const std::unordered_set<Crypto::Hash>& WalletLedgerConsumer::getKnownPoolTxIds() const {
+std::unordered_set<Crypto::Hash> WalletLedgerConsumer::getKnownPoolTxIds() const {
+  std::lock_guard<std::mutex> lock(m_mutex);
   return m_poolTxs;
 }
 
 std::error_code WalletLedgerConsumer::addUnconfirmedTransaction(const ITransactionReader& transaction) {
-  if (scanReader(transaction, WalletLedger::UNCONFIRMED_HEIGHT, 0)) {
-    m_poolTxs.insert(transaction.getTransactionHash());
-  }
+  std::lock_guard<std::mutex> lock(m_mutex);
+  addUnconfirmedIfNew(transaction);
   return std::error_code();
 }
 
 void WalletLedgerConsumer::removeUnconfirmedTransaction(const Crypto::Hash& transactionHash) {
+  std::lock_guard<std::mutex> lock(m_mutex);
   m_poolTxs.erase(transactionHash);
   removeUnconfirmedFromState(transactionHash);
+}
+
+bool WalletLedgerConsumer::addUnconfirmedIfNew(const ITransactionReader& transaction) {
+  const Crypto::Hash transactionHash = transaction.getTransactionHash();
+  if (m_poolTxs.count(transactionHash) != 0) {
+    return false;
+  }
+
+  if (!scanReader(transaction, WalletLedger::UNCONFIRMED_HEIGHT, 0)) {
+    return false;
+  }
+
+  m_poolTxs.insert(transactionHash);
+  return true;
 }
 
 void WalletLedgerConsumer::removeUnconfirmedFromState(const Crypto::Hash& transactionHash) {

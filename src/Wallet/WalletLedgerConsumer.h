@@ -17,6 +17,7 @@
 
 #pragma once
 
+#include <mutex>
 #include <unordered_set>
 
 #include "Transfers/IBlockchainSynchronizer.h"
@@ -59,7 +60,7 @@ public:
   uint32_t onNewBlocks(const CompleteBlock* blocks, uint32_t startHeight, uint32_t count) override;
   std::error_code onPoolUpdated(const std::vector<std::unique_ptr<ITransactionReader>>& addedTransactions,
                                 const std::vector<Crypto::Hash>& deletedTransactions) override;
-  const std::unordered_set<Crypto::Hash>& getKnownPoolTxIds() const override;
+  std::unordered_set<Crypto::Hash> getKnownPoolTxIds() const override;
   std::error_code addUnconfirmedTransaction(const ITransactionReader& transaction) override;
   void removeUnconfirmedTransaction(const Crypto::Hash& transactionHash) override;
 
@@ -67,8 +68,14 @@ private:
   // Scan one transaction (given its reader) at a height + block timestamp; returns
   // true if owned. timestamp is 0 for mempool transactions.
   bool scanReader(const ITransactionReader& reader, uint32_t height, uint64_t timestamp);
+  bool addUnconfirmedIfNew(const ITransactionReader& transaction);
   void removeUnconfirmedFromState(const Crypto::Hash& transactionHash);
 
+  // The synchronizer and a successful local send can deliver the same pool
+  // transaction from different threads. Keep every ledger/pool mutation in one
+  // critical section so the second delivery observes the first txid before it
+  // can rescan partially-mutated state.
+  mutable std::mutex m_mutex;
   WalletLedger        m_state;
   SynchronizationStart m_syncStart;
   std::unordered_set<Crypto::Hash> m_poolTxs;
