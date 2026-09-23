@@ -1,0 +1,34 @@
+name: Validate release gap monitor
+
+on:
+  push:
+    paths:
+      - '.github/workflows/check-release-gap-monitor.yml'
+      - '.github/workflows/release-gap-monitor.yml'
+      - 'docs/release-gap-monitor.md'
+      - 'monitoring/release-gap/**'
+  pull_request:
+    paths:
+      - '.github/workflows/check-release-gap-monitor.yml'
+      - '.github/workflows/release-gap-monitor.yml'
+      - 'docs/release-gap-monitor.md'
+      - 'monitoring/release-gap/**'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Validate monitor and operator dashboard
+        run: |
+          node --check monitoring/release-gap/monitor.mjs
+          node --check monitoring/release-gap/publish-issue.mjs
+          node --test monitoring/release-gap/monitor.test.mjs
+          node --test monitoring/release-gap/publish-issue.test.mjs
