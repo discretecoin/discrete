@@ -444,6 +444,131 @@ TEST(PqConsolidation, PlansAndBuildsFromTheThirtyTwoSmallestInputs) {
               plan.amount);
 }
 
+TEST(PqConsolidation, SplitsAnExistingTwentyThousandNoteWithoutOtherInputs) {
+    PqWalletKeys me = derivePqWalletKeys(spendSecret(42, 18));
+    const std::vector<PqSpendInput> inputs = {mkInput(20000 * P::COIN, 0x61)};
+    const PqConsolidationPlan plan = planPqConsolidation(inputs);
+    ASSERT_TRUE(plan.useful());
+    EXPECT_TRUE(plan.splitsOversizedInput);
+    EXPECT_EQ(plan.selectedInputs, 1u);
+    EXPECT_EQ(plan.resultingOutputs, 2u);
+    EXPECT_EQ(plan.fee, 1u);
+
+    PqConsolidationRequest req;
+    req.genesisId = testGenesis();
+    req.scheme = PqDepositScheme::SingleKeyIndex;
+    const PqConsolidationResult result = buildPqConsolidation(inputs, me, req);
+    ASSERT_EQ(result.transaction.tx.inputs.size(), 1u);
+    ASSERT_EQ(result.transaction.tx.outputs.size(), 2u);
+    EXPECT_EQ(result.transaction.tx.outputs[0].amount, 10000 * P::COIN);
+    EXPECT_EQ(result.transaction.tx.outputs[1].amount, 10000 * P::COIN - 1);
+    EXPECT_EQ(outputSum(result.transaction.tx), 20000 * P::COIN - 1);
+    EXPECT_EQ(result.transaction.change, 0u);
+    EXPECT_EQ(result.transaction.proofs.size(), 2u);
+}
+
+TEST(PqConsolidation, BoundsAHypotheticalHundredThousandNote) {
+    PqWalletKeys me = derivePqWalletKeys(spendSecret(44, 20));
+    const std::vector<PqSpendInput> inputs = {mkInput(100000 * P::COIN, 0x62)};
+    const PqConsolidationPlan plan = planPqConsolidation(inputs);
+    ASSERT_TRUE(plan.useful());
+    EXPECT_TRUE(plan.splitsOversizedInput);
+    EXPECT_EQ(plan.resultingOutputs, 10u);
+    PqConsolidationRequest req;
+    req.genesisId = testGenesis();
+    req.scheme = PqDepositScheme::SingleKeyIndex;
+    const PqConsolidationResult result = buildPqConsolidation(inputs, me, req);
+    ASSERT_EQ(result.transaction.tx.outputs.size(), 10u);
+    EXPECT_EQ(outputSum(result.transaction.tx), 100000 * P::COIN - 1);
+    for (const auto& output : result.transaction.tx.outputs) {
+        EXPECT_LE(output.amount, 10000 * P::COIN);
+    }
+}
+
+TEST(PqConsolidation, NormalizesJustAboveTheCapAfterTheFee) {
+    PqWalletKeys me = derivePqWalletKeys(spendSecret(45, 21));
+    const std::vector<PqSpendInput> inputs = {
+        mkInput(10000 * P::COIN + 1, 0x63)};
+    const PqConsolidationPlan plan = planPqConsolidation(inputs);
+    ASSERT_TRUE(plan.useful());
+    EXPECT_EQ(plan.resultingOutputs, 1u);
+    PqConsolidationRequest req;
+    req.genesisId = testGenesis();
+    req.scheme = PqDepositScheme::SingleKeyIndex;
+    const PqConsolidationResult result = buildPqConsolidation(inputs, me, req);
+    ASSERT_EQ(result.transaction.tx.outputs.size(), 1u);
+    EXPECT_EQ(result.transaction.tx.outputs[0].amount, 10000 * P::COIN);
+}
+
+TEST(PqConsolidation, CapsEveryNewOutputInALargeReducingBatch) {
+    PqWalletKeys me = derivePqWalletKeys(spendSecret(46, 19));
+    std::vector<PqSpendInput> inputs;
+    for (uint8_t i = 0; i < 32; ++i) {
+        inputs.push_back(mkInput(1000 * P::COIN, i));
+    }
+    const PqConsolidationPlan plan = planPqConsolidation(inputs);
+    ASSERT_TRUE(plan.useful());
+    EXPECT_FALSE(plan.splitsOversizedInput);
+    EXPECT_EQ(plan.resultingOutputs, 4u);
+    EXPECT_LT(plan.resultingOutputs, plan.selectedInputs);
+    PqConsolidationRequest req;
+    req.genesisId = testGenesis();
+    req.scheme = PqDepositScheme::SingleKeyIndex;
+    const PqConsolidationResult result = buildPqConsolidation(inputs, me, req);
+    EXPECT_EQ(result.transaction.tx.outputs.size(), plan.resultingOutputs);
+    EXPECT_EQ(outputSum(result.transaction.tx), plan.amount);
+    EXPECT_EQ(result.transaction.tx.outputs[0].amount, 10000 * P::COIN);
+    EXPECT_EQ(result.transaction.tx.outputs[1].amount, 10000 * P::COIN);
+    EXPECT_EQ(result.transaction.tx.outputs[2].amount, 10000 * P::COIN);
+    EXPECT_EQ(result.transaction.tx.outputs[3].amount, 2000 * P::COIN - 1);
+    for (const auto& output : result.transaction.tx.outputs) {
+        EXPECT_LE(output.amount, 10000 * P::COIN);
+    }
+}
+
+TEST(PqConsolidation, LeavesExactCapOutputsUntouchedInMixedBatch) {
+    PqWalletKeys me = derivePqWalletKeys(spendSecret(47, 20));
+    std::vector<PqSpendInput> inputs;
+    for (uint8_t i = 0; i < 6; ++i) {
+        inputs.push_back(mkInput(10000 * P::COIN, static_cast<uint8_t>(0x80 + i)));
+    }
+    inputs.push_back(mkInput(4000 * P::COIN, 0x91));
+    inputs.push_back(mkInput(3500 * P::COIN, 0x92));
+    inputs.push_back(mkInput(3000 * P::COIN, 0x93));
+    inputs.push_back(mkInput(2500 * P::COIN, 0x94));
+
+    const PqConsolidationPlan plan = planPqConsolidation(inputs);
+    ASSERT_TRUE(plan.useful());
+    EXPECT_FALSE(plan.splitsOversizedInput);
+    EXPECT_EQ(plan.availableInputs, 10u);
+    EXPECT_EQ(plan.selectedInputs, 4u);
+    EXPECT_EQ(plan.resultingOutputs, 2u);
+    EXPECT_EQ(plan.amount, 13000 * P::COIN - 1);
+
+    PqConsolidationRequest req;
+    req.genesisId = testGenesis();
+    req.scheme = PqDepositScheme::SingleKeyIndex;
+    const PqConsolidationResult result = buildPqConsolidation(inputs, me, req);
+    ASSERT_EQ(result.transaction.tx.inputs.size(), 4u);
+    ASSERT_EQ(result.transaction.tx.outputs.size(), 2u);
+    EXPECT_EQ(result.transaction.tx.outputs[0].amount, 10000 * P::COIN);
+    EXPECT_EQ(result.transaction.tx.outputs[1].amount, 3000 * P::COIN - 1);
+    EXPECT_EQ(outputSum(result.transaction.tx), plan.amount);
+    for (const auto& selected : result.transaction.selected) {
+        EXPECT_LT(selected.amount, 10000 * P::COIN);
+    }
+}
+
+TEST(PqConsolidation, RejectsABatchThatCannotReduceUnderTheCap) {
+    std::vector<PqSpendInput> inputs;
+    for (uint8_t i = 0; i < 32; ++i) {
+        inputs.push_back(mkInput(10000 * P::COIN, i));
+    }
+    const PqConsolidationPlan plan = planPqConsolidation(inputs);
+    EXPECT_FALSE(plan.useful());
+    EXPECT_EQ(plan.selectedInputs, 0u);
+}
+
 TEST(PqConsolidation, RefusesAZeroReductionBatch) {
     PqWalletKeys me = derivePqWalletKeys(spendSecret(43, 19));
     // 56 + 56 - 1 fee = 111 -> canonical outputs 100 + 10 + 1. Turning two

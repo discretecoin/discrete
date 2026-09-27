@@ -40,6 +40,9 @@ namespace CryptoNote {
 struct PqSendRequest {
   std::vector<PqSendOutput> recipients;  // each .amount is the lump to that recipient
   uint64_t explicitFee = 0;              // 0 = auto (two-pass measured fee)
+  // 0 keeps the ordinary consensus output cap. Maintenance can request exactly
+  // one physical output per bounded self-recipient without changing payments.
+  std::size_t maxOutputs = 0;
   uint64_t unlockHeight = 0;             // legacy API tx-level lock; TX_PQ requires 0
   std::vector<uint8_t> extra;            // tx.extra (e.g. a PQ account registration tag)
   CryptoPQ::Hash256 genesisId{};         // network binding embedded in every proof
@@ -89,18 +92,21 @@ struct PqSendResult {
   std::vector<PqPaymentProof> proofs;     // exactly one per request recipient row
 };
 
-// A dry-run description of one maintenance transaction. Consolidation is useful
-// only when the canonical outputs it creates are fewer than the inputs it consumes;
-// callers must never pay a fee for a zero- or negative-reduction transaction.
+// A dry-run description of one maintenance transaction. A reducing batch must
+// create fewer outputs than inputs. A separate one-input repair may instead
+// replace an existing output over 10,000 XDS with bounded outputs for a fee.
 struct PqConsolidationPlan {
   std::size_t availableInputs = 0;
   std::size_t selectedInputs = 0;
   std::size_t resultingOutputs = 0;
   uint64_t amount = 0;  // value returned to the wallet, after the fee
   uint64_t fee = 0;
+  bool splitsOversizedInput = false;
 
   bool useful() const noexcept {
-    return selectedInputs >= 2 && resultingOutputs < selectedInputs && amount > 0;
+    return amount > 0 && (splitsOversizedInput
+        ? selectedInputs == 1 && resultingOutputs >= 1
+        : selectedInputs >= 2 && resultingOutputs < selectedInputs);
   }
 };
 
@@ -142,16 +148,18 @@ PqSendResult buildPqSend(const std::vector<PqSpendInput>& available,
                          const PqWalletKeys& keys,
                          const PqSendRequest& req);
 
-// Selects up to MAX_PQ_INPUTS_PER_TX of the smallest spendable inputs and checks
-// whether returning their value to the wallet in canonical denominations would
-// strictly reduce the output count. This is read-only and does not sign.
+// First repairs one spendable output over 10,000 XDS, if present. Otherwise
+// selects up to MAX_PQ_INPUTS_PER_TX of the smallest spendable inputs and checks
+// whether bounded canonical outputs strictly reduce the output count.
+// This is read-only and does not sign.
 PqConsolidationPlan planPqConsolidation(
     const std::vector<PqSpendInput>& available,
     uint64_t explicitFee = 0);
 
 // Builds a self-transfer from the exact inputs selected by planPqConsolidation.
-// The transaction has no tx_extra, no change, and one logical recipient: the
-// wallet's primary PQ identity. Throws TooLarge when no useful plan exists.
+// The transaction has no tx_extra or change and returns to the wallet's primary
+// PQ identity; every new output is at most 10,000 XDS. Throws TooLarge when no
+// useful reduction or oversized-output repair is available.
 PqConsolidationResult buildPqConsolidation(
     const std::vector<PqSpendInput>& available,
     const PqWalletKeys& keys,

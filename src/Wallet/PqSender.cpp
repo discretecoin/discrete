@@ -35,6 +35,9 @@ namespace {
 
 namespace P = CryptoNote::parameters;
 
+// Wallet maintenance policy, not a consensus or ordinary-payment limit.
+constexpr uint64_t MAX_CONSOLIDATION_OUTPUT = UINT64_C(10000) * P::COIN;
+
 // A payee plus the canonical denominations that make up its amount. Coarsening
 // merges denominations within a group (never across payees).
 struct OutputGroup {
@@ -74,10 +77,43 @@ ConsolidationSelection selectConsolidationInputs(
                            ? explicitFee
                            : P::pqTxFeeFloor(P::MINIMUM_FEE, 0);
 
-  if (available.size() < 2) return selection;
+  if (available.empty()) return selection;
 
   std::vector<PqSpendInput> sorted = available;
   std::sort(sorted.begin(), sorted.end(), consolidationInputLess);
+
+  // Repair an already-created large note first. One input avoids needlessly
+  // linking unrelated notes; the fee is taken from this note, and every result
+  // is at most 10,000 XDS. This intentionally does not claim to reduce count.
+  const auto oversized = std::find_if(sorted.begin(), sorted.end(),
+      [](const PqSpendInput& input) {
+        return input.amount > MAX_CONSOLIDATION_OUTPUT;
+      });
+  if (oversized != sorted.end() && oversized->amount > selection.plan.fee) {
+    const uint64_t amount = oversized->amount - selection.plan.fee;
+    const uint64_t fullOutputs = amount / MAX_CONSOLIDATION_OUTPUT;
+    const std::size_t outputCount = static_cast<std::size_t>(fullOutputs) +
+        (amount % MAX_CONSOLIDATION_OUTPUT == 0 ? 0 : 1);
+    if (outputCount >= 1 && outputCount <= P::MAX_PQ_OUTPUTS_PER_TX) {
+      selection.plan.selectedInputs = 1;
+      selection.plan.resultingOutputs = outputCount;
+      selection.plan.amount = amount;
+      selection.plan.splitsOversizedInput = true;
+      selection.inputs.push_back(*oversized);
+      return selection;
+    }
+  }
+
+  // An input already equal to the cap adds exactly one selected input and one
+  // resulting capped output. It cannot improve a viable batch's reduction, so
+  // spending it would only recreate the same note and link it to smaller ones.
+  sorted.erase(std::remove_if(sorted.begin(), sorted.end(),
+                              [](const PqSpendInput& input) {
+                                return input.amount >= MAX_CONSOLIDATION_OUTPUT;
+                              }),
+               sorted.end());
+  if (sorted.size() < 2) return selection;
+
   const std::size_t maximum = std::min<std::size_t>(
       sorted.size(), static_cast<std::size_t>(P::MAX_PQ_INPUTS_PER_TX));
 
@@ -96,7 +132,12 @@ ConsolidationSelection selectConsolidationInputs(
     if (overflow || total <= selection.plan.fee) continue;
 
     const uint64_t amount = total - selection.plan.fee;
-    const std::size_t outputCount = decomposeToDenominations(amount).size();
+    const uint64_t fullOutputs = amount / MAX_CONSOLIDATION_OUTPUT;
+    if (fullOutputs >= count) continue;
+    const uint64_t remainder = amount % MAX_CONSOLIDATION_OUTPUT;
+    const std::size_t outputCount = static_cast<std::size_t>(fullOutputs) +
+        (remainder == 0 ? 0 :
+         fullOutputs > 0 ? 1 : decomposeToDenominations(remainder).size());
     if (outputCount >= count || outputCount > P::MAX_PQ_OUTPUTS_PER_TX) continue;
 
     selection.plan.selectedInputs = count;
@@ -198,9 +239,12 @@ FittingBuild buildFitting(const std::vector<PqSpendInput>& selected,
                           const std::vector<PqSendOutput>& recipients, uint64_t change,
                           const PqSendOutput& changeTmpl,
                           const std::vector<uint8_t>& extra,
-                          const PqSigningContext& signing) {
+                          const PqSigningContext& signing,
+                          std::size_t requestedMaxOutputs) {
   std::size_t numDest = recipients.size() + (change > 0 ? 1 : 0);
-  std::size_t maxOut = P::MAX_PQ_OUTPUTS_PER_TX;
+  std::size_t maxOut = requestedMaxOutputs == 0
+      ? P::MAX_PQ_OUTPUTS_PER_TX
+      : std::min<std::size_t>(requestedMaxOutputs, P::MAX_PQ_OUTPUTS_PER_TX);
   for (;;) {
     std::vector<ProvenancedOutput> provenanced =
         decomposeOutputs(recipients, change, changeTmpl, maxOut);
@@ -366,7 +410,7 @@ PqSendResult buildPqSend(const std::vector<PqSpendInput>& available,
   }();
   FittingBuild finalBuild = buildFitting(
       selected, inputAuth, req.recipients, change,
-      changeTmpl, req.extra, signing);
+      changeTmpl, req.extra, signing, req.maxOutputs);
 
   if (finalBuild.recipientIndexes.size() != finalBuild.transaction.tx.outputs.size() ||
       finalBuild.transaction.outputRhos.size() != finalBuild.transaction.tx.outputs.size()) {
@@ -443,12 +487,25 @@ PqConsolidationResult buildPqConsolidation(
   if (!selection.plan.useful()) {
     throw PqSendError(
         PqSendErrorCode::TooLarge,
-        "no useful consolidation batch (canonical outputs would not reduce the input count)");
+        "no useful reducing batch or oversized output to repair");
   }
 
   PqSendRequest send;
-  send.recipients.push_back(PqSendOutput{
-      keys.viewPub, keys.spendPub, selection.plan.amount, 0, 0});
+  uint64_t remaining = selection.plan.amount;
+  while (remaining >= MAX_CONSOLIDATION_OUTPUT) {
+    send.recipients.push_back(PqSendOutput{
+        keys.viewPub, keys.spendPub, MAX_CONSOLIDATION_OUTPUT, 0, 0});
+    remaining -= MAX_CONSOLIDATION_OUTPUT;
+  }
+  if (remaining != 0) {
+    send.recipients.push_back(PqSendOutput{
+        keys.viewPub, keys.spendPub, remaining, 0, 0});
+  }
+  if (selection.plan.amount >= MAX_CONSOLIDATION_OUTPUT) {
+    // Each bounded logical self-recipient becomes one physical output. In
+    // particular, do not decompose the remainder into six small notes again.
+    send.maxOutputs = selection.plan.resultingOutputs;
+  }
   send.explicitFee = selection.plan.fee;
   send.genesisId = req.genesisId;
   send.signingHeight = req.signingHeight;
@@ -460,7 +517,12 @@ PqConsolidationResult buildPqConsolidation(
       transaction.tx.outputs.size() != selection.plan.resultingOutputs ||
       transaction.change != 0 || transaction.sent != selection.plan.amount ||
       transaction.fee != selection.plan.fee ||
-      transaction.tx.outputs.size() >= transaction.tx.inputs.size()) {
+      (!selection.plan.splitsOversizedInput &&
+       transaction.tx.outputs.size() >= transaction.tx.inputs.size()) ||
+      std::any_of(transaction.tx.outputs.begin(), transaction.tx.outputs.end(),
+                  [](const auto& output) {
+                    return output.amount > MAX_CONSOLIDATION_OUTPUT;
+                  })) {
     throw std::runtime_error("buildPqConsolidation: final transaction does not match its plan");
   }
 
