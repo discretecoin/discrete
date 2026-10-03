@@ -20,11 +20,10 @@
 #include <algorithm>
 #include <cstring>
 #include <limits>
-#include <optional>
+#include <set>
 #include <unordered_set>
 
 #include "Common/SecureMemory.h"
-#include "Denominations.h"
 #include "CryptoNoteConfig.h"
 #include "CryptoNoteCore/CryptoNoteTools.h"  // toBinaryArray
 #include "crypto_pq/PqSeed.h"                 // deriveDepositSpendKeys
@@ -35,30 +34,69 @@ namespace {
 
 namespace P = CryptoNote::parameters;
 
-// A payee plus the canonical denominations that make up its amount. Coarsening
-// merges denominations within a group (never across payees).
-struct OutputGroup {
-  PqSendOutput          tmpl;    // recipient keys/T/unlockHeight; amount overwritten per slot
-  std::vector<uint64_t> denoms;  // canonical pieces, sum == the payee's amount
-  std::optional<std::size_t> recipientIndex;  // absent only for change
+// Which spend key authorizes an input, as an opaque group id: inputs in one group
+// are signed by the same ML-DSA key. Under SingleKeyIndex every output commits to
+// the one wallet key; under AggregatedMultikey each deposit bucket has its own
+// derived key, while primary and unattributed outputs share the wallet key. This
+// mirrors the key choice in authForSelection below.
+uint32_t keyGroupOf(const PqSpendInput& in, PqDepositScheme scheme) {
+  if (scheme == PqDepositScheme::SingleKeyIndex || in.depositIndex == PQ_UNATTRIBUTED_DEPOSIT) {
+    return PQ_PRIMARY_DEPOSIT;
+  }
+  return in.depositIndex;
+}
+
+// Consensus caps a transaction's inputs. The key cap bounds how many DISTINCT
+// spend keys (and so ML-DSA signatures) one transaction may carry; the total cap
+// bounds the inputs. Today every input carries its own key, so the two are the
+// same number and the key cap never binds first.
+struct InputCaps {
+  std::size_t totalInputs;
+  std::size_t keyInputs;
 };
 
-struct ProvenancedOutput {
-  PqSendOutput output;
-  std::optional<std::size_t> recipientIndex;
-};
+InputCaps capsFor(const PqSigningContext& /*signing*/) {
+  return {static_cast<std::size_t>(P::MAX_PQ_INPUTS_PER_TX),
+          static_cast<std::size_t>(P::MAX_PQ_INPUTS_PER_TX)};
+}
 
-struct FittingBuild {
-  PqTransactionBuildResult transaction;
-  std::vector<std::optional<std::size_t>> recipientIndexes;
-};
-
-struct ConsolidationSelection {
-  PqConsolidationPlan plan;
+// A growing input selection that respects both caps.
+struct Selection {
   std::vector<PqSpendInput> inputs;
+  std::set<uint32_t> keys;
+  uint64_t sum = 0;
+  PqDepositScheme scheme;
+  InputCaps caps;
+
+  bool canTake(const PqSpendInput& in) const {
+    if (inputs.size() >= caps.totalInputs) return false;
+    if (keys.count(keyGroupOf(in, scheme)) == 0 && keys.size() >= caps.keyInputs) return false;
+    return sum <= std::numeric_limits<uint64_t>::max() - in.amount;
+  }
+
+  void take(const PqSpendInput& in) {
+    inputs.push_back(in);
+    keys.insert(keyGroupOf(in, scheme));
+    sum += in.amount;
+  }
+
+  void drop() {
+    const PqSpendInput& in = inputs.back();
+    sum -= in.amount;
+    inputs.pop_back();
+    keys.clear();
+    for (const auto& kept : inputs) keys.insert(keyGroupOf(kept, scheme));
+  }
 };
 
-bool consolidationInputLess(const PqSpendInput& lhs, const PqSpendInput& rhs) {
+bool sameOutpoint(const PqSpendInput& a, const PqSpendInput& b) {
+  return a.prevOutIndex == b.prevOutIndex &&
+         std::memcmp(a.prevTxid.data, b.prevTxid.data, sizeof(a.prevTxid.data)) == 0;
+}
+
+// Deterministic total order for consolidation: smallest amount first, ties by
+// outpoint so two wallets holding the same set build the same transaction.
+bool smallestFirst(const PqSpendInput& lhs, const PqSpendInput& rhs) {
   if (lhs.amount != rhs.amount) return lhs.amount < rhs.amount;
   const int hashOrder = std::memcmp(lhs.prevTxid.data, rhs.prevTxid.data,
                                     sizeof(lhs.prevTxid.data));
@@ -66,173 +104,48 @@ bool consolidationInputLess(const PqSpendInput& lhs, const PqSpendInput& rhs) {
   return lhs.prevOutIndex < rhs.prevOutIndex;
 }
 
+std::vector<PqSpendInput> filterBuckets(const std::vector<PqSpendInput>& available,
+                                        const std::vector<uint32_t>& sourceBuckets) {
+  if (sourceBuckets.empty()) return available;
+  std::unordered_set<uint32_t> want(sourceBuckets.begin(), sourceBuckets.end());
+  std::vector<PqSpendInput> out;
+  for (const auto& si : available) {
+    if (want.count(si.depositIndex) != 0) out.push_back(si);
+  }
+  return out;
+}
+
+struct ConsolidationSelection {
+  PqConsolidationPlan plan;
+  std::vector<PqSpendInput> inputs;
+};
+
 ConsolidationSelection selectConsolidationInputs(
-    const std::vector<PqSpendInput>& available, uint64_t explicitFee) {
+    const std::vector<PqSpendInput>& available, const PqConsolidationRequest& req) {
   ConsolidationSelection selection;
-  selection.plan.availableInputs = available.size();
-  selection.plan.fee = explicitFee != 0
-                           ? explicitFee
-                           : P::pqTxFeeFloor(P::MINIMUM_FEE, 0);
+  selection.plan.fee = req.explicitFee != 0 ? req.explicitFee
+                                            : P::pqTxFeeFloor(P::MINIMUM_FEE, 0);
 
-  if (available.size() < 2) return selection;
+  std::vector<PqSpendInput> sorted = filterBuckets(available, req.sourceBuckets);
+  selection.plan.availableInputs = sorted.size();
+  if (sorted.size() < 2) return selection;
+  std::sort(sorted.begin(), sorted.end(), smallestFirst);
 
-  std::vector<PqSpendInput> sorted = available;
-  std::sort(sorted.begin(), sorted.end(), consolidationInputLess);
-  const std::size_t maximum = std::min<std::size_t>(
-      sorted.size(), static_cast<std::size_t>(P::MAX_PQ_INPUTS_PER_TX));
-
-  // Prefer the largest useful batch. If 32 unusually large inputs would expand
-  // into 32 or more canonical outputs, a smaller prefix may still be useful.
-  for (std::size_t count = maximum; count >= 2; --count) {
-    uint64_t total = 0;
-    bool overflow = false;
-    for (std::size_t i = 0; i < count; ++i) {
-      if (total > std::numeric_limits<uint64_t>::max() - sorted[i].amount) {
-        overflow = true;
-        break;
-      }
-      total += sorted[i].amount;
-    }
-    if (overflow || total <= selection.plan.fee) continue;
-
-    const uint64_t amount = total - selection.plan.fee;
-    const std::size_t outputCount = decomposeToDenominations(amount).size();
-    if (outputCount >= count || outputCount > P::MAX_PQ_OUTPUTS_PER_TX) continue;
-
-    selection.plan.selectedInputs = count;
-    selection.plan.resultingOutputs = outputCount;
-    selection.plan.amount = amount;
-    selection.inputs.assign(sorted.begin(), sorted.begin() + count);
-    return selection;
+  const PqSigningContext signing = pqSigningContextForHeight(req.signingHeight, req.genesisId);
+  Selection picked{{}, {}, 0, req.scheme, capsFor(signing)};
+  for (const auto& in : sorted) {
+    if (picked.inputs.size() >= picked.caps.totalInputs) break;
+    if (picked.canTake(in)) picked.take(in);
   }
+  // Every merged input raises the total, so the largest batch that fits is also
+  // the one that clears the fee if any does.
+  if (picked.inputs.size() < 2 || picked.sum <= selection.plan.fee) return selection;
 
+  selection.plan.selectedInputs = picked.inputs.size();
+  selection.plan.resultingOutputs = 1;
+  selection.plan.amount = picked.sum - selection.plan.fee;
+  selection.inputs = std::move(picked.inputs);
   return selection;
-}
-
-// Greedily append inputs (already sorted descending by amount) until the running
-// sum covers `target` or MAX_PQ_INPUTS_PER_TX is reached. `selected` is always a
-// prefix of `sortedDesc`, so resumption just continues from its current length.
-uint64_t growSelection(const std::vector<PqSpendInput>& sortedDesc,
-                       std::vector<PqSpendInput>& selected, uint64_t sumIn, uint64_t target) {
-  for (std::size_t i = selected.size();
-       sumIn < target && selected.size() < P::MAX_PQ_INPUTS_PER_TX && i < sortedDesc.size();
-       ++i) {
-    if (sumIn > std::numeric_limits<uint64_t>::max() - sortedDesc[i].amount) {
-      throw PqSendError(PqSendErrorCode::TooLarge, "input amount overflow");
-    }
-    selected.push_back(sortedDesc[i]);
-    sumIn += sortedDesc[i].amount;
-  }
-  return sumIn;
-}
-
-// Build the payee groups (recipients + optional change to own primary), then coarsen
-// by merging the two smallest denominations of the largest group until the total
-// output count fits `maxOut`. Throws TooLarge if it cannot (every group already a
-// single output, yet still over the cap). Returns the flattened PqSendOutput list.
-std::vector<ProvenancedOutput> decomposeOutputs(
-    const std::vector<PqSendOutput>& recipients,
-    uint64_t change, const PqSendOutput& changeTmpl,
-    std::size_t maxOut) {
-  std::vector<OutputGroup> groups;
-  groups.reserve(recipients.size() + 1);
-  for (std::size_t recipientIndex = 0; recipientIndex < recipients.size(); ++recipientIndex) {
-    const auto& r = recipients[recipientIndex];
-    OutputGroup g;
-    g.tmpl = r;
-    g.denoms = decomposeToDenominations(r.amount);
-    g.recipientIndex = recipientIndex;
-    groups.push_back(std::move(g));
-  }
-  if (change > 0) {
-    OutputGroup g;
-    g.tmpl = changeTmpl;
-    g.tmpl.amount = 0;  // filled per denomination slot
-    g.denoms = decomposeToDenominations(change);
-    groups.push_back(std::move(g));
-  }
-
-  const std::size_t numDest = groups.size();
-  if (maxOut < numDest) {
-    throw PqSendError(PqSendErrorCode::TooLarge,
-                      "too many outputs for one PQ transaction; split into smaller transfers");
-  }
-
-  auto total = [&groups]() {
-    std::size_t n = 0;
-    for (const auto& g : groups) n += g.denoms.size();
-    return n;
-  };
-  while (total() > maxOut) {
-    // Merge the two smallest denominations of the group with the most pieces.
-    std::size_t best = 0;
-    for (std::size_t i = 1; i < groups.size(); ++i) {
-      if (groups[i].denoms.size() > groups[best].denoms.size()) best = i;
-    }
-    auto& d = groups[best].denoms;
-    if (d.size() < 2) {
-      // Should not happen (numDest <= maxOut guarantees a mergeable group exists).
-      throw PqSendError(PqSendErrorCode::TooLarge, "cannot coarsen PQ outputs to fit");
-    }
-    std::sort(d.begin(), d.end());
-    uint64_t merged = d[0] + d[1];  // may be non-canonical; consensus accepts any non-zero amount
-    d.erase(d.begin(), d.begin() + 2);
-    d.push_back(merged);
-  }
-
-  std::vector<ProvenancedOutput> outs;
-  for (const auto& g : groups) {
-    for (uint64_t v : g.denoms) {
-      PqSendOutput o = g.tmpl;
-      o.amount = v;
-      outs.push_back({std::move(o), g.recipientIndex});
-    }
-  }
-  return outs;
-}
-
-// Build (and sign) a draft for the given change, shrinking the output cap until the
-// serialized size is within MAX_PQ_TX_SIZE. Returns the signed transaction.
-FittingBuild buildFitting(const std::vector<PqSpendInput>& selected,
-                          const std::vector<PqInputAuth>& inputAuth,
-                          const std::vector<PqSendOutput>& recipients, uint64_t change,
-                          const PqSendOutput& changeTmpl,
-                          const std::vector<uint8_t>& extra,
-                          const PqSigningContext& signing) {
-  std::size_t numDest = recipients.size() + (change > 0 ? 1 : 0);
-  std::size_t maxOut = P::MAX_PQ_OUTPUTS_PER_TX;
-  for (;;) {
-    std::vector<ProvenancedOutput> provenanced =
-        decomposeOutputs(recipients, change, changeTmpl, maxOut);
-    std::vector<PqSendOutput> outputs;
-    std::vector<std::optional<std::size_t>> recipientIndexes;
-    outputs.reserve(provenanced.size());
-    recipientIndexes.reserve(provenanced.size());
-    for (auto& output : provenanced) {
-      outputs.push_back(std::move(output.output));
-      recipientIndexes.push_back(output.recipientIndex);
-    }
-    // Every rebuild of the shrinking loop signs under the SAME context. The loop
-    // varies only the output count, so re-deriving or defaulting the transcript
-    // here would let a resized draft be signed under different rules from the one
-    // the caller asked for.
-    PqTransactionBuildResult draft =
-        buildPqTransactionWithProof(selected, outputs, inputAuth, 0, extra, signing);
-    if (toBinaryArray(draft.tx).size() <= P::MAX_PQ_TX_SIZE) {
-      FittingBuild accepted;
-      accepted.transaction = std::move(draft);
-      accepted.recipientIndexes = std::move(recipientIndexes);
-      return accepted;
-    }
-    // The draft and its rho openings are one owner. Wipe before rebuilding with a
-    // smaller output cap; no stale rho can survive into the accepted transaction.
-    draft.clearWitnesses();
-    if (maxOut <= numDest) {
-      throw PqSendError(PqSendErrorCode::TooLarge,
-                        "transaction exceeds the size limit; split into smaller transfers");
-    }
-    --maxOut;
-  }
 }
 
 }  // namespace
@@ -257,23 +170,97 @@ PqSendResult buildPqSend(const std::vector<PqSpendInput>& available,
     }
     sent += r.amount;
   }
-
-  // Optional source filter: keep only inputs from the requested buckets (deposit
-  // indices / PQ_PRIMARY_DEPOSIT). Empty = spend from any bucket.
-  std::vector<PqSpendInput> sorted;
-  if (req.sourceBuckets.empty()) {
-    sorted = available;
-  } else {
-    std::unordered_set<uint32_t> want(req.sourceBuckets.begin(), req.sourceBuckets.end());
-    for (const auto& si : available) {
-      if (want.count(si.depositIndex) != 0) {
-        sorted.push_back(si);
-      }
-    }
+  // One output per recipient row plus change: the cap is on the recipient count,
+  // not on how the amounts decompose.
+  if (req.recipients.size() + 1 > P::MAX_PQ_OUTPUTS_PER_TX) {
+    throw PqSendError(PqSendErrorCode::TooLarge,
+                      "too many recipients for one PQ transaction; split into smaller transfers");
   }
-  // Deterministic input selection: largest first.
+
+  // Flat fee: MINIMUM_FEE plus the tx_extra surcharge. It is exact up front, so
+  // coin selection needs no size-measurement fixed point.
+  const uint64_t fee = req.explicitFee != 0
+                           ? req.explicitFee
+                           : P::pqTxFeeFloor(P::MINIMUM_FEE, req.extra.size());
+  if (sent > std::numeric_limits<uint64_t>::max() - fee) {
+    throw PqSendError(PqSendErrorCode::TooLarge, "payment plus fee overflow");
+  }
+  const uint64_t required = sent + fee;
+
+  // One context for the whole transaction, derived once through the shared
+  // consensus helper, so every input of this transaction signs under the same
+  // transcript and under the same rule the verifier will apply.
+  const PqSigningContext signing = [&] {
+    PqSigningContext ctx = pqSigningContextForHeight(req.signingHeight, req.genesisId);
+    ctx.txType = pqTransferTypeForHeight(req.signingHeight, req.deliveryV2Height);
+    return ctx;
+  }();
+
+  // Optional source filter, then deterministic largest-first order.
+  std::vector<PqSpendInput> sorted = filterBuckets(available, req.sourceBuckets);
   std::sort(sorted.begin(), sorted.end(),
             [](const PqSpendInput& a, const PqSpendInput& b) { return a.amount > b.amount; });
+
+  // Total spendable funds. The selection can only take so many inputs, so
+  // distinguish "no funds" from "funds exist but need more inputs than one tx
+  // allows" — the latter is not an insufficient balance.
+  uint64_t totalAvail = 0;
+  for (const auto& si : sorted) {
+    if (totalAvail > std::numeric_limits<uint64_t>::max() - si.amount) {
+      totalAvail = std::numeric_limits<uint64_t>::max();
+      break;
+    }
+    totalAvail += si.amount;
+  }
+
+  Selection selected{{}, {}, 0, req.scheme, capsFor(signing)};
+  std::vector<PqSpendInput> skipped;  // candidates the caps refused or the cover did not need
+  for (const auto& si : sorted) {
+    if (selected.sum >= required) {
+      skipped.push_back(si);
+      continue;
+    }
+    if (selected.canTake(si)) {
+      selected.take(si);
+    } else {
+      skipped.push_back(si);
+    }
+  }
+  if (selected.sum < required) {
+    if (totalAvail >= required) {
+      throw PqSendError(PqSendErrorCode::TooLarge,
+        "amount is too large to send in one transaction (it would need more than " +
+        std::to_string(selected.caps.totalInputs) +
+        " inputs); send a smaller amount, or consolidate your outputs first");
+    }
+    // `sorted` holds only spendable (unlocked) inputs, so a true shortfall means the
+    // unlocked balance is too small — typically coinbase still maturing.
+    throw PqSendError(PqSendErrorCode::InsufficientFunds, "insufficient unlocked balance");
+  }
+  const std::size_t coverCount = selected.inputs.size();
+
+  // Sweep: fold the smallest leftover inputs in while the wallet keeps a few
+  // outputs free. `skipped` is in descending order, so walk it from the back.
+  //
+  // Only outputs under keys this payment already reveals are swept. Spending an
+  // output publishes its key, so sweeping a different deposit's output in would
+  // publicly link that deposit to the others, which is exactly what per-deposit
+  // keys exist to prevent. For a single-key wallet that is every output.
+  //
+  // An extra input costs ~5.3 KB of key and signature, so only a few are folded in.
+  if (req.sweepSmallInputs) {
+    const std::size_t limit = PQ_SWEEP_MAX_EXTRA_INPUTS;
+    std::size_t remaining = skipped.size();
+    std::size_t swept = 0;
+    for (auto it = skipped.rbegin(); it != skipped.rend() && swept < limit; ++it) {
+      if (remaining <= PQ_SWEEP_KEEP_OUTPUTS) break;
+      if (selected.keys.count(keyGroupOf(*it, req.scheme)) == 0) continue;
+      if (!selected.canTake(*it)) continue;
+      selected.take(*it);
+      ++swept;
+      --remaining;
+    }
+  }
 
   // Per-input signing key, by bucket. Keep all copies in one contiguous,
   // page-locked vector and scrub it after the transaction has been signed.
@@ -303,115 +290,65 @@ PqSendResult buildPqSend(const std::vector<PqSpendInput>& available,
   };
 
   // Change destination: the caller's choice, else the primary identity (single-address
-  // default). The amount is filled per slot in decomposeOutputs.
+  // default).
   PqSendOutput changeTmpl = req.hasChangeDest
                                 ? req.changeDest
                                 : PqSendOutput{keys.viewPub, keys.spendPub, 0, 0, 0};
 
-  // Total spendable funds across all unlocked inputs. growSelection can only take up
-  // to MAX_PQ_INPUTS_PER_TX of them, so distinguish "no funds" from "funds exist but
-  // need more inputs than one tx allows" — the latter is not an insufficient balance.
-  uint64_t totalAvail = 0;
-  for (const auto& si : sorted) {
-    if (totalAvail > std::numeric_limits<uint64_t>::max() - si.amount) {
-      totalAvail = std::numeric_limits<uint64_t>::max();
+  // Build, shedding swept inputs if the serialized size is over the cap. The
+  // covering inputs are never shed: without them the payment cannot be made.
+  PqTransactionBuildResult draft;
+  for (;;) {
+    std::vector<PqSendOutput> outputs(req.recipients.begin(), req.recipients.end());
+    const uint64_t change = selected.sum - required;
+    if (change > 0) {
+      PqSendOutput c = changeTmpl;
+      c.amount = change;
+      outputs.push_back(c);
+    }
+
+    std::vector<PqInputAuth> inputAuth = authForSelection(selected.inputs);
+    Tools::SecretLock scrubAuth(inputAuth.data(), inputAuth.size() * sizeof(PqInputAuth));
+    // Every rebuild signs under the SAME context: the loop varies only the input
+    // set, so re-deriving the transcript here would let a resized draft be signed
+    // under different rules from the one the caller asked for.
+    draft = buildPqTransactionWithProof(selected.inputs, outputs, inputAuth, 0, req.extra, signing);
+    if (toBinaryArray(draft.tx).size() <= P::MAX_PQ_TX_SIZE) {
       break;
     }
-    totalAvail += si.amount;
-  }
-  auto shortfall = [&totalAvail](uint64_t need) -> PqSendError {
-    if (totalAvail >= need) {
-      return PqSendError(PqSendErrorCode::TooLarge,
-        "amount is too large to send in one transaction (it would need more than " +
-        std::to_string(P::MAX_PQ_INPUTS_PER_TX) +
-        " inputs); send a smaller amount, or consolidate your outputs first");
+    // The draft and its rho openings are one owner. Wipe before rebuilding with a
+    // smaller input set; no stale rho can survive into the accepted transaction.
+    draft.clearWitnesses();
+    if (selected.inputs.size() <= coverCount) {
+      throw PqSendError(PqSendErrorCode::TooLarge,
+                        "transaction exceeds the size limit; split into smaller transfers");
     }
-    // `sorted` holds only spendable (unlocked) inputs, so a true shortfall means the
-    // unlocked balance is too small — typically coinbase still maturing.
-    return PqSendError(PqSendErrorCode::InsufficientFunds, "insufficient unlocked balance");
-  };
-
-  std::vector<PqSpendInput> selected;
-  uint64_t sumIn = growSelection(sorted, selected, 0, sent);
-  if (sumIn < sent) {
-    throw shortfall(sent);
+    selected.drop();
   }
 
-  // Flat fee: MINIMUM_FEE plus the tx_extra surcharge. It is exact up front,
-  // so coin selection needs no size-measurement fixed point.
-  uint64_t fee = req.explicitFee != 0
-                     ? req.explicitFee
-                     : P::pqTxFeeFloor(P::MINIMUM_FEE, req.extra.size());
-  if (sent > std::numeric_limits<uint64_t>::max() - fee) {
-    throw PqSendError(PqSendErrorCode::TooLarge, "payment plus fee overflow");
-  }
-  const uint64_t required = sent + fee;
-  if (sumIn < required) {
-    sumIn = growSelection(sorted, selected, sumIn, required);
-    if (sumIn < required) {
-      throw shortfall(required);
-    }
-  }
-  uint64_t change = sumIn - sent - fee;
-  std::vector<PqInputAuth> inputAuth = authForSelection(selected);
-  Tools::SecretLock scrubAuth(
-      inputAuth.data(), inputAuth.size() * sizeof(PqInputAuth));
-  // One context for the whole transaction, derived once through the shared
-  // consensus helper, so every input of this transaction signs under the same
-  // transcript and under the same rule the verifier will apply.
-  const PqSigningContext signing = [&] {
-    PqSigningContext ctx = pqSigningContextForHeight(req.signingHeight, req.genesisId);
-    ctx.txType = pqTransferTypeForHeight(req.signingHeight, req.deliveryV2Height);
-    return ctx;
-  }();
-  FittingBuild finalBuild = buildFitting(
-      selected, inputAuth, req.recipients, change,
-      changeTmpl, req.extra, signing);
-
-  if (finalBuild.recipientIndexes.size() != finalBuild.transaction.tx.outputs.size() ||
-      finalBuild.transaction.outputRhos.size() != finalBuild.transaction.tx.outputs.size()) {
+  // Payment proofs: output i < recipients.size() belongs to recipient row i; the
+  // change output (if any) is last and is intentionally never proven.
+  if (draft.outputRhos.size() != draft.tx.outputs.size() ||
+      draft.tx.outputs.size() < req.recipients.size()) {
     throw std::runtime_error("buildPqSend: output provenance/opening mismatch");
   }
-
-  const PqPaymentProofTransaction proofTx =
-      makePqPaymentProofTransaction(finalBuild.transaction.tx);
-  std::vector<std::vector<PqPaymentProofEntry>> proofEntries(req.recipients.size());
-  std::vector<uint64_t> proofAmounts(req.recipients.size(), 0);
-  for (std::size_t outputIndex = 0;
-       outputIndex < finalBuild.transaction.tx.outputs.size(); ++outputIndex) {
-    const auto recipientIndex = finalBuild.recipientIndexes[outputIndex];
-    if (!recipientIndex) continue;  // change is intentionally never proven
-    if (*recipientIndex >= req.recipients.size()) {
-      throw std::runtime_error("buildPqSend: invalid recipient provenance");
-    }
-    proofEntries[*recipientIndex].push_back({
-        static_cast<uint32_t>(outputIndex),
-        finalBuild.transaction.outputRhos[outputIndex]});
-    const uint64_t amount = finalBuild.transaction.tx.outputs[outputIndex].amount;
-    if (proofAmounts[*recipientIndex] + amount < proofAmounts[*recipientIndex]) {
-      throw std::runtime_error("buildPqSend: proof amount overflow");
-    }
-    proofAmounts[*recipientIndex] += amount;
-  }
-
+  const PqPaymentProofTransaction proofTx = makePqPaymentProofTransaction(draft.tx);
   std::vector<PqPaymentProof> proofs;
   proofs.reserve(req.recipients.size());
-  for (std::size_t recipientIndex = 0;
-       recipientIndex < req.recipients.size(); ++recipientIndex) {
-    if (proofEntries[recipientIndex].empty() ||
-        proofAmounts[recipientIndex] != req.recipients[recipientIndex].amount) {
+  for (std::size_t i = 0; i < req.recipients.size(); ++i) {
+    const PqSendOutput& requested = req.recipients[i];
+    if (draft.tx.outputs[i].amount != requested.amount) {
       throw std::runtime_error("buildPqSend: incomplete recipient proof");
     }
-    const PqSendOutput& requested = req.recipients[recipientIndex];
     ResolvedRecipient recipient{
         requested.recipientViewPub,
         requested.recipientSpendPub,
         requested.subaddrIndexT};
+    std::vector<PqPaymentProofEntry> entries;
+    entries.push_back({static_cast<uint32_t>(i), draft.outputRhos[i]});
     PqPaymentProof proof = makePqPaymentProof(
-        req.genesisId, proofTx.txid, recipient,
-        std::move(proofEntries[recipientIndex]));
-    const uint64_t verified = verifyPqPaymentProof(
-        proof, req.genesisId, proofTx, recipient);
+        req.genesisId, proofTx.txid, recipient, std::move(entries));
+    const uint64_t verified = verifyPqPaymentProof(proof, req.genesisId, proofTx, recipient);
     if (verified != requested.amount) {
       throw std::runtime_error("buildPqSend: final payment proof total mismatch");
     }
@@ -419,42 +356,54 @@ PqSendResult buildPqSend(const std::vector<PqSpendInput>& available,
   }
 
   PqSendResult result;
-  result.tx = std::move(finalBuild.transaction.tx);
+  result.tx = std::move(draft.tx);
   result.fee = fee;
   result.sent = sent;
-  result.change = sumIn - sent - fee;
-  result.selected = std::move(selected);
+  result.change = selected.sum - required;
+  result.selected = std::move(selected.inputs);
   result.proofs = std::move(proofs);
-  finalBuild.transaction.clearWitnesses();
+  draft.clearWitnesses();
   return result;
 }
 
 PqConsolidationPlan planPqConsolidation(
     const std::vector<PqSpendInput>& available, uint64_t explicitFee) {
-  return selectConsolidationInputs(available, explicitFee).plan;
+  PqConsolidationRequest req;
+  req.explicitFee = explicitFee;
+  return selectConsolidationInputs(available, req).plan;
+}
+
+PqConsolidationPlan planPqConsolidation(
+    const std::vector<PqSpendInput>& available, const PqConsolidationRequest& req) {
+  return selectConsolidationInputs(available, req).plan;
 }
 
 PqConsolidationResult buildPqConsolidation(
     const std::vector<PqSpendInput>& available,
     const PqWalletKeys& keys,
     const PqConsolidationRequest& req) {
-  ConsolidationSelection selection =
-      selectConsolidationInputs(available, req.explicitFee);
+  ConsolidationSelection selection = selectConsolidationInputs(available, req);
   if (!selection.plan.useful()) {
     throw PqSendError(
         PqSendErrorCode::TooLarge,
-        "no useful consolidation batch (canonical outputs would not reduce the input count)");
+        "no useful consolidation batch (fewer than two spendable inputs, or the fee would consume them)");
   }
 
   PqSendRequest send;
-  send.recipients.push_back(PqSendOutput{
-      keys.viewPub, keys.spendPub, selection.plan.amount, 0, 0});
+  PqSendOutput destination = req.hasDestination
+                                 ? req.destination
+                                 : PqSendOutput{keys.viewPub, keys.spendPub, 0, 0, 0};
+  destination.amount = selection.plan.amount;
+  send.recipients.push_back(destination);
   send.explicitFee = selection.plan.fee;
   send.genesisId = req.genesisId;
   send.signingHeight = req.signingHeight;
   send.deliveryV2Height = req.deliveryV2Height;
   send.scheme = req.scheme;
+  send.sweepSmallInputs = false;  // the plan IS the input set
 
+  // The plan's inputs sum to exactly amount + fee, so the send must take all of
+  // them and leave no change.
   PqSendResult transaction = buildPqSend(selection.inputs, keys, send);
   if (transaction.selected.size() != selection.plan.selectedInputs ||
       transaction.tx.outputs.size() != selection.plan.resultingOutputs ||
@@ -462,6 +411,14 @@ PqConsolidationResult buildPqConsolidation(
       transaction.fee != selection.plan.fee ||
       transaction.tx.outputs.size() >= transaction.tx.inputs.size()) {
     throw std::runtime_error("buildPqConsolidation: final transaction does not match its plan");
+  }
+  for (const auto& picked : selection.inputs) {
+    const bool present = std::any_of(
+        transaction.selected.begin(), transaction.selected.end(),
+        [&picked](const PqSpendInput& used) { return sameOutpoint(used, picked); });
+    if (!present) {
+      throw std::runtime_error("buildPqConsolidation: planned input was not spent");
+    }
   }
 
   return PqConsolidationResult{selection.plan, std::move(transaction)};

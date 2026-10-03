@@ -81,7 +81,7 @@ public:
   // anti-spam PoW against `refBlockHash` (a recent main-chain block). The caller
   // relays the returned transaction. Throws on a tracking wallet.
   Transaction buildPqFreeRegTransaction(const Crypto::Hash& refBlockHash) const;
-  // Build (denominate, two-pass fee, sign) and relay a PQ transfer to already-resolved
+  // Build (select inputs, flat fee, sign) and relay a PQ transfer to already-resolved
   // recipients via the common sender. Returns the result (tx + fee + sent). Throws on a
   // tracking wallet, insufficient funds, or relay failure. The single PQ spend path
   // shared with WalletLegacy/simplewallet.
@@ -104,13 +104,25 @@ public:
                                  const std::vector<uint8_t>& extra = {},
                                  const std::vector<std::string>& sourceAddresses = {},
                                  const std::string& changeAddress = {});
+  // Maintenance: merge the smallest spendable outputs (as many as one transaction
+  // may carry) into ONE output. `sourceAddresses` (empty = any) restricts which of
+  // our buckets are merged; `destinationAddress` (empty = primary) is where the
+  // merged output lands and must be ours. A service wallet sweeps deposit buckets
+  // into its hot address this way, or merges a bucket back into itself to keep
+  // per-address attribution. Inputs are reserved before relay and released again
+  // if relay fails. Throws PqSendError(TooLarge) when no useful batch exists.
+  PqConsolidationPlan pqConsolidationPlan(const std::vector<std::string>& sourceAddresses = {},
+                                          uint64_t fee = 0) const;
+  PqConsolidationResult consolidatePqOutputs(const std::vector<std::string>& sourceAddresses = {},
+                                             const std::string& destinationAddress = {},
+                                             uint64_t fee = 0);
   const SentPaymentRecord* getPaymentProofs(const Crypto::Hash& txid) const;
   bool copyPaymentProofs(const Crypto::Hash& txid, SentPaymentRecord& record) const;
   Crypto::Hash importPaymentProofs(const std::string& bytes);
   bool deletePaymentProofs(const Crypto::Hash& txid,
                            std::size_t recipientIndex = static_cast<std::size_t>(-1));
   // Register this wallet's PQ identity with a fee-paying TX_PQ: a self-payment of
-  // the smallest denomination whose tx.extra carries the account-registration tag.
+  // one atomic unit whose tx.extra carries the account-registration tag.
   // Returns the built+relayed result. Throws on a tracking wallet / insufficient
   // funds. (The fee-free alternative is buildPqFreeRegTransaction.)
   PqSendResult registerPqAccountPaid();
