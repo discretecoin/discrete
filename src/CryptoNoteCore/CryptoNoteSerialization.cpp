@@ -50,7 +50,10 @@ struct BinaryVariantTagGetter: boost::static_visitor<uint8_t> {
   uint8_t operator()(const CryptoNote::BaseInput&) { return  0xff; }
   // KeyInput stub — should never be serialised on Discrete.
   uint8_t operator()(const CryptoNote::KeyInput&) { throw std::runtime_error("KeyInput not allowed in Discrete"); }
-  uint8_t operator()(const CryptoNote::PqInput&) { return  0x10; }
+  // 0x10 = key-carrying input, 0x13 = key-reference input (see PqInput).
+  uint8_t operator()(const CryptoNote::PqInput& in) {
+    return in.keyRef == CryptoNote::PQ_NO_KEY_REF ? 0x10 : 0x13;
+  }
   uint8_t operator()(const CryptoNote::SwapInput&) { return 0x20; }
   uint8_t operator()(const CryptoNote::SwapOutput&) { return 0x12; }
   // KeyOutput stub — should never be serialised on Discrete.
@@ -86,6 +89,20 @@ void getVariantValue(CryptoNote::ISerializer& serializer, uint8_t tag, CryptoNot
   case 0x10: {
     CryptoNote::PqInput v;
     serializer(v, "value");
+    in = v;
+    break;
+  }
+  case 0x13: {
+    // Key-reference input. Presetting keyRef selects the reference layout in
+    // serialize(PqInput&); the real index is read from the wire and authPub is
+    // filled from the referenced input once the whole input list is known
+    // (resolvePqKeyReferences).
+    CryptoNote::PqInput v;
+    v.keyRef = 0;
+    serializer(v, "value");
+    if (v.keyRef == CryptoNote::PQ_NO_KEY_REF) {
+      throw std::runtime_error("PqInput key reference out of range");
+    }
     in = v;
     break;
   }
@@ -210,6 +227,9 @@ void serialize(TransactionPrefix& txP, ISerializer& serializer) {
     txP.inputs.resize(count);
     for (auto& input : txP.inputs) serializer(input, "");
     serializer.endArray();
+    // Swap funding rejects key references, but a parsed transaction must hold
+    // a populated PqInput either way.
+    if (serializer.type() == ISerializer::INPUT) resolvePqKeyReferences(txP.inputs);
     count = txP.outputs.size();
     if (!serializer.beginArray(count, "vout") || count == 0 || count > 2) throw std::runtime_error("swap output count");
     txP.outputs.resize(count);
@@ -220,6 +240,11 @@ void serialize(TransactionPrefix& txP, ISerializer& serializer) {
     else if (!txP.extra.empty()) throw std::runtime_error("swap extra must be empty");
   } else {
     serializer(txP.inputs, "vin");
+    if (serializer.type() == ISerializer::INPUT) {
+      // Key-reference inputs travel without their key; give each one the key of
+      // the input it names so every consumer sees a fully populated PqInput.
+      resolvePqKeyReferences(txP.inputs);
+    }
     serializer(txP.outputs, "vout");
     serializeAsBinary(txP.extra, "extra", serializer);
   }
@@ -227,11 +252,17 @@ void serialize(TransactionPrefix& txP, ISerializer& serializer) {
 
 void serialize(Transaction& tx, ISerializer& serializer) {
   serialize(static_cast<TransactionPrefix&>(tx), serializer);
-  // Count PqInputs: each gets one ML-DSA-65 signature blob after the prefix
-  // (analogous to CN's per-input ring-sig vectors).
+  // Count the key-carrying inputs: each gets one ML-DSA-65 signature blob after
+  // the prefix (analogous to CN's per-input ring-sig vectors). A key-reference
+  // input is covered by the signature of the input it references and has none.
   size_t pqCount = 0;
-  for (const auto& in : tx.inputs)
-    if (in.type() == typeid(PqInput) || in.type() == typeid(SwapInput)) ++pqCount;
+  for (const auto& in : tx.inputs) {
+    if (in.type() == typeid(SwapInput)) {
+      ++pqCount;
+    } else if (in.type() == typeid(PqInput) && boost::get<PqInput>(in).keyRef == PQ_NO_KEY_REF) {
+      ++pqCount;
+    }
+  }
   if (serializer.type() == ISerializer::OUTPUT) {
     for (auto& sig : tx.pqSignatures)
       serializer.binary(sig.data(), PQ_SIGNATURE_SIZE, "pq_sig");
@@ -282,9 +313,33 @@ static void serializePqBlob(std::vector<uint8_t>& v, size_t expected, Common::St
 void serialize(PqInput& key, ISerializer& serializer) {
   serializer(key.prevTxid, "prev_txid");
   serializer(key.prevOutIndex, "prev_out_index");
-  serializePqBlob(key.authPub,   PQ_AUTH_PUB_SIZE, "auth_pub",   serializer);
+  if (key.keyRef == PQ_NO_KEY_REF) {
+    serializePqBlob(key.authPub, PQ_AUTH_PUB_SIZE, "auth_pub", serializer);
+  } else {
+    // Key-reference form: the index of the earlier input carrying this key
+    // replaces the 1952-byte key itself.
+    serializer(key.keyRef, "key_ref");
+  }
   serializePqBlob(key.rhoReveal, PQ_RHO_SIZE,      "rho_reveal", serializer);
   // Signature not here — it lives in Transaction.pqSignatures after the prefix.
+}
+
+void resolvePqKeyReferences(TransactionInputs& inputs) {
+  for (size_t i = 0; i < inputs.size(); ++i) {
+    if (inputs[i].type() != typeid(PqInput)) continue;
+    PqInput& in = boost::get<PqInput>(inputs[i]);
+    if (in.keyRef == PQ_NO_KEY_REF) continue;
+    // A reference may only point BACKWARDS at an input that carries its key.
+    // Anything else has no well-defined key and cannot be a valid transaction.
+    if (in.keyRef >= i || inputs[in.keyRef].type() != typeid(PqInput)) {
+      throw std::runtime_error("PqInput key reference does not name an earlier key-carrying input");
+    }
+    const PqInput& target = boost::get<PqInput>(inputs[in.keyRef]);
+    if (target.keyRef != PQ_NO_KEY_REF) {
+      throw std::runtime_error("PqInput key reference does not name an earlier key-carrying input");
+    }
+    in.authPub = target.authPub;
+  }
 }
 
 void serialize(SwapInput& input, ISerializer& serializer) {

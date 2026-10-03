@@ -48,16 +48,21 @@ uint32_t keyGroupOf(const PqSpendInput& in, PqDepositScheme scheme) {
 
 // Consensus caps a transaction's inputs. The key cap bounds how many DISTINCT
 // spend keys (and so ML-DSA signatures) one transaction may carry; the total cap
-// bounds the inputs. Today every input carries its own key, so the two are the
-// same number and the key cap never binds first.
+// bounds the inputs. Until grouped authorization activates
+// (parameters::PQ_GROUPED_AUTH_HEIGHT) every input carries its own key, so the
+// two are the same number and the key cap never binds first.
 struct InputCaps {
   std::size_t totalInputs;
   std::size_t keyInputs;
 };
 
-InputCaps capsFor(const PqSigningContext& /*signing*/) {
-  return {static_cast<std::size_t>(P::MAX_PQ_INPUTS_PER_TX),
-          static_cast<std::size_t>(P::MAX_PQ_INPUTS_PER_TX)};
+InputCaps capsFor(const PqSigningContext& signing) {
+  // Under grouped authorization only the first input of each key carries a key
+  // and a signature; the rest are ~70-byte key references, so far more inputs fit.
+  const std::size_t total = signing.groupedAuth
+                                ? static_cast<std::size_t>(P::MAX_PQ_GROUPED_INPUTS_PER_TX)
+                                : static_cast<std::size_t>(P::MAX_PQ_INPUTS_PER_TX);
+  return {total, static_cast<std::size_t>(P::MAX_PQ_INPUTS_PER_TX)};
 }
 
 // A growing input selection that respects both caps.
@@ -247,9 +252,12 @@ PqSendResult buildPqSend(const std::vector<PqSpendInput>& available,
   // publicly link that deposit to the others, which is exactly what per-deposit
   // keys exist to prevent. For a single-key wallet that is every output.
   //
-  // An extra input costs ~5.3 KB of key and signature, so only a few are folded in.
+  // An extra input normally costs ~5.3 KB of key and signature, so only a few are
+  // folded in. Under grouped authorization an input under a key the transaction
+  // already carries is a ~70-byte key reference, so many more fit.
   if (req.sweepSmallInputs) {
-    const std::size_t limit = PQ_SWEEP_MAX_EXTRA_INPUTS;
+    const std::size_t limit = signing.groupedAuth ? PQ_SWEEP_MAX_EXTRA_KEY_REFERENCES
+                                                  : PQ_SWEEP_MAX_EXTRA_INPUTS;
     std::size_t remaining = skipped.size();
     std::size_t swept = 0;
     for (auto it = skipped.rbegin(); it != skipped.rend() && swept < limit; ++it) {

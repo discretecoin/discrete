@@ -50,12 +50,37 @@ constexpr size_t PQ_AUTH_PUB_SIZE       = 1952;  // ML-DSA-65 public spend key
 constexpr size_t PQ_RHO_SIZE            = 32;
 constexpr size_t PQ_SIGNATURE_SIZE      = 3309;  // ML-DSA-65 signature
 
+// PqInput::keyRef value meaning "this input carries its own spend key".
+constexpr uint32_t PQ_NO_KEY_REF = 0xFFFFFFFFu;
+
 // One PQ input (no embedded signature — ML-DSA signatures live in Transaction.pqSignatures).
+//
+// Two wire forms share this one in-memory type:
+//
+//   key-carrying (tag 0x10)   prevTxid, prevOutIndex, authPub, rhoReveal
+//   key-reference (tag 0x13)  prevTxid, prevOutIndex, keyRef,  rhoReveal
+//
+// A key-reference input is authorized by the same ML-DSA key as an EARLIER
+// key-carrying input of the same transaction, named by its index. It carries no
+// key and no signature of its own: the one signature of the input it references
+// covers the whole transaction body, which includes this input's outpoint and
+// rho. That turns the marginal cost of spending another output of the same key
+// from ~5.3 KB (key + signature) into ~70 bytes.
+//
+// `authPub` is ALWAYS populated in memory, whichever form the input has on the
+// wire — the deserializer copies it from the referenced input — so ownership,
+// nullifier and scanning code never has to distinguish the two forms. Only the
+// serializer, the signature count and the consensus structure checks read keyRef.
+//
+// Key references are a consensus change that is implemented but not scheduled:
+// see parameters::PQ_GROUPED_AUTH_HEIGHT. Grouping is optional; the signer picks
+// the form, and every signature binds it.
 struct PqInput {
   Crypto::Hash         prevTxid;
   uint32_t             prevOutIndex;
   std::vector<uint8_t> authPub;     // PQ_AUTH_PUB_SIZE bytes
   std::vector<uint8_t> rhoReveal;   // PQ_RHO_SIZE bytes
+  uint32_t             keyRef = PQ_NO_KEY_REF;  // index of the input carrying this key
 };
 
 // One PQ output target. Amount is plain (in TransactionOutput.amount).
@@ -121,9 +146,10 @@ struct TransactionPrefix {
 };
 
 struct Transaction : public TransactionPrefix {
-  // ML-DSA-65 signatures: one fixed-size array per PqInput, in input order.
-  // Analogous to CN's ring-sig vector; size enforced at compile time.
-  // Empty for coinbase (BaseInput only) and TX_FREE_REG (no inputs).
+  // ML-DSA-65 signatures: one fixed-size array per KEY-CARRYING input (PqInput
+  // with keyRef == PQ_NO_KEY_REF, or SwapInput), in input order. Key-reference
+  // inputs have none. Analogous to CN's ring-sig vector; size enforced at
+  // compile time. Empty for coinbase (BaseInput only) and TX_FREE_REG (no inputs).
   std::vector<std::array<uint8_t, PQ_SIGNATURE_SIZE>> pqSignatures;
 };
 

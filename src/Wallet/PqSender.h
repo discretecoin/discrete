@@ -56,6 +56,11 @@ namespace CryptoNote {
 // free for a second transaction while the first is unconfirmed.
 constexpr std::size_t PQ_SWEEP_KEEP_OUTPUTS = 8;
 constexpr std::size_t PQ_SWEEP_MAX_EXTRA_INPUTS = 8;
+// Once grouped authorization is active (parameters::PQ_GROUPED_AUTH_HEIGHT) an
+// extra input under a key the transaction already carries is a ~70-byte key
+// reference rather than a ~5.3 KB key and signature, so a send folds in many
+// more of those. Inputs that would bring a NEW key stay under the limit above.
+constexpr std::size_t PQ_SWEEP_MAX_EXTRA_KEY_REFERENCES = 64;
 
 // One recipient with the lump amount to pay. buildPqSend emits exactly one output
 // per recipient row.
