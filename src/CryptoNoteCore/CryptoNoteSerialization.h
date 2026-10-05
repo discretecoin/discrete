@@ -51,7 +51,8 @@ void serialize(PqInput& key, ISerializer& serializer);
 // After a transaction's inputs have been read from the wire: copy each
 // key-reference input's authPub from the key-carrying input it names. Throws
 // std::runtime_error on a reference that does not point backwards at a
-// key-carrying PqInput.
+// key-carrying PqInput, and, before copying anything, on a list that holds a
+// reference and more than MAX_PQ_GROUPED_INPUTS_PER_TX inputs.
 void resolvePqKeyReferences(TransactionInputs& inputs);
 void serialize(SwapInput& input, ISerializer& serializer);
 void serialize(SwapOutput& output, ISerializer& serializer);

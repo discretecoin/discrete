@@ -329,6 +329,13 @@ void resolvePqKeyReferences(TransactionInputs& inputs) {
     if (inputs[i].type() != typeid(PqInput)) continue;
     PqInput& in = boost::get<PqInput>(inputs[i]);
     if (in.keyRef == PQ_NO_KEY_REF) continue;
+    // No valid transaction holding a reference has more inputs than this. Refuse
+    // before copying any key, or a list of ~70-byte references would make the
+    // parser expand each into a 1952-byte key before the semantic check sees the
+    // count. Lists without references are left to that check, as before.
+    if (inputs.size() > parameters::MAX_PQ_GROUPED_INPUTS_PER_TX) {
+      throw std::runtime_error("too many PQ inputs before key-reference expansion");
+    }
     // A reference may only point BACKWARDS at an input that carries its key.
     // Anything else has no well-defined key and cannot be a valid transaction.
     if (in.keyRef >= i || inputs[in.keyRef].type() != typeid(PqInput)) {

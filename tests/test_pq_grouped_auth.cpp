@@ -19,6 +19,7 @@
 #include "gtest/gtest.h"
 
 #include "CryptoNoteCore/CryptoNoteFormatUtils.h"
+#include "CryptoNoteCore/CryptoNoteSerialization.h"
 #include "CryptoNoteCore/CryptoNoteTools.h"
 #include "CryptoNoteCore/PqValidation.h"
 #include "Serialization/SerializationTools.h"
@@ -241,6 +242,61 @@ TEST(PqGroupedAuthWire, ParserRejectsReferencesThatDoNotPointBackAtAKey) {
   for (uint8_t b : {0xFF, 0xFF, 0xFF, 0xFF, 0x0F}) bad.push_back(b);          // varint 0xFFFFFFFF
   bad.insert(bad.end(), blob.begin() + keyRefOffset + 1, blob.end());
   EXPECT_FALSE(fromBinaryArray(parsed, bad));
+}
+
+TEST(PqGroupedAuthWire, OversizedReferenceListsFailBeforeAnyKeyIsCopied) {
+  // 257 inputs, all but the first referencing it: refused at the first reference,
+  // before a single 1952-byte key is copied into it.
+  Owner a = ownerOf(3, 1);
+  TransactionInputs inputs;
+  PqInput carrier;
+  carrier.authPub.assign(a.pub.begin(), a.pub.end());
+  carrier.rhoReveal.assign(PQ_RHO_SIZE, 7);
+  inputs.push_back(carrier);
+  for (uint32_t n = 1; n <= P::MAX_PQ_GROUPED_INPUTS_PER_TX; ++n) {
+    PqInput ref;
+    ref.prevOutIndex = n;
+    ref.keyRef = 0;
+    ref.rhoReveal.assign(PQ_RHO_SIZE, 7);
+    inputs.push_back(ref);
+  }
+  try {
+    resolvePqKeyReferences(inputs);
+    FAIL() << "expected the input-count guard";
+  } catch (const std::runtime_error& e) {
+    EXPECT_NE(std::string(e.what()).find("before key-reference expansion"), std::string::npos) << e.what();
+  }
+  EXPECT_TRUE(boost::get<PqInput>(inputs[1]).authPub.empty());
+
+  // A list of exactly the cap is resolved.
+  inputs.pop_back();
+  resolvePqKeyReferences(inputs);
+  EXPECT_EQ(boost::get<PqInput>(inputs.back()).authPub, carrier.authPub);
+}
+
+TEST(PqGroupedAuthWire, TwoHundredFiftySixInputsRoundTripOneMoreDoesNotParse) {
+  Owner a = ownerOf(3, 1);
+  std::vector<Funded> funded;
+  std::vector<const Owner*> owners;
+  for (uint32_t n = 0; n < P::MAX_PQ_GROUPED_INPUTS_PER_TX; ++n) {
+    funded.push_back(fundedBy(a, 10, n));
+    owners.push_back(&a);
+  }
+  Built full = build(funded, owners, groupedContext());
+  ASSERT_EQ(full.tx.pqSignatures.size(), 1u);
+
+  const BinaryArray blob = toBinaryArray(full.tx);
+  Transaction parsed;
+  ASSERT_TRUE(fromBinaryArray(parsed, blob));
+  EXPECT_EQ(toBinaryArray(parsed), blob);
+  std::string why;
+  EXPECT_TRUE(accepted(parsed, full.resolved, groupedContext(), &why)) << why;
+
+  Transaction over = full.tx;
+  PqInput extra = boost::get<PqInput>(over.inputs[1]);
+  extra.prevOutIndex += 1000;
+  over.inputs.push_back(extra);
+  EXPECT_FALSE(fromBinaryArray(parsed, toBinaryArray(over)));
 }
 
 // --- Semantic caps --------------------------------------------------------------
