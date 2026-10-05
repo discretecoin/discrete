@@ -141,6 +141,7 @@ namespace CryptoNote
     bool delete_payment_proof(const std::vector<std::string> &args);
     bool pq_register(const std::vector<std::string> &args = std::vector<std::string>());
     bool pq_register_paid(const std::vector<std::string> &args = std::vector<std::string>());
+    bool pq_consolidate(const std::vector<std::string> &args);
     bool pq_account(const std::vector<std::string> &args = std::vector<std::string>());
     // Resolve a recipient string (a raw PQ address OR an H-I-A-C account number) to
     // its view + spend public keys. Accepts a raw PQ address, an H-I-A-C account

@@ -1774,6 +1774,57 @@ std::error_code WalletService::listPqDepositAddressesPage(const ListPqDepositAdd
   return std::error_code();
 }
 
+std::error_code WalletService::consolidateOutputs(const ConsolidateOutputs::Request& request,
+                                                  ConsolidateOutputs::Response& response) {
+  try {
+    System::EventLock lk(readyEvent);
+    auto* gw = dynamic_cast<CryptoNote::WalletGreen*>(&wallet);
+    if (gw == nullptr || !gw->pqEnabled()) {
+      logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Consolidation is unavailable for a non-PQ wallet";
+      return make_error_code(CryptoNote::error::WRONG_PARAMETERS);
+    }
+    const std::vector<std::string> sourceAddresses =
+        canonicalizeAddressSelectors(wallet, request.addresses);
+    std::string destinationAddress;
+    if (!request.destinationAddress.empty()) {
+      destinationAddress = canonicalizeAddressSelector(wallet, request.destinationAddress);
+      if (!CryptoNote::validateAddress(destinationAddress, currency)) {
+        logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Bad destination address: " << destinationAddress;
+        return make_error_code(CryptoNote::error::BAD_ADDRESS);
+      }
+      if (!wallet.isMyAddress(destinationAddress)) {
+        logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Destination address is not ours: " << destinationAddress;
+        return make_error_code(CryptoNote::error::CHANGE_ADDRESS_NOT_FOUND);
+      }
+    }
+    CryptoNote::PqConsolidationResult r =
+        gw->consolidatePqOutputs(sourceAddresses, destinationAddress, request.fee);
+    response.transactionHash = Common::podToHex(CryptoNote::getObjectHash(r.transaction.tx));
+    response.inputs = r.plan.selectedInputs;
+    response.amount = r.plan.amount;
+    response.fee = r.plan.fee;
+    logger(Logging::DEBUGGING) << "Consolidation " << response.transactionHash << " has been sent";
+  } catch (const CryptoNote::PqSendError& e) {
+    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while consolidating outputs: " << e.what();
+    switch (e.code) {
+      case CryptoNote::PqSendErrorCode::InsufficientFunds:
+        return make_error_code(CryptoNote::error::INSUFFICIENT_FUNDS);
+      case CryptoNote::PqSendErrorCode::TooLarge:
+        // No useful batch: fewer than two spendable outputs, or the fee would eat them.
+        return make_error_code(CryptoNote::error::WRONG_PARAMETERS);
+      default:
+        return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
+    }
+  } catch (std::system_error& x) {
+    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while consolidating outputs: " << x.what();
+    return x.code();
+  } catch (std::exception& x) {
+    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while consolidating outputs: " << x.what();
+    return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
+  }
+  return std::error_code();
+}
+
 std::error_code WalletService::sendTransaction(const SendTransaction::Request& request, std::string& transactionHash,
                                                std::vector<std::string>& paymentProofs) {
   std::string ignoredTransactionHex;
