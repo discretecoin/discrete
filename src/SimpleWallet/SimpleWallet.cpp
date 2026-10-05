@@ -458,7 +458,7 @@ simple_wallet::simple_wallet(System::Dispatcher& dispatcher, const CryptoNote::C
   m_consoleHandler.setHandler("list_transfers", std::bind(&simple_wallet::list_transfers, this, std::placeholders::_1), "Show all known transfers");
   m_consoleHandler.setHandler("payments", std::bind(&simple_wallet::show_payments, this, std::placeholders::_1), "payments <payment_id_1> [<payment_id_2> ... <payment_id_N>] - Show payments <payment_id_1>, ... <payment_id_N>");
   m_consoleHandler.setHandler("outputs", std::bind(&simple_wallet::show_unlocked_outputs_count, this, std::placeholders::_1), "Show the number of unlocked outputs available for a transaction");
-  m_consoleHandler.setHandler("consolidate", std::bind(&simple_wallet::pq_consolidate, this, std::placeholders::_1), "Merge the smallest spendable outputs into one (as many as one transaction may carry; repeat as needed)");
+  m_consoleHandler.setHandler("consolidate", std::bind(&simple_wallet::pq_consolidate, this, std::placeholders::_1), "Merge the smallest spendable outputs into one (as many as one transaction may carry; repeat as needed). Pays the fee; the merged amount is unavailable until the transaction confirms");
   m_consoleHandler.setHandler("bc_height", std::bind(&simple_wallet::show_blockchain_height, this, std::placeholders::_1), "Show blockchain height");
   m_consoleHandler.setHandler("transfer", std::bind(&simple_wallet::pq_transfer, this, std::placeholders::_1),
     "transfer <address> <amount> [-p <payment_id>] - Send funds to an address (or account number)");

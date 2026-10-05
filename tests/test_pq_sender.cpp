@@ -182,16 +182,16 @@ TEST(PqSender, SweepFoldsSmallestInputsIntoAnOrdinarySend) {
     PqWalletKeys me = derivePqWalletKeys(spendSecret(9, 1));
     PqWalletKeys to = derivePqWalletKeys(spendSecret(7, 3));
 
-    // One large input covers the payment; 20 small ones are lying around.
+    // One large input covers the payment; 50 small ones are lying around.
     std::vector<PqSpendInput> inputs = {mkInput(100000, 0x01)};
-    for (uint8_t i = 0; i < 20; ++i) inputs.push_back(mkInput(10 + i, static_cast<uint8_t>(0x10 + i)));
+    for (uint8_t i = 0; i < 50; ++i) inputs.push_back(mkInput(10 + i, static_cast<uint8_t>(0x10 + i)));
 
     PqSendRequest req;
     req.recipients.push_back(PqSendOutput{to.viewPub, to.spendPub, 50000});
     PqSendResult r = buildPqSend(inputs, me, req);
 
     // Cover (1) + the maximum sweep (PQ_SWEEP_MAX_EXTRA_INPUTS), smallest first,
-    // leaving 20 - 8 = 12 > PQ_SWEEP_KEEP_OUTPUTS outputs in the wallet.
+    // leaving 50 - 8 = 42 > PQ_SWEEP_KEEP_OUTPUTS outputs in the wallet.
     ASSERT_EQ(r.selected.size(), 1 + PQ_SWEEP_MAX_EXTRA_INPUTS);
     EXPECT_EQ(r.selected[0].amount, 100000u);
     for (std::size_t i = 1; i < r.selected.size(); ++i) {
@@ -216,7 +216,7 @@ TEST(PqSender, SweepNeverLinksAKeyThePaymentDidNotNeed) {
     PqWalletKeys to = derivePqWalletKeys(spendSecret(7, 3));
 
     std::vector<PqSpendInput> inputs = {mkBucketInput(100000, 0x01, PQ_PRIMARY_DEPOSIT)};
-    for (uint8_t i = 0; i < 12; ++i) {
+    for (uint8_t i = 0; i < 24; ++i) {
         inputs.push_back(mkBucketInput(1, static_cast<uint8_t>(0x10 + i), 3));                  // tiniest
         inputs.push_back(mkBucketInput(20, static_cast<uint8_t>(0x40 + i), PQ_PRIMARY_DEPOSIT));
     }
@@ -235,20 +235,53 @@ TEST(PqSender, SweepNeverDrainsTheWalletBelowTheKeepThreshold) {
     PqWalletKeys me = derivePqWalletKeys(spendSecret(9, 1));
     PqWalletKeys to = derivePqWalletKeys(spendSecret(7, 3));
 
-    // Cover takes the largest; 10 small ones remain, of which only 2 may be swept
-    // before the wallet would drop to PQ_SWEEP_KEEP_OUTPUTS outputs.
+    // Cover takes the largest; PQ_SWEEP_KEEP_OUTPUTS + 2 small ones remain, of
+    // which only 2 may be swept before the wallet would drop to the floor.
     std::vector<PqSpendInput> inputs = {mkInput(100000, 0x01)};
-    for (uint8_t i = 0; i < 10; ++i) inputs.push_back(mkInput(10, static_cast<uint8_t>(0x10 + i)));
+    for (uint8_t i = 0; i < PQ_SWEEP_KEEP_OUTPUTS + 2; ++i)
+        inputs.push_back(mkInput(10, static_cast<uint8_t>(0x10 + i)));
 
     PqSendRequest req;
     req.recipients.push_back(PqSendOutput{to.viewPub, to.spendPub, 50000});
     PqSendResult r = buildPqSend(inputs, me, req);
-    EXPECT_EQ(r.selected.size(), 1u + (10 - PQ_SWEEP_KEEP_OUTPUTS));
+    EXPECT_EQ(r.selected.size(), 1u + 2u);
 
-    // At or below the threshold nothing is swept at all.
+    // A wallet that is not fragmented is never swept.
     std::vector<PqSpendInput> few = {mkInput(100000, 0x01)};
     for (uint8_t i = 0; i < PQ_SWEEP_KEEP_OUTPUTS; ++i) few.push_back(mkInput(10, static_cast<uint8_t>(0x20 + i)));
     EXPECT_EQ(buildPqSend(few, me, req).selected.size(), 1u);
+}
+
+TEST(PqSender, ASecondPaymentCanBeBuiltBeforeTheFirstConfirms) {
+    // Forty equal outputs: none of them is dust, so the sweep may hold back at most
+    // a tenth of the spendable value. The rest stays available for the next
+    // payment while the first one is unconfirmed.
+    PqWalletKeys me = derivePqWalletKeys(spendSecret(9, 1));
+    PqWalletKeys to = derivePqWalletKeys(spendSecret(7, 3));
+    std::vector<PqSpendInput> wallet;
+    for (uint8_t i = 0; i < 40; ++i) wallet.push_back(mkInput(1000, static_cast<uint8_t>(0x10 + i)));
+
+    PqSendRequest first;
+    first.recipients.push_back(PqSendOutput{to.viewPub, to.spendPub, 500});
+    PqSendResult r1 = buildPqSend(wallet, me, first);
+    uint64_t held = 0;
+    for (const auto& in : r1.selected) held += in.amount;
+    EXPECT_GT(r1.selected.size(), 1u);                         // it did sweep
+    EXPECT_LE(held, 1000u + 40000u / PQ_SWEEP_VALUE_DIVISOR);  // cover + a tenth
+
+    // Until it confirms, the first payment's inputs are reserved and its change is
+    // locked; what is left must still fund a large second payment.
+    std::vector<PqSpendInput> left;
+    for (const auto& in : wallet) {
+        bool reserved = false;
+        for (const auto& s : r1.selected)
+            reserved |= s.prevTxid == in.prevTxid && s.prevOutIndex == in.prevOutIndex;
+        if (!reserved) left.push_back(in);
+    }
+    PqSendRequest second;
+    second.recipients.push_back(PqSendOutput{to.viewPub, to.spendPub, 30000});
+    PqSendResult r2 = buildPqSend(left, me, second);
+    EXPECT_EQ(r2.sent, 30000u);
 }
 
 TEST(PqSender, ExplicitFeeExactNoChange) {
@@ -483,7 +516,7 @@ TEST(PqSender, SizeRetryShedsSweptInputsAndReturnsOnlyAcceptedWitnesses) {
     PqWalletKeys me = derivePqWalletKeys(spendSecret(9, 1));
     PqWalletKeys to = derivePqWalletKeys(spendSecret(7, 3));
     std::vector<PqSpendInput> inputs = {mkInput(20000000, 0x01)};
-    for (uint8_t i = 0; i < 20; ++i) inputs.push_back(mkInput(100, static_cast<uint8_t>(0x10 + i)));
+    for (uint8_t i = 0; i < 40; ++i) inputs.push_back(mkInput(100, static_cast<uint8_t>(0x10 + i)));
 
     PqSendRequest req;
     req.genesisId = testGenesis();

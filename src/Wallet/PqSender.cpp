@@ -239,8 +239,9 @@ PqSendResult buildPqSend(const std::vector<PqSpendInput>& available,
   }
   const std::size_t coverCount = selected.inputs.size();
 
-  // Sweep: fold the smallest leftover inputs in while the wallet keeps a few
-  // outputs free. `skipped` is in descending order, so walk it from the back.
+  // Sweep: fold the smallest leftover inputs in, within the bounds documented in
+  // PqSender.h. `skipped` is in descending order, so walk it from the back; once
+  // one output is over the value budget every later one is too.
   //
   // Only outputs under keys this payment already reveals are swept. Spending an
   // output publishes its key, so sweeping a different deposit's output in would
@@ -250,13 +251,17 @@ PqSendResult buildPqSend(const std::vector<PqSpendInput>& available,
   // An extra input costs ~5.3 KB of key and signature, so only a few are folded in.
   if (req.sweepSmallInputs) {
     const std::size_t limit = PQ_SWEEP_MAX_EXTRA_INPUTS;
+    const uint64_t valueBudget = totalAvail / PQ_SWEEP_VALUE_DIVISOR;
+    uint64_t sweptValue = 0;
     std::size_t remaining = skipped.size();
     std::size_t swept = 0;
     for (auto it = skipped.rbegin(); it != skipped.rend() && swept < limit; ++it) {
       if (remaining <= PQ_SWEEP_KEEP_OUTPUTS) break;
+      if (it->amount > valueBudget - sweptValue) break;
       if (selected.keys.count(keyGroupOf(*it, req.scheme)) == 0) continue;
       if (!selected.canTake(*it)) continue;
       selected.take(*it);
+      sweptValue += it->amount;
       ++swept;
       --remaining;
     }
