@@ -1036,7 +1036,19 @@ PqConsolidationPlan WalletLegacy::pqConsolidationPlan(uint64_t fee) const {
   if (!m_pqConsumer) {
     return {};
   }
-  return planPqConsolidation(m_pqConsumer->state().spendableInputs(), fee);
+  return planPqConsolidation(m_pqConsumer->state().spendableInputs(),
+                             pqConsolidationRequest(fee));
+}
+
+PqConsolidationRequest WalletLegacy::pqConsolidationRequest(uint64_t fee) const {
+  PqConsolidationRequest request;
+  request.explicitFee = fee;
+  std::memcpy(request.genesisId.data(), m_currency.genesisBlockHash().data,
+              request.genesisId.size());
+  request.signingHeight = pqSigningHeight();
+  request.deliveryV2Height = m_currency.pqDeliveryV2Height();
+  request.scheme = PqDepositScheme::SingleKeyIndex;
+  return request;
 }
 
 bool WalletLegacy::pqHasUnconfirmedTransactions() const {
@@ -1442,13 +1454,7 @@ PqConsolidationResult WalletLegacy::consolidatePqOutputsWithSeed(
   PqWalletKeys pq = deriveVerifiedSpendKeys(seedMaster);
   Tools::SecretLock scrub(&pq, sizeof(pq));
 
-  PqConsolidationRequest request;
-  request.explicitFee = fee;
-  std::memcpy(request.genesisId.data(), m_currency.genesisBlockHash().data,
-              request.genesisId.size());
-  request.signingHeight = pqSigningHeight();
-  request.deliveryV2Height = m_currency.pqDeliveryV2Height();
-  request.scheme = PqDepositScheme::SingleKeyIndex;
+  const PqConsolidationRequest request = pqConsolidationRequest(fee);
 
   // Build and reserve under one ledger lock. This prevents an adjacent send or
   // sync update from selecting the same inputs between planning and reservation.

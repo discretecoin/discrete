@@ -2657,42 +2657,9 @@ PqSendResult WalletGreen::sendPqTransfer(const std::vector<PqSendOutput>& recipi
   return result;
 }
 
-PqConsolidationPlan WalletGreen::pqConsolidationPlan(const std::vector<std::string>& sourceAddresses,
-                                                     uint64_t fee) const {
-  throwIfNotInitialized();
-  throwIfStopped();
-  if (!pqEnabled()) {
-    throw std::runtime_error("Spending is unavailable for this wallet");
-  }
-  PqConsolidationRequest req;
-  req.explicitFee = fee;
-  req.scheme = m_pqDepositScheme;
-  for (const auto& a : sourceAddresses) {
-    uint32_t bucket = 0;
-    if (!pqResolveAddressBucket(a, bucket)) {
-      throw std::system_error(make_error_code(error::BAD_ADDRESS),
-                              "source address is not owned by this wallet: " + a);
-    }
-    req.sourceBuckets.push_back(bucket);
-  }
-  System::EventLock lk(m_readyEvent);
-  return planPqConsolidation(m_pqConsumer->state().spendableInputs(), req);
-}
-
-PqConsolidationResult WalletGreen::consolidatePqOutputs(const std::vector<std::string>& sourceAddresses,
-                                                        const std::string& destinationAddress,
-                                                        uint64_t fee) {
-  throwIfNotInitialized();
-  throwIfStopped();
-  if (!pqEnabled()) {
-    throw std::runtime_error("Spending is unavailable for this wallet");
-  }
-  CryptoPQ::SeedMaster seed = primarySeedMaster();
-  if (seed == CryptoPQ::SeedMaster{}) {
-    throw std::runtime_error("tracking wallet cannot spend");
-  }
-  PqWalletKeys keys = derivePqWalletKeys(seed);
-
+PqConsolidationRequest WalletGreen::pqConsolidationRequest(
+    const std::vector<std::string>& sourceAddresses, const std::string& destinationAddress,
+    uint64_t fee) const {
   PqConsolidationRequest req;
   req.explicitFee = fee;
   std::memcpy(req.genesisId.data(), m_currency.genesisBlockHash().data,
@@ -2717,6 +2684,35 @@ PqConsolidationResult WalletGreen::consolidatePqOutputs(const std::vector<std::s
     req.hasDestination = true;
     req.destination = pqChangeTemplate(destinationBucket);
   }
+  return req;
+}
+
+PqConsolidationPlan WalletGreen::pqConsolidationPlan(const std::vector<std::string>& sourceAddresses,
+                                                     uint64_t fee) const {
+  throwIfNotInitialized();
+  throwIfStopped();
+  if (!pqEnabled()) {
+    throw std::runtime_error("Spending is unavailable for this wallet");
+  }
+  const PqConsolidationRequest req = pqConsolidationRequest(sourceAddresses, {}, fee);
+  System::EventLock lk(m_readyEvent);
+  return planPqConsolidation(m_pqConsumer->state().spendableInputs(), req);
+}
+
+PqConsolidationResult WalletGreen::consolidatePqOutputs(const std::vector<std::string>& sourceAddresses,
+                                                        const std::string& destinationAddress,
+                                                        uint64_t fee) {
+  throwIfNotInitialized();
+  throwIfStopped();
+  if (!pqEnabled()) {
+    throw std::runtime_error("Spending is unavailable for this wallet");
+  }
+  CryptoPQ::SeedMaster seed = primarySeedMaster();
+  if (seed == CryptoPQ::SeedMaster{}) {
+    throw std::runtime_error("tracking wallet cannot spend");
+  }
+  PqWalletKeys keys = derivePqWalletKeys(seed);
+  const PqConsolidationRequest req = pqConsolidationRequest(sourceAddresses, destinationAddress, fee);
 
   // Build + reserve under the wallet lock, exactly like sendPqTransfer: the
   // spendable set is read and the transaction registered (inputs marked spent)

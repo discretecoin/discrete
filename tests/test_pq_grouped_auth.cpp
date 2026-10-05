@@ -530,6 +530,36 @@ TEST(PqGroupedAuthSender, OneTransactionMergesTwoHundredFiftySixOutputs) {
                        pqSigningContextForHeight(P::PQ_GROUPED_AUTH_HEIGHT, chainId()), &why)) << why;
 }
 
+TEST(PqGroupedAuthSender, ConsolidationPreviewMatchesExecutionAcrossActivation) {
+  // A preview is only honest if it is planned from the same request as the
+  // consolidation; the input caps depend on the signing height.
+  PqWalletKeys me = derivePqWalletKeys(seedBytes(23, 7));
+  Owner key{me.spendPub, me.spendSk};
+  std::vector<PqSpendInput> available;
+  for (uint32_t n = 0; n < 300; ++n) available.push_back(fundedBy(key, 50 + n, n).input);
+
+  for (uint32_t height : {0u, P::PQ_GROUPED_AUTH_HEIGHT}) {
+    PqConsolidationRequest req;
+    req.genesisId = chainId();
+    req.scheme = PqDepositScheme::SingleKeyIndex;
+    req.signingHeight = height;
+    const PqConsolidationPlan preview = planPqConsolidation(available, req);
+    const PqConsolidationResult done = buildPqConsolidation(available, me, req);
+    EXPECT_EQ(preview.selectedInputs, done.plan.selectedInputs) << height;
+    EXPECT_EQ(preview.amount, done.plan.amount) << height;
+    EXPECT_EQ(preview.fee, done.plan.fee) << height;
+    EXPECT_EQ(done.transaction.tx.inputs.size(), preview.selectedInputs) << height;
+  }
+
+  // What the shared request prevents: a preview left at the default height shows
+  // 32 inputs while an activated consolidation sends 256.
+  PqConsolidationRequest atActivation;
+  atActivation.scheme = PqDepositScheme::SingleKeyIndex;
+  atActivation.signingHeight = P::PQ_GROUPED_AUTH_HEIGHT;
+  EXPECT_NE(planPqConsolidation(available, PqConsolidationRequest{}).selectedInputs,
+            planPqConsolidation(available, atActivation).selectedInputs);
+}
+
 TEST(PqGroupedAuthSender, LargePaymentsStopNeedingConsolidation) {
   PqWalletKeys me = derivePqWalletKeys(seedBytes(19, 6));
   Owner key{me.spendPub, me.spendSk};
