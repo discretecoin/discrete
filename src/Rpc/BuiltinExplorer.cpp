@@ -732,7 +732,13 @@ bool BuiltinExplorer::on_get_explorer_tx_by_hash(const COMMAND_EXPLORER_GET_TRAN
         body += "</td>\n    <td>";
         body += "    <a href=\"/explorer/tx/" + Common::podToHex(p.output.transactionHash) + "\">";
         body += "output No " + std::to_string(p.output.number) + "</a>";
-        body += foldedHex("Authorization public key, ML-DSA-65", p.input.authPub.data(), p.input.authPub.size());
+        if (p.input.keyRef != CryptoNote::PQ_NO_KEY_REF) {
+          // Grouped authorization: the key is carried, and signed for, by an
+          // earlier input of this transaction.
+          body += "<br>Authorized by the key of input No " + std::to_string(p.input.keyRef);
+        } else {
+          body += foldedHex("Authorization public key, ML-DSA-65", p.input.authPub.data(), p.input.authPub.size());
+        }
         body += "    </td>\n";
       }
       else if (in.type() == typeid(SwapInputDetails)) {
@@ -794,12 +800,12 @@ bool BuiltinExplorer::on_get_explorer_tx_by_hash(const COMMAND_EXPLORER_GET_TRAN
     body += "</tbody>\n";
     body += "</table>\n";
 
-    // ML-DSA-65 signatures, one per input (none in coinbase and free
-    // registrations).
+    // ML-DSA-65 signatures, one per input that carries its key (none in
+    // coinbase and free registrations).
     const Transaction& rawTx = txs.back();
     if (!rawTx.pqSignatures.empty()) {
       body += "<h3>Signatures</h3>\n";
-      body += "<p>" + std::to_string(rawTx.pqSignatures.size()) + " ML-DSA-65 signature(s), one per input, "
+      body += "<p>" + std::to_string(rawTx.pqSignatures.size()) + " ML-DSA-65 signature(s), one per input that carries its key, "
            + std::to_string(CryptoNote::PQ_SIGNATURE_SIZE) + " bytes each.</p>\n";
       body += "<ol>\n";
       for (const auto& sig : rawTx.pqSignatures) {

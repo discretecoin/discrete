@@ -53,6 +53,8 @@ bool checkSwapTransactionSemantic(const Transaction& tx,std::string* error) {
     if(funding) {
       if(in.type()!=typeid(PqInput))return fail(error,"swap funding requires ordinary input");
       const auto& p=boost::get<PqInput>(in); if(!fields(p.authPub,p.rhoReveal))return fail(error,"swap auth length");
+      // Key references belong to the ordinary transfer family only: every swap input is signed individually.
+      if(p.keyRef!=PQ_NO_KEY_REF)return fail(error,"swap funding input must carry its key");
     } else {
       if(in.type()!=typeid(SwapInput))return fail(error,"swap spending requires conditional input");
       const auto& p=boost::get<SwapInput>(in);

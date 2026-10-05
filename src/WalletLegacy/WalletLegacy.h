@@ -179,7 +179,7 @@ public:
                                          const std::vector<PqSendOutput>& recipients,
                                          uint64_t fee = 0, uint64_t unlockHeight = 0,
                                          const std::vector<uint8_t>& extra = {});
-  // Build (denominate, two-pass fee, sign) and relay a PQ transfer to already-resolved
+  // Build (select inputs, flat fee, sign) and relay a PQ transfer to already-resolved
   // recipients via the common sender — the same deterministic path WalletGreen uses.
   // Throws on a tracking wallet, insufficient funds, or relay failure.
   PqSendResult sendPqTransfer(const std::vector<PqSendOutput>& recipients,
@@ -333,6 +333,10 @@ private:
   // has to account for that window; see PQ_TRANSCRIPT_V2_HEIGHT, which is
   // deliberately unscheduled.
   uint32_t pqSigningHeight() const;
+  // The one request both the consolidation preview and the consolidation itself
+  // are planned from, so the preview cannot show a different batch (for example
+  // under another signing height's input caps) from the one that is sent.
+  PqConsolidationRequest pqConsolidationRequest(uint64_t fee) const;
   Logging::LoggerRef m_logger;
   bool m_isStopping;
 

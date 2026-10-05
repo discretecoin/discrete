@@ -102,7 +102,12 @@ PqTransactionBuildResult buildPqTransactionWithProof(
   if (inputAuth.size() != inputs.size()) {
     throw std::runtime_error("buildPqTransaction: input auth count mismatch");
   }
-  if (inputs.size() > parameters::MAX_PQ_INPUTS_PER_TX) {
+  if (signing.groupedAuth && !signing.useV2) {
+    throw std::runtime_error("buildPqTransaction: grouped authorization requires transcript v2");
+  }
+  const uint64_t maxInputs = signing.groupedAuth ? parameters::MAX_PQ_GROUPED_INPUTS_PER_TX
+                                                 : parameters::MAX_PQ_INPUTS_PER_TX;
+  if (inputs.size() > maxInputs) {
     throw std::runtime_error("buildPqTransaction: too many inputs");
   }
   if (outputs.size() > parameters::MAX_PQ_OUTPUTS_PER_TX) {
@@ -120,8 +125,14 @@ PqTransactionBuildResult buildPqTransactionWithProof(
   // the per-output rho. spend_commit(inputAuth[i].spendPub, rho) must match the
   // referenced output's commitment — true because this wallet owns the output and
   // supplies the key its bucket committed to (primary, or a per-deposit key).
+  //
+  // Under grouped authorization a spend key is carried once: the first input spent
+  // under a key carries it, and every later input under the same key becomes a
+  // key reference to that first input. Consensus would also accept the key carried
+  // several times, each copy signed; this is simply the smallest form.
   tx.inputs.reserve(inputs.size());
   uint64_t sumIn = 0;
+  std::size_t keyInputs = 0;
   for (size_t i = 0; i < inputs.size(); ++i) {
     const PqSpendInput& si = inputs[i];
     PqInput in;
@@ -129,11 +140,25 @@ PqTransactionBuildResult buildPqTransactionWithProof(
     in.prevOutIndex = si.prevOutIndex;
     in.authPub.assign(inputAuth[i].spendPub.begin(), inputAuth[i].spendPub.end());
     in.rhoReveal.assign(si.rho.begin(), si.rho.end());
+    if (signing.groupedAuth) {
+      for (size_t j = 0; j < i; ++j) {
+        if (inputAuth[j].spendPub == inputAuth[i].spendPub) {
+          in.keyRef = static_cast<uint32_t>(j);  // j is the first input of this key
+          break;
+        }
+      }
+    }
+    if (in.keyRef == PQ_NO_KEY_REF) {
+      ++keyInputs;
+    }
     tx.inputs.push_back(std::move(in));
     if (sumIn + si.amount < sumIn) {
       throw std::runtime_error("buildPqTransaction: input amount overflow");
     }
     sumIn += si.amount;
+  }
+  if (keyInputs > parameters::MAX_PQ_INPUTS_PER_TX) {
+    throw std::runtime_error("buildPqTransaction: too many distinct spend keys");
   }
 
   // inputsHash binds the canonical input order; the same value seeds every
@@ -174,23 +199,33 @@ PqTransactionBuildResult buildPqTransactionWithProof(
   }
   const uint64_t fee = sumIn - sumOut;
 
-  // Sign every input with ITS authorizing secret key; sigs go to
-  // Transaction.pqSignatures, and consensus verifies sig[i] against in[i].authPub.
+  // Sign every KEY-CARRYING input with its authorizing secret key; sigs go to
+  // Transaction.pqSignatures in input order, and consensus verifies each against
+  // the key that input carries. A key-reference input gets no signature: the
+  // signature of the input it references covers the whole body, this input
+  // included.
   //
   // Under transcript v1 there is one digest for the whole transaction. Under v2
-  // each input gets its own, binding the chain identity and the input's index, so
-  // a signature cannot be moved to another position or another network.
+  // each signed input gets its own, binding the chain identity, every input's key
+  // reference and the input's index, so a signature cannot be moved to another
+  // position or another network.
   const CryptoPQ::UnsignedTx unsigned_ = pqUnsignedTx(tx, fee);
-  const CryptoPQ::Hash256 sharedDigest =
-      signing.useV2 ? CryptoPQ::Hash256{} : CryptoPQ::txSigningDigest(unsigned_);
-
-  tx.pqSignatures.resize(tx.inputs.size());
+  std::vector<uint32_t> signers;
+  signers.reserve(keyInputs);
   for (size_t i = 0; i < tx.inputs.size(); ++i) {
-    const CryptoPQ::Hash256 digest =
-        signing.useV2
-            ? CryptoPQ::txSigningDigestV2(unsigned_, signing.chainId, static_cast<uint32_t>(i))
-            : sharedDigest;
-    tx.pqSignatures[i] = CryptoPQ::dsa_sign(inputAuth[i].spendSk, digest.data(), digest.size());
+    if (boost::get<PqInput>(tx.inputs[i]).keyRef == PQ_NO_KEY_REF) {
+      signers.push_back(static_cast<uint32_t>(i));
+    }
+  }
+  const std::vector<CryptoPQ::Hash256> digests =
+      signing.useV2
+          ? CryptoPQ::txSigningDigestsV2(unsigned_, signing.chainId, signers)
+          : std::vector<CryptoPQ::Hash256>(signers.size(), CryptoPQ::txSigningDigest(unsigned_));
+
+  tx.pqSignatures.reserve(signers.size());
+  for (size_t k = 0; k < signers.size(); ++k) {
+    tx.pqSignatures.push_back(CryptoPQ::dsa_sign(
+        inputAuth[signers[k]].spendSk, digests[k].data(), digests[k].size()));
   }
 
   return result;

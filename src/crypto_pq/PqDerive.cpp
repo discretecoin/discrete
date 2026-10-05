@@ -19,6 +19,8 @@
 
 #include <cstring>
 
+#include <oqs/sha3.h>
+
 namespace CryptoPQ {
 
 namespace {
@@ -165,14 +167,54 @@ Hash256 txSigningDigest(const UnsignedTx& tx) noexcept {
   return sha3_256(buf.data(), buf.size());
 }
 
-Hash256 txSigningDigestV2(const UnsignedTx& tx, const Hash256& chainId,
-                          uint32_t inputIndex) noexcept {
+namespace {
+
+// Everything a version-2 digest hashes before the signing input's index.
+std::vector<uint8_t> txSigningPrefixV2(const UnsignedTx& tx, const Hash256& chainId) {
   std::vector<uint8_t> buf;
   appendDomain(buf, kDomainTxSignV2);
   appendBytes(buf, chainId.data(), chainId.size());
   appendUnsignedTxBody(buf, tx);
+  for (const auto& in : tx.inputs) {
+    appendLe32(buf, in.keyRef);
+  }
+  return buf;
+}
+
+}  // namespace
+
+Hash256 txSigningDigestV2(const UnsignedTx& tx, const Hash256& chainId,
+                          uint32_t inputIndex) noexcept {
+  std::vector<uint8_t> buf = txSigningPrefixV2(tx, chainId);
   appendLe32(buf, inputIndex);
   return sha3_256(buf.data(), buf.size());
+}
+
+std::vector<Hash256> txSigningDigestsV2(const UnsignedTx& tx, const Hash256& chainId,
+                                        const std::vector<uint32_t>& inputIndices) {
+  std::vector<Hash256> digests(inputIndices.size());
+  if (inputIndices.empty()) {
+    return digests;
+  }
+  // Absorb the shared prefix once, then finish a copy of that state per index.
+  // SHA3 is a sponge, so prefix || LE32(index) hashed this way is bit-identical
+  // to hashing the concatenation in one call.
+  const std::vector<uint8_t> prefix = txSigningPrefixV2(tx, chainId);
+  OQS_SHA3_sha3_256_inc_ctx shared;
+  OQS_SHA3_sha3_256_inc_init(&shared);
+  OQS_SHA3_sha3_256_inc_absorb(&shared, prefix.data(), prefix.size());
+  for (std::size_t k = 0; k < inputIndices.size(); ++k) {
+    OQS_SHA3_sha3_256_inc_ctx one;
+    OQS_SHA3_sha3_256_inc_init(&one);  // clone copies into an initialized state
+    OQS_SHA3_sha3_256_inc_ctx_clone(&one, &shared);
+    std::vector<uint8_t> index;
+    appendLe32(index, inputIndices[k]);
+    OQS_SHA3_sha3_256_inc_absorb(&one, index.data(), index.size());
+    OQS_SHA3_sha3_256_inc_finalize(digests[k].data(), &one);
+    OQS_SHA3_sha3_256_inc_ctx_release(&one);
+  }
+  OQS_SHA3_sha3_256_inc_ctx_release(&shared);
+  return digests;
 }
 
 }  // namespace CryptoPQ
