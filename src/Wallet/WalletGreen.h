@@ -111,6 +111,10 @@ public:
   // into its hot address this way, or merges a bucket back into itself to keep
   // per-address attribution. Inputs are reserved before relay and released again
   // if relay fails. Throws PqSendError(TooLarge) when no useful batch exists.
+  // Unlike the sweep in ordinary sends, this is unbounded: merging outputs of
+  // different deposit addresses publishes that they belong to one wallet (restrict
+  // `sourceAddresses` to merge one deposit at a time), and the whole merged value
+  // is unspendable until the transaction confirms.
   PqConsolidationPlan pqConsolidationPlan(const std::vector<std::string>& sourceAddresses = {},
                                           uint64_t fee = 0) const;
   PqConsolidationResult consolidatePqOutputs(const std::vector<std::string>& sourceAddresses = {},

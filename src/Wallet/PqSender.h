@@ -39,27 +39,38 @@
 // the output count of every payment, which later cost a ~5.3 KB input each).
 //
 // Input policy: the fewest largest inputs that cover the payment, then — because
-// the fee is flat and does not grow with the input count — up to
-// PQ_SWEEP_MAX_EXTRA_INPUTS of the wallet's SMALLEST spendable inputs are folded
-// into the same transaction while the wallet would still keep more than
-// PQ_SWEEP_KEEP_OUTPUTS outputs. Only inputs under spend keys the payment already
-// uses are swept, so a sweep never links a deposit key the payment did not need.
-// This keeps the unspent-output set small as a side effect of ordinary sends, so
-// large payments keep fitting the consensus input caps without a separate
-// consolidation step. Every input is spent exactly once over its life, so the
-// sweep is byte-neutral for the chain; it only moves the cost earlier.
+// the fee is flat and does not grow with the input count — the wallet's SMALLEST
+// spendable inputs are folded into the same transaction (the sweep). This keeps
+// the unspent-output set small as a side effect of ordinary sends, so large
+// payments keep fitting the consensus input caps without a separate consolidation
+// step. Every input is spent exactly once over its life, so the sweep is
+// byte-neutral for the chain; it only moves the cost earlier.
+//
+// What a send holds back until it confirms is the covering inputs (as before)
+// plus the swept ones, and the sweep is bounded so it cannot eat into liquidity:
+//   * it only runs while more than PQ_SWEEP_KEEP_OUTPUTS spendable outputs would
+//     remain, so a wallet that is not fragmented is never swept;
+//   * the swept value is at most 1/PQ_SWEEP_VALUE_DIVISOR of the spendable value,
+//     so a second payment can be built before the first confirms;
+//   * at most PQ_SWEEP_MAX_EXTRA_INPUTS inputs per send
+//     (PQ_SWEEP_MAX_EXTRA_KEY_REFERENCES once grouped authorization is active);
+//   * only inputs under spend keys the payment already uses, so it never links a
+//     deposit key the payment did not need.
+// Explicit consolidation (buildPqConsolidation) has none of these bounds: it
+// merges whatever it selects and holds all of it until it confirms.
 
 namespace CryptoNote {
 
-// Sweep policy (wallet policy, not consensus). A send never sweeps the wallet
-// below PQ_SWEEP_KEEP_OUTPUTS spendable outputs, so a wallet keeps a few outputs
-// free for a second transaction while the first is unconfirmed.
-constexpr std::size_t PQ_SWEEP_KEEP_OUTPUTS = 8;
+// Sweep policy (wallet policy, not consensus); see the input policy above. 32 is
+// today's per-transaction input cap: a wallet holding no more outputs than that
+// can always pay from one transaction, so it has nothing worth sweeping.
+constexpr std::size_t PQ_SWEEP_KEEP_OUTPUTS = 32;
 constexpr std::size_t PQ_SWEEP_MAX_EXTRA_INPUTS = 8;
-// Once grouped authorization is active (parameters::PQ_GROUPED_AUTH_HEIGHT) an
-// extra input under a key the transaction already carries is a ~70-byte key
-// reference rather than a ~5.3 KB key and signature, so a send folds in many
-// more of those. Inputs that would bring a NEW key stay under the limit above.
+constexpr uint64_t PQ_SWEEP_VALUE_DIVISOR = 10;
+// Once grouped authorization is active (parameters::PQ_GROUPED_AUTH_HEIGHT) a
+// swept input is a ~70-byte key reference rather than a ~5.3 KB key and
+// signature, since the sweep only takes keys the payment already carries, so a
+// send folds in up to this many instead of PQ_SWEEP_MAX_EXTRA_INPUTS.
 constexpr std::size_t PQ_SWEEP_MAX_EXTRA_KEY_REFERENCES = 64;
 
 // One recipient with the lump amount to pay. buildPqSend emits exactly one output
