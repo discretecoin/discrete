@@ -465,6 +465,12 @@ private:
   // has to account for that window; see PQ_TRANSCRIPT_V2_HEIGHT, which is
   // deliberately unscheduled.
   uint32_t pqSigningHeight() const;
+  // The one request both the consolidation preview and the consolidation itself
+  // are planned from, so the preview cannot show a different batch (for example
+  // under another signing height's input caps) from the one that is sent.
+  PqConsolidationRequest pqConsolidationRequest(const std::vector<std::string>& sourceAddresses,
+                                                const std::string& destinationAddress,
+                                                uint64_t fee) const;
   mutable Logging::LoggerRef m_logger;
   bool m_stopped;
 

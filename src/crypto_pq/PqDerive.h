@@ -103,6 +103,10 @@ struct DigestInput {
   uint32_t                prevOutIndex;
   DsaPublicKey            authPub;    // pk_i revealed at spend (1952 bytes)
   Rho                     rhoReveal;
+  // Index of the earlier input that carries this input's key, or 0xFFFFFFFF when
+  // the input carries its own (CryptoNote::PQ_NO_KEY_REF). Bound by the
+  // version-2 transcript only; version 1 predates key references.
+  uint32_t                keyRef = 0xFFFFFFFFu;
 };
 
 // Fields of one PqOutput as they enter the signing digest (spec §8.1).
@@ -187,10 +191,18 @@ Rho coinbaseRho(const DsaPublicKey& spendPub, uint32_t height,
 Hash256 txSigningDigest(const UnsignedTx& tx) noexcept;
 
 // 6b. txSigningDigestV2 -- the next-version transcript. Same body as v1, wrapped
-//     in a new domain and prefixed with the chain identity, suffixed with the
-//     index of the input this signature authorizes:
+//     in a new domain and prefixed with the chain identity, suffixed with every
+//     input's key reference and the index of the input this signature authorizes:
 //
-//       SHA3-256(domainV2 || chainId || <v1 body> || LE32(inputIndex))
+//       SHA3-256(domainV2 || chainId || <v1 body> ||
+//                LE32(keyRef_0) || ... || LE32(keyRef_{n-1}) || LE32(inputIndex))
+//
+//     keyRef is 0xFFFFFFFF for an input that carries its own key. Binding it means
+//     the signature covers the authorization FORM of every input, not only its
+//     outpoint, key and rho, so a transaction cannot be re-encoded between the
+//     key-carrying and key-reference forms under an existing signature. Under
+//     grouped authorization (parameters::PQ_GROUPED_AUTH_HEIGHT) only
+//     key-carrying inputs are signed, and inputIndex is that input's position.
 //
 //     It closes two holes in v1 that cannot be fixed without changing what is
 //     signed:
@@ -213,5 +225,15 @@ Hash256 txSigningDigest(const UnsignedTx& tx) noexcept;
 //     parameters::PQ_TRANSCRIPT_V2_HEIGHT.
 Hash256 txSigningDigestV2(const UnsignedTx& tx, const Hash256& chainId,
                           uint32_t inputIndex) noexcept;
+
+// 6c. txSigningDigestsV2 -- txSigningDigestV2 for several input indices at once,
+//     result k for inputIndices[k]. Every version-2 digest of one transaction
+//     shares everything but the trailing index, so the shared part is absorbed
+//     once: checking n signatures over a b-byte body hashes ~b bytes, not n*b.
+//     With grouped authorization a body can list hundreds of inputs, which makes
+//     the difference between linear and quadratic verification cost. Results
+//     are byte-identical to calling txSigningDigestV2 per index.
+std::vector<Hash256> txSigningDigestsV2(const UnsignedTx& tx, const Hash256& chainId,
+                                        const std::vector<uint32_t>& inputIndices);
 
 }  // namespace CryptoPQ

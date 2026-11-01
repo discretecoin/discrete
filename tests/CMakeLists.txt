@@ -65,6 +65,7 @@ add_executable(PqWalletStateTests test_pq_wallet_state.cpp)
 add_executable(PqConsumerTests test_pq_consumer.cpp)
 add_executable(PqGenesisTests test_pq_genesis.cpp)
 add_executable(PqSenderTests test_pq_sender.cpp)
+add_executable(PqGroupedAuthTests test_pq_grouped_auth.cpp)
 add_executable(PqFinalityTests test_pq_finality.cpp)
 add_executable(PqPowTests test_pq_pow.cpp)
 add_executable(PqDnsCheckpointTests test_dns_checkpoint.cpp)
@@ -105,6 +106,7 @@ target_link_libraries(PqWalletStateTests Wallet CryptoNoteCore Serialization Sys
 target_link_libraries(PqConsumerTests Wallet Transfers CryptoNoteCore Serialization System Logging Common Crypto CryptoPq gtest ${Boost_LIBRARIES})
 target_link_libraries(PqGenesisTests CryptoNoteCore Serialization System Logging Common Crypto CryptoPq gtest ${Boost_LIBRARIES})
 target_link_libraries(PqSenderTests Wallet CryptoNoteCore Serialization System Logging Common Crypto CryptoPq gtest ${Boost_LIBRARIES})
+target_link_libraries(PqGroupedAuthTests Wallet CryptoNoteCore Serialization System Logging Common Crypto CryptoPq gtest ${Boost_LIBRARIES})
 target_link_libraries(PqFinalityTests Checkpoints CryptoNoteCore Serialization System Logging Common Crypto CryptoPq gtest ${Boost_LIBRARIES})
 target_link_libraries(PqPowTests CryptoNoteCore Serialization System Logging Common Crypto CryptoPq gtest ${Boost_LIBRARIES})
 target_link_libraries(PqDnsCheckpointTests CheckpointsDns CryptoNoteCore Serialization System Logging Common Crypto CryptoPq gtest ${Boost_LIBRARIES})
@@ -137,6 +139,7 @@ if(MSVC)
   target_link_libraries(PqConsumerTests legacy_stdio_definitions.lib ws2_32)
   target_link_libraries(PqGenesisTests legacy_stdio_definitions.lib ws2_32)
   target_link_libraries(PqSenderTests legacy_stdio_definitions.lib ws2_32)
+  target_link_libraries(PqGroupedAuthTests legacy_stdio_definitions.lib ws2_32)
   target_link_libraries(PqFinalityTests legacy_stdio_definitions.lib ws2_32)
   target_link_libraries(PqPowTests legacy_stdio_definitions.lib ws2_32)
   target_link_libraries(PqDnsCheckpointTests legacy_stdio_definitions.lib ws2_32)
@@ -197,6 +200,7 @@ set_property(TARGET
   PqConsumerTests
   PqGenesisTests
   PqSenderTests
+  PqGroupedAuthTests
   PqFinalityTests
   PqPowTests
   PqDnsCheckpointTests
@@ -232,6 +236,7 @@ set_property(TARGET PqWalletStateTests PROPERTY OUTPUT_NAME "pq_wallet_state_tes
 set_property(TARGET PqConsumerTests PROPERTY OUTPUT_NAME "pq_consumer_tests")
 set_property(TARGET PqGenesisTests PROPERTY OUTPUT_NAME "pq_genesis_tests")
 set_property(TARGET PqSenderTests PROPERTY OUTPUT_NAME "pq_sender_tests")
+set_property(TARGET PqGroupedAuthTests PROPERTY OUTPUT_NAME "pq_grouped_auth_tests")
 set_property(TARGET PqFinalityTests PROPERTY OUTPUT_NAME "pq_finality_tests")
 set_property(TARGET PqPowTests PROPERTY OUTPUT_NAME "pq_pow_tests")
 set_property(TARGET PqDnsCheckpointTests PROPERTY OUTPUT_NAME "pq_dns_checkpoint_tests")
@@ -273,6 +278,7 @@ add_test(PqWalletStateTests pq_wallet_state_tests)
 add_test(PqConsumerTests pq_consumer_tests)
 add_test(PqGenesisTests pq_genesis_tests)
 add_test(PqSenderTests pq_sender_tests)
+add_test(PqGroupedAuthTests pq_grouped_auth_tests)
 add_test(PqFinalityTests pq_finality_tests)
 add_test(PqPowTests pq_pow_tests)
 add_test(PqDnsCheckpointTests pq_dns_checkpoint_tests)

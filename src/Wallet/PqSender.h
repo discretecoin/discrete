@@ -52,7 +52,8 @@
 //     remain, so a wallet that is not fragmented is never swept;
 //   * the swept value is at most 1/PQ_SWEEP_VALUE_DIVISOR of the spendable value,
 //     so a second payment can be built before the first confirms;
-//   * at most PQ_SWEEP_MAX_EXTRA_INPUTS inputs per send;
+//   * at most PQ_SWEEP_MAX_EXTRA_INPUTS inputs per send
+//     (PQ_SWEEP_MAX_EXTRA_KEY_REFERENCES once grouped authorization is active);
 //   * only inputs under spend keys the payment already uses, so it never links a
 //     deposit key the payment did not need.
 // Explicit consolidation (buildPqConsolidation) has none of these bounds: it
@@ -66,6 +67,11 @@ namespace CryptoNote {
 constexpr std::size_t PQ_SWEEP_KEEP_OUTPUTS = 32;
 constexpr std::size_t PQ_SWEEP_MAX_EXTRA_INPUTS = 8;
 constexpr uint64_t PQ_SWEEP_VALUE_DIVISOR = 10;
+// Once grouped authorization is active (parameters::PQ_GROUPED_AUTH_HEIGHT) a
+// swept input is a ~70-byte key reference rather than a ~5.3 KB key and
+// signature, since the sweep only takes keys the payment already carries, so a
+// send folds in up to this many instead of PQ_SWEEP_MAX_EXTRA_INPUTS.
+constexpr std::size_t PQ_SWEEP_MAX_EXTRA_KEY_REFERENCES = 64;
 
 // One recipient with the lump amount to pay. buildPqSend emits exactly one output
 // per recipient row.

@@ -50,7 +50,12 @@ struct PqResolvedInput {
 // Context-free shape / semantic checks for one v2 TX_PQ transaction:
 //  - subtype == TX_PQ
 //  - non-empty; all inputs PqInput; all outputs PqOutput (mixed-family reject)
-//  - inputs <= MAX_PQ_INPUTS_PER_TX, outputs <= MAX_PQ_OUTPUTS_PER_TX
+//  - key-carrying inputs <= MAX_PQ_INPUTS_PER_TX, inputs in total <=
+//    MAX_PQ_GROUPED_INPUTS_PER_TX, outputs <= MAX_PQ_OUTPUTS_PER_TX
+//  - every key-reference input names an EARLIER key-carrying input and holds
+//    that input's key (whether key references are allowed at all is a height
+//    rule, enforced by checkPqTransactionInputs)
+//  - one signature per key-carrying input
 //  - serialized size <= MAX_PQ_TX_SIZE
 //  - every PQ blob field has the exact consensus length
 //  - every output amount != 0
@@ -121,6 +126,11 @@ uint64_t grindFreeRegPow(const std::array<uint8_t, 1184>& viewPub,
 struct PqSigningContext {
   bool useV2 = false;
   CryptoPQ::Hash256 chainId{};  // genesis block id; only read when useV2
+  // Grouped input authorization (parameters::PQ_GROUPED_AUTH_HEIGHT). When set,
+  // an input may be a key reference to an earlier input carrying the same spend
+  // key, and there is one signature per key-carrying input. When clear,
+  // key-reference inputs are rejected outright. Only meaningful with useV2.
+  bool groupedAuth = false;
   // Declared transfer subtype. It belongs here rather than as a separate builder
   // argument because txType is INSIDE the §8.1 signing digest: the declaration is
   // part of what the inputs authorize, so it cannot be altered after signing.
@@ -159,7 +169,10 @@ PqSigningContext pqSigningContextForHeight(uint32_t height, const CryptoPQ::Hash
 //  - intra-tx nullifier uniqueness
 //  - balance: sum(referenced amounts) == sum(output amounts) + fee, fee >= 0
 //  - fee >= pqTxFeeFloor(minFee, extra size): flat minimum + tx_extra surcharge
-//  - ML-DSA verify each input over the recomputed txSigningDigest
+//  - key references: none unless signing.groupedAuth (and useV2); each names an
+//    earlier key-carrying input holding the same key. Checked first, before any
+//    per-input hashing.
+//  - ML-DSA verify each key-carrying input over the recomputed txSigningDigest
 bool checkPqTransactionInputs(const Transaction& tx,
                              const std::vector<PqResolvedInput>& resolved,
                              uint64_t minFee,

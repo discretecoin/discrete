@@ -177,6 +177,12 @@ PqTransactionBuildResult buildPqTransactionWithProof(
 // activation passes the version-2 context so each signature binds the chain
 // identity and its own input index. Signing and verification read the same
 // PqSigningContext, so the two can never drift.
+//
+// With signing.groupedAuth (parameters::PQ_GROUPED_AUTH_HEIGHT) the builder emits
+// the grouped form: the first input of each distinct spendPub carries
+// the key and is signed; every later input under that key is a key reference and
+// is not. Up to MAX_PQ_GROUPED_INPUTS_PER_TX inputs under at most
+// MAX_PQ_INPUTS_PER_TX distinct keys are accepted then.
 Transaction buildPqTransaction(const std::vector<PqSpendInput>& inputs,
                                const std::vector<PqSendOutput>& outputs,
                                const std::vector<PqInputAuth>& inputAuth,
