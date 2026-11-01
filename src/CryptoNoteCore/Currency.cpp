@@ -69,7 +69,6 @@ namespace CryptoNote {
   };
 
   bool Currency::init() {
-    if (m_swapLab && !m_testnet) return false;
     if (!generateGenesisBlock()) {
       logger(ERROR, BRIGHT_RED) << "Failed to generate genesis block";
       return false;
@@ -138,8 +137,6 @@ namespace CryptoNote {
       // keep the two networks' outpoints apart on its own.
       ++m_genesisBlock.nonce;
     }
-    // Local swap qualification has a distinct chain-bound signing context.
-    if (swapLab()) m_genesisBlock.nonce = 0x53574150u;
     // Genesis signature validation is skipped (height 0), but the wire format
     // requires exactly PQ_SIGNATURE_SIZE bytes. Fill with zeros.
     if (m_genesisBlock.signature.empty()) {

@@ -62,7 +62,7 @@ jobs:
       - name: Build and run the security-boundary test suites
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential cmake git libboost-all-dev libssl-dev pkg-config python3
+          sudo apt-get install -y build-essential cmake git libboost-all-dev libssl-dev pkg-config
 
           # The suites that stand on a security boundary rather than on a feature,
           # so that a change which quietly reopens one fails here rather than in
@@ -84,7 +84,6 @@ jobs:
           #                         the synchronizer's active/idle contract, which
           #                         is what a client gates Reset and Rescan on
           #   PqWalletSyncE2E       the wallet lifecycle end to end
-          #   SwapChainTests       native swap accounting, conflicts, reorg and restart
           #
           # DISCRETE_BOOST_PREFER_MODULE: see the PoW KAT job -- Ubuntu's apt Boost
           # advertises a CMake config package whose static libraries mislink.
@@ -97,17 +96,13 @@ jobs:
             -D DISCRETE_BOOST_PREFER_MODULE=ON
 
           cmake --build build/security --config Release \
-            --target PqChainTests PqDaemonTrustTests PqPaymentProofTests UnitTests Daemon SimpleWallet SwapChainTests \
+            --target PqChainTests PqDaemonTrustTests PqPaymentProofTests UnitTests \
             -- -j"$(nproc)"
 
           # PqWalletSyncE2E is a filtered run of the UnitTests binary, so it needs
           # no target of its own.
           ctest --test-dir build/security -C Release --output-on-failure \
-            -R '^(PqChainTests|PqDaemonTrustTests|PqPaymentProofTests|SynchronizationActivityTests|UnitTests|PqWalletSyncE2E|SwapChainTests)$'
-
-          # Local read-only RPC, including ordinary/restricted testnet mode.
-          SWAP_CORE_DIR="$PWD" SWAP_BUILD_DIR="$PWD/build/security" \
-            python3 -B tests/test_swap_outpoint_rpc.py -v
+            -R '^(PqChainTests|PqDaemonTrustTests|PqPaymentProofTests|SynchronizationActivityTests|UnitTests|PqWalletSyncE2E)$'
 
   build-windows:
     name: Windows

@@ -1,4 +1,3 @@
-#include "CryptoNoteCore/SwapValidation.h"
 // Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 // Copyright (c) 2016-2026, The Karbo developers
 //
@@ -310,7 +309,7 @@ bool Core::check_tx_fee(const Transaction& tx, const Crypto::Hash& txHash, size_
   const uint8_t blockMajorVersion = m_blockchain.getBlockMajorVersionForHeight(height);
   const bool isPqTx = tx.version >= TRANSACTION_VERSION_1;
   const bool isFreeRegTransaction = isPqTx && tx.txType == TX_FREE_REG;
-  if (isPqTx && (isPqTransfer(tx.txType) || isSwapTransaction(tx))) {
+  if (isPqTx && isPqTransfer(tx.txType)) {
     return true;
   }
 
@@ -366,9 +365,6 @@ bool Core::check_tx_semantic(const Transaction& tx, const Crypto::Hash& txHash, 
   // subtype (including the permanently-reserved 0x02) is rejected.
   if (tx.version >= TRANSACTION_VERSION_1) {
     std::string pqErr;
-    if (isSwapTransaction(tx)) {
-      return m_currency.swapsEnabledAt(m_blockchain.getCurrentBlockchainHeight()) && checkSwapTransactionSemantic(tx, &pqErr);
-    }
     if (isPqTransfer(tx.txType)) {
       if (!checkPqTransactionSemantic(tx, &pqErr)) {
         logger(ERROR) << "PQ tx semantic check failed (" << pqErr << ") for tx id= " << Common::podToHex(txHash);
@@ -824,10 +820,6 @@ std::vector<Transaction> Core::getPoolTransactions() {
     result.emplace_back(std::move(tx));
   }
   return result;
-}
-
-bool Core::poolHasSpendTag(const Crypto::KeyImage& tag) const {
-  return m_mempool.haveSpendTag(tag);
 }
 
 bool Core::getPoolTransaction(const Crypto::Hash& tx_hash, Transaction& transaction) {

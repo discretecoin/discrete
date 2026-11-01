@@ -1,2 +1,0 @@
-# Keep frozen laboratory source/evidence byte-identical on every checkout.
-lab/** -text
