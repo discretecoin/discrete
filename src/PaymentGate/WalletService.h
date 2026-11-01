@@ -119,6 +119,7 @@ public:
   // carries it through reset's internal reload, but a new process starts at
   // zero again.
   std::error_code enableLegacyDepositRescan(uint32_t maxT);
+  std::error_code consolidateOutputs(const ConsolidateOutputs::Request& request, ConsolidateOutputs::Response& response);
   std::error_code sendTransaction(const SendTransaction::Request& request, std::string& transactionHash,
                                   std::vector<std::string>& paymentProofs);
   std::error_code sendTransaction(const SendTransaction::Request& request, std::string& transactionHash) {

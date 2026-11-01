@@ -29,17 +29,49 @@
 
 // The single, engine-agnostic PQ spend path shared by BOTH wallet engines
 // (WalletLegacy/simplewallet and WalletGreen/greenwallet/walletd). All deterministic
-// policy — input selection order, canonical denomination decomposition, two-pass fee
-// rounding, change handling, signing — lives here so the front-ends can never drift.
-// It performs NO I/O and touches no node: the caller relays the returned transaction.
+// policy — input selection, output shape, the flat fee, change handling, signing —
+// lives here so the front-ends can never drift. It performs NO I/O and touches no
+// node: the caller relays the returned transaction.
+//
+// Output policy: ONE output per recipient row plus one change output. Consensus
+// accepts any non-zero amount, so there is no decomposition into denominations
+// (the former canonical denomination table was wallet policy only and multiplied
+// the output count of every payment, which later cost a ~5.3 KB input each).
+//
+// Input policy: the fewest largest inputs that cover the payment, then — because
+// the fee is flat and does not grow with the input count — the wallet's SMALLEST
+// spendable inputs are folded into the same transaction (the sweep). This keeps
+// the unspent-output set small as a side effect of ordinary sends, so large
+// payments keep fitting the consensus input caps without a separate consolidation
+// step. Every input is spent exactly once over its life, so the sweep is
+// byte-neutral for the chain; it only moves the cost earlier.
+//
+// What a send holds back until it confirms is the covering inputs (as before)
+// plus the swept ones, and the sweep is bounded so it cannot eat into liquidity:
+//   * it only runs while more than PQ_SWEEP_KEEP_OUTPUTS spendable outputs would
+//     remain, so a wallet that is not fragmented is never swept;
+//   * the swept value is at most 1/PQ_SWEEP_VALUE_DIVISOR of the spendable value,
+//     so a second payment can be built before the first confirms;
+//   * at most PQ_SWEEP_MAX_EXTRA_INPUTS inputs per send;
+//   * only inputs under spend keys the payment already uses, so it never links a
+//     deposit key the payment did not need.
+// Explicit consolidation (buildPqConsolidation) has none of these bounds: it
+// merges whatever it selects and holds all of it until it confirms.
 
 namespace CryptoNote {
 
-// One recipient with the lump amount to pay. buildPqSend decomposes the amount into
-// canonical denominations (Denominations.h) and may emit several outputs per recipient.
+// Sweep policy (wallet policy, not consensus); see the input policy above. 32 is
+// today's per-transaction input cap: a wallet holding no more outputs than that
+// can always pay from one transaction, so it has nothing worth sweeping.
+constexpr std::size_t PQ_SWEEP_KEEP_OUTPUTS = 32;
+constexpr std::size_t PQ_SWEEP_MAX_EXTRA_INPUTS = 8;
+constexpr uint64_t PQ_SWEEP_VALUE_DIVISOR = 10;
+
+// One recipient with the lump amount to pay. buildPqSend emits exactly one output
+// per recipient row.
 struct PqSendRequest {
   std::vector<PqSendOutput> recipients;  // each .amount is the lump to that recipient
-  uint64_t explicitFee = 0;              // 0 = auto (two-pass measured fee)
+  uint64_t explicitFee = 0;              // 0 = auto (flat consensus floor for the extra size)
   uint64_t unlockHeight = 0;             // legacy API tx-level lock; TX_PQ requires 0
   std::vector<uint8_t> extra;            // tx.extra (e.g. a PQ account registration tag)
   CryptoPQ::Hash256 genesisId{};         // network binding embedded in every proof
@@ -68,16 +100,20 @@ struct PqSendRequest {
 
   // Restrict the spend to these source buckets (depositIndex values; PQ_PRIMARY_DEPOSIT
   // = primary). Empty = spend from any bucket. Lets a caller spend only from a specific
-  // deposit / address index.
+  // deposit / address index. The sweep draws from the same restricted set.
   std::vector<uint32_t> sourceBuckets;
 
   // Where change (if any) is sent. When hasChangeDest is false (default) change returns
   // to the primary identity (`keys`) — correct for a single-address wallet. The
   // front-end sets it to route change to a specific address/deposit per the
   // change-destination rule (CryptoNote getChangeDestination). `changeDest.amount` is
-  // ignored (filled per denomination slot).
+  // ignored (filled with the change).
   bool hasChangeDest = false;
   PqSendOutput changeDest;
+
+  // Fold the smallest spendable inputs into this send (see the policy above).
+  // Front-ends leave it on; a caller that must spend an exact input set turns it off.
+  bool sweepSmallInputs = true;
 };
 
 struct PqSendResult {
@@ -89,13 +125,14 @@ struct PqSendResult {
   std::vector<PqPaymentProof> proofs;     // exactly one per request recipient row
 };
 
-// A dry-run description of one maintenance transaction. Consolidation is useful
-// only when the canonical outputs it creates are fewer than the inputs it consumes;
-// callers must never pay a fee for a zero- or negative-reduction transaction.
+// A dry-run description of one maintenance transaction: the smallest spendable
+// inputs merged into ONE output back to the wallet. Consolidation is useful only
+// when it consumes at least two inputs and the fee leaves something to return;
+// callers must never pay a fee for a useless transaction.
 struct PqConsolidationPlan {
   std::size_t availableInputs = 0;
   std::size_t selectedInputs = 0;
-  std::size_t resultingOutputs = 0;
+  std::size_t resultingOutputs = 0;  // 1 when the plan is useful
   uint64_t amount = 0;  // value returned to the wallet, after the fee
   uint64_t fee = 0;
 
@@ -113,6 +150,13 @@ struct PqConsolidationRequest {
   // signingHeight, or it is rejected once TX_PQ_V2 activates.
   uint32_t deliveryV2Height = 0xFFFFFFFFu;
   PqDepositScheme scheme = PqDepositScheme::AggregatedMultikey;
+  // Only merge inputs from these buckets (empty = any bucket), and send the merged
+  // output to `destination` (default: the wallet's primary identity). A service
+  // wallet uses these to sweep deposit buckets into its hot address, or to merge a
+  // bucket back into itself so per-address attribution is preserved.
+  std::vector<uint32_t> sourceBuckets;
+  bool hasDestination = false;
+  PqSendOutput destination;
 };
 
 struct PqConsolidationResult {
@@ -142,16 +186,19 @@ PqSendResult buildPqSend(const std::vector<PqSpendInput>& available,
                          const PqWalletKeys& keys,
                          const PqSendRequest& req);
 
-// Selects up to MAX_PQ_INPUTS_PER_TX of the smallest spendable inputs and checks
-// whether returning their value to the wallet in canonical denominations would
-// strictly reduce the output count. This is read-only and does not sign.
+// Selects the smallest spendable inputs, as many as one transaction may carry,
+// and describes merging them into one output. Read-only; does not sign.
 PqConsolidationPlan planPqConsolidation(
     const std::vector<PqSpendInput>& available,
     uint64_t explicitFee = 0);
+PqConsolidationPlan planPqConsolidation(
+    const std::vector<PqSpendInput>& available,
+    const PqConsolidationRequest& req);
 
 // Builds a self-transfer from the exact inputs selected by planPqConsolidation.
-// The transaction has no tx_extra, no change, and one logical recipient: the
-// wallet's primary PQ identity. Throws TooLarge when no useful plan exists.
+// The transaction has no tx_extra, no change, and one output to the destination
+// (default: the wallet's primary PQ identity). Throws TooLarge when no useful plan
+// exists.
 PqConsolidationResult buildPqConsolidation(
     const std::vector<PqSpendInput>& available,
     const PqWalletKeys& keys,

@@ -59,7 +59,6 @@
 #include "Wallet/PqWallet.h"
 #include "Wallet/PqTransactionBuilder.h"
 #include "Wallet/PqRecipient.h"
-#include "Denominations.h"
 #include "AccountNumber.h"
 #include "CryptoNoteCore/CryptoNoteTools.h"
 #include "CryptoNoteCore/PqValidation.h"
@@ -1896,8 +1895,9 @@ size_t WalletGreen::transfer(const TransactionParameters& transactionParameters,
 
 uint64_t WalletGreen::getBalanceMinusDust(const std::vector<std::string>& /*addresses*/)
 {
-  // PQ output amounts are drawn from the fixed canonical denomination table, so
-  // there is no unspendable "dust"; only mempool/lock state can make funds unavailable.
+  // Every PQ output amount is spendable as-is (the atomic unit is 0.01 XDS and the
+  // fee is flat), so there is no unspendable "dust"; only mempool/lock state can
+  // make funds unavailable.
   return pqSpendableBalance();
 }
 
@@ -2657,6 +2657,115 @@ PqSendResult WalletGreen::sendPqTransfer(const std::vector<PqSendOutput>& recipi
   return result;
 }
 
+PqConsolidationPlan WalletGreen::pqConsolidationPlan(const std::vector<std::string>& sourceAddresses,
+                                                     uint64_t fee) const {
+  throwIfNotInitialized();
+  throwIfStopped();
+  if (!pqEnabled()) {
+    throw std::runtime_error("Spending is unavailable for this wallet");
+  }
+  PqConsolidationRequest req;
+  req.explicitFee = fee;
+  req.scheme = m_pqDepositScheme;
+  for (const auto& a : sourceAddresses) {
+    uint32_t bucket = 0;
+    if (!pqResolveAddressBucket(a, bucket)) {
+      throw std::system_error(make_error_code(error::BAD_ADDRESS),
+                              "source address is not owned by this wallet: " + a);
+    }
+    req.sourceBuckets.push_back(bucket);
+  }
+  System::EventLock lk(m_readyEvent);
+  return planPqConsolidation(m_pqConsumer->state().spendableInputs(), req);
+}
+
+PqConsolidationResult WalletGreen::consolidatePqOutputs(const std::vector<std::string>& sourceAddresses,
+                                                        const std::string& destinationAddress,
+                                                        uint64_t fee) {
+  throwIfNotInitialized();
+  throwIfStopped();
+  if (!pqEnabled()) {
+    throw std::runtime_error("Spending is unavailable for this wallet");
+  }
+  CryptoPQ::SeedMaster seed = primarySeedMaster();
+  if (seed == CryptoPQ::SeedMaster{}) {
+    throw std::runtime_error("tracking wallet cannot spend");
+  }
+  PqWalletKeys keys = derivePqWalletKeys(seed);
+
+  PqConsolidationRequest req;
+  req.explicitFee = fee;
+  std::memcpy(req.genesisId.data(), m_currency.genesisBlockHash().data,
+              req.genesisId.size());
+  req.signingHeight = pqSigningHeight();
+  req.deliveryV2Height = m_currency.pqDeliveryV2Height();
+  req.scheme = m_pqDepositScheme;
+  for (const auto& a : sourceAddresses) {
+    uint32_t bucket = 0;
+    if (!pqResolveAddressBucket(a, bucket)) {
+      throw std::system_error(make_error_code(error::BAD_ADDRESS),
+                              "source address is not owned by this wallet: " + a);
+    }
+    req.sourceBuckets.push_back(bucket);
+  }
+  if (!destinationAddress.empty()) {
+    uint32_t destinationBucket = 0;
+    if (!pqResolveAddressBucket(destinationAddress, destinationBucket)) {
+      throw std::system_error(make_error_code(error::CHANGE_ADDRESS_NOT_FOUND),
+                              "destination address is not owned by this wallet: " + destinationAddress);
+    }
+    req.hasDestination = true;
+    req.destination = pqChangeTemplate(destinationBucket);
+  }
+
+  // Build + reserve under the wallet lock, exactly like sendPqTransfer: the
+  // spendable set is read and the transaction registered (inputs marked spent)
+  // atomically with respect to the sync thread.
+  PqConsolidationResult result;
+  Crypto::Hash txid;
+  std::size_t availableInputCount = 0;
+  try {
+    System::EventLock lk(m_readyEvent);
+    std::vector<PqSpendInput> spendable = m_pqConsumer->state().spendableInputs();
+    availableInputCount = spendable.size();
+    m_logger(INFO) << "Building PQ consolidation: available inputs " << availableInputCount
+                   << ", source buckets " << req.sourceBuckets.size()
+                   << ", requested fee atomic units " << fee;
+    result = buildPqConsolidation(spendable, keys, req);
+    txid = getObjectHash(result.transaction.tx);
+    auto reader = createTransactionPrefix(result.transaction.tx);
+    m_pqConsumer->addUnconfirmedTransaction(*reader);
+  } catch (const PqSendError& e) {
+    m_logger(WARNING, BRIGHT_YELLOW) << "PQ consolidation rejected: " << e.what()
+                                    << ", available inputs " << availableInputCount;
+    throw;
+  }
+
+  m_logger(INFO) << "PQ consolidation built and reserved: hash " << Common::podToHex(txid)
+                 << ", inputs " << result.plan.selectedInputs
+                 << ", outputs " << result.plan.resultingOutputs
+                 << ", bytes " << toBinaryArray(result.transaction.tx).size()
+                 << ", amount atomic units " << result.plan.amount
+                 << ", fee atomic units " << result.plan.fee;
+
+  // Relay OUTSIDE the lock; on failure roll the reservation back.
+  std::promise<std::error_code> promise;
+  auto future = promise.get_future();
+  m_node.relayTransaction(result.transaction.tx,
+                          [&promise](std::error_code ec) { promise.set_value(ec); });
+  std::error_code ec = future.get();
+  if (ec) {
+    m_logger(ERROR, BRIGHT_RED) << "PQ consolidation relay failed: hash " << Common::podToHex(txid)
+                                << ", error " << ec.message() << " (" << ec.value()
+                                << "); rolling back ledger reservation";
+    System::EventLock lk(m_readyEvent);
+    m_pqConsumer->removeUnconfirmedTransaction(txid);
+    throw std::system_error(ec, "failed to relay consolidation transaction");
+  }
+  m_logger(INFO) << "PQ consolidation relay accepted: " << Common::podToHex(txid);
+  return result;
+}
+
 PqSendResult WalletGreen::preparePqTransfer(const std::vector<PqSendOutput>& recipients,
                                             uint64_t fee, uint64_t unlockHeight,
                                             const std::vector<uint8_t>& extra,
@@ -2819,11 +2928,11 @@ PqSendResult WalletGreen::registerPqAccountPaid() {
   PqWalletKeys keys = derivePqWalletKeys(seed);
 
   // A paid registration is a fee-paying TX_PQ whose extra holds the registration
-  // tag (consensus records it first-reg-wins). Pay the smallest denomination back
-  // to ourselves so the transaction has a real output + fee.
+  // tag (consensus records it first-reg-wins). Pay one atomic unit back to
+  // ourselves so the transaction has a real output + fee.
   std::vector<uint8_t> extra;
   addPqAccountRegistrationToExtra(extra, keys.viewPub, keys.spendPub);
-  PqSendOutput self{keys.viewPub, keys.spendPub, MIN_CT_DENOMINATION, 0 /*T*/, 0 /*unlock*/};
+  PqSendOutput self{keys.viewPub, keys.spendPub, 1 /*atomic unit*/, 0 /*T*/, 0 /*unlock*/};
   return sendPqTransfer({self}, 0 /*auto fee*/, 0 /*unlock*/, extra);
 }
 

@@ -1,9 +1,10 @@
 // Copyright (c) 2026, The Discrete developers
 //
 // Tests for the common engine-agnostic PQ sender (src/Wallet/PqSender): input
-// selection, canonical denomination decomposition, the flat fee (MINIMUM_FEE +
-// tx_extra surcharge), change, and the consensus size/count caps. The sender is
-// the single deterministic spend path used by every front-end.
+// selection (largest-first cover plus the small-input sweep), one output per
+// recipient, the flat fee (MINIMUM_FEE + tx_extra surcharge), change, the
+// consensus size/count caps, and consolidation. The sender is the single
+// deterministic spend path used by every front-end.
 
 #include "gtest/gtest.h"
 
@@ -11,7 +12,6 @@
 #include "Wallet/PqWallet.h"
 #include "Wallet/PqTransactionBuilder.h"
 #include "CryptoNoteCore/PqValidation.h"
-#include "Denominations.h"
 #include "CryptoNoteConfig.h"
 #include "CryptoNoteCore/CryptoNoteTools.h"
 #include "CryptoNote.h"
@@ -149,7 +149,7 @@ TEST(PqSender, SourceBucketFilterRestrictsInputs) {
     }
 }
 
-TEST(PqSender, SimpleTransferDecomposesAndBalances) {
+TEST(PqSender, SimpleTransferIsOneOutputPerRecipientPlusChange) {
     PqWalletKeys me = derivePqWalletKeys(spendSecret(9, 1));
     PqWalletKeys to = derivePqWalletKeys(spendSecret(7, 3));
 
@@ -162,17 +162,126 @@ TEST(PqSender, SimpleTransferDecomposesAndBalances) {
 
     EXPECT_EQ(r.sent, 250u);
     EXPECT_GE(r.fee, 1u);
-    EXPECT_EQ(r.selected.size(), 3u);                 // 100+100+100 covers 250
+    // 100+100+100 covers 250 + fee; the one leftover input stays (the sweep keeps
+    // a wallet above PQ_SWEEP_KEEP_OUTPUTS outputs).
+    EXPECT_EQ(r.selected.size(), 3u);
     EXPECT_EQ(r.tx.inputs.size(), r.selected.size());
     // Conservation: inputs == sent + change + fee; outputs == sent + change.
     uint64_t sumIn = 0;
     for (const auto& in : r.selected) sumIn += in.amount;
     EXPECT_EQ(sumIn, r.sent + r.change + r.fee);
     EXPECT_EQ(outputSum(r.tx), r.sent + r.change);
-    EXPECT_LE(r.tx.outputs.size(), P::MAX_PQ_OUTPUTS_PER_TX);
+    // Exactly one recipient output (the lump amount) and one change output.
+    ASSERT_EQ(r.tx.outputs.size(), 2u);
+    EXPECT_EQ(r.tx.outputs[0].amount, 250u);
+    EXPECT_EQ(r.tx.outputs[1].amount, r.change);
     EXPECT_LE(toBinaryArray(r.tx).size(), P::MAX_PQ_TX_SIZE);
-    // No coarsening at this size: every output is a canonical denomination.
-    for (const auto& o : r.tx.outputs) EXPECT_TRUE(isCanonicalDenomination(o.amount));
+}
+
+TEST(PqSender, SweepFoldsSmallestInputsIntoAnOrdinarySend) {
+    PqWalletKeys me = derivePqWalletKeys(spendSecret(9, 1));
+    PqWalletKeys to = derivePqWalletKeys(spendSecret(7, 3));
+
+    // One large input covers the payment; 50 small ones are lying around.
+    std::vector<PqSpendInput> inputs = {mkInput(100000, 0x01)};
+    for (uint8_t i = 0; i < 50; ++i) inputs.push_back(mkInput(10 + i, static_cast<uint8_t>(0x10 + i)));
+
+    PqSendRequest req;
+    req.recipients.push_back(PqSendOutput{to.viewPub, to.spendPub, 50000});
+    PqSendResult r = buildPqSend(inputs, me, req);
+
+    // Cover (1) + the maximum sweep (PQ_SWEEP_MAX_EXTRA_INPUTS), smallest first,
+    // leaving 50 - 8 = 42 > PQ_SWEEP_KEEP_OUTPUTS outputs in the wallet.
+    ASSERT_EQ(r.selected.size(), 1 + PQ_SWEEP_MAX_EXTRA_INPUTS);
+    EXPECT_EQ(r.selected[0].amount, 100000u);
+    for (std::size_t i = 1; i < r.selected.size(); ++i) {
+        EXPECT_EQ(r.selected[i].amount, 10u + (i - 1));  // the smallest ones, ascending
+    }
+    uint64_t sumIn = 0;
+    for (const auto& in : r.selected) sumIn += in.amount;
+    EXPECT_EQ(sumIn, r.sent + r.change + r.fee);
+    ASSERT_EQ(r.tx.outputs.size(), 2u);  // still one recipient output + one change output
+
+    // Opting out spends only what the payment needs.
+    req.sweepSmallInputs = false;
+    PqSendResult plain = buildPqSend(inputs, me, req);
+    EXPECT_EQ(plain.selected.size(), 1u);
+}
+
+TEST(PqSender, SweepNeverLinksAKeyThePaymentDidNotNeed) {
+    // Under per-deposit keys, spending an output publishes its deposit's key. The
+    // payment needs only the primary key, so deposit dust must stay put however
+    // small it is, while primary dust is still swept.
+    PqWalletKeys me = derivePqWalletKeys(spendSecret(9, 1));
+    PqWalletKeys to = derivePqWalletKeys(spendSecret(7, 3));
+
+    std::vector<PqSpendInput> inputs = {mkBucketInput(100000, 0x01, PQ_PRIMARY_DEPOSIT)};
+    for (uint8_t i = 0; i < 24; ++i) {
+        inputs.push_back(mkBucketInput(1, static_cast<uint8_t>(0x10 + i), 3));                  // tiniest
+        inputs.push_back(mkBucketInput(20, static_cast<uint8_t>(0x40 + i), PQ_PRIMARY_DEPOSIT));
+    }
+
+    PqSendRequest req;
+    req.scheme = PqDepositScheme::AggregatedMultikey;
+    req.recipients.push_back(PqSendOutput{to.viewPub, to.spendPub, 50000});
+    PqSendResult r = buildPqSend(inputs, me, req);
+
+    ASSERT_EQ(r.selected.size(), 1 + PQ_SWEEP_MAX_EXTRA_INPUTS);
+    for (const auto& in : r.selected) EXPECT_EQ(in.depositIndex, PQ_PRIMARY_DEPOSIT);
+    for (std::size_t i = 0; i < r.tx.inputs.size(); ++i) EXPECT_TRUE(authPubIs(r.tx, i, me.spendPub));
+}
+
+TEST(PqSender, SweepNeverDrainsTheWalletBelowTheKeepThreshold) {
+    PqWalletKeys me = derivePqWalletKeys(spendSecret(9, 1));
+    PqWalletKeys to = derivePqWalletKeys(spendSecret(7, 3));
+
+    // Cover takes the largest; PQ_SWEEP_KEEP_OUTPUTS + 2 small ones remain, of
+    // which only 2 may be swept before the wallet would drop to the floor.
+    std::vector<PqSpendInput> inputs = {mkInput(100000, 0x01)};
+    for (uint8_t i = 0; i < PQ_SWEEP_KEEP_OUTPUTS + 2; ++i)
+        inputs.push_back(mkInput(10, static_cast<uint8_t>(0x10 + i)));
+
+    PqSendRequest req;
+    req.recipients.push_back(PqSendOutput{to.viewPub, to.spendPub, 50000});
+    PqSendResult r = buildPqSend(inputs, me, req);
+    EXPECT_EQ(r.selected.size(), 1u + 2u);
+
+    // A wallet that is not fragmented is never swept.
+    std::vector<PqSpendInput> few = {mkInput(100000, 0x01)};
+    for (uint8_t i = 0; i < PQ_SWEEP_KEEP_OUTPUTS; ++i) few.push_back(mkInput(10, static_cast<uint8_t>(0x20 + i)));
+    EXPECT_EQ(buildPqSend(few, me, req).selected.size(), 1u);
+}
+
+TEST(PqSender, ASecondPaymentCanBeBuiltBeforeTheFirstConfirms) {
+    // Forty equal outputs: none of them is dust, so the sweep may hold back at most
+    // a tenth of the spendable value. The rest stays available for the next
+    // payment while the first one is unconfirmed.
+    PqWalletKeys me = derivePqWalletKeys(spendSecret(9, 1));
+    PqWalletKeys to = derivePqWalletKeys(spendSecret(7, 3));
+    std::vector<PqSpendInput> wallet;
+    for (uint8_t i = 0; i < 40; ++i) wallet.push_back(mkInput(1000, static_cast<uint8_t>(0x10 + i)));
+
+    PqSendRequest first;
+    first.recipients.push_back(PqSendOutput{to.viewPub, to.spendPub, 500});
+    PqSendResult r1 = buildPqSend(wallet, me, first);
+    uint64_t held = 0;
+    for (const auto& in : r1.selected) held += in.amount;
+    EXPECT_GT(r1.selected.size(), 1u);                         // it did sweep
+    EXPECT_LE(held, 1000u + 40000u / PQ_SWEEP_VALUE_DIVISOR);  // cover + a tenth
+
+    // Until it confirms, the first payment's inputs are reserved and its change is
+    // locked; what is left must still fund a large second payment.
+    std::vector<PqSpendInput> left;
+    for (const auto& in : wallet) {
+        bool reserved = false;
+        for (const auto& s : r1.selected)
+            reserved |= s.prevTxid == in.prevTxid && s.prevOutIndex == in.prevOutIndex;
+        if (!reserved) left.push_back(in);
+    }
+    PqSendRequest second;
+    second.recipients.push_back(PqSendOutput{to.viewPub, to.spendPub, 30000});
+    PqSendResult r2 = buildPqSend(left, me, second);
+    EXPECT_EQ(r2.sent, 30000u);
 }
 
 TEST(PqSender, ExplicitFeeExactNoChange) {
@@ -188,7 +297,7 @@ TEST(PqSender, ExplicitFeeExactNoChange) {
     EXPECT_EQ(r.fee, 1u);
     EXPECT_EQ(r.change, 0u);
     EXPECT_EQ(outputSum(r.tx), 250u);          // recipient only, no change output
-    EXPECT_EQ(r.tx.outputs.size(), 2u);        // 250 -> 200 + 50
+    EXPECT_EQ(r.tx.outputs.size(), 1u);
 }
 
 TEST(PqSender, InsufficientFundsThrows) {
@@ -224,13 +333,12 @@ TEST(PqSender, RejectsTxLevelUnlockHeight) {
     }
 }
 
-TEST(PqSender, CoarsensToOutputCap) {
+TEST(PqSender, AnyAmountIsASingleOutput) {
     PqWalletKeys me = derivePqWalletKeys(spendSecret(9, 1));
     PqWalletKeys to = derivePqWalletKeys(spendSecret(7, 3));
 
-    // 700,000,000 au decomposes to 70 pieces of the 10,000,000 cap denomination, which is
-    // > MAX_PQ_OUTPUTS_PER_TX, so the sender must coarsen the recipient group down to fit.
-    // explicitFee keeps change 0.
+    // Consensus accepts any non-zero amount, so 7,000,000.00 XDS is one output,
+    // not seventy pieces of a largest denomination. explicitFee keeps change 0.
     const uint64_t amount = 700000000;
     std::vector<PqSpendInput> inputs = {mkInput(amount + 100, 0x70)};
     PqSendRequest req;
@@ -239,9 +347,30 @@ TEST(PqSender, CoarsensToOutputCap) {
 
     PqSendResult r = buildPqSend(inputs, me, req);
     EXPECT_EQ(r.change, 0u);
-    EXPECT_EQ(outputSum(r.tx), amount);
-    EXPECT_LE(r.tx.outputs.size(), P::MAX_PQ_OUTPUTS_PER_TX);
+    ASSERT_EQ(r.tx.outputs.size(), 1u);
+    EXPECT_EQ(r.tx.outputs[0].amount, amount);
     EXPECT_LE(toBinaryArray(r.tx).size(), P::MAX_PQ_TX_SIZE);
+}
+
+TEST(PqSender, TooManyRecipientsThrows) {
+    PqWalletKeys me = derivePqWalletKeys(spendSecret(9, 1));
+    PqWalletKeys to = derivePqWalletKeys(spendSecret(7, 3));
+
+    std::vector<PqSpendInput> inputs = {mkInput(1000000, 0x71)};
+    PqSendRequest req;
+    // MAX_PQ_OUTPUTS_PER_TX - 1 recipients leave room for change; one more does not.
+    for (std::size_t i = 0; i + 1 < P::MAX_PQ_OUTPUTS_PER_TX; ++i)
+        req.recipients.push_back(PqSendOutput{to.viewPub, to.spendPub, 10});
+    PqSendResult r = buildPqSend(inputs, me, req);
+    EXPECT_EQ(r.tx.outputs.size(), P::MAX_PQ_OUTPUTS_PER_TX);
+
+    req.recipients.push_back(PqSendOutput{to.viewPub, to.spendPub, 10});
+    try {
+        buildPqSend(inputs, me, req);
+        FAIL() << "expected PqSendError";
+    } catch (const PqSendError& e) {
+        EXPECT_EQ(e.code, PqSendErrorCode::TooLarge);
+    }
 }
 
 TEST(PqSender, CarriesExtraForPaidRegistration) {
@@ -313,7 +442,7 @@ TEST(PqSender, NoRecipientsThrows) {
     }
 }
 
-TEST(PqSender, DecomposedPaymentProofCoversEveryRecipientOutputAndExactTotal) {
+TEST(PqSender, PaymentProofCoversTheRecipientOutputAndExactTotal) {
     PqWalletKeys me = derivePqWalletKeys(spendSecret(9, 1));
     PqWalletKeys to = derivePqWalletKeys(spendSecret(7, 3));
     PqSendRequest req;
@@ -324,9 +453,8 @@ TEST(PqSender, DecomposedPaymentProofCoversEveryRecipientOutputAndExactTotal) {
     PqSendResult result = buildPqSend({mkInput(1234568, 0x91)}, me, req);
     expectProofsVerify(req, result);
     ASSERT_EQ(result.proofs.size(), 1u);
-    EXPECT_EQ(result.proofs[0].entries.size(), result.tx.outputs.size());
-    for (std::size_t i = 0; i < result.proofs[0].entries.size(); ++i)
-        EXPECT_EQ(result.proofs[0].entries[i].outputIndex, i);
+    ASSERT_EQ(result.proofs[0].entries.size(), 1u);
+    EXPECT_EQ(result.proofs[0].entries[0].outputIndex, 0u);
 }
 
 TEST(PqSender, MultipleAndDuplicateRecipientRowsStaySeparatedAndExcludeChange) {
@@ -360,7 +488,7 @@ TEST(PqSender, MultipleAndDuplicateRecipientRowsStaySeparatedAndExcludeChange) {
     EXPECT_EQ(proven, 600u);
 }
 
-TEST(PqSender, CoarseningPreservesRecipientProvenance) {
+TEST(PqSender, RecipientOutputsKeepRowOrderAndProvenance) {
     PqWalletKeys me = derivePqWalletKeys(spendSecret(9, 1));
     PqWalletKeys a = derivePqWalletKeys(spendSecret(7, 3));
     PqWalletKeys b = derivePqWalletKeys(spendSecret(5, 4));
@@ -369,40 +497,55 @@ TEST(PqSender, CoarseningPreservesRecipientProvenance) {
     req.explicitFee = 100;
     req.recipients = {
         PqSendOutput{a.viewPub, a.spendPub, 400000000},
-        PqSendOutput{b.viewPub, b.spendPub, 400000000}};
+        PqSendOutput{b.viewPub, b.spendPub, 300000000}};
 
     PqSendResult result = buildPqSend({mkInput(800000100, 0x93)}, me, req);
-    EXPECT_LE(result.tx.outputs.size(), P::MAX_PQ_OUTPUTS_PER_TX);
+    ASSERT_EQ(result.tx.outputs.size(), 3u);  // a, b, change
+    EXPECT_EQ(result.tx.outputs[0].amount, 400000000u);
+    EXPECT_EQ(result.tx.outputs[1].amount, 300000000u);
+    EXPECT_EQ(result.tx.outputs[2].amount, result.change);
     expectProofsVerify(req, result);
     ASSERT_EQ(result.proofs.size(), 2u);
-    std::set<uint32_t> first;
-    for (const auto& entry : result.proofs[0].entries) first.insert(entry.outputIndex);
-    for (const auto& entry : result.proofs[1].entries)
-        EXPECT_EQ(first.count(entry.outputIndex), 0u);
+    ASSERT_EQ(result.proofs[0].entries.size(), 1u);
+    ASSERT_EQ(result.proofs[1].entries.size(), 1u);
+    EXPECT_EQ(result.proofs[0].entries[0].outputIndex, 0u);
+    EXPECT_EQ(result.proofs[1].entries[0].outputIndex, 1u);
 }
 
-TEST(PqSender, SizeRetryReturnsOnlyAcceptedTransactionWitnesses) {
+TEST(PqSender, SizeRetryShedsSweptInputsAndReturnsOnlyAcceptedWitnesses) {
     PqWalletKeys me = derivePqWalletKeys(spendSecret(9, 1));
     PqWalletKeys to = derivePqWalletKeys(spendSecret(7, 3));
-    std::vector<PqSpendInput> inputs;
-    for (uint8_t i = 0; i < 32; ++i) inputs.push_back(mkInput(20000000, i));
+    std::vector<PqSpendInput> inputs = {mkInput(20000000, 0x01)};
+    for (uint8_t i = 0; i < 40; ++i) inputs.push_back(mkInput(100, static_cast<uint8_t>(0x10 + i)));
 
     PqSendRequest req;
     req.genesisId = testGenesis();
     req.explicitFee = 100;
-    req.extra.assign(30000, 0x5a);  // force the initial 64-output draft over 256 KiB
-    req.recipients.push_back(
-        PqSendOutput{to.viewPub, to.spendPub, 639999900});
+    // A huge extra leaves room for the covering input and only part of the sweep:
+    // 1 + 8 inputs (~48 KB) + outputs + 215,000 B is over MAX_PQ_TX_SIZE.
+    req.extra.assign(215000, 0x5a);
+    req.recipients.push_back(PqSendOutput{to.viewPub, to.spendPub, 10000000});
     PqSendResult result = buildPqSend(inputs, me, req);
 
-    // Thirty-two PQ input signatures plus tx_extra leave too little room for the initial 64-output
-    // draft, so buildFitting must retry with fewer outputs. Verification proves
-    // every returned m_j belongs to the accepted final transaction, not a draft.
-    EXPECT_LT(result.tx.outputs.size(), P::MAX_PQ_OUTPUTS_PER_TX);
+    // The sweep was shed until the draft fit; the covering input is never shed.
     EXPECT_LE(toBinaryArray(result.tx).size(), P::MAX_PQ_TX_SIZE);
+    EXPECT_GE(result.selected.size(), 1u);
+    EXPECT_LT(result.selected.size(), 1u + PQ_SWEEP_MAX_EXTRA_INPUTS);
+    EXPECT_EQ(result.selected[0].amount, 20000000u);
+    // Verification proves every returned m_j belongs to the accepted final
+    // transaction, not a shed draft.
     expectProofsVerify(req, result);
     ASSERT_EQ(result.proofs.size(), 1u);
-    EXPECT_EQ(result.proofs[0].entries.size(), result.tx.outputs.size());
+    ASSERT_EQ(result.proofs[0].entries.size(), 1u);
+
+    // When even the covering inputs alone do not fit, the send is refused.
+    req.extra.assign(256000, 0x5a);
+    try {
+        buildPqSend(inputs, me, req);
+        FAIL() << "expected PqSendError";
+    } catch (const PqSendError& e) {
+        EXPECT_EQ(e.code, PqSendErrorCode::TooLarge);
+    }
 }
 
 TEST(PqConsolidation, PlansAndBuildsFromTheThirtyTwoSmallestInputs) {
@@ -416,7 +559,7 @@ TEST(PqConsolidation, PlansAndBuildsFromTheThirtyTwoSmallestInputs) {
     ASSERT_TRUE(plan.useful());
     EXPECT_EQ(plan.availableInputs, 34u);
     EXPECT_EQ(plan.selectedInputs, 32u);
-    EXPECT_EQ(plan.resultingOutputs, 2u);  // 31 au -> 30 + 1
+    EXPECT_EQ(plan.resultingOutputs, 1u);  // 32 inputs -> one 31 au output
     EXPECT_EQ(plan.fee, 1u);
     EXPECT_EQ(plan.amount, 31u);
 
@@ -427,7 +570,7 @@ TEST(PqConsolidation, PlansAndBuildsFromTheThirtyTwoSmallestInputs) {
 
     EXPECT_EQ(result.plan.selectedInputs, plan.selectedInputs);
     ASSERT_EQ(result.transaction.tx.inputs.size(), 32u);
-    ASSERT_EQ(result.transaction.tx.outputs.size(), 2u);
+    ASSERT_EQ(result.transaction.tx.outputs.size(), 1u);
     EXPECT_EQ(outputSum(result.transaction.tx), 31u);
     EXPECT_EQ(result.transaction.change, 0u);
     EXPECT_EQ(result.transaction.fee, 1u);
@@ -444,18 +587,66 @@ TEST(PqConsolidation, PlansAndBuildsFromTheThirtyTwoSmallestInputs) {
               plan.amount);
 }
 
-TEST(PqConsolidation, RefusesAZeroReductionBatch) {
+TEST(PqConsolidation, RefusesASingleInput) {
     PqWalletKeys me = derivePqWalletKeys(spendSecret(43, 19));
-    // 56 + 56 - 1 fee = 111 -> canonical outputs 100 + 10 + 1. Turning two
-    // inputs into three outputs is not consolidation and must never be signed.
-    std::vector<PqSpendInput> inputs = {
-        mkInput(56, 0x11), mkInput(56, 0x22)};
+    // One input cannot be merged into fewer outputs; paying a fee for that is
+    // never useful and must never be signed.
+    std::vector<PqSpendInput> inputs = {mkInput(56, 0x11)};
 
     PqConsolidationPlan plan = planPqConsolidation(inputs);
     EXPECT_FALSE(plan.useful());
-    EXPECT_EQ(plan.availableInputs, 2u);
+    EXPECT_EQ(plan.availableInputs, 1u);
     EXPECT_EQ(plan.selectedInputs, 0u);
     EXPECT_THROW(buildPqConsolidation(inputs, me), PqSendError);
+
+    // Two inputs are the smallest useful batch: they become exactly one output.
+    inputs.push_back(mkInput(56, 0x22));
+    PqConsolidationResult two = buildPqConsolidation(inputs, me);
+    EXPECT_EQ(two.plan.selectedInputs, 2u);
+    ASSERT_EQ(two.transaction.tx.outputs.size(), 1u);
+    EXPECT_EQ(two.transaction.tx.outputs[0].amount, 56u + 56u - two.plan.fee);
+}
+
+TEST(PqConsolidation, RestrictsToSourceBucketsAndRoutesToTheDestination) {
+    PqWalletKeys me = derivePqWalletKeys(spendSecret(44, 21));
+    std::vector<PqSpendInput> inputs = {
+        mkBucketInput(5, 0x11, 3), mkBucketInput(6, 0x12, 3), mkBucketInput(7, 0x13, 3),
+        mkBucketInput(500, 0x21, PQ_PRIMARY_DEPOSIT)};
+
+    PqConsolidationRequest req;
+    req.scheme = PqDepositScheme::SingleKeyIndex;
+    req.sourceBuckets = {3};
+    req.hasDestination = true;
+    req.destination = PqSendOutput{me.viewPub, me.spendPub, 0, 3 /*T*/, 0};
+
+    PqConsolidationPlan plan = planPqConsolidation(inputs, req);
+    ASSERT_TRUE(plan.useful());
+    EXPECT_EQ(plan.availableInputs, 3u);  // the primary input is outside the bucket
+    EXPECT_EQ(plan.selectedInputs, 3u);
+    EXPECT_EQ(plan.amount, 5u + 6u + 7u - plan.fee);
+
+    PqConsolidationResult result = buildPqConsolidation(inputs, me, req);
+    ASSERT_EQ(result.transaction.tx.inputs.size(), 3u);
+    for (const auto& selected : result.transaction.selected) EXPECT_EQ(selected.depositIndex, 3u);
+    ASSERT_EQ(result.transaction.tx.outputs.size(), 1u);
+    EXPECT_EQ(result.transaction.tx.outputs[0].amount, plan.amount);
+
+    // The merged output is addressed to the bucket's own routing index T=3, so
+    // the funds stay attributed to that deposit after the merge.
+    PqPaymentProofTransaction proofTx = makePqPaymentProofTransaction(result.transaction.tx);
+    ResolvedRecipient bucket{me.viewPub, me.spendPub, 3};
+    EXPECT_EQ(verifyPqPaymentProof(result.transaction.proofs[0], req.genesisId, proofTx, bucket),
+              plan.amount);
+    const PqOutput& po = boost::get<PqOutput>(result.transaction.tx.outputs[0].target);
+    CryptoPQ::PqScanOutput so;
+    so.outputIndex = 0;
+    so.amount = result.transaction.tx.outputs[0].amount;
+    std::memcpy(so.kemCt.data(), po.kemCt.data(), so.kemCt.size());
+    so.encPayload = po.encPayload;
+    std::memcpy(so.spendCommit.data(), po.spendCommit.data, 32);
+    auto owned = CryptoPQ::scanPqOutput(pqScanKeys(me), pqTransactionInputsHash(result.transaction.tx), so);
+    ASSERT_TRUE(owned.has_value());
+    EXPECT_EQ(owned->subaddrIndexT, 3u);
 }
 
 TEST(PqConsolidation, FeeCannotConsumeTheSelectedValue) {
@@ -712,9 +903,8 @@ TEST(PqSenderTranscript, MultiKeyDepositSpendSignsEveryInputUnderV2) {
                                          contextAt(kActivation, req.genesisId))) << err;
 }
 
-// buildFitting may rebuild the draft several times to fit the size cap. Each
-// rebuild has to reuse the requested context; a send large enough to decompose
-// into many outputs exercises that path.
+// A multi-recipient, multi-input send must carry the requested context on every
+// signature.
 TEST(PqSenderTranscript, LargeMultiOutputSendKeepsTheRequestedContext) {
     PqWalletKeys me = derivePqWalletKeys(spendSecret(31, 15));
     PqWalletKeys a = derivePqWalletKeys(spendSecret(32, 16));
@@ -730,7 +920,7 @@ TEST(PqSenderTranscript, LargeMultiOutputSendKeepsTheRequestedContext) {
     req.recipients.push_back({a.viewPub, a.spendPub, 777777777});
     req.recipients.push_back({b.viewPub, b.spendPub, 888888888});
     PqSendResult r = buildPqSend({funded[0].first, funded[1].first}, me, req);
-    ASSERT_GT(r.tx.outputs.size(), 2u) << "expected a multi-denomination decomposition";
+    ASSERT_EQ(r.tx.outputs.size(), 3u);  // two recipients + change
 
     std::vector<PqResolvedInput> resolved = resolvedInSpendOrder(r, funded);
     std::vector<Crypto::Hash> nf;
