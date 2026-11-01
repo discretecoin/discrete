@@ -170,7 +170,7 @@ public:
     return m_blockchain;
   }
 
-  virtual const std::unordered_set<Crypto::Hash>& getKnownPoolTxIds() const override {
+  virtual std::unordered_set<Crypto::Hash> getKnownPoolTxIds() const override {
     return m_pool;
   }
 

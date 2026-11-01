@@ -23,8 +23,12 @@
 #include "CryptoNoteConfig.h"
 #include "PqTxType.h"
 
+#include <atomic>
+#include <condition_variable>
 #include <cstring>
 #include <memory>
+#include <mutex>
+#include <thread>
 
 using namespace CryptoNote;
 
@@ -65,6 +69,80 @@ CompleteBlock makeBlock(const Transaction& tx) {
     cb.blockHash = getObjectHash(tx);  // arbitrary but unique-ish
     return cb;
 }
+
+struct ReaderGate {
+    void waitUntilEntered() {
+        std::unique_lock<std::mutex> lock(mutex);
+        changed.wait(lock, [this] { return entered; });
+    }
+
+    void enterAndWait() {
+        std::unique_lock<std::mutex> lock(mutex);
+        entered = true;
+        changed.notify_all();
+        changed.wait(lock, [this] { return released; });
+    }
+
+    void release() {
+        std::lock_guard<std::mutex> lock(mutex);
+        released = true;
+        changed.notify_all();
+    }
+
+    std::mutex mutex;
+    std::condition_variable changed;
+    bool entered = false;
+    bool released = false;
+};
+
+class CountingTransactionReader final : public ITransactionReader {
+public:
+    explicit CountingTransactionReader(
+        std::unique_ptr<ITransactionReader> reader,
+        std::shared_ptr<ReaderGate> gate = {})
+        : m_reader(std::move(reader)), m_gate(std::move(gate)) {}
+
+    std::size_t dataCalls() const { return m_dataCalls.load(); }
+
+    Crypto::Hash getTransactionHash() const override { return m_reader->getTransactionHash(); }
+    Crypto::Hash getTransactionPrefixHash() const override { return m_reader->getTransactionPrefixHash(); }
+    Crypto::Hash getTransactionInputsHash() const override { return m_reader->getTransactionInputsHash(); }
+    Crypto::PublicKey getTransactionPublicKey() const override { return m_reader->getTransactionPublicKey(); }
+    uint64_t getUnlockTime() const override { return m_reader->getUnlockTime(); }
+    bool getPaymentId(Crypto::Hash& paymentId) const override { return m_reader->getPaymentId(paymentId); }
+    bool getExtraNonce(BinaryArray& nonce) const override { return m_reader->getExtraNonce(nonce); }
+    BinaryArray getExtra() const override { return m_reader->getExtra(); }
+    size_t getInputCount() const override { return m_reader->getInputCount(); }
+    uint64_t getInputTotalAmount() const override { return m_reader->getInputTotalAmount(); }
+    TransactionTypes::InputType getInputType(size_t index) const override { return m_reader->getInputType(index); }
+    void getInput(size_t index, KeyInput& input) const override { m_reader->getInput(index, input); }
+    std::vector<TransactionInput> getInputs() const override { return m_reader->getInputs(); }
+    size_t getOutputCount() const override { return m_reader->getOutputCount(); }
+    uint64_t getOutputTotalAmount() const override { return m_reader->getOutputTotalAmount(); }
+    TransactionTypes::OutputType getOutputType(size_t index) const override { return m_reader->getOutputType(index); }
+    void getOutput(size_t index, KeyOutput& output, uint64_t& amount) const override {
+        m_reader->getOutput(index, output, amount);
+    }
+    size_t getRequiredSignaturesCount(size_t inputIndex) const override {
+        return m_reader->getRequiredSignaturesCount(inputIndex);
+    }
+    bool validateInputs() const override { return m_reader->validateInputs(); }
+    bool validateOutputs() const override { return m_reader->validateOutputs(); }
+    bool validateSignatures() const override { return m_reader->validateSignatures(); }
+    BinaryArray getTransactionData() const override {
+        m_dataCalls.fetch_add(1);
+        if (m_gate) {
+            m_gate->enterAndWait();
+        }
+        return m_reader->getTransactionData();
+    }
+    TransactionPrefix getTransactionPrefix() const override { return m_reader->getTransactionPrefix(); }
+
+private:
+    std::unique_ptr<ITransactionReader> m_reader;
+    std::shared_ptr<ReaderGate> m_gate;
+    mutable std::atomic<std::size_t> m_dataCalls{0};
+};
 
 }  // namespace
 
@@ -172,6 +250,68 @@ TEST(WalletLedgerConsumer, ReorgReturnsReceiveToPoolAsPendingNotSpendable) {
     EXPECT_EQ(consumer.state().balance(), 0u);
     EXPECT_EQ(consumer.state().pendingBalance(), 0u);
     EXPECT_EQ(consumer.state().historyByTxid(txid), nullptr);
+}
+
+TEST(WalletLedgerConsumer, ConcurrentLocalAndPoolDeliveryScansOnceAndKeepsOutgoingHistory) {
+    Logging::ConsoleLogger logger(Logging::ERROR);
+    PqWalletKeys me = derivePqWalletKeys(spendSecret(9, 1));
+    PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
+    PqWalletKeys recipient = derivePqWalletKeys(spendSecret(4, 4));
+    WalletLedgerConsumer consumer(me, SynchronizationStart{0, 0}, logger);
+
+    Transaction funding = payTo(them, me, 1200001, 1200000, 0x61);
+    CompleteBlock fundingBlock = makeBlock(funding);
+    ASSERT_EQ(consumer.onNewBlocks(&fundingBlock, 50, 1), 1u);
+    std::vector<PqSpendInput> inputs = consumer.state().spendableInputs();
+    ASSERT_EQ(inputs.size(), 1u);
+
+    PqSendOutput payment{recipient.viewPub, recipient.spendPub, 1000000};
+    PqSendOutput change{me.viewPub, me.spendPub, 199999};
+    Transaction spend = buildPqTransaction(inputs, {payment, change}, me.spendPub, me.spendSk);
+    Crypto::Hash spendId = getObjectHash(spend);
+
+    auto gate = std::make_shared<ReaderGate>();
+    CountingTransactionReader localReader(createTransactionPrefix(spend), gate);
+    auto poolReader = std::make_unique<CountingTransactionReader>(createTransactionPrefix(spend));
+    CountingTransactionReader* poolReaderPtr = poolReader.get();
+    std::vector<std::unique_ptr<ITransactionReader>> added;
+    added.push_back(std::move(poolReader));
+    std::vector<Crypto::Hash> noDeletes;
+    std::error_code localError;
+    std::error_code poolError;
+
+    std::thread localDelivery([&] {
+        localError = consumer.addUnconfirmedTransaction(localReader);
+    });
+    gate->waitUntilEntered();
+    std::thread poolDelivery([&] {
+        poolError = consumer.onPoolUpdated(added, noDeletes);
+    });
+    gate->release();
+    localDelivery.join();
+    poolDelivery.join();
+
+    EXPECT_FALSE(localError);
+    EXPECT_FALSE(poolError);
+    EXPECT_EQ(localReader.dataCalls(), 1u);
+    EXPECT_EQ(poolReaderPtr->dataCalls(), 0u);
+    EXPECT_EQ(consumer.getKnownPoolTxIds().count(spendId), 1u);
+    ASSERT_NE(consumer.state().historyByTxid(spendId), nullptr);
+    EXPECT_TRUE(consumer.state().historyByTxid(spendId)->outgoing);
+    EXPECT_EQ(consumer.state().historyByTxid(spendId)->netAmount, -1000001);
+    EXPECT_EQ(consumer.state().historyByTxid(spendId)->fee, 1u);
+
+    // Eviction clears both the reservation and the deduplication entry, so an
+    // explicit retry is scanned and reserved normally.
+    consumer.removeUnconfirmedTransaction(spendId);
+    EXPECT_EQ(consumer.state().historyByTxid(spendId), nullptr);
+    EXPECT_EQ(consumer.getKnownPoolTxIds().count(spendId), 0u);
+    CountingTransactionReader retryReader(createTransactionPrefix(spend));
+    EXPECT_FALSE(consumer.addUnconfirmedTransaction(retryReader));
+    EXPECT_EQ(retryReader.dataCalls(), 1u);
+    ASSERT_NE(consumer.state().historyByTxid(spendId), nullptr);
+    EXPECT_TRUE(consumer.state().historyByTxid(spendId)->outgoing);
+    EXPECT_EQ(consumer.state().historyByTxid(spendId)->netAmount, -1000001);
 }
 
 // SynchronizationState::checkInterval with empty m_blockchain sets newBlockHeight=0
