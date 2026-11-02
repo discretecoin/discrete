@@ -376,7 +376,6 @@ jobs:
           release_name="discrete-cli-macos-arm64-$disc_ver"
 
           brew install openssl@3
-          brew link openssl@3 --force
 
           mkdir -p "$build_folder"
           cd "$build_folder"
@@ -388,6 +387,7 @@ jobs:
             -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 \
             -DBUILD_TESTS=ON \
             -DOPENSSL_USE_STATIC_LIBS=ON \
+            -DOPENSSL_ROOT_DIR="$(brew --prefix openssl@3)" \
             -DBOOST_ROOT="$BOOST_ROOT" \
             -DBoost_INCLUDE_DIR="$Boost_INCLUDE_DIR" \
             -DBoost_LIBRARY_DIR="$Boost_LIBRARY_DIR" \
