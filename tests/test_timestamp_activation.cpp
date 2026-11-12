@@ -493,6 +493,7 @@ void replayCompatibility(const fs::path& root, const fs::path& path) {
     } else if (command == "RESTART") fixture.restart();
     else throw std::runtime_error("unknown compatibility transcript command");
     std::getline(script, line);
+    if (!line.empty() && line.back() == '\r') line.pop_back();
     require(!line.empty() && line.substr(1) == state(fixture),
             "exact canonical height/hash/work/emission/transaction count matches reference transcript");
   }
