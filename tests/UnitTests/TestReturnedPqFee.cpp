@@ -127,14 +127,27 @@ TEST_F(ReturnedPqFee, MissingAndPartialInputsRecheckOnlyWhenTheCanonicalTipChang
   expectTemplate({}, 1000, 2000, 0, 0);
   EXPECT_EQ(core.state[1].validations, 2u); EXPECT_EQ(core.state[2].validations, 2u);
   ++core.height; core.state[1].ready = true;
-  expectTemplate({1}, 1000, 2000, 100, 123);
+  expectTemplate({}, 1000, 99, 0, 0); // Resolve the fee without selecting the transaction.
   EXPECT_EQ(core.state[1].validations, 3u);
   ++core.fork; core.state[2].ready = true; core.state[2].resolvable = true;
   core.state[1].spent = true;
-  pool.on_blockchain_dec(core.height, core.getBlockIdByHeight(core.height - 1));
   expectTemplate({2}, 1000, 2000, 100, 50);
   EXPECT_EQ(core.state[2].validations, 4u);
   EXPECT_EQ(pool.get_transactions_count(), 2u);
+}
+
+TEST_F(ReturnedPqFee, BudgetExcludedRepairDoesNotCacheReadinessAcrossAChainSpend) {
+  core.state[1].fee = 50;
+  add(1, 100);
+  core.state[1].ready = true;
+  expectTemplate({}, 1000, 99, 0, 0);
+  EXPECT_EQ(core.state[1].validations, 1u);
+  EXPECT_EQ(core.state[1].resolutions, 1u);
+  ++core.height;
+  core.state[1].spent = true;
+  // Core does not call the pool's on_blockchain_inc/dec cache hooks.
+  expectTemplate({}, 1000, 2000, 0, 0);
+  EXPECT_EQ(core.state[1].validations, 2u);
 }
 
 TEST_F(ReturnedPqFee, ConflictingKeptInputsStillSelectOnlyTheHigherFeeTransaction) {

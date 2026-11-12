@@ -481,6 +481,7 @@ bool getPqAccountRegistrationId(const Transaction& tx, Crypto::Hash& accountId) 
     // Disconnected PQ transactions can enter the pool before their spent tags
     // are removed, leaving an unresolved zero fee. Repair it before ordering or
     // applying size limits. The hash index stays stable when the fee changes.
+    std::unordered_set<Crypto::Hash> freshlyValidated;
     for (auto i = m_transactions.begin(); i != m_transactions.end(); ++i) {
       const auto& txd = *i;
       if (!txd.keptByBlock || txd.fee != 0 || txd.tx.version != TRANSACTION_VERSION_1 ||
@@ -503,7 +504,9 @@ bool getPqAccountRegistrationId(const Transaction& tx, Crypto::Hash& accountId) 
         static_cast<TransactionCheckInfo&>(item) = checkInfo;
         if (ready) item.fee = resolvedFee;
       });
-      if (ready) m_validated_transactions.insert(txd.id);
+      // Reuse this work only within this request. Entries excluded by the
+      // selection gates must not acquire persistent readiness from fee repair.
+      if (ready) freshlyValidated.insert(txd.id);
     }
 
     BlockTemplate blockTemplate;
@@ -549,7 +552,7 @@ bool getPqAccountRegistrationId(const Transaction& tx, Crypto::Hash& accountId) 
         ready = true;
         logger(DEBUGGING) << "Fill block template - tx added from cache: " << txd.id;
       }
-      else if (is_transaction_ready_to_go(txd.tx, checkInfo)) {
+      else if (freshlyValidated.count(txd.id) != 0 || is_transaction_ready_to_go(txd.tx, checkInfo)) {
         ready = true;
         m_validated_transactions.insert(txd.id);
         logger(DEBUGGING) << "Fill block template - tx added to cache: " << txd.id;

@@ -49,7 +49,7 @@ using namespace CryptoNote;
 namespace fs = std::filesystem;
 constexpr uint64_t Base = 1800000000, Fee = 50;
 size_t checks = 0, proofs = 0;
-bool requireCachedFee = false, ordinaryReorg = false;
+bool requireCachedFee = false, ordinaryReorg = false, budgetExclusionOnly = false;
 void require(bool condition, const std::string& message) {
   ++checks;
   if (!condition) throw std::runtime_error(message);
@@ -454,6 +454,50 @@ void unresolvedInputs(const fs::path& directory) {
   require(fixture.core->getPoolTransactionsCount() == 2, "restart preserves unresolved alternatives without selecting them");
   std::cout << "PASS,actual_core_unresolved_inputs,unknown_and_partial,later_funding,accepted,spent_input,excluded\n";
 }
+
+void budgetExcludedRepair(const fs::path& directory) {
+  Fixture fixture(directory);
+  const auto funding = fixture.append(Base - 12 * 900).baseTransaction;
+  PqSpendInput input{};
+  input.prevTxid = getObjectHash(funding); input.amount = funding.outputs.at(0).amount;
+  input.rho = CryptoPQ::coinbaseRho(fixture.miner.pqSpendPk(), 1, 0);
+  const auto transfer = buildPqTransaction({input},
+      {PqSendOutput{fixture.alternate.pqViewPk(), fixture.alternate.pqSpendPk(), input.amount - Fee}},
+      fixture.miner.pqSpendPk(), fixture.miner.pqSpendSk());
+  struct Clock : ITimeProvider { time_t now() override { return wallTime.load(); } } clock;
+  // Core does not expose an adjustable template budget. This independent real
+  // pool uses Core's actual Blockchain validator and database, with explicit
+  // selector budgets; the reorg fixtures above exercise Core's own pool.
+  tx_memory_pool pool(fixture.currency, fixture.core->get_blockchain_storage(), *fixture.core, clock, fixture.logger);
+  tx_verification_context admitted{};
+  require(pool.add_tx(transfer, admitted, true) && admitted.m_added_to_pool,
+          "retain signed immature transfer through actual kept-by-block validation");
+  require(pool.getMemoryPool().front().fee == 0, "immature input leaves its fee unresolved");
+  for (uint32_t h = 2; h <= 13; ++h) fixture.append(Base - (13 - h) * 900);
+  Block templateBlock; size_t bytes = 0; uint64_t fee = 0;
+  const auto tinyLimit = fixture.currency.minerTxBlobReservedSize() + getObjectBinarySize(transfer) - 1;
+  require(pool.fill_block_template(templateBlock, 1000000, tinyLimit,
+          fixture.core->getTotalGeneratedAmount(), bytes, fee) && templateBlock.transactionHashes.empty(),
+          "first request repairs but excludes the transfer by size");
+  require(pool.getMemoryPool().front().fee == Fee, "budget-excluded transfer has its actual fee repaired");
+  const auto conflict = buildPqTransaction({input},
+      {PqSendOutput{fixture.miner.pqViewPk(), fixture.miner.pqSpendPk(), input.amount - Fee}},
+      fixture.miner.pqSpendPk(), fixture.miner.pqSpendSk());
+  const auto accepted = fixture.submit(conflict);
+  require(accepted.m_added_to_pool && !accepted.m_verification_failed, "Core accepts a valid competing spend");
+  fixture.generator.setTxFee(getObjectHash(conflict), Fee);
+  fixture.append(Base + 10, {conflict});
+  BlockInfo reference;
+  require(!fixture.core->get_blockchain_storage().checkTransactionInputs(transfer, reference),
+          "actual canonical conflict invalidates the earlier transaction");
+  // No manual cache-invalidation hooks: match the production Core lifecycle.
+  require(pool.fill_block_template(templateBlock, 1000000, 2000000,
+          fixture.core->getTotalGeneratedAmount(), bytes, fee) && templateBlock.transactionHashes.empty() && bytes == 0 && fee == 0,
+          "roomy template excludes a repaired-but-never-selected transaction after its input is spent");
+  Transaction removed; size_t removedBytes = 0; uint64_t removedFee = 0;
+  require(pool.take_tx(getObjectHash(transfer), removed, removedBytes, removedFee), "remove isolated pool fixture entry");
+  std::cout << "PASS,actual_chain_validator_budget_exclusion,conflicting_canonical_spend,excluded_without_cache_hooks\n";
+}
 } // namespace
 
 int main(int argc, char** argv) {
@@ -464,16 +508,22 @@ int main(int argc, char** argv) {
       if (argument == "--data-dir" && i + 1 < argc) directory = argv[++i];
       else if (argument == "--ordinary-reorg") ordinaryReorg = true;
       else if (argument == "--require-cached-fee") requireCachedFee = true;
-      else throw std::runtime_error("Usage: timestamp_transactions_tests --data-dir FRESH_DIRECTORY [--ordinary-reorg] [--require-cached-fee]");
+      else if (argument == "--budget-exclusion-only") budgetExclusionOnly = true;
+      else throw std::runtime_error("Usage: timestamp_transactions_tests --data-dir FRESH_DIRECTORY [--ordinary-reorg] [--require-cached-fee] [--budget-exclusion-only]");
     }
     require(!directory.empty(), "--data-dir is required");
 #ifdef TIMESTAMP_LEGACY_BASELINE
     require(ordinaryReorg, "The legacy baseline requires --ordinary-reorg");
 #endif
     require(!fs::exists(directory), "data root must be fresh");
+    if (budgetExclusionOnly) {
+      budgetExcludedRepair(directory / "budget-excluded");
+      return 0;
+    }
     run(directory / "immediate", false);
     run(directory / "after-restart", true);
     unresolvedInputs(directory / "unresolved");
+    budgetExcludedRepair(directory / "budget-excluded");
     return 0;
   } catch (const std::exception& error) {
     std::cerr << "FAIL," << error.what() << '\n';
