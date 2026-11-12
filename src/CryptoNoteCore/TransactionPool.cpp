@@ -478,10 +478,42 @@ bool getPqAccountRegistrationId(const Transaction& tx, Crypto::Hash& accountId) 
     size_t max_total_size = (125 * median_size) / 100;
     max_total_size = std::min(max_total_size, maxCumulativeSize) - m_currency.minerTxBlobReservedSize();
 
+    // Disconnected PQ transactions can enter the pool before their spent tags
+    // are removed, leaving an unresolved zero fee. Repair it before ordering or
+    // applying size limits. The hash index stays stable when the fee changes.
+    for (auto i = m_transactions.begin(); i != m_transactions.end(); ++i) {
+      const auto& txd = *i;
+      if (!txd.keptByBlock || txd.fee != 0 || txd.tx.version != TRANSACTION_VERSION_1 ||
+          !isPqTransfer(txd.tx.txType) ||
+          !m_currency.isPqTransferTypeAllowedAt(txd.tx.txType, m_core.getCurrentBlockchainHeight())) continue;
+
+      TransactionCheckInfo checkInfo(txd);
+      checkInfo.maxUsedBlock.clear();
+      // A missing funding output may appear in a later block. Reuse a negative
+      // result only at the exact failed tip, not while it remains an ancestor.
+      if (!checkInfo.lastFailedBlock.empty()) {
+        if (static_cast<uint64_t>(checkInfo.lastFailedBlock.height) + 1 == m_core.getCurrentBlockchainHeight() &&
+            m_core.getBlockIdByHeight(checkInfo.lastFailedBlock.height) == checkInfo.lastFailedBlock.id) continue;
+        checkInfo.lastFailedBlock.clear();
+      }
+      uint64_t resolvedFee = 0;
+      const bool ready = is_transaction_ready_to_go(txd.tx, checkInfo) &&
+                         m_core.getPqTransactionFee(txd.tx, resolvedFee) && resolvedFee != 0;
+      m_transactions.modify(i, [&](TransactionDetails& item) {
+        static_cast<TransactionCheckInfo&>(item) = checkInfo;
+        if (ready) item.fee = resolvedFee;
+      });
+      if (ready) m_validated_transactions.insert(txd.id);
+    }
+
     BlockTemplate blockTemplate;
 
     for (auto i = m_fee_index.begin(); i != m_fee_index.end(); ++i) {
       const auto& txd = *i;
+
+      // PQ transfers have a positive consensus fee floor. A zero cache entry
+      // still awaiting full input validation must not enter a miner template.
+      if (txd.tx.version == TRANSACTION_VERSION_1 && isPqTransfer(txd.tx.txType) && txd.fee == 0) continue;
 
       // Re-evaluate the delivery era before either cached or uncached readiness.
       if (txd.tx.version == TRANSACTION_VERSION_1 && isPqTransfer(txd.tx.txType) &&

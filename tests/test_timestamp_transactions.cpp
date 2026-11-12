@@ -20,6 +20,7 @@
 #include "crypto_pq/PqOutputBuilder.h"
 
 #include <atomic>
+#include <algorithm>
 #include <chrono>
 #include <cstring>
 #include <ctime>
@@ -144,9 +145,9 @@ struct Fixture {
     require(result.m_added_to_main_chain && !result.m_verification_failed, "accept canonical block");
     return block;
   }
-  tx_verification_context submit(const Transaction& tx) {
+  tx_verification_context submit(const Transaction& tx, bool keptByBlock = false) {
     tx_verification_context result{};
-    core->handleIncomingTransaction(tx, getObjectHash(tx), toBinaryArray(tx).size(), result, false,
+    core->handleIncomingTransaction(tx, getObjectHash(tx), toBinaryArray(tx).size(), result, keptByBlock,
                                     core->getCurrentBlockchainHeight());
     return result;
   }
@@ -201,13 +202,8 @@ void transferState(Core& core, const Transaction& tx, const Crypto::KeyImage& ta
     require(std::memcmp(poolNullifier.data, tag.data, sizeof(tag.data)) == 0, "pool transfer retains the same nullifier");
     uint64_t resolvedFee = 0;
     require(core.getPqTransactionFee(tx, resolvedFee) && resolvedFee == Fee, "actual transfer fee remains unchanged");
-    // Existing popBlock saves a PQ transaction before removing its spent tag.
-    // Record the pool's cached fee separately from the valid transaction's fee.
-    std::cout << "METRIC,returned_pool_cached_fee," << pool.front().fee << ",resolved_fee," << resolvedFee << '\n';
-    if (pool.front().fee != Fee)
-      std::cout << "[OBSERVED EXISTING],returned_pool_cached_fee_mismatch,stored," << pool.front().fee
-                << ",actual," << Fee << '\n';
-    if (requireCachedFee) require(pool.front().fee == Fee, "returned pool transfer retains its cached fee");
+    // A returned transaction may remain unresolved until template preparation.
+    std::cout << "METRIC,pending_pool_cached_fee," << pool.front().fee << ",resolved_fee," << resolvedFee << '\n';
     BlockInfo referenced;
     require(chain.checkTransactionInputs(tx, referenced), "returned transfer is valid against restored funding output");
   }
@@ -233,36 +229,35 @@ uint64_t paidReward(const Block& block) {
   return total;
 }
 
-void observeReturnedTemplate(Fixture& fixture, const Transaction& transfer, const Crypto::KeyImage& tag) {
+Block mineReturnedTemplate(Fixture& fixture, const Transaction& transfer) {
   Block block; Difficulty difficulty = 0; uint32_t height = 0;
   require(fixture.core->get_block_template_pq(block, fixture.miner.pqViewPk(), fixture.miner.pqSpendPk(),
           difficulty, height, {}), "request actual miner template after transaction returns to pool");
   const auto expected = rewardFor(fixture, block, transfer, Fee);
   const auto actual = paidReward(block);
   std::cout << "METRIC,returned_transfer_template_reward," << actual << ",consensus_reward," << expected << '\n';
-  if (actual != expected) {
-    std::cout << "[OBSERVED EXISTING],returned_transfer_template_reward_mismatch,paid," << actual
-              << ",required," << expected << '\n';
-    require(actual < expected, "characterized template underpays rather than overpays");
-    const Snapshot original(*fixture.core);
-    const auto before = fixture.core->getMemoryPool();
-    fixture.prove(block, fixture.miner, difficulty);
-    const auto rejected = fixture.submit(block);
-    require(rejected.m_verification_failed && !rejected.m_added_to_main_chain,
-            "real consensus rejects the actually proved underpaid miner template");
-    original.check(*fixture.core);
-    transferState(*fixture.core, transfer, tag, false);
-    const auto after = fixture.core->getMemoryPool();
-    require(before.size() == 1 && after.size() == 1 && before.front().id == after.front().id &&
-            toBinaryArray(before.front().tx) == toBinaryArray(after.front().tx),
-            "rejected miner template preserves exact pool transaction bytes and count");
-    // Returning a transaction after rejection may re-evaluate the cached fee.
-    // Preserve the economic state checks and report this metadata transition.
-    std::cout << "[OBSERVED EXISTING],proved_underpaid_template_rejected,1,cached_fee_before,"
-              << before.front().fee << ",cached_fee_after," << after.front().fee << '\n';
+  if (requireCachedFee) {
+    const auto pool = fixture.core->getMemoryPool();
+    require(pool.size() == 1 && pool.front().fee == Fee, "first template repairs the cached fee before selection");
   }
-  // The later reinclusion is a manually constructed fee-correct test block;
-  // it does not claim to exercise the miner's automatic retry/refresh loop.
+  for (size_t request = 0; request < 3; ++request) {
+    Block repeated; Difficulty repeatedDifficulty = 0; uint32_t repeatedHeight = 0;
+    require(fixture.core->get_block_template_pq(repeated, fixture.miner.pqViewPk(), fixture.miner.pqSpendPk(),
+            repeatedDifficulty, repeatedHeight, {}), "repeat actual Core template request");
+    require(repeated.transactionHashes == block.transactionHashes && paidReward(repeated) == actual &&
+            repeatedHeight == height && repeatedDifficulty == difficulty,
+            "repeated templates preserve selection, reward, height and difficulty");
+  }
+  const auto zeroFeeReward = rewardFor(fixture, block, transfer, 0);
+  // Submit the very first Core template. Only its nonce/proof is filled in;
+  // no coinbase, fee, timestamp or transaction-list correction is permitted.
+  fixture.prove(block, fixture.miner, difficulty);
+  const auto accepted = fixture.submit(block);
+  require(accepted.m_added_to_main_chain && !accepted.m_verification_failed,
+          "the first unmodified Core template is accepted by real consensus");
+  require(actual == expected && expected - zeroFeeReward == Fee,
+          "the first Core template pays the full reward including all 50 fee units");
+  return block;
 }
 
 struct ClockStep {
@@ -278,7 +273,7 @@ struct ClockStep {
   ~ClockStep() { clockObservation = {}; }
 };
 
-void run(const fs::path& directory) {
+void run(const fs::path& directory, bool restartBeforeTemplate) {
   require(static_cast<uint64_t>(std::time(nullptr)) == Base + 100, "executable-only time wrapper is effective");
   Fixture fixture(directory);
   auto& core = *fixture.core;
@@ -345,21 +340,15 @@ void run(const fs::path& directory) {
   transferState(core, transfer, tag, false);
   const auto poolConflict = fixture.submit(conflicting);
   require(poolConflict.m_verification_failed && !poolConflict.m_added_to_pool, "returned pool entry prevents a conflicting spend");
-  fixture.restart(); transferState(*fixture.core, transfer, tag, false);
+  if (restartBeforeTemplate) fixture.restart();
+  transferState(*fixture.core, transfer, tag, false);
   const auto persistedConflict = fixture.submit(conflicting);
   require(persistedConflict.m_verification_failed && !persistedConflict.m_added_to_pool,
           "restart preserves pool duplicate-spend protection");
   const auto retry = fixture.submit(transfer);
   require(!retry.m_verification_failed && !retry.m_added_to_pool, "identical transaction retry does not duplicate pool entry");
   transferState(*fixture.core, transfer, tag, false);
-  observeReturnedTemplate(fixture, transfer, tag);
-  const auto included = fixture.build(fixture.core->get_tail_id(), fixture.core->getCurrentBlockchainHeight(),
-                                       Base + 100, false, {transfer});
-  const auto expectedReward = rewardFor(fixture, included, transfer, Fee);
-  require(paidReward(included) == expectedReward && expectedReward - rewardFor(fixture, included, transfer, 0) == Fee,
-          "explicit fee-correct reinclusion pays the complete reward including all 50 fee units");
-  const auto reincluded = fixture.submit(included);
-  require(reincluded.m_added_to_main_chain && !reincluded.m_verification_failed, "accept fee-correct reinclusion");
+  const auto included = mineReturnedTemplate(fixture, transfer);
   transferState(*fixture.core, transfer, tag, true, 18);
   const Snapshot finalState(*fixture.core);
   const auto duplicate = fixture.submit(included);
@@ -372,8 +361,98 @@ void run(const fs::path& directory) {
   const auto outputs = receiver.spendableInputs();
   require(outputs.size() == 1 && outputs.front().amount == input.amount - Fee, "recipient retains exactly one correct output");
   std::cout << "PASS,checks," << checks << ",real_proofs," << proofs
-            << ",transfer_original_height,14,transfer_reincluded_height,18,restarts,2,ordinary_reorg,"
-            << ordinaryReorg << ",strict_cached_fee," << requireCachedFee << ",manual_fee_correct_reinclusion,1\n";
+            << ",transfer_original_height,14,transfer_reincluded_height,18,restart_before_template,"
+            << restartBeforeTemplate << ",ordinary_reorg," << ordinaryReorg
+            << ",strict_cached_fee," << requireCachedFee << ",first_core_template_accepted,1\n";
+}
+
+void unresolvedInputs(const fs::path& directory) {
+  Fixture fixture(directory);
+  for (uint32_t h = 1; h <= 13; ++h) fixture.append(Base - (13 - h) * 900);
+  const auto inputAt = [&](uint32_t height) {
+    const auto funding = fixture.blockAt(height).baseTransaction;
+    PqSpendInput input{};
+    input.prevTxid = getObjectHash(funding);
+    input.amount = funding.outputs.at(0).amount;
+    input.rho = CryptoPQ::coinbaseRho(fixture.miner.pqSpendPk(), height, 0);
+    return input;
+  };
+  const auto known = inputAt(1), fundingSource = inputAt(2);
+  const auto funding = buildPqTransactionWithProof({fundingSource},
+      {PqSendOutput{fixture.miner.pqViewPk(), fixture.miner.pqSpendPk(), fundingSource.amount - Fee}},
+      fixture.miner.pqSpendPk(), fixture.miner.pqSpendSk());
+  PqSpendInput pending{};
+  pending.prevTxid = getObjectHash(funding.tx);
+  pending.amount = funding.tx.outputs.at(0).amount;
+  pending.rho = funding.outputRhos.at(0);
+  // With one of two inputs missing, the fee-only resolver can still return a
+  // plausible positive amount. It must never substitute for input validation.
+  const auto partial = buildPqTransaction({known, pending},
+      {PqSendOutput{fixture.alternate.pqViewPk(), fixture.alternate.pqSpendPk(), known.amount - 100}},
+      fixture.miner.pqSpendPk(), fixture.miner.pqSpendSk());
+  auto missing = pending;
+  missing.prevTxid = Crypto::Hash{}; missing.prevTxid.data[0] = 0xee;
+  require(!fixture.core->haveTransaction(missing.prevTxid), "unknown funding outpoint is absent");
+  const auto unknown = buildPqTransaction({missing},
+      {PqSendOutput{fixture.alternate.pqViewPk(), fixture.alternate.pqSpendPk(), missing.amount - Fee}},
+      fixture.miner.pqSpendPk(), fixture.miner.pqSpendSk());
+  for (const auto* tx : {&partial, &unknown}) {
+    const auto admitted = fixture.submit(*tx, true);
+    require(admitted.m_added_to_pool && !admitted.m_verification_failed,
+            "unresolved signed block transaction remains stored for later branch validation");
+  }
+  uint64_t misleadingPartialFee = 0;
+  require(fixture.core->getPqTransactionFee(partial, misleadingPartialFee) && misleadingPartialFee == 100,
+          "fixture demonstrates why a partial fee lookup is insufficient");
+  const auto cachedFee = [&](const Transaction& tx) {
+    const auto entries = fixture.core->getMemoryPool();
+    const auto id = getObjectHash(tx);
+    const auto found = std::find_if(entries.begin(), entries.end(), [&](const auto& entry) { return entry.id == id; });
+    require(found != entries.end(), "pending transaction is retained in the pool");
+    return found->fee;
+  };
+  const auto templateWith = [&](const std::vector<Crypto::Hash>& ids) {
+    Block block; Difficulty difficulty = 0; uint32_t height = 0;
+    require(fixture.core->get_block_template_pq(block, fixture.miner.pqViewPk(), fixture.miner.pqSpendPk(),
+            difficulty, height, {}), "request actual unresolved-input template");
+    require(block.transactionHashes == ids, "only fully resolved, valid transactions enter the template");
+    return block;
+  };
+  for (unsigned request = 0; request < 3; ++request) templateWith({});
+  require(cachedFee(partial) == 0 && cachedFee(unknown) == 0, "unresolved fees are not guessed from partial sums");
+  fixture.append(Base + 10);
+  templateWith({}); // A new unrelated tip retries resolution without admitting it.
+  const auto admittedFunding = fixture.submit(funding.tx);
+  require(admittedFunding.m_added_to_pool && !admittedFunding.m_verification_failed, "real funding transaction is accepted");
+  fixture.generator.setTxFee(getObjectHash(funding.tx), Fee);
+  fixture.append(Base + 20, {funding.tx});
+  const uint64_t actualFee = pending.amount + 100;
+  auto block = templateWith({getObjectHash(partial)});
+  require(cachedFee(partial) == actualFee && cachedFee(unknown) == 0,
+          "new funding block resolves the complete fee without reviving the unknown transaction");
+  const auto expected = rewardFor(fixture, block, partial, actualFee);
+  require(paidReward(block) == expected, "resolved multi-input template includes the complete actual fee");
+  fixture.prove(block, fixture.miner, fixture.core->getNextBlockDifficulty());
+  const auto accepted = fixture.submit(block);
+  require(accepted.m_added_to_main_chain && !accepted.m_verification_failed,
+          "first template after funding is accepted with the formerly partial transaction");
+  for (const auto& input : partial.inputs) {
+    const auto nullifier = pqNullifier(boost::get<PqInput>(input));
+    Crypto::KeyImage tag{}; std::memcpy(tag.data, nullifier.data, sizeof(tag.data));
+    require(fixture.core->is_key_image_spent(tag), "both resolved inputs record their actual nullifiers");
+  }
+  const auto conflict = buildPqTransaction({known},
+      {PqSendOutput{fixture.alternate.pqViewPk(), fixture.alternate.pqSpendPk(), known.amount - Fee}},
+      fixture.miner.pqSpendPk(), fixture.miner.pqSpendSk());
+  const auto keptConflict = fixture.submit(conflict, true);
+  require(keptConflict.m_added_to_pool && !keptConflict.m_verification_failed,
+          "conflicting alternative-block transaction remains stored but unmineable");
+  const Snapshot original(*fixture.core);
+  for (unsigned request = 0; request < 3; ++request) templateWith({});
+  require(cachedFee(conflict) == 0 && cachedFee(unknown) == 0, "spent and unknown inputs remain unresolved");
+  fixture.restart(); original.check(*fixture.core); templateWith({});
+  require(fixture.core->getPoolTransactionsCount() == 2, "restart preserves unresolved alternatives without selecting them");
+  std::cout << "PASS,actual_core_unresolved_inputs,unknown_and_partial,later_funding,accepted,spent_input,excluded\n";
 }
 } // namespace
 
@@ -391,7 +470,10 @@ int main(int argc, char** argv) {
 #ifdef TIMESTAMP_LEGACY_BASELINE
     require(ordinaryReorg, "The legacy baseline requires --ordinary-reorg");
 #endif
-    run(directory);
+    require(!fs::exists(directory), "data root must be fresh");
+    run(directory / "immediate", false);
+    run(directory / "after-restart", true);
+    unresolvedInputs(directory / "unresolved");
     return 0;
   } catch (const std::exception& error) {
     std::cerr << "FAIL," << error.what() << '\n';
