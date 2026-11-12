@@ -97,12 +97,19 @@ jobs:
 
           cmake --build build/security --config Release \
             --target PqChainTests PqDaemonTrustTests PqPaymentProofTests UnitTests \
+            TimestampLwmaTests TimestampActivationTests TimestampChainTests \
+            TimestampProtocolTests TimestampNetworkTests TimestampTransactionsTests \
             -- -j"$(nproc)"
 
           # PqWalletSyncE2E is a filtered run of the UnitTests binary, so it needs
           # no target of its own.
           ctest --test-dir build/security -C Release --output-on-failure \
-            -R '^(PqChainTests|PqDaemonTrustTests|PqPaymentProofTests|SynchronizationActivityTests|UnitTests|PqWalletSyncE2E)$'
+            -R '^(PqChainTests|PqDaemonTrustTests|PqPaymentProofTests|SynchronizationActivityTests|UnitTests|PqWalletSyncE2E|TimestampLwmaTests|TimestampActivationTests|TimestampChainTests|TimestampProtocolTests|TimestampTransactionsTests)$'
+
+          # The reconnect fixture must have loopback but no public network.
+          sudo unshare -n -- sh -c 'ip link set lo up && exec "$1" --data-dir "$2"' sh \
+            "$PWD/build/security/tests/timestamp_network_tests" \
+            "$RUNNER_TEMP/timestamp-network-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
 
   build-windows:
     name: Windows
@@ -202,12 +209,16 @@ jobs:
             -DCMAKE_PREFIX_PATH="$BoostRoot\lib64-msvc-14.3\cmake" `
             -DBOOST_ROOT="$BoostRoot" `
             -DBoost_ROOT="$BoostRoot" `
+            -DBUILD_TESTS=ON `
             -DOQS_BUILD_ONLY_LIB=ON `
             ..
           if ($LASTEXITCODE -ne 0) { throw "CMake configure failed with exit code $LASTEXITCODE" }
 
-          cmake --build . --config Release --target Daemon SimpleWallet GreenWallet PaymentGateService AdminTools -- /m /v:minimal
+          cmake --build . --config Release --target Daemon SimpleWallet GreenWallet PaymentGateService AdminTools TimestampLwmaTests TimestampActivationTests PqChainTests PqFinalityTests PqWireTests PqPowTests UnitTests -- /m /v:minimal
           if ($LASTEXITCODE -ne 0) { throw "CMake build failed with exit code $LASTEXITCODE" }
+
+          ctest -C Release --output-on-failure -R '^(TimestampLwmaTests|TimestampActivationTests|PqChainTests|PqFinalityTests|PqWireTests|PqPowTests|ReturnedPqFeeTests)$'
+          if ($LASTEXITCODE -ne 0) { throw "Consensus regression tests failed with exit code $LASTEXITCODE" }
 
           $bin_dir = "src\Release"
           $package_dir = "$release_name"
@@ -398,10 +409,11 @@ jobs:
             -DBoost_THREADAPI=pthread
 
           cmake --build . --config Release \
-            --target Daemon SimpleWallet GreenWallet PaymentGateService AdminTools PqPowTests \
+            --target Daemon SimpleWallet GreenWallet PaymentGateService AdminTools PqPowTests TimestampLwmaTests TimestampActivationTests PqChainTests PqFinalityTests PqWireTests UnitTests \
             -- -j"$(sysctl -n hw.ncpu)"
 
           ./tests/pq_pow_tests '--gtest_filter=-*Bench*'
+          ctest --output-on-failure -R '^(TimestampLwmaTests|TimestampActivationTests|PqChainTests|PqFinalityTests|PqWireTests|ReturnedPqFeeTests)$'
 
           mkdir "$release_name"
 

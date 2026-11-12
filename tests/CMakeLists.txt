@@ -63,6 +63,20 @@ target_link_libraries(TimestampLwmaTests CryptoNoteCore Serialization System Log
 set_property(TARGET TimestampLwmaTests PROPERTY OUTPUT_NAME "timestamp_lwma_tests")
 add_test(NAME TimestampLwmaTests COMMAND timestamp_lwma_tests --fixed-inputs-only)
 
+add_executable(TimestampActivationTests test_timestamp_activation.cpp)
+target_link_libraries(TimestampActivationTests TestGenerator Wallet CryptoNoteCore Serialization System Logging Common Crypto CryptoPq BlockchainExplorer Checkpoints ${Boost_LIBRARIES})
+set_property(TARGET TimestampActivationTests PROPERTY OUTPUT_NAME "timestamp_activation_tests")
+add_test(NAME TimestampActivationTests COMMAND ${CMAKE_COMMAND}
+  -DPROGRAM=$<TARGET_FILE:TimestampActivationTests>
+  -DDATA_ROOT=${CMAKE_CURRENT_BINARY_DIR}/timestamp-activation-fixtures
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/run_timestamp_fixture.cmake)
+set_tests_properties(TimestampActivationTests PROPERTIES TIMEOUT 300)
+
+add_executable(TimestampHistoryTests test_timestamp_history.cpp)
+target_link_libraries(TimestampHistoryTests Wallet CryptoNoteCore Serialization System Logging Common Crypto CryptoPq BlockchainExplorer Checkpoints ${Boost_LIBRARIES})
+set_property(TARGET TimestampHistoryTests PROPERTY OUTPUT_NAME "timestamp_history_tests")
+# Invoked explicitly with an immutable, consistently copied mainnet snapshot.
+
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   add_executable(TimestampChainTests test_timestamp_chain.cpp)
   target_compile_definitions(TimestampChainTests PRIVATE TIMESTAMP_RETRY_CANDIDATE)
@@ -159,6 +173,9 @@ target_link_libraries(PqMinerKeyTests CryptoNoteCore Serialization System Loggin
 target_link_libraries(PqWalletLegacyEnvelopeTests Wallet CryptoNoteCore Serialization System Logging Common Crypto CryptoPq gtest ${Boost_LIBRARIES})
 
 if(MSVC)
+  target_link_libraries(TimestampLwmaTests legacy_stdio_definitions.lib ws2_32)
+  target_link_libraries(TimestampActivationTests legacy_stdio_definitions.lib ws2_32)
+  target_link_libraries(TimestampHistoryTests legacy_stdio_definitions.lib ws2_32)
   target_link_libraries(SystemTests ws2_32)
   target_link_libraries(NodeRpcProxyTests ws2_32)
   target_link_libraries(HashTests legacy_stdio_definitions.lib)
@@ -293,6 +310,7 @@ add_test(HashTests hash_tests)
 add_test(HashTargetTests hash_target_tests)
 add_test(SystemTests system_tests)
 add_test(UnitTests unit_tests)
+add_test(NAME ReturnedPqFeeTests COMMAND $<TARGET_FILE:UnitTests> --gtest_filter=ReturnedPqFee.*)
 add_test(
   NAME SynchronizationActivityTests
   COMMAND $<TARGET_FILE:UnitTests>
