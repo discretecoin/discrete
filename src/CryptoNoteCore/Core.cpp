@@ -510,6 +510,10 @@ bool Core::get_block_template_pq(Block& b, const CryptoPQ::KemPublicKey& /*viewP
       ? m_blockchain.getBlockTimestamp(height - 1)
       : 0;
     b.timestamp = std::max(localTimestamp, parentTimestamp);
+    if (m_currency.monotonicTimestampHeight() != UINT32_MAX &&
+        height == m_currency.monotonicTimestampHeight()) {
+      b.timestamp = std::max(b.timestamp, m_blockchain.getBlockTimestamp(height - 2));
+    }
     diffic = m_blockchain.getDifficultyForNextBlock(b.previousBlockHash);
     if (!diffic) {
       logger(ERROR, BRIGHT_RED) << "difficulty overhead.";

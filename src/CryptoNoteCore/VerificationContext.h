@@ -42,5 +42,8 @@ namespace CryptoNote
     bool m_already_exists;
     bool m_switched_to_alt_chain;
     bool m_finality_fork; //refused: alt chain forks deeper than CRYPTONOTE_FINALITY_DEPTH
+    // Rejected by the local future-time gate after timestamp activation.
+    // This does not assert validity of checks that have not yet run.
+    bool m_timestamp_too_far_in_future;
   };
 }

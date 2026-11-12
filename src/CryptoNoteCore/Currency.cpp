@@ -520,6 +520,14 @@ namespace CryptoNote {
     // emits that network's genesis transaction rather than mainnet's.
     return buildGenesisTreasuryReserveCoinbase(m_currency.m_testnet);
   }
+  CurrencyBuilder& CurrencyBuilder::monotonicTimestampHeight(uint32_t val) {
+    if (val < 2) {
+      throw std::invalid_argument("monotonic timestamp activation requires two ancestors");
+    }
+    m_currency.m_monotonicTimestampHeight = val;
+    return *this;
+  }
+
   CurrencyBuilder& CurrencyBuilder::emissionSpeedFactor(unsigned int val) {
     if (val <= 0 || val > 8 * sizeof(uint64_t)) {
       throw std::invalid_argument("val at emissionSpeedFactor()");

@@ -58,6 +58,60 @@ add_executable(PqPaymentProofArchiveTests test_payment_proof_archive.cpp)
 add_executable(PqNullifierDbTests test_pq_nullifier_db.cpp)
 add_executable(PqValidationTests test_pq_validation.cpp)
 add_executable(PqChainTests test_pq_chain.cpp)
+add_executable(TimestampLwmaTests test_timestamp_lwma.cpp)
+target_link_libraries(TimestampLwmaTests CryptoNoteCore Serialization System Logging Common Crypto CryptoPq BlockchainExplorer Checkpoints ${Boost_LIBRARIES})
+set_property(TARGET TimestampLwmaTests PROPERTY OUTPUT_NAME "timestamp_lwma_tests")
+add_test(NAME TimestampLwmaTests COMMAND timestamp_lwma_tests --fixed-inputs-only)
+
+add_executable(TimestampActivationTests test_timestamp_activation.cpp)
+target_link_libraries(TimestampActivationTests TestGenerator Wallet CryptoNoteCore Serialization System Logging Common Crypto CryptoPq BlockchainExplorer Checkpoints ${Boost_LIBRARIES})
+set_property(TARGET TimestampActivationTests PROPERTY OUTPUT_NAME "timestamp_activation_tests")
+add_test(NAME TimestampActivationTests COMMAND ${CMAKE_COMMAND}
+  -DPROGRAM=$<TARGET_FILE:TimestampActivationTests>
+  -DDATA_ROOT=${CMAKE_CURRENT_BINARY_DIR}/timestamp-activation-fixtures
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/run_timestamp_fixture.cmake)
+set_tests_properties(TimestampActivationTests PROPERTIES TIMEOUT 300)
+
+add_executable(TimestampHistoryTests test_timestamp_history.cpp)
+target_link_libraries(TimestampHistoryTests Wallet CryptoNoteCore Serialization System Logging Common Crypto CryptoPq BlockchainExplorer Checkpoints ${Boost_LIBRARIES})
+set_property(TARGET TimestampHistoryTests PROPERTY OUTPUT_NAME "timestamp_history_tests")
+# Invoked explicitly with an immutable, consistently copied mainnet snapshot.
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  add_executable(TimestampChainTests test_timestamp_chain.cpp)
+  target_compile_definitions(TimestampChainTests PRIVATE TIMESTAMP_RETRY_CANDIDATE)
+  target_link_libraries(TimestampChainTests TestGenerator Wallet CryptoNoteCore Serialization System Logging Common Crypto CryptoPq BlockchainExplorer Checkpoints ${Boost_LIBRARIES})
+  set_property(TARGET TimestampChainTests PROPERTY OUTPUT_NAME "timestamp_chain_tests")
+  set_property(TARGET TimestampChainTests APPEND_STRING PROPERTY LINK_FLAGS " -Wl,--wrap=time")
+  add_test(NAME TimestampChainTests COMMAND ${CMAKE_COMMAND}
+    -DPROGRAM=$<TARGET_FILE:TimestampChainTests>
+    -DDATA_ROOT=${CMAKE_CURRENT_BINARY_DIR}/timestamp-fixtures
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/run_timestamp_fixture.cmake)
+  set_tests_properties(TimestampChainTests PROPERTIES TIMEOUT 300)
+  add_executable(TimestampProtocolTests test_timestamp_protocol.cpp)
+  target_link_libraries(TimestampProtocolTests TestGenerator P2P CryptoNoteProtocol Wallet CryptoNoteCore BlockchainExplorer System Logging Serialization Common Crypto CryptoPq Checkpoints upnpc-static ${Boost_LIBRARIES})
+  set_property(TARGET TimestampProtocolTests PROPERTY OUTPUT_NAME "timestamp_protocol_tests")
+  set_property(TARGET TimestampProtocolTests APPEND_STRING PROPERTY LINK_FLAGS " -Wl,--wrap=time")
+  add_test(NAME TimestampProtocolTests COMMAND ${CMAKE_COMMAND}
+    -DPROGRAM=$<TARGET_FILE:TimestampProtocolTests>
+    -DDATA_ROOT=${CMAKE_CURRENT_BINARY_DIR}/timestamp-protocol-fixtures
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/run_timestamp_fixture.cmake)
+  set_tests_properties(TimestampProtocolTests PROPERTIES TIMEOUT 300)
+  add_executable(TimestampNetworkTests test_timestamp_network.cpp)
+  target_link_libraries(TimestampNetworkTests TestGenerator P2P CryptoNoteProtocol Wallet CryptoNoteCore BlockchainExplorer System Logging Serialization Common Crypto CryptoPq Checkpoints upnpc-static ${Boost_LIBRARIES})
+  set_property(TARGET TimestampNetworkTests PROPERTY OUTPUT_NAME "timestamp_network_tests")
+  set_property(TARGET TimestampNetworkTests APPEND_STRING PROPERTY LINK_FLAGS " -Wl,--wrap=time")
+  # Run explicitly inside a fresh network namespace with loopback only.
+  add_executable(TimestampTransactionsTests test_timestamp_transactions.cpp)
+  target_link_libraries(TimestampTransactionsTests TestGenerator Wallet CryptoNoteCore Serialization System Logging Common Crypto CryptoPq BlockchainExplorer Checkpoints ${Boost_LIBRARIES})
+  set_property(TARGET TimestampTransactionsTests PROPERTY OUTPUT_NAME "timestamp_transactions_tests")
+  set_property(TARGET TimestampTransactionsTests APPEND_STRING PROPERTY LINK_FLAGS " -Wl,--wrap=time")
+  add_test(NAME TimestampTransactionsTests COMMAND ${CMAKE_COMMAND}
+    -DPROGRAM=$<TARGET_FILE:TimestampTransactionsTests>
+    -DDATA_ROOT=${CMAKE_CURRENT_BINARY_DIR}/timestamp-transaction-fixtures
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/run_timestamp_fixture.cmake)
+  set_tests_properties(TimestampTransactionsTests PROPERTIES TIMEOUT 300)
+endif()
 add_executable(PqAccountTests test_pq_account.cpp)
 add_executable(PqWalletTests test_pq_wallet.cpp)
 add_executable(PqTxBuilderTests test_pq_tx_builder.cpp)
@@ -119,6 +173,9 @@ target_link_libraries(PqMinerKeyTests CryptoNoteCore Serialization System Loggin
 target_link_libraries(PqWalletLegacyEnvelopeTests Wallet CryptoNoteCore Serialization System Logging Common Crypto CryptoPq gtest ${Boost_LIBRARIES})
 
 if(MSVC)
+  target_link_libraries(TimestampLwmaTests legacy_stdio_definitions.lib ws2_32)
+  target_link_libraries(TimestampActivationTests legacy_stdio_definitions.lib ws2_32)
+  target_link_libraries(TimestampHistoryTests legacy_stdio_definitions.lib ws2_32)
   target_link_libraries(SystemTests ws2_32)
   target_link_libraries(NodeRpcProxyTests ws2_32)
   target_link_libraries(HashTests legacy_stdio_definitions.lib)
@@ -253,6 +310,7 @@ add_test(HashTests hash_tests)
 add_test(HashTargetTests hash_target_tests)
 add_test(SystemTests system_tests)
 add_test(UnitTests unit_tests)
+add_test(NAME ReturnedPqFeeTests COMMAND $<TARGET_FILE:UnitTests> --gtest_filter=ReturnedPqFee.*)
 add_test(
   NAME SynchronizationActivityTests
   COMMAND $<TARGET_FILE:UnitTests>

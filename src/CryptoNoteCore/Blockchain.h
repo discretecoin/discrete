@@ -386,7 +386,8 @@ namespace CryptoNote {
 
     // ── Private blockchain logic ───────────────────────────────────────────
     bool switch_to_alternative_blockchain(const std::list<Crypto::Hash>& alt_chain,
-                                           bool discard_disconnected_chain);
+                                           bool discard_disconnected_chain,
+                                           bool& timestampTooFarInFuture);
     bool handle_alternative_block(const Block& b, const Crypto::Hash& id,
                                    block_verification_context& bvc,
                                    bool sendNewAlternativeBlockMessage = true,
@@ -397,11 +398,14 @@ namespace CryptoNote {
                                      uint64_t alreadyGeneratedCoins, uint64_t fee,
                                      uint64_t& reward, int64_t& emissionChange);
     bool validate_block_signature(const Block& b, const Crypto::Hash& id, uint32_t height);
-    bool rollback_blockchain_switching(std::list<Block>& original_chain, size_t rollback_height);
+    bool rollback_blockchain_switching(std::list<Block>& original_chain, size_t rollback_height,
+                                      bool restorePreviouslyCanonical);
     bool get_last_n_blocks_sizes(std::vector<size_t>& sz, size_t count);
 
-    bool check_block_timestamp_main(const Block& b);
+    bool check_block_timestamp_main(const Block& b, bool& timestampTooFarInFuture,
+                                    bool restorePreviouslyCanonical, bool postActivationSwitch);
     bool check_block_timestamp(std::vector<uint64_t> timestamps, const Block& b);
+    bool check_block_timestamp_floor(const Block& b);
     uint64_t get_adjusted_time();
     bool complete_timestamps_vector(uint8_t blockMajorVersion, uint64_t start_height,
                                      std::vector<uint64_t>& timestamps);
@@ -479,10 +483,12 @@ namespace CryptoNote {
 
     bool pushBlock(const Block& blockData, const Crypto::Hash& id,
                    block_verification_context& bvc,
-                   const PrevalidatedBlockProof* prevalidatedProof = nullptr);
+                   const PrevalidatedBlockProof* prevalidatedProof = nullptr,
+                   bool restorePreviouslyCanonical = false, bool postActivationSwitch = false);
     bool pushBlock(const Block& blockData, const std::vector<Transaction>& transactions,
                    const Crypto::Hash& blockHash, block_verification_context& bvc,
-                   const PrevalidatedBlockProof* prevalidatedProof = nullptr);
+                   const PrevalidatedBlockProof* prevalidatedProof = nullptr,
+                   bool restorePreviouslyCanonical = false, bool postActivationSwitch = false);
     // Inner: writes a fully-formed BlockEntry to LMDB atomically
     bool pushBlock(BlockEntry& block, const Crypto::Hash& blockHash);
     void popBlock();
