@@ -285,6 +285,14 @@ add_test(PqSenderTests pq_sender_tests)
 add_test(PqFinalityTests pq_finality_tests)
 add_test(PqPowTests pq_pow_tests)
 add_test(PqDnsCheckpointTests pq_dns_checkpoint_tests)
+add_executable(PqQreTests test_qre.cpp)
+target_link_libraries(PqQreTests QreVerifier gtest)
+add_dependencies(PqQreTests QreVerify)
+add_test(NAME PqQreTests COMMAND PqQreTests)
+add_test(NAME PqQreCliTests COMMAND ${CMAKE_COMMAND}
+  -DFIXTURE_WRITER=$<TARGET_FILE:PqQreTests>
+  -DVERIFIER=$<TARGET_FILE:QreVerify>
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/test_qre_cli.cmake)
 add_test(HttpFramingTests http_framing_tests)
 add_test(PqMnemonicCompatTests pq_mnemonic_compat_tests)
 add_test(PqWalletSecurityTests pq_wallet_security_tests)

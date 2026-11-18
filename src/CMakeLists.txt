@@ -70,6 +70,14 @@ target_link_libraries(CryptoPq PUBLIC oqs chacha20poly1305 Common Crypto)
 # don't propagate through the oqs target. Add the path explicitly here.
 target_include_directories(CryptoPq PUBLIC
   $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/external/liboqs/include>)
+add_library(QreVerifier STATIC EXCLUDE_FROM_ALL Qre/QreVerifier.cpp)
+target_link_libraries(QreVerifier PUBLIC CryptoPq)
+add_executable(QreVerify EXCLUDE_FROM_ALL ${CMAKE_SOURCE_DIR}/utils/QreVerify.cpp)
+target_link_libraries(QreVerify PRIVATE QreVerifier)
+if(MSVC AND MSVC_VERSION GREATER_EQUAL 1900)
+  target_link_libraries(QreVerify PRIVATE legacy_stdio_definitions.lib)
+endif()
+set_target_properties(QreVerify PROPERTIES OUTPUT_NAME qre-verify)
 add_library(CryptoNoteCore ${CryptoNoteCore})
 # CryptoPq provides PQ derivations (nullifiers) used by consensus state.
 target_link_libraries(CryptoNoteCore PUBLIC Checkpoints CryptoPq ${LMDB_LIBRARY})
