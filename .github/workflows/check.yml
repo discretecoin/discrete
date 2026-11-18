@@ -50,6 +50,11 @@ jobs:
           # below, which already builds UnitTests here and runs the whole binary.
           ctest --test-dir build/powkat -C Release -R PqPowTests --output-on-failure
 
+      - name: Build and test the offline recovery evidence verifier
+        run: |
+          cmake --build build/powkat --config Release --target PqQreTests --parallel 2
+          ctest --test-dir build/powkat -C Release -R '^PqQre(Cli)?Tests$' --output-on-failure
+
   security-suites-linux:
     name: Security suites (Linux)
     runs-on: ubuntu-24.04

@@ -181,6 +181,7 @@ lexicographic byte order. Reject duplicate key IDs. `window/age/skew` bound
 the collection duration, observation age and clock skew in seconds.
 `records` caps distinct authenticated (statement, signer) pairs per inspection
 and `checks` caps supplied signatures per inspection, including duplicates.
+Both budgets must accommodate at least one quorum.
 The verifier additionally limits one invocation to 64 bundles and 256 envelopes.
 Saturation rejects the snapshot. A future receiver would need a persistent
 incident log and its own intake rate limit. Each signed `M` is the raw

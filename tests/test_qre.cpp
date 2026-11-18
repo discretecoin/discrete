@@ -286,6 +286,9 @@ TEST_F(QreTest, RefusesWrongContextAndPolicy) {
     bad[3] = static_cast<uint8_t>(threshold);
     EXPECT_EQ(Qre::inspect(bad, context(bad), {}, now).status, Status::Invalid);
   }
+  for (const auto& unusable : {policy(false, 2, 32), policy(false, 64, 2)}) {
+    EXPECT_EQ(Qre::inspect(unusable, context(unusable), {}, now).status, Status::Invalid);
+  }
   auto duplicate = pinned;
   std::copy_n(duplicate.begin() + 25, CryptoPQ::kDsaPublicKeyBytes,
               duplicate.begin() + 25 + CryptoPQ::kDsaPublicKeyBytes);

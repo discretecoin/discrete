@@ -170,7 +170,7 @@ checkpoint-zone protection, proves a partially validated competing branch cannot
 steer it, tests an alternative-parent LCA, or exercises process/power loss during
 rollback. These four historical suites did not exercise a QRE verifier.
 
-## B. Findings and required decisions before implementation
+## B. Findings and required decisions before recovery integration
 
 1. **Keep the current consensus model.** Depth=10, PoW, shallow forks, difficulty,
    transaction ordering and checkpoint admission must remain unchanged. More work
@@ -192,7 +192,8 @@ rollback. These four historical suites did not exercise a QRE verifier.
    Witnesses never assert the receiver's LCA or select its rollback target.
 5. **Retain one explicit recovery workflow.** A future plan-bound confirmation
    must route through the existing recovery workflow and be distinguishable
-   from a legacy manual confirmation, including at an older daemon. The current unrestricted post-pop sync does not
+   from a legacy manual confirmation, including at an older daemon. Current
+   unrestricted post-pop sync does not
    promise the planned destination. Until execution can enforce/read back that
    contract through the existing path, evidence remains informational and a plan
    must not be advertised as executable/verified recovery.

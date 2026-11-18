@@ -8,7 +8,8 @@ command. A threshold result always carries `Branch: UNVALIDATED`.
 
 ## Build and run
 
-Use the normal Core build prerequisites. From a configured build directory:
+Use the normal Core build prerequisites. From the source root with a configured
+`build` directory:
 
 ```sh
 cmake --build build --config Release --target QreVerify

@@ -109,7 +109,8 @@ Policy parsePolicy(const Bytes& bytes) {
   policy.skew = reader.integer<uint32_t>();
   policy.records = reader.integer<uint32_t>();
   policy.checks = reader.integer<uint32_t>();
-  require(policy.window > 0 && policy.age > 0 && policy.records > 0 && policy.checks > 0,
+  require(policy.window > 0 && policy.age > 0 &&
+          policy.records >= policy.threshold && policy.checks >= policy.threshold,
           "Invalid policy limits");
   CryptoPQ::DsaPublicKey previous{};
   for (unsigned i = 0; i < n; ++i) {
