@@ -37,7 +37,6 @@
 #include "CryptoNoteFormatUtils.h"
 #include "CryptoNoteTools.h"
 #include "TransactionExtra.h"
-#include "PqTxType.h"
 
 using namespace Common;
 
@@ -50,9 +49,10 @@ struct BinaryVariantTagGetter: boost::static_visitor<uint8_t> {
   uint8_t operator()(const CryptoNote::BaseInput&) { return  0xff; }
   // KeyInput stub — should never be serialised on Discrete.
   uint8_t operator()(const CryptoNote::KeyInput&) { throw std::runtime_error("KeyInput not allowed in Discrete"); }
-  uint8_t operator()(const CryptoNote::PqInput&) { return  0x10; }
-  uint8_t operator()(const CryptoNote::SwapInput&) { return 0x20; }
-  uint8_t operator()(const CryptoNote::SwapOutput&) { return 0x12; }
+  // 0x10 = key-carrying input, 0x13 = key-reference input (see PqInput).
+  uint8_t operator()(const CryptoNote::PqInput& in) {
+    return in.keyRef == CryptoNote::PQ_NO_KEY_REF ? 0x10 : 0x13;
+  }
   // KeyOutput stub — should never be serialised on Discrete.
   uint8_t operator()(const CryptoNote::KeyOutput&) { throw std::runtime_error("KeyOutput not allowed in Discrete"); }
   uint8_t operator()(const CryptoNote::PqOutput&) { return  0x10; }
@@ -89,9 +89,17 @@ void getVariantValue(CryptoNote::ISerializer& serializer, uint8_t tag, CryptoNot
     in = v;
     break;
   }
-  case 0x20: {
-    CryptoNote::SwapInput v;
+  case 0x13: {
+    // Key-reference input. Presetting keyRef selects the reference layout in
+    // serialize(PqInput&); the real index is read from the wire and authPub is
+    // filled from the referenced input once the whole input list is known
+    // (resolvePqKeyReferences).
+    CryptoNote::PqInput v;
+    v.keyRef = 0;
     serializer(v, "value");
+    if (v.keyRef == CryptoNote::PQ_NO_KEY_REF) {
+      throw std::runtime_error("PqInput key reference out of range");
+    }
     in = v;
     break;
   }
@@ -114,12 +122,6 @@ void getVariantValue(CryptoNote::ISerializer& serializer, uint8_t tag, CryptoNot
   case 0x11: {
     // Stripped coinbase output — spendCommit only, no kemCt/encPayload.
     CryptoNote::CoinbaseOutput v;
-    serializer(v, "data");
-    out = v;
-    break;
-  }
-  case 0x12: {
-    CryptoNote::SwapOutput v;
     serializer(v, "data");
     out = v;
     break;
@@ -202,36 +204,27 @@ void serialize(TransactionPrefix& txP, ISerializer& serializer) {
 
   serializer(txP.txType, "tx_type");
   serializer(txP.unlockHeight, "unlock_height");
-  if (txP.txType == TX_SWAP_FUND || txP.txType == TX_SWAP_SPEND) {
-    // Bound new-family counts before allocation; historical serializers stay byte-identical.
-    size_t count = txP.inputs.size();
-    if (!serializer.beginArray(count, "vin") || count == 0 ||
-        count > (txP.txType == TX_SWAP_FUND ? 8u : 1u)) throw std::runtime_error("swap input count");
-    txP.inputs.resize(count);
-    for (auto& input : txP.inputs) serializer(input, "");
-    serializer.endArray();
-    count = txP.outputs.size();
-    if (!serializer.beginArray(count, "vout") || count == 0 || count > 2) throw std::runtime_error("swap output count");
-    txP.outputs.resize(count);
-    for (auto& output : txP.outputs) serializer(output, "");
-    serializer.endArray();
-    // This profile has no tx_extra field, eliminating an unbounded auxiliary payload.
-    if (serializer.type() == ISerializer::INPUT) txP.extra.clear();
-    else if (!txP.extra.empty()) throw std::runtime_error("swap extra must be empty");
-  } else {
-    serializer(txP.inputs, "vin");
-    serializer(txP.outputs, "vout");
-    serializeAsBinary(txP.extra, "extra", serializer);
+  serializer(txP.inputs, "vin");
+  if (serializer.type() == ISerializer::INPUT) {
+    // Key-reference inputs travel without their key; give each one the key of
+    // the input it names so every consumer sees a fully populated PqInput.
+    resolvePqKeyReferences(txP.inputs);
   }
+  serializer(txP.outputs, "vout");
+  serializeAsBinary(txP.extra, "extra", serializer);
 }
 
 void serialize(Transaction& tx, ISerializer& serializer) {
   serialize(static_cast<TransactionPrefix&>(tx), serializer);
-  // Count PqInputs: each gets one ML-DSA-65 signature blob after the prefix
-  // (analogous to CN's per-input ring-sig vectors).
+  // Count the key-carrying inputs: each gets one ML-DSA-65 signature blob after
+  // the prefix (analogous to CN's per-input ring-sig vectors). A key-reference
+  // input is covered by the signature of the input it references and has none.
   size_t pqCount = 0;
-  for (const auto& in : tx.inputs)
-    if (in.type() == typeid(PqInput) || in.type() == typeid(SwapInput)) ++pqCount;
+  for (const auto& in : tx.inputs) {
+    if (in.type() == typeid(PqInput) && boost::get<PqInput>(in).keyRef == PQ_NO_KEY_REF) {
+      ++pqCount;
+    }
+  }
   if (serializer.type() == ISerializer::OUTPUT) {
     for (auto& sig : tx.pqSignatures)
       serializer.binary(sig.data(), PQ_SIGNATURE_SIZE, "pq_sig");
@@ -282,27 +275,40 @@ static void serializePqBlob(std::vector<uint8_t>& v, size_t expected, Common::St
 void serialize(PqInput& key, ISerializer& serializer) {
   serializer(key.prevTxid, "prev_txid");
   serializer(key.prevOutIndex, "prev_out_index");
-  serializePqBlob(key.authPub,   PQ_AUTH_PUB_SIZE, "auth_pub",   serializer);
+  if (key.keyRef == PQ_NO_KEY_REF) {
+    serializePqBlob(key.authPub, PQ_AUTH_PUB_SIZE, "auth_pub", serializer);
+  } else {
+    // Key-reference form: the index of the earlier input carrying this key
+    // replaces the 1952-byte key itself.
+    serializer(key.keyRef, "key_ref");
+  }
   serializePqBlob(key.rhoReveal, PQ_RHO_SIZE,      "rho_reveal", serializer);
   // Signature not here — it lives in Transaction.pqSignatures after the prefix.
 }
 
-void serialize(SwapInput& input, ISerializer& serializer) {
-  serializer(input.prevTxid, "prev_txid"); serializer(input.prevOutIndex, "prev_out_index");
-  serializer(input.branch, "branch");
-  if (input.branch != 1 && input.branch != 2) throw std::runtime_error("swap branch");
-  serializePqBlob(input.authPub, PQ_AUTH_PUB_SIZE, "auth_pub", serializer);
-  serializePqBlob(input.rhoReveal, PQ_RHO_SIZE, "rho_reveal", serializer);
-  if (input.branch == 1) serializePqBlob(input.secret, 32, "secret", serializer);
-  else if (serializer.type() == ISerializer::INPUT) input.secret.clear();
-  else if (!input.secret.empty()) throw std::runtime_error("refund must not carry a secret");
-}
-void serialize(SwapOutput& output, ISerializer& serializer) {
-  serializer(output.version, "version"); serializer(output.hashScheme, "hash_scheme");
-  serializer(output.authScheme, "auth_scheme"); serializer(output.amountScheme, "amount_scheme");
-  serializer(output.nonce, "nonce"); serializer(output.hashlock, "hashlock");
-  serializer(output.claimCommit, "claim_commit"); serializer(output.refundCommit, "refund_commit");
-  serializer(output.refundHeight, "refund_height");
+void resolvePqKeyReferences(TransactionInputs& inputs) {
+  for (size_t i = 0; i < inputs.size(); ++i) {
+    if (inputs[i].type() != typeid(PqInput)) continue;
+    PqInput& in = boost::get<PqInput>(inputs[i]);
+    if (in.keyRef == PQ_NO_KEY_REF) continue;
+    // No valid transaction holding a reference has more inputs than this. Refuse
+    // before copying any key, or a list of ~70-byte references would make the
+    // parser expand each into a 1952-byte key before the semantic check sees the
+    // count. Lists without references are left to that check, as before.
+    if (inputs.size() > parameters::MAX_PQ_GROUPED_INPUTS_PER_TX) {
+      throw std::runtime_error("too many PQ inputs before key-reference expansion");
+    }
+    // A reference may only point BACKWARDS at an input that carries its key.
+    // Anything else has no well-defined key and cannot be a valid transaction.
+    if (in.keyRef >= i || inputs[in.keyRef].type() != typeid(PqInput)) {
+      throw std::runtime_error("PqInput key reference does not name an earlier key-carrying input");
+    }
+    const PqInput& target = boost::get<PqInput>(inputs[in.keyRef]);
+    if (target.keyRef != PQ_NO_KEY_REF) {
+      throw std::runtime_error("PqInput key reference does not name an earlier key-carrying input");
+    }
+    in.authPub = target.authPub;
+  }
 }
 
 void serialize(TransactionInputs & inputs, ISerializer & serializer) {

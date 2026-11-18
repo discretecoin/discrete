@@ -1661,10 +1661,95 @@ bool runDeliveryV2HistoricalSpend() {
   return ok;
 }
 
+// Grouped input authorization is implemented but not scheduled. A node must
+// refuse a key-reference input today, on the real admission path (parse, pool,
+// Blockchain::checkPqInputs), while the same spend in today's form is accepted.
+bool runGroupedAuthNotActive() {
+  using namespace CryptoNote;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  const Currency currency = CurrencyBuilder(logger).testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(11).upgradeHeightV6(12).currency();
+  const std::filesystem::path dataDir("pq_grouped_auth_test_data");
+  std::error_code ec;
+  std::filesystem::remove_all(dataDir, ec);
+  std::filesystem::create_directories(dataDir, ec);
+  System::Dispatcher dispatcher;
+  Core core(currency, nullptr, logger, dispatcher);
+  CoreConfig config; config.configFolder = dataDir.string();
+  MinerConfig minerConfig;
+  if (!expect(core.init(config, minerConfig, false), "grouped: init")) return false;
+  bool ok = [&]() {
+    test_generator gen(currency);
+    gen.setBlockchain(&core.get_blockchain_storage());
+    AccountBase miner; miner.generate();
+    Block genesis;
+    if (!expect(core.getBlockByHash(core.getBlockIdByHeight(0), genesis), "grouped: genesis")) return false;
+    std::vector<size_t> genesisSizes;
+    gen.addBlock(genesis, 0, 0, genesisSizes, 0);
+    uint64_t ts = static_cast<uint64_t>(std::time(nullptr)) - 86400;
+    const uint64_t step = currency.difficultyTarget() * 10;
+    for (unsigned i = 0; i < 13; ++i, ts += step) {
+      if (!expect(mineBlock(core, currency, gen, miner, ts), "grouped: fund")) return false;
+    }
+
+    // Two matured coinbase outputs of the same miner key.
+    std::vector<PqSpendInput> inputs;
+    uint64_t total = 0;
+    for (uint32_t height = 1; height <= 2; ++height) {
+      Block b;
+      if (!expect(core.getBlockByHash(core.getBlockIdByHeight(height), b), "grouped: coinbase")) return false;
+      PqSpendInput in{};
+      in.prevTxid = getObjectHash(b.baseTransaction);
+      in.amount = b.baseTransaction.outputs.at(0).amount;
+      in.rho = CryptoPQ::coinbaseRho(miner.pqSpendPk(), height, 0);
+      total += in.amount;
+      inputs.push_back(in);
+    }
+    const auto recipient = pqKeysFromPattern(9, 2);
+    const std::vector<PqSendOutput> pay = {PqSendOutput{recipient.viewPub, recipient.spendPub, total - 50}};
+
+    auto submit = [&](const Transaction& built) {
+      // Through the wire form, as a peer would deliver it.
+      const BinaryArray blob = toBinaryArray(built);
+      Transaction tx;
+      tx_verification_context tvc{};
+      if (!fromBinaryArray(tx, blob)) return tvc;
+      core.handleIncomingTransaction(tx, getObjectHash(tx), blob.size(), tvc, false,
+                                     core.getCurrentBlockchainHeight());
+      return tvc;
+    };
+
+    PqSigningContext grouped;
+    grouped.useV2 = true;
+    grouped.groupedAuth = true;
+    std::memcpy(grouped.chainId.data(), currency.genesisBlockHash().data, grouped.chainId.size());
+    const Transaction groupedTx = buildPqTransaction(inputs, pay, miner.pqSpendPk(), miner.pqSpendSk(),
+                                                     0, {}, grouped);
+    if (!expect(groupedTx.pqSignatures.size() == 1 &&
+                boost::get<PqInput>(groupedTx.inputs[1]).keyRef == 0,
+                "grouped: second input is a key reference")) return false;
+    const tx_verification_context refused = submit(groupedTx);
+    if (!expect(!refused.m_added_to_pool, "grouped: key-reference spend refused before activation")) return false;
+
+    const Transaction todayTx = buildPqTransaction(inputs, pay, miner.pqSpendPk(), miner.pqSpendSk());
+    const tx_verification_context admitted = submit(todayTx);
+    return expect(admitted.m_added_to_pool && !admitted.m_verification_failed,
+                  "grouped: the same spend in today's form is admitted");
+  }();
+  core.deinit();
+  std::filesystem::remove_all(dataDir, ec);
+  return ok;
+}
+
 }  // namespace
 
 int main() {
   if (!runDeliveryV2HistoricalSpend()) return 1;
+  if (!runGroupedAuthNotActive()) {
+    std::cerr << "[FAIL] PQ grouped-authorization activation gate test" << std::endl;
+    return 1;
+  }
   if (!runCoroutineStack()) {
     std::cerr << "[FAIL] PQ dispatcher-coroutine stack test" << std::endl;
     return 1;

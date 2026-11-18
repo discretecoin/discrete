@@ -95,8 +95,6 @@ const char* txTypeName(uint8_t txType) {
     case TX_COINBASE: return "coinbase";
     case TX_PQ:
     case TX_PQ_V2:    return "transfer";
-    case TX_SWAP_FUND:  return "swap funding";
-    case TX_SWAP_SPEND: return "swap spend";
     case TX_FREE_REG: return "account registration";
     default:          return "unknown";
   }
@@ -481,8 +479,7 @@ bool BuiltinExplorer::on_get_explorer_block_by_hash(const COMMAND_EXPLORER_GET_B
     uint64_t totalFees = 0;
     for (const Transaction& tx : blockTxs) {
       uint64_t fee = 0;
-      if ((isPqTransfer(tx.txType) || tx.txType == TX_SWAP_FUND || tx.txType == TX_SWAP_SPEND) &&
-          m_core.getPqTransactionFee(tx, fee)) {
+      if (isPqTransfer(tx.txType) && m_core.getPqTransactionFee(tx, fee)) {
         totalFees += fee;
       }
     }
@@ -521,8 +518,7 @@ bool BuiltinExplorer::on_get_explorer_block_by_hash(const COMMAND_EXPLORER_GET_B
     auto appendTxRow = [&](const Transaction& tx) {
       const std::string hashStr = Common::podToHex(getObjectHash(tx));
       uint64_t fee = 0;
-      const bool paysFee = (isPqTransfer(tx.txType) || tx.txType == TX_SWAP_FUND || tx.txType == TX_SWAP_SPEND) &&
-        m_core.getPqTransactionFee(tx, fee);
+      const bool paysFee = isPqTransfer(tx.txType) && m_core.getPqTransactionFee(tx, fee);
       body += "  <tr>\n";
       body += "    <td><a class=\"wrap\" href=\"/explorer/tx/" + hashStr + "\">" + hashStr + "</a></td>\n";
       body += "    <td>" + std::string(txTypeName(tx.txType)) + "</td>\n";
@@ -617,8 +613,7 @@ bool BuiltinExplorer::on_get_explorer_tx_by_hash(const COMMAND_EXPLORER_GET_TRAN
     body += "  <li>\n";
     body += std::string(isCoinbase ? "    Reward: " : "    Sum of outputs: ") + m_core.currency().formatAmount(transactionsDetails.totalOutputsAmount) + "\n";
     body += "  </li>\n";
-    if (isPqTransfer(transactionsDetails.txType) || transactionsDetails.txType == TX_SWAP_FUND ||
-        transactionsDetails.txType == TX_SWAP_SPEND) {
+    if (isPqTransfer(transactionsDetails.txType)) {
       body += "  <li>\n";
       body += "    Fee: " + m_core.currency().formatAmount(transactionsDetails.fee) + "\n";
       body += "  </li>\n";
@@ -732,17 +727,14 @@ bool BuiltinExplorer::on_get_explorer_tx_by_hash(const COMMAND_EXPLORER_GET_TRAN
         body += "</td>\n    <td>";
         body += "    <a href=\"/explorer/tx/" + Common::podToHex(p.output.transactionHash) + "\">";
         body += "output No " + std::to_string(p.output.number) + "</a>";
-        body += foldedHex("Authorization public key, ML-DSA-65", p.input.authPub.data(), p.input.authPub.size());
+        if (p.input.keyRef != CryptoNote::PQ_NO_KEY_REF) {
+          // Grouped authorization: the key is carried, and signed for, by an
+          // earlier input of this transaction.
+          body += "<br>Authorized by the key of input No " + std::to_string(p.input.keyRef);
+        } else {
+          body += foldedHex("Authorization public key, ML-DSA-65", p.input.authPub.data(), p.input.authPub.size());
+        }
         body += "    </td>\n";
-      }
-      else if (in.type() == typeid(SwapInputDetails)) {
-        const auto& s = boost::get<SwapInputDetails>(in);
-        body += m_core.currency().formatAmount(s.amount);
-        body += "</td>\n    <td class=\"wrap\">" + Common::podToHex(s.spendTag);
-        body += "</td>\n    <td><a href=\"/explorer/tx/" + Common::podToHex(s.output.transactionHash) + "\">";
-        body += "output No " + std::to_string(s.output.number) + "</a> (";
-        body += s.input.branch == 1 ? "claim" : "refund";
-        body += ")</td>\n";
       }
       body += "  </tr>\n";
     }
@@ -773,17 +765,9 @@ bool BuiltinExplorer::on_get_explorer_tx_by_hash(const COMMAND_EXPLORER_GET_TRAN
         body += "spend commit: " + Common::podToHex(po.spendCommit);
         body += foldedHex("Key encapsulation, ML-KEM-768", po.kemCt.data(), po.kemCt.size());
         body += foldedHex("Encrypted payload", po.encPayload.data(), po.encPayload.size());
-      } else if (o.output.target.type() == typeid(SwapOutput)) {
-        const auto& so = boost::get<SwapOutput>(o.output.target);
-        body += "hashlock: " + Common::podToHex(so.hashlock);
-        body += "<br>claim commit: " + Common::podToHex(so.claimCommit);
-        body += "<br>refund commit: " + Common::podToHex(so.refundCommit);
       }
       body += "</td>\n    <td>";
-      if (o.output.target.type() == typeid(SwapOutput)) {
-        body += "refund from height " + std::to_string(boost::get<SwapOutput>(o.output.target).refundHeight);
-        body += "; claim until spent";
-      } else if (o.output.unlockHeight != 0) {
+      if (o.output.unlockHeight != 0) {
         body += "until height " + std::to_string(o.output.unlockHeight);
       } else {
         body += "&mdash;";
@@ -794,12 +778,12 @@ bool BuiltinExplorer::on_get_explorer_tx_by_hash(const COMMAND_EXPLORER_GET_TRAN
     body += "</tbody>\n";
     body += "</table>\n";
 
-    // ML-DSA-65 signatures, one per input (none in coinbase and free
-    // registrations).
+    // ML-DSA-65 signatures, one per input that carries its key (none in
+    // coinbase and free registrations).
     const Transaction& rawTx = txs.back();
     if (!rawTx.pqSignatures.empty()) {
       body += "<h3>Signatures</h3>\n";
-      body += "<p>" + std::to_string(rawTx.pqSignatures.size()) + " ML-DSA-65 signature(s), one per input, "
+      body += "<p>" + std::to_string(rawTx.pqSignatures.size()) + " ML-DSA-65 signature(s), one per input that carries its key, "
            + std::to_string(CryptoNote::PQ_SIGNATURE_SIZE) + " bytes each.</p>\n";
       body += "<ol>\n";
       for (const auto& sig : rawTx.pqSignatures) {

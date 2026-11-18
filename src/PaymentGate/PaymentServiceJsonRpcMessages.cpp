@@ -467,6 +467,19 @@ void SendTransaction::Response::serialize(CryptoNote::ISerializer& serializer) {
   serializer(paymentProofs, "paymentProofs");
 }
 
+void ConsolidateOutputs::Request::serialize(CryptoNote::ISerializer& serializer) {
+  serializer(addresses, "addresses");
+  serializer(destinationAddress, "destinationAddress");
+  serializer(fee, "fee");
+}
+
+void ConsolidateOutputs::Response::serialize(CryptoNote::ISerializer& serializer) {
+  serializer(transactionHash, "transactionHash");
+  serializer(inputs, "inputs");
+  serializer(amount, "amount");
+  serializer(fee, "fee");
+}
+
 void PrepareTransaction::Response::serialize(CryptoNote::ISerializer& serializer) {
   serializer(transactionHash, "transactionHash");
   serializer(transactionHex, "transactionHex");

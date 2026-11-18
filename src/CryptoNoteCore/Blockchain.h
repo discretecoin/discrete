@@ -1,4 +1,3 @@
-#include "CryptoNoteCore/SwapValidation.h"
 // Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
 // Copyright (c) 2016-2026, The Karbo developers
 //
@@ -439,11 +438,20 @@ namespace CryptoNote {
     // context-free PQ checks (PqValidation), and rejects on-chain nullifier reuse.
     // No height gate — PQ is active from genesis.
     bool checkPqInputs(const Transaction& tx, uint32_t* pmax_used_block_height);
-    bool checkSwapInputs(const Transaction& tx, uint32_t height, uint32_t* maxRef);
-    std::vector<SwapResolvedInput> resolveSwapInputs(const Transaction& tx, uint32_t height, uint32_t* maxRef);
     // Sum of a TX_PQ's referenced-output amounts (resolved from the chain) — the
     // input-side value for fee/reward accounting, since PQ inputs carry no amount.
     uint64_t pqReferencedInputAmount(const Transaction& tx);
+    // One referenced transaction's outputs, read once per validation. Inputs that
+    // spend several outputs of the same earlier transaction (a payout, a merged
+    // batch) share the read instead of deserializing it once per input.
+    struct PqReferencedTx {
+      bool found = false;
+      uint32_t block = 0;
+      uint16_t slot = 0;
+      std::vector<TransactionOutput> outputs;
+    };
+    using PqReferencedTxCache = std::unordered_map<Crypto::Hash, PqReferencedTx>;
+    const PqReferencedTx& pqReferencedTx(const Crypto::Hash& txid, PqReferencedTxCache& cache);
     // TX_FREE_REG chain-context checks: refBlockHash on the main chain within
     // FREE_REG_REF_WINDOW, and first-registration-wins. No height gate (PQ from genesis).
     bool checkFreeRegInputs(const Transaction& tx, uint32_t* pmax_used_block_height);

@@ -86,6 +86,7 @@ CryptoPQ::UnsignedTx pqUnsignedTx(const Transaction& tx, uint64_t fee) {
     di.prevOutIndex = pin.prevOutIndex;
     di.authPub = toDsaPub(pin.authPub);
     di.rhoReveal = toRho(pin.rhoReveal);
+    di.keyRef = pin.keyRef;
     u.inputs.push_back(di);
   }
   for (const auto& out : tx.outputs) {
@@ -130,7 +131,7 @@ bool checkPqTransactionSemantic(const Transaction& tx, std::string* error) {
   if (tx.inputs.empty() || tx.outputs.empty()) {
     return fail(error, "TX_PQ with empty inputs or outputs");
   }
-  if (tx.inputs.size() > parameters::MAX_PQ_INPUTS_PER_TX) {
+  if (tx.inputs.size() > parameters::MAX_PQ_GROUPED_INPUTS_PER_TX) {
     return fail(error, "too many PQ inputs");
   }
   if (tx.outputs.size() > parameters::MAX_PQ_OUTPUTS_PER_TX) {
@@ -139,16 +140,41 @@ bool checkPqTransactionSemantic(const Transaction& tx, std::string* error) {
   if (tx.unlockHeight != 0) {
     return fail(error, "PQ tx must have unlockHeight == 0");
   }
-  for (const auto& in : tx.inputs) {
-    if (in.type() != typeid(PqInput)) {
+  size_t keyInputs = 0;
+  for (size_t i = 0; i < tx.inputs.size(); ++i) {
+    if (tx.inputs[i].type() != typeid(PqInput)) {
       return fail(error, "TX_PQ input is not a PqInput");
     }
-    if (!pqInputFieldsValid(boost::get<PqInput>(in))) {
+    const PqInput& in = boost::get<PqInput>(tx.inputs[i]);
+    if (!pqInputFieldsValid(in)) {
       return fail(error, "PqInput field has wrong length");
     }
+    if (in.keyRef == PQ_NO_KEY_REF) {
+      ++keyInputs;
+      continue;
+    }
+    // A key reference must name an EARLIER input that carries the key, and the
+    // in-memory authPub must be that key: the wire form does not transmit it, so
+    // a transaction built in memory with a mismatched key would otherwise be
+    // validated against one key and serialized as another.
+    if (in.keyRef >= i) {
+      return fail(error, "PqInput key reference does not name an earlier input");
+    }
+    const PqInput& target = boost::get<PqInput>(tx.inputs[in.keyRef]);
+    if (target.keyRef != PQ_NO_KEY_REF) {
+      return fail(error, "PqInput key reference names another key reference");
+    }
+    if (in.authPub != target.authPub) {
+      return fail(error, "PqInput key reference does not match the referenced key");
+    }
   }
-  if (tx.pqSignatures.size() != tx.inputs.size()) {
-    return fail(error, "pqSignatures count must equal input count");
+  // Each key-carrying input brings a 1952-byte key and a 3309-byte signature;
+  // that, not the outpoint count, is what the 32 cap bounds.
+  if (keyInputs > parameters::MAX_PQ_INPUTS_PER_TX) {
+    return fail(error, "too many key-carrying PQ inputs");
+  }
+  if (tx.pqSignatures.size() != keyInputs) {
+    return fail(error, "pqSignatures count must equal the key-carrying input count");
   }
   if (tx.extra.size() > parameters::MAX_EXTRA_SIZE_PQ) {
     return fail(error, "tx_extra exceeds MAX_EXTRA_SIZE_PQ");
@@ -327,6 +353,7 @@ PqSigningContext pqSigningContextForHeight(uint32_t height, const CryptoPQ::Hash
   // reaches the transcript choice through here, so there is no second copy of
   // this test to fall out of step.
   ctx.useV2 = height >= parameters::PQ_TRANSCRIPT_V2_HEIGHT;
+  ctx.groupedAuth = height >= parameters::PQ_GROUPED_AUTH_HEIGHT;
   ctx.chainId = genesisId;
   return ctx;
 }
@@ -347,16 +374,48 @@ bool checkPqTransactionInputs(const Transaction& tx,
     return fail(error, "resolved inputs size mismatch");
   }
 
+  // Authorization structure first: it depends on the transaction alone, so a
+  // transaction that cannot be valid at this height is refused before any
+  // per-input hashing. A key-reference input is valid only under grouped
+  // authorization, which is defined on the version-2 transcript. It must name an
+  // EARLIER input that carries a key and hold that same key; the deserializer
+  // guarantees both for transactions read from the wire, but this function is
+  // also handed transactions built in memory.
+  const bool keyRefsAllowed = signing.groupedAuth && signing.useV2;
+  std::vector<uint32_t> signers;  // indices of the key-carrying inputs, in order
+  signers.reserve(tx.inputs.size());
+  for (size_t i = 0; i < tx.inputs.size(); ++i) {
+    if (tx.inputs[i].type() != typeid(PqInput)) {
+      return fail(error, "TX_PQ input is not a PqInput");
+    }
+    const PqInput& in = boost::get<PqInput>(tx.inputs[i]);
+    if (in.keyRef == PQ_NO_KEY_REF) {
+      signers.push_back(static_cast<uint32_t>(i));
+      continue;
+    }
+    if (!keyRefsAllowed) {
+      return fail(error, "key-reference inputs are not active at this height");
+    }
+    if (in.keyRef >= i) {
+      return fail(error, "key reference does not name an earlier input");
+    }
+    // Earlier inputs were type-checked by previous iterations.
+    const PqInput& target = boost::get<PqInput>(tx.inputs[in.keyRef]);
+    if (target.keyRef != PQ_NO_KEY_REF || target.authPub != in.authPub) {
+      return fail(error, "key reference does not match a key-carrying input");
+    }
+  }
+  if (tx.pqSignatures.size() != signers.size()) {
+    return fail(error, "pqSignatures count must equal the key-carrying input count");
+  }
+
   std::unordered_set<Crypto::Hash> nullifiers;
   std::vector<Crypto::Hash> computed;
   computed.reserve(tx.inputs.size());
 
   uint64_t sumIn = 0;
   for (size_t i = 0; i < tx.inputs.size(); ++i) {
-    if (tx.inputs[i].type() != typeid(PqInput)) {
-      return fail(error, "TX_PQ input is not a PqInput");
-    }
-    const PqInput& in = boost::get<PqInput>(tx.inputs[i]);
+    const PqInput& in = boost::get<PqInput>(tx.inputs[i]);  // type checked above
     if (!pqInputFieldsValid(in)) {
       return fail(error, "PqInput field has wrong length");
     }
@@ -417,28 +476,35 @@ bool checkPqTransactionInputs(const Transaction& tx,
     }
   }
 
-  // ML-DSA signature verification over the recomputed digest.
+  // ML-DSA signature verification over the recomputed digest: one signature per
+  // key-carrying input, in input order.
   //
   // Version 1 gives every input the same digest, so two inputs spending under one
-  // key have interchangeable signatures. Version 2 folds the chain identity and
-  // the input's index in, which makes each signature valid in exactly one
-  // position on exactly one network.
+  // key have interchangeable signatures. Version 2 folds the chain identity, every
+  // input's key reference and the signing input's index in, which makes each
+  // signature valid in exactly one position on exactly one network.
+  //
+  // A key-reference input has no signature of its own. The body that the
+  // referenced input's key signs lists this input's outpoint, key, rho and key
+  // reference, so that one signature authorizes it; the spend_commit check above
+  // has already tied the key to the output being spent. Because every signature
+  // binds every input's key reference, the authorization form of each input is
+  // fixed by the signer: nobody else can turn a key-carrying input into a
+  // reference (or back) without invalidating every signature, so the encoding
+  // need not be canonical for the transaction id to be non-malleable. A wallet
+  // that never groups stays valid; it just spends more bytes.
   const CryptoPQ::UnsignedTx unsigned_ = pqUnsignedTx(tx, fee);
-  const CryptoPQ::Hash256 sharedDigest =
-      signing.useV2 ? CryptoPQ::Hash256{} : CryptoPQ::txSigningDigest(unsigned_);
+  const std::vector<CryptoPQ::Hash256> digests =
+      signing.useV2
+          ? CryptoPQ::txSigningDigestsV2(unsigned_, signing.chainId, signers)
+          : std::vector<CryptoPQ::Hash256>(signers.size(), CryptoPQ::txSigningDigest(unsigned_));
 
-  for (size_t i = 0; i < tx.inputs.size(); ++i) {
-    const PqInput& in = boost::get<PqInput>(tx.inputs[i]);
+  for (size_t k = 0; k < signers.size(); ++k) {
+    const PqInput& in = boost::get<PqInput>(tx.inputs[signers[k]]);
     CryptoPQ::DsaPublicKey pub = toDsaPub(in.authPub);
     CryptoPQ::DsaSignature sig;
-    std::memcpy(sig.data(), tx.pqSignatures[i].data(), sig.size());
-
-    const CryptoPQ::Hash256 digest =
-        signing.useV2
-            ? CryptoPQ::txSigningDigestV2(unsigned_, signing.chainId, static_cast<uint32_t>(i))
-            : sharedDigest;
-
-    if (!CryptoPQ::dsa_verify(pub, digest.data(), digest.size(), sig)) {
+    std::memcpy(sig.data(), tx.pqSignatures[k].data(), sig.size());
+    if (!CryptoPQ::dsa_verify(pub, digests[k].data(), digests[k].size(), sig)) {
       return fail(error, "ML-DSA signature verification failed");
     }
   }

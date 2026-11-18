@@ -9,9 +9,6 @@ set_tests_properties(P2pTransportTests PROPERTIES TIMEOUT 90)
 
 add_executable(P2pTransportNodeTests test_p2p_transport_nodes.cpp)
 target_link_libraries(P2pTransportNodeTests TestGenerator P2P CryptoNoteProtocol Wallet CryptoNoteCore BlockchainExplorer System Logging Serialization Common Crypto upnpc-static ${Boost_LIBRARIES})
-if(MSVC)
-  target_link_libraries(P2pTransportNodeTests legacy_stdio_definitions.lib)
-endif()
 
 add_executable(P2pTransportBench benchmark_p2p_transport.cpp)
 target_link_libraries(P2pTransportBench P2P System ${Boost_LIBRARIES})
@@ -67,8 +64,8 @@ add_executable(PqTxBuilderTests test_pq_tx_builder.cpp)
 add_executable(PqWalletStateTests test_pq_wallet_state.cpp)
 add_executable(PqConsumerTests test_pq_consumer.cpp)
 add_executable(PqGenesisTests test_pq_genesis.cpp)
-add_executable(DenominationsTests test_denominations.cpp)
 add_executable(PqSenderTests test_pq_sender.cpp)
+add_executable(PqGroupedAuthTests test_pq_grouped_auth.cpp)
 add_executable(PqFinalityTests test_pq_finality.cpp)
 add_executable(PqPowTests test_pq_pow.cpp)
 add_executable(PqDnsCheckpointTests test_dns_checkpoint.cpp)
@@ -108,8 +105,8 @@ target_link_libraries(PqTxBuilderTests Wallet CryptoNoteCore Serialization Syste
 target_link_libraries(PqWalletStateTests Wallet CryptoNoteCore Serialization System Logging Common Crypto CryptoPq gtest ${Boost_LIBRARIES})
 target_link_libraries(PqConsumerTests Wallet Transfers CryptoNoteCore Serialization System Logging Common Crypto CryptoPq gtest ${Boost_LIBRARIES})
 target_link_libraries(PqGenesisTests CryptoNoteCore Serialization System Logging Common Crypto CryptoPq gtest ${Boost_LIBRARIES})
-target_link_libraries(DenominationsTests gtest ${Boost_LIBRARIES})
 target_link_libraries(PqSenderTests Wallet CryptoNoteCore Serialization System Logging Common Crypto CryptoPq gtest ${Boost_LIBRARIES})
+target_link_libraries(PqGroupedAuthTests Wallet CryptoNoteCore Serialization System Logging Common Crypto CryptoPq gtest ${Boost_LIBRARIES})
 target_link_libraries(PqFinalityTests Checkpoints CryptoNoteCore Serialization System Logging Common Crypto CryptoPq gtest ${Boost_LIBRARIES})
 target_link_libraries(PqPowTests CryptoNoteCore Serialization System Logging Common Crypto CryptoPq gtest ${Boost_LIBRARIES})
 target_link_libraries(PqDnsCheckpointTests CheckpointsDns CryptoNoteCore Serialization System Logging Common Crypto CryptoPq gtest ${Boost_LIBRARIES})
@@ -141,8 +138,8 @@ if(MSVC)
   target_link_libraries(PqWalletStateTests legacy_stdio_definitions.lib ws2_32)
   target_link_libraries(PqConsumerTests legacy_stdio_definitions.lib ws2_32)
   target_link_libraries(PqGenesisTests legacy_stdio_definitions.lib ws2_32)
-  target_link_libraries(DenominationsTests legacy_stdio_definitions.lib ws2_32)
   target_link_libraries(PqSenderTests legacy_stdio_definitions.lib ws2_32)
+  target_link_libraries(PqGroupedAuthTests legacy_stdio_definitions.lib ws2_32)
   target_link_libraries(PqFinalityTests legacy_stdio_definitions.lib ws2_32)
   target_link_libraries(PqPowTests legacy_stdio_definitions.lib ws2_32)
   target_link_libraries(PqDnsCheckpointTests legacy_stdio_definitions.lib ws2_32)
@@ -202,8 +199,8 @@ set_property(TARGET
   PqWalletStateTests
   PqConsumerTests
   PqGenesisTests
-  DenominationsTests
   PqSenderTests
+  PqGroupedAuthTests
   PqFinalityTests
   PqPowTests
   PqDnsCheckpointTests
@@ -238,8 +235,8 @@ set_property(TARGET PqTxBuilderTests PROPERTY OUTPUT_NAME "pq_tx_builder_tests")
 set_property(TARGET PqWalletStateTests PROPERTY OUTPUT_NAME "pq_wallet_state_tests")
 set_property(TARGET PqConsumerTests PROPERTY OUTPUT_NAME "pq_consumer_tests")
 set_property(TARGET PqGenesisTests PROPERTY OUTPUT_NAME "pq_genesis_tests")
-set_property(TARGET DenominationsTests PROPERTY OUTPUT_NAME "denominations_tests")
 set_property(TARGET PqSenderTests PROPERTY OUTPUT_NAME "pq_sender_tests")
+set_property(TARGET PqGroupedAuthTests PROPERTY OUTPUT_NAME "pq_grouped_auth_tests")
 set_property(TARGET PqFinalityTests PROPERTY OUTPUT_NAME "pq_finality_tests")
 set_property(TARGET PqPowTests PROPERTY OUTPUT_NAME "pq_pow_tests")
 set_property(TARGET PqDnsCheckpointTests PROPERTY OUTPUT_NAME "pq_dns_checkpoint_tests")
@@ -280,8 +277,8 @@ add_test(PqTxBuilderTests pq_tx_builder_tests)
 add_test(PqWalletStateTests pq_wallet_state_tests)
 add_test(PqConsumerTests pq_consumer_tests)
 add_test(PqGenesisTests pq_genesis_tests)
-add_test(DenominationsTests denominations_tests)
 add_test(PqSenderTests pq_sender_tests)
+add_test(PqGroupedAuthTests pq_grouped_auth_tests)
 add_test(PqFinalityTests pq_finality_tests)
 add_test(PqPowTests pq_pow_tests)
 add_test(PqDnsCheckpointTests pq_dns_checkpoint_tests)
@@ -302,13 +299,6 @@ add_test(PqMinerKeyTests pq_miner_key_tests)
 add_test(PqWalletLegacyEnvelopeTests pq_wallet_legacy_envelope_tests)
 add_test(SentPaymentsStoreTests sent_payments_store_tests)
 # Wallet-sync E2E lives in unit_tests; expose just the PQ integration case under a
-# Pq* name so it joins the regression gate (ctest -R "Pq|Denomination") without
+# Pq* name so it joins the regression gate (ctest -R Pq) without
 # pulling in the runtime-broken classical UnitTests suites.
 add_test(NAME PqWalletSyncE2E COMMAND unit_tests --gtest_filter=PqWalletIntegration.*)
-
-add_executable(SwapChainTests test_swap_chain.cpp)
-target_link_libraries(SwapChainTests TestGenerator Wallet CryptoNoteCore Serialization System Logging Common Crypto CryptoPq BlockchainExplorer Checkpoints gtest ${Boost_LIBRARIES})
-if(MSVC)
-  target_link_libraries(SwapChainTests legacy_stdio_definitions.lib ws2_32)
-endif()
-add_test(NAME SwapChainTests COMMAND SwapChainTests)

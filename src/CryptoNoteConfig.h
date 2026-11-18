@@ -129,9 +129,20 @@ inline uint64_t pqTxFeeFloor(uint64_t minFee, uint64_t extraSize) {
 // ~5.3 KB (ML-DSA-65 auth pub 1952 + signature 3309 + outpoint) and a PQ output is
 // ~1.2 KB (ML-KEM-768 ct 1088 + enc payload 56 + commit 32). The size cap is sized so
 // the input AND output counts can both be maxed in one tx: 32*5.3K + 64*1.2K ~= 246 KB.
+//
+// MAX_PQ_INPUTS_PER_TX counts KEY-CARRYING inputs: the ones that bring a spend key
+// and an ML-DSA signature. Until grouped authorization activates every input is
+// one, so it is also the total input cap.
 const uint64_t MAX_PQ_INPUTS_PER_TX                          = 32;
 const uint64_t MAX_PQ_OUTPUTS_PER_TX                         = 64;
 const uint64_t MAX_PQ_TX_SIZE                                = 256 * 1024;
+// Total inputs (key-carrying + key-reference) once grouped authorization is
+// active. A key-reference input is ~70 bytes (outpoint + key index + rho) and
+// needs no signature check, but every input still costs a read of the
+// transaction holding the output it spends, so the cap bounds that work per
+// transaction: 8x today's 32 reads. One transaction can consolidate 256 outputs
+// in ~23 KB instead of the ~1.36 MB that 256 key-carrying inputs would take.
+const uint64_t MAX_PQ_GROUPED_INPUTS_PER_TX                  = 256;
 
 // Free-fee account registration (spec §11).
 //
@@ -184,6 +195,40 @@ const uint64_t FREE_REG_POOL_LIMIT                          = FREE_REG_PER_BLOCK
 //     relay policy until then (isCanonicalFreeRegExtra): applying it to blocks
 //     early would make upgraded and old nodes disagree about a block.
 const uint32_t PQ_TRANSCRIPT_V2_HEIGHT                      = UINT32_MAX;
+
+// Height at which grouped input authorization becomes available. Part of the
+// same unscheduled upgrade as PQ_TRANSCRIPT_V2_HEIGHT.
+//
+// Before it, every input of a transfer carries its own ML-DSA public key (1952 B)
+// and its own signature (3309 B), even when thirty of them are signed by one key
+// over what is, under transcript v1, the very same digest. From it:
+//
+//   * An input may instead be a key-reference input (wire tag 0x13): outpoint,
+//     the index of an EARLIER input carrying the same spend key, and rho. It has
+//     no key and no signature of its own.
+//   * pqSignatures holds one signature per key-carrying input. Each is made over
+//     the version-2 digest of the WHOLE body at that input's index; the body lists
+//     every input's outpoint, key, rho and key reference, so one signature
+//     authorizes every input that references its input.
+//   * The input caps become MAX_PQ_INPUTS_PER_TX key-carrying inputs and
+//     MAX_PQ_GROUPED_INPUTS_PER_TX inputs in total.
+//
+// Grouping is optional: a key may still be carried by several inputs, each
+// signed. Since every signature binds every input's key reference, only the
+// signer chooses the form; a third party cannot re-encode inputs into a
+// different transaction id. The project's wallets always group.
+//
+// Nothing about ownership changes: spend_commit(authPub, rho) must still match
+// the referenced output for every input, and the nullifier is computed from the
+// same (authPub, rho, outpoint) either way, so an output has one spent tag no
+// matter how it is spent. Nothing new is revealed either: the key of every input
+// is already public at spend time.
+//
+// It depends on transcript v2 (the digest that binds chain, index and key
+// references), so it can never activate earlier than PQ_TRANSCRIPT_V2_HEIGHT.
+const uint32_t PQ_GROUPED_AUTH_HEIGHT                       = PQ_TRANSCRIPT_V2_HEIGHT;
+static_assert(PQ_GROUPED_AUTH_HEIGHT >= PQ_TRANSCRIPT_V2_HEIGHT,
+              "grouped authorization requires the version-2 signing transcript");
 
 // Node-local anti-DoS, not consensus. Verifying a registration proof costs a
 // memory-hard yespower evaluation, so a proof that has already failed is

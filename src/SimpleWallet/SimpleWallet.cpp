@@ -131,7 +131,6 @@ const command_line::arg_descriptor<bool> arg_non_deterministic = { "non-determin
 const command_line::arg_descriptor<std::string> arg_log_file = {"log-file", "Set the log file location", ""};
 const command_line::arg_descriptor<uint32_t> arg_log_level = { "log-level", "Set the log verbosity level", INFO, true };
 const command_line::arg_descriptor<bool> arg_testnet = { "testnet", "Used to deploy test nets. The daemon must be launched with --testnet flag", false };
-const command_line::arg_descriptor<bool> arg_swap_lab = { "swap-lab", "Use the isolated local swap laboratory chain (requires --testnet)", false };
 const command_line::arg_descriptor<bool> arg_reset = { "reset", "Deprecated alias for --rescan. Kept because it has always meant \"discard the cache and resynchronize\", which never deleted anything; the destructive operation is the interactive 'reset' command.", false };
 const command_line::arg_descriptor<bool> arg_rescan = { "rescan", "Discard cache data and synchronize from scratch. Recipient addresses and payment proofs are kept.", false };
 const command_line::arg_descriptor<uint32_t> arg_scan_height = { "scan-height", "The height to begin scanning a wallet from", 0 };
@@ -458,6 +457,7 @@ simple_wallet::simple_wallet(System::Dispatcher& dispatcher, const CryptoNote::C
   m_consoleHandler.setHandler("list_transfers", std::bind(&simple_wallet::list_transfers, this, std::placeholders::_1), "Show all known transfers");
   m_consoleHandler.setHandler("payments", std::bind(&simple_wallet::show_payments, this, std::placeholders::_1), "payments <payment_id_1> [<payment_id_2> ... <payment_id_N>] - Show payments <payment_id_1>, ... <payment_id_N>");
   m_consoleHandler.setHandler("outputs", std::bind(&simple_wallet::show_unlocked_outputs_count, this, std::placeholders::_1), "Show the number of unlocked outputs available for a transaction");
+  m_consoleHandler.setHandler("consolidate", std::bind(&simple_wallet::pq_consolidate, this, std::placeholders::_1), "Merge the smallest spendable outputs into one (as many as one transaction may carry; repeat as needed). Pays the fee; the merged amount is unavailable until the transaction confirms");
   m_consoleHandler.setHandler("bc_height", std::bind(&simple_wallet::show_blockchain_height, this, std::placeholders::_1), "Show blockchain height");
   m_consoleHandler.setHandler("transfer", std::bind(&simple_wallet::pq_transfer, this, std::placeholders::_1),
     "transfer <address> <amount> [-p <payment_id>] - Send funds to an address (or account number)");
@@ -717,10 +717,6 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
     } while (tracking_key_string.empty());
   }
 
-  if (m_currency.swapLab() && (m_daemon_host != "127.0.0.1" || m_daemon_ssl || m_daemon_path != "/")) {
-    fail_msg_writer() << "Swap laboratory requires a direct 127.0.0.1 daemon";
-    return false;
-  }
   this->m_node.reset(new NodeRpcProxy(m_daemon_host, m_daemon_port, m_daemon_path, m_daemon_ssl));
   if (m_trusted_daemon) {
     this->m_node->setTrustedResolver(true);
@@ -2056,6 +2052,42 @@ bool simple_wallet::pq_balance(const std::vector<std::string> &args) {
   return true;
 }
 //----------------------------------------------------------------------------------------------------
+bool simple_wallet::pq_consolidate(const std::vector<std::string> &args) {
+  if (!args.empty()) {
+    fail_msg_writer() << "usage: consolidate";
+    return true;
+  }
+  if (m_trackingWallet) {
+    fail_msg_writer() << "This is a tracking wallet and cannot spend.";
+    return true;
+  }
+  auto* wl = dynamic_cast<CryptoNote::WalletLegacy*>(m_wallet.get());
+  if (!wl || !wl->pqEnabled()) {
+    fail_msg_writer() << "Spending is unavailable for this wallet.";
+    return true;
+  }
+  try {
+    const CryptoNote::PqConsolidationPlan plan = wl->pqConsolidationPlan();
+    if (!plan.useful()) {
+      success_msg_writer() << "Nothing to consolidate (" << plan.availableInputs
+                           << " spendable output" << (plan.availableInputs == 1 ? "" : "s") << ").";
+      return true;
+    }
+    const CryptoNote::PqConsolidationResult r = wl->consolidatePqOutputs();
+    success_msg_writer(true) << "Merged " << r.plan.selectedInputs << " outputs into one: "
+                             << m_currency.formatAmount(r.plan.amount) << " returned, fee "
+                             << m_currency.formatAmount(r.plan.fee) << ", transaction "
+                             << Common::podToHex(CryptoNote::getObjectHash(r.transaction.tx));
+    if (plan.availableInputs > plan.selectedInputs + 1) {
+      success_msg_writer() << (plan.availableInputs - plan.selectedInputs)
+                           << " more outputs remain; run consolidate again once this confirms.";
+    }
+  } catch (const std::exception& e) {
+    fail_msg_writer() << "Consolidation failed: " << e.what();
+  }
+  return true;
+}
+//----------------------------------------------------------------------------------------------------
 bool simple_wallet::pq_transfer(const std::vector<std::string> &args) {
   if (args.size() != 2 && args.size() != 4) {
     fail_msg_writer() << "usage: transfer <address> <amount> [-p <payment_id>]";
@@ -2100,7 +2132,7 @@ bool simple_wallet::pq_transfer(const std::vector<std::string> &args) {
     }
   }
 
-  // The deterministic build (input selection, denomination, two-pass fee, signing)
+  // The deterministic build (input selection, flat fee, signing)
   // and relay live in the common sender, shared with greenwallet and walletd.
   try {
     CryptoNote::PqSendOutput out{destView, destSpend, amount, destSubaddrT};
@@ -2568,7 +2600,6 @@ int main(int argc, char* argv[]) {
   command_line::add_arg(desc_params, arg_log_file);
   command_line::add_arg(desc_params, arg_log_level);
   command_line::add_arg(desc_params, arg_testnet);
-  command_line::add_arg(desc_params, arg_swap_lab);
   command_line::add_arg(desc_params, arg_reset);
   command_line::add_arg(desc_params, arg_rescan);
   command_line::add_arg(desc_params, arg_scan_height);
@@ -2652,13 +2683,8 @@ int main(int argc, char* argv[]) {
 
   logger(INFO, BRIGHT_WHITE) << CRYPTONOTE_NAME << " wallet v" << PROJECT_VERSION_LONG;
 
-  const bool swapLab = command_line::get_arg(vm, arg_swap_lab);
-  if (swapLab && !command_line::get_arg(vm, arg_testnet)) {
-    logger(ERROR) << "--swap-lab requires --testnet";
-    return 1;
-  }
   CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logManager).
-    testnet(command_line::get_arg(vm, arg_testnet)).swapLab(swapLab).currency();
+    testnet(command_line::get_arg(vm, arg_testnet)).currency();
 
   if (command_line::has_arg(vm, Tools::wallet_rpc_server::arg_rpc_bind_port)) {
     //runs wallet with rpc interface
@@ -2707,10 +2733,6 @@ int main(int argc, char* argv[]) {
       }
     }
 
-    if (currency.swapLab() && (daemon_host != "127.0.0.1" || daemon_ssl || daemon_path != "/")) {
-      logger(ERROR) << "Swap laboratory requires a direct 127.0.0.1 daemon";
-      return 1;
-    }
     std::unique_ptr<NodeRpcProxy> proxy(new NodeRpcProxy(daemon_host, daemon_port, daemon_path, daemon_ssl));
     if (trusted_daemon) {
       proxy->setTrustedResolver(true);

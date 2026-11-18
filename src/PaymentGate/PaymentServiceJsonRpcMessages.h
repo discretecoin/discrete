@@ -647,6 +647,26 @@ struct SendTransaction {
   };
 };
 
+// Maintenance: merge the smallest spendable outputs (as many as one transaction
+// may carry) into one output. `addresses` (empty = any) restricts which of the
+// wallet's own addresses are merged; `destinationAddress` (empty = primary) is
+// where the merged output lands and must be ours. Repeat until `inputs` < 2.
+struct ConsolidateOutputs {
+  struct Request {
+    std::vector<std::string> addresses;
+    std::string destinationAddress;
+    uint64_t fee = 0;
+    void serialize(CryptoNote::ISerializer& serializer);
+  };
+  struct Response {
+    std::string transactionHash;
+    uint64_t inputs = 0;   // outputs merged by this transaction
+    uint64_t amount = 0;   // returned to the wallet, after the fee
+    uint64_t fee = 0;
+    void serialize(CryptoNote::ISerializer& serializer);
+  };
+};
+
 struct PrepareTransaction {
   using Request = SendTransaction::Request;
 

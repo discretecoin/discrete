@@ -1,4 +1,3 @@
-#include "CryptoNoteCore/SwapValidation.h"
 // Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers, The Monero developers
 // Copyright (c) 2016-2026, The Karbo developers
 //
@@ -135,11 +134,6 @@ bool Blockchain::checkTransactionInputs(const CryptoNote::Transaction& tx, Block
 
 bool Blockchain::checkTransactionInputs(const CryptoNote::Transaction& tx, BlockInfo& maxUsedBlock, BlockInfo& lastFailed) {
   BlockInfo tail;
-  // New validity depends on both activation and refund/funding deadlines. Never reuse an old negative result.
-  if (isSwapTransaction(tx)) {
-    maxUsedBlock.clear(); lastFailed.clear();
-    return checkTransactionInputs(tx, maxUsedBlock.height, maxUsedBlock.id, &tail);
-  }
 
   if (maxUsedBlock.empty()) {
     if (!lastFailed.empty() && getCurrentBlockchainHeight() > lastFailed.height &&
@@ -1889,8 +1883,12 @@ bool Blockchain::checkTransactionInputs(const Transaction& tx, uint32_t& max_use
 
 bool Blockchain::haveTransactionKeyImagesAsSpent(const Transaction& tx) {
   for (const auto& in : tx.inputs) {
-    Crypto::KeyImage ki{};
-    if (transactionSpendTag(in, m_currency.genesisBlockHash(), ki) && have_spend_tag_as_spent(ki)) return true;
+    if (in.type() == typeid(PqInput)) {
+      const auto ki = pqInputNullifierAsKeyImage(boost::get<PqInput>(in));
+      if (have_spend_tag_as_spent(ki)) {
+        return true;
+      }
+    }
   }
   return false;
 }
@@ -1916,11 +1914,6 @@ bool Blockchain::checkTransactionInputs(const Transaction& tx, const Crypto::Has
     if ((isPqTransfer(tx.txType) || tx.txType == TX_FREE_REG) && isPqAccountAlreadyRegistered(tx)) {
       logger(INFO, BRIGHT_WHITE) << "Account already registered, rejecting tx " << getObjectHash(tx);
       return false;
-    }
-    if (isSwapTransaction(tx)) {
-      const uint32_t height =
-          validationHeight == AT_TIP ? getCurrentBlockchainHeight() : validationHeight;
-      return checkSwapInputs(tx, height, pmax_used_block_height);
     }
     if (isPqTransfer(tx.txType)) {
       // The delivery declaration is judged at the height that would carry the
@@ -1954,43 +1947,27 @@ bool Blockchain::checkTransactionInputs(const Transaction& tx, const Crypto::Has
   return false;
 }
 
-std::vector<SwapResolvedInput> Blockchain::resolveSwapInputs(const Transaction& tx, uint32_t height, uint32_t* maxRef) {
-  std::vector<SwapResolvedInput> resolved;
-  if (maxRef) *maxRef = 0;
-  for (const auto& input : tx.inputs) {
-    SwapResolvedInput r;
-    Crypto::Hash id{}; uint32_t index = 0, block = 0; uint16_t slot = 0;
-    if (swapInputReference(input, id, index) && m_db.getTxIndex(id, block, slot) && block < height) {
-      try {
-        const auto entry = transactionByIndex(TransactionIndex{block, slot});
-        if (index < entry.tx.outputs.size()) {
-          const auto& output = entry.tx.outputs[index];
-          const bool ordinary = input.type() == typeid(PqInput) &&
-            (output.target.type() == typeid(PqOutput) || output.target.type() == typeid(CoinbaseOutput));
-          const bool conditional = input.type() == typeid(SwapInput) && output.target.type() == typeid(SwapOutput);
-          // Ordinary maturity matches the existing next-block rule (delta=1); conditional lock is separate.
-          if ((ordinary && is_tx_spendheight_unlocked(output.unlockHeight)) || (conditional && output.unlockHeight == 0)) {
-            r.exists = true; r.output = output;
-            if (maxRef && block > *maxRef) *maxRef = block;
-          }
-        }
-      } catch (const std::exception&) { }
-    }
-    resolved.push_back(std::move(r));
+const Blockchain::PqReferencedTx& Blockchain::pqReferencedTx(const Crypto::Hash& txid,
+                                                            PqReferencedTxCache& cache) {
+  auto it = cache.find(txid);
+  if (it != cache.end()) {
+    return it->second;
   }
-  return resolved;
-}
-
-bool Blockchain::checkSwapInputs(const Transaction& tx, uint32_t height, uint32_t* maxRef) {
-  std::lock_guard<decltype(m_blockchain_lock)> lock(m_blockchain_lock);
-  if (!m_currency.swapsEnabledAt(height)) return false;
-  std::string error;
-  if (!checkSwapTransactionSemantic(tx, &error)) return false;
-  auto resolved = resolveSwapInputs(tx, height, maxRef);
-  std::vector<Crypto::KeyImage> tags;
-  if (!checkSwapTransactionInputs(tx, resolved, m_currency.genesisBlockHash(), height, &tags, nullptr, &error)) return false;
-  for (const auto& tag : tags) if (m_db.hasSpentKey(tag)) return false;
-  return true;
+  PqReferencedTx entry;
+  uint32_t block = 0;
+  uint16_t slot = 0;
+  if (m_db.getTxIndex(txid, block, slot)) {
+    try {
+      TransactionEntry te = transactionByIndex(TransactionIndex{block, slot});
+      entry.found = true;
+      entry.block = block;
+      entry.slot = slot;
+      entry.outputs = std::move(te.tx.outputs);
+    } catch (const std::exception&) {
+      // left unresolved; the caller rejects the input
+    }
+  }
+  return cache.emplace(txid, std::move(entry)).first->second;
 }
 
 bool Blockchain::checkPqInputs(const Transaction& tx, uint32_t* pmax_used_block_height) {
@@ -1998,64 +1975,37 @@ bool Blockchain::checkPqInputs(const Transaction& tx, uint32_t* pmax_used_block_
   if (pmax_used_block_height) *pmax_used_block_height = 0;
   // Discrete: PQ is active from genesis — no height gate needed.
 
-  // Resolve each PqInput's referenced output from the chain.
-  std::vector<PqResolvedInput> resolved;
-  resolved.reserve(tx.inputs.size());
-  uint32_t maxRefHeight = 0;
-  for (const auto& txin : tx.inputs) {
-    if (txin.type() != typeid(PqInput)) {
-      return false;  // semantic check already guarantees this; defensive
-    }
-    const PqInput& in = boost::get<PqInput>(txin);
-    PqResolvedInput r;
-    uint32_t block; uint16_t slot;
-    if (m_db.getTxIndex(in.prevTxid, block, slot)) {
-      try {
-        TransactionEntry te = transactionByIndex(TransactionIndex{block, slot});
-        if (in.prevOutIndex < te.tx.outputs.size()) {
-          const TransactionOutput& o = te.tx.outputs[in.prevOutIndex];
-          // Accept both PqOutput (regular TX) and CoinbaseOutput (coinbase TX).
-          const bool isPq = (o.target.type() == typeid(PqOutput));
-          const bool isCb = (o.target.type() == typeid(CoinbaseOutput));
-          if (isPq || isCb) {
-            // Maturity: outputs with a non-zero unlockHeight (coinbase reward,
-            // genesis Treasury Reserve batch, or any timelock) can only be spent
-            // once their PER-OUTPUT lock has elapsed. Unmatured → treat as
-            // unresolved so checkPqTransactionInputs rejects.
-            if (is_tx_spendheight_unlocked(o.unlockHeight)) {
-              r.exists = true;
-              r.isPqOutput = true;  // "spendable by a PQ input" — true for both types
-              r.isCoinbase = (slot == 0);  // coinbase is always tx slot 0
-              r.amount = o.amount;
-              r.spendCommit = isPq ? boost::get<PqOutput>(o.target).spendCommit
-                                   : boost::get<CoinbaseOutput>(o.target).spendCommit;
-              if (block > maxRefHeight) maxRefHeight = block;
-            }
-          }
-        }
-      } catch (const std::exception&) {
-        // leave r.exists == false; checkPqTransactionInputs rejects it
-      }
-    }
-    resolved.push_back(r);
-  }
-
-  std::vector<Crypto::Hash> nullifiers;
-  std::string err;
   // Which signing transcript applies is a function of the height this
   // transaction is being judged at, so a reorg across the activation boundary
   // re-evaluates against the rules of the height the block actually lands on.
   const PqSigningContext signing =
       pqSigningContextForHeight(getCurrentBlockchainHeight(), m_currency.genesisBlockHash());
-  if (!checkPqTransactionInputs(tx, resolved, parameters::MINIMUM_FEE, &nullifiers, &err, signing)) {
-    logger(INFO, BRIGHT_WHITE) << "PQ input check failed (" << err << ") for tx " << getObjectHash(tx);
-    return false;
+
+  // Everything below reads the database once per input, so first refuse what
+  // the transaction alone already rules out. Until grouped authorization is
+  // active a key-reference input can never be valid, and without this check a
+  // transaction of them would buy up to MAX_PQ_GROUPED_INPUTS_PER_TX reads for
+  // nothing.
+  for (const auto& txin : tx.inputs) {
+    if (txin.type() != typeid(PqInput)) {
+      return false;  // semantic check already guarantees this; defensive
+    }
+    if (boost::get<PqInput>(txin).keyRef != PQ_NO_KEY_REF &&
+        !(signing.groupedAuth && signing.useV2)) {
+      logger(INFO, BRIGHT_WHITE) << "PQ input check failed (key-reference inputs are not active "
+                                    "at this height) for tx " << getObjectHash(tx);
+      return false;
+    }
   }
 
-  // On-chain double-spend: none of the nullifiers may already be recorded. A PQ
-  // nullifier is a 32-byte spend tag; it shares the single type-agnostic
+  // On-chain double-spend, before reading any referenced transaction: none of
+  // the nullifiers may already be recorded. A spent output's key and rho are
+  // public, so without this ordering anyone could copy them into a transaction
+  // that makes a node read the referenced transactions before it is rejected.
+  // A PQ nullifier is a 32-byte spend tag; it shares the single type-agnostic
   // spent-key set with classical/CT key images (they cannot collide).
-  for (const auto& nf : nullifiers) {
+  for (const auto& txin : tx.inputs) {
+    const Crypto::Hash nf = pqNullifier(boost::get<PqInput>(txin));
     Crypto::KeyImage img;
     std::memcpy(&img, &nf, sizeof(img));
     if (m_db.hasSpentKey(img)) {
@@ -2064,27 +2014,63 @@ bool Blockchain::checkPqInputs(const Transaction& tx, uint32_t* pmax_used_block_
     }
   }
 
+  // Resolve each PqInput's referenced output from the chain, reading each
+  // referenced transaction once.
+  std::vector<PqResolvedInput> resolved;
+  resolved.reserve(tx.inputs.size());
+  PqReferencedTxCache referenced;
+  uint32_t maxRefHeight = 0;
+  for (const auto& txin : tx.inputs) {
+    const PqInput& in = boost::get<PqInput>(txin);
+    PqResolvedInput r;
+    const PqReferencedTx& ref = pqReferencedTx(in.prevTxid, referenced);
+    if (ref.found && in.prevOutIndex < ref.outputs.size()) {
+      const TransactionOutput& o = ref.outputs[in.prevOutIndex];
+      // Accept both PqOutput (regular TX) and CoinbaseOutput (coinbase TX).
+      const bool isPq = (o.target.type() == typeid(PqOutput));
+      const bool isCb = (o.target.type() == typeid(CoinbaseOutput));
+      if (isPq || isCb) {
+        // Maturity: outputs with a non-zero unlockHeight (coinbase reward,
+        // genesis Treasury Reserve batch, or any timelock) can only be spent
+        // once their PER-OUTPUT lock has elapsed. Unmatured → treat as
+        // unresolved so checkPqTransactionInputs rejects.
+        if (is_tx_spendheight_unlocked(o.unlockHeight)) {
+          r.exists = true;
+          r.isPqOutput = true;  // "spendable by a PQ input" — true for both types
+          r.isCoinbase = (ref.slot == 0);  // coinbase is always tx slot 0
+          r.amount = o.amount;
+          r.spendCommit = isPq ? boost::get<PqOutput>(o.target).spendCommit
+                               : boost::get<CoinbaseOutput>(o.target).spendCommit;
+          if (ref.block > maxRefHeight) maxRefHeight = ref.block;
+        }
+      }
+    }
+    resolved.push_back(r);
+  }
+
+  std::string err;
+  if (!checkPqTransactionInputs(tx, resolved, parameters::MINIMUM_FEE, nullptr, &err, signing)) {
+    logger(INFO, BRIGHT_WHITE) << "PQ input check failed (" << err << ") for tx " << getObjectHash(tx);
+    return false;
+  }
+
   if (pmax_used_block_height) *pmax_used_block_height = maxRefHeight;
   return true;
 }
 
 uint64_t Blockchain::pqReferencedInputAmount(const Transaction& tx) {
   uint64_t sum = 0;
+  PqReferencedTxCache referenced;
   for (const auto& txin : tx.inputs) {
     if (txin.type() != typeid(PqInput)) continue;
     const PqInput& in = boost::get<PqInput>(txin);
-    uint32_t block; uint16_t slot;
-    if (!m_db.getTxIndex(in.prevTxid, block, slot)) continue;
-    try {
-      TransactionEntry te = transactionByIndex(TransactionIndex{block, slot});
-      if (in.prevOutIndex < te.tx.outputs.size()) {
-        const auto& tgt = te.tx.outputs[in.prevOutIndex].target;
-        if (tgt.type() == typeid(PqOutput) || tgt.type() == typeid(CoinbaseOutput)) {
-          sum += te.tx.outputs[in.prevOutIndex].amount;
-        }
+    const PqReferencedTx& ref = pqReferencedTx(in.prevTxid, referenced);
+    // Unresolved inputs contribute 0 (checkPqInputs rejects such a tx).
+    if (ref.found && in.prevOutIndex < ref.outputs.size()) {
+      const auto& tgt = ref.outputs[in.prevOutIndex].target;
+      if (tgt.type() == typeid(PqOutput) || tgt.type() == typeid(CoinbaseOutput)) {
+        sum += ref.outputs[in.prevOutIndex].amount;
       }
-    } catch (const std::exception&) {
-      // unresolved (checkPqInputs already rejected such a tx); contributes 0
     }
   }
   return sum;
@@ -2092,11 +2078,6 @@ uint64_t Blockchain::pqReferencedInputAmount(const Transaction& tx) {
 
 bool Blockchain::getPqTransactionFee(const Transaction& tx, uint64_t& fee) {
   std::lock_guard<decltype(m_blockchain_lock)> lk(m_blockchain_lock);
-  if (isSwapTransaction(tx)) {
-    std::string error;
-    return checkSwapTransactionSemantic(tx, &error) &&
-      swapResolvedFee(tx, resolveSwapInputs(tx, getCurrentBlockchainHeight(), nullptr), fee, &error);
-  }
   const uint64_t inAmount = pqReferencedInputAmount(tx);
   const uint64_t outAmount = getOutputAmount(tx);
   if (outAmount > inAmount) {
@@ -2631,8 +2612,7 @@ bool Blockchain::pushBlock(const Block& blockData, const std::vector<Transaction
       // TX_PQ inputs carry no amount (value lives in the referenced outputs), so
       // getInputAmount would read 0 and the fee would underflow. Resolve the
       // referenced amounts instead.
-      const bool pqOnlyInputs = curTx.version >= TRANSACTION_VERSION_1 &&
-        (isPqTransfer(curTx.txType) || isSwapTransaction(curTx));
+      const bool pqOnlyInputs = curTx.version >= TRANSACTION_VERSION_1 && isPqTransfer(curTx.txType);
       uint64_t fee = 0;
       if (pqOnlyInputs) {
         if (!getPqTransactionFee(curTx, fee)) {
@@ -2854,17 +2834,16 @@ static Crypto::Hash pqInputNullifier(const PqInput& in) {
 // type-agnostic spent-key set: a KeyInput's key image, or a PqInput's nullifier
 // (reinterpreted as a key image — the two value spaces cannot collide). Returns
 // false for inputs that carry no spend tag (e.g. BaseInput).
-static bool spendImageForInput(const TransactionInput& in, Crypto::KeyImage& out, const Crypto::Hash& chain) {
-  return transactionSpendTag(in, chain, out);
+static bool spendImageForInput(const TransactionInput& in, Crypto::KeyImage& out) {
+  if (in.type() == typeid(PqInput)) {
+    out = pqInputNullifierAsKeyImage(boost::get<PqInput>(in));
+    return true;
+  }
+  return false;
 }
 
 bool Blockchain::pushTransaction(BlockEntry& block, const Crypto::Hash& transactionHash,
                                   TransactionIndex transactionIndex) {
-  const auto& candidate = block.transactions[transactionIndex.transaction].tx;
-  bool conditional = isSwapTransaction(candidate);
-  for (const auto& input : candidate.inputs) conditional |= input.type() == typeid(SwapInput);
-  for (const auto& output : candidate.outputs) conditional |= output.target.type() == typeid(SwapOutput);
-  if (conditional && !checkSwapInputs(candidate, block.height, nullptr)) return false;
   // Check for duplicate
   {
     uint32_t existBlock; uint16_t existSlot;
@@ -2882,7 +2861,7 @@ bool Blockchain::pushTransaction(BlockEntry& block, const Crypto::Hash& transact
   // intra-tx duplicate is caught because a put is visible to the next has-check.
   for (size_t i = 0; i < tx.inputs.size(); ++i) {
     Crypto::KeyImage img;
-    if (!spendImageForInput(tx.inputs[i], img, m_currency.genesisBlockHash())) {
+    if (!spendImageForInput(tx.inputs[i], img)) {
       continue;
     }
     if (m_db.hasSpentKey(img)) {
@@ -2890,7 +2869,7 @@ bool Blockchain::pushTransaction(BlockEntry& block, const Crypto::Hash& transact
       // Roll back images already written for this tx.
       for (size_t j = 0; j < i; ++j) {
         Crypto::KeyImage prev;
-        if (spendImageForInput(tx.inputs[j], prev, m_currency.genesisBlockHash())) {
+        if (spendImageForInput(tx.inputs[j], prev)) {
           m_db.removeSpentKey(prev);
         }
       }
@@ -2965,7 +2944,7 @@ void Blockchain::popTransaction(const Transaction& transaction,
   // (auth_pub, rho_reveal) pair may re-enter on the competing chain.
   for (const auto& input : transaction.inputs) {
     Crypto::KeyImage img;
-    if (spendImageForInput(input, img, m_currency.genesisBlockHash())) {
+    if (spendImageForInput(input, img)) {
       if (!m_db.removeSpentKey(img)) {
         logger(ERROR, BRIGHT_RED) << "Blockchain consistency broken - removeSpentKey failed";
       }

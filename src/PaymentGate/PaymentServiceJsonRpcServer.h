@@ -90,6 +90,7 @@ private:
   std::error_code handleGetUnconfirmedTransactionHashes(const GetUnconfirmedTransactionHashes::Request& request, GetUnconfirmedTransactionHashes::Response& response);
   std::error_code handleGetTransaction(const GetTransaction::Request& request, GetTransaction::Response& response);
   std::error_code handleSendTransaction(const SendTransaction::Request& request, SendTransaction::Response& response);
+  std::error_code handleConsolidateOutputs(const ConsolidateOutputs::Request& request, ConsolidateOutputs::Response& response);
   std::error_code handlePrepareTransaction(const PrepareTransaction::Request& request, PrepareTransaction::Response& response);
   std::error_code handleGetPaymentProofs(const GetPaymentProofs::Request& request, GetPaymentProofs::Response& response);
   std::error_code handleDeletePaymentProof(const DeletePaymentProof::Request& request, DeletePaymentProof::Response& response);
