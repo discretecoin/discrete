@@ -166,6 +166,8 @@ struct BlockHeader {
   uint32_t nonce;
   uint64_t timestamp;
   Crypto::Hash previousBlockHash;
+  // V9 commits to mining time as timestamp - timestampOffset.
+  uint64_t timestampOffset = 0;
 };
 
 struct Block : public BlockHeader {

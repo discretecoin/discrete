@@ -17,6 +17,8 @@
 
 #pragma once
 
+#include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <string>
@@ -38,7 +40,7 @@
 namespace CryptoNote {
 
 // ─── On-disk block metadata ────────────────────────────────────────────────
-// Stored packed, 100 bytes per record.
+// V9 adds an offset to the unchanged historical 100-byte prefix.
 #pragma pack(push, 1)
 struct DbBlockMeta {
   uint8_t  hash[32];
@@ -51,9 +53,11 @@ struct DbBlockMeta {
   uint16_t txCount;
   uint8_t  majorVersion;
   uint8_t  minorVersion;  // was 'pad'; used for upgrade-detector voting
+  uint64_t timestampOffset;
 };
 #pragma pack(pop)
-static_assert(sizeof(DbBlockMeta) == 100, "DbBlockMeta must be 100 bytes");
+constexpr size_t DbBlockMetaLegacySize = offsetof(DbBlockMeta, timestampOffset);
+static_assert(DbBlockMetaLegacySize == 100 && sizeof(DbBlockMeta) == 108, "block metadata disk layout");
 
 struct DbWalletSyncBlock {
   DbBlockMeta meta{};
@@ -104,7 +108,7 @@ public:
   // Reads metas for [fromHeight, toHeight] inclusive in a single cursor scan
   // (one read txn, no per-entry open/close overhead).
   bool getBlockMetaRange(uint32_t fromHeight, uint32_t toHeight,
-                         std::vector<DbBlockMeta>& out) const;
+                         std::vector<DbBlockMeta>& out, bool verifyV9Headers = false) const;
   // Reads the requested block_meta records with one read txn and keyed seeks.
   // `out` is appended in the same order as `heights`.
   bool getBlockMetaForHeights(const std::vector<uint32_t>& heights,
@@ -338,10 +342,12 @@ public:
   // Non-member form: n + it  (required for full random-access conformance)
   friend Iterator operator+(ptrdiff_t n, const Iterator& it) { return it + n; }
 
-  explicit LMDBBlockView(LMDBBlockchainDB& db) : m_db(db) {}
+  // Reserved V2..V8 voting observes only the historical prefix preceding V9.
+  explicit LMDBBlockView(LMDBBlockchainDB& db, uint32_t endHeight = UINT32_MAX)
+    : m_db(db), m_endHeight(endHeight) {}
 
-  uint32_t size()  const { return m_db.getChainHeight(); }
-  bool     empty() const { return m_db.getChainHeight() == 0; }
+  uint32_t size()  const { return std::min(m_db.getChainHeight(), m_endHeight); }
+  bool     empty() const { return size() == 0; }
 
   BlockProxy operator[](uint32_t height) const {
     DbBlockMeta m{};
@@ -352,15 +358,16 @@ public:
   }
 
   BlockProxy back() const {
-    uint32_t h = m_db.getChainHeight();
+    uint32_t h = size();
     return (*this)[h - 1];
   }
 
   Iterator begin() const { return {&m_db, 0}; }
-  Iterator end()   const { return {&m_db, m_db.getChainHeight()}; }
+  Iterator end()   const { return {&m_db, size()}; }
 
 private:
   LMDBBlockchainDB& m_db;
+  uint32_t m_endHeight;
 };
 
 // ─── ADL overload for BasicUpgradeDetector ─────────────────────────────────

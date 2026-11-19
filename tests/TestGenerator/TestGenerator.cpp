@@ -128,6 +128,7 @@ bool test_generator::constructBlock(CryptoNote::Block& blk, uint32_t height, con
   blk.majorVersion = defaultMajorVersion;
   blk.minorVersion = defaultMinorVersion;
   blk.timestamp = timestamp;
+  blk.timestampOffset = 0;
   blk.previousBlockHash = previousBlockHash;
 
   blk.transactionHashes.reserve(txList.size());
@@ -193,7 +194,7 @@ bool test_generator::constructBlock(CryptoNote::Block& blk, uint32_t height, con
     }
   }
 
-  if (blk.majorVersion >= BLOCK_MAJOR_VERSION_2) {
+  if (blk.majorVersion >= BLOCK_MAJOR_VERSION_2 && blk.majorVersion <= BLOCK_MAJOR_VERSION_8) {
     blk.parentBlock.majorVersion = BLOCK_MAJOR_VERSION_1;
     blk.parentBlock.minorVersion = BLOCK_MINOR_VERSION_0;
     blk.parentBlock.transactionCount = 1;
@@ -263,6 +264,7 @@ bool test_generator::constructBlockManually(Block& blk, const Block& prevBlock, 
   blk.majorVersion = actualParams & bf_major_ver ? majorVer  : defaultMajorVersion;
   blk.minorVersion = actualParams & bf_minor_ver ? minorVer  : defaultMinorVersion;
   blk.timestamp    = actualParams & bf_timestamp ? timestamp : prevBlock.timestamp + m_currency.difficultyTarget(); // Keep difficulty unchanged
+  blk.timestampOffset = 0;
   blk.previousBlockHash       = actualParams & bf_prev_id   ? previousBlockHash    : get_block_hash(prevBlock);
   blk.transactionHashes     = actualParams & bf_tx_hashes ? transactionHashes  : std::vector<Crypto::Hash>();
   
@@ -285,7 +287,7 @@ bool test_generator::constructBlockManually(Block& blk, const Block& prevBlock, 
     }
   }
 
-  if (blk.majorVersion >= BLOCK_MAJOR_VERSION_2) {
+  if (blk.majorVersion >= BLOCK_MAJOR_VERSION_2 && blk.majorVersion <= BLOCK_MAJOR_VERSION_8) {
     blk.parentBlock.majorVersion = BLOCK_MAJOR_VERSION_1;
     blk.parentBlock.minorVersion = BLOCK_MINOR_VERSION_0;
     blk.parentBlock.transactionCount = 1;

@@ -214,10 +214,10 @@ namespace CryptoNote {
     }
 
     uint64_t penalizedBaseReward = getPenalizedAmount(baseReward, medianSize, currentBlockSize);
-    uint64_t penalizedFee = blockMajorVersion >= BLOCK_MAJOR_VERSION_2 ? getPenalizedAmount(fee, medianSize, currentBlockSize) : fee;
-    if (cryptonoteCoinVersion() == 1) {
-      penalizedFee = getPenalizedAmount(fee, medianSize, currentBlockSize);
-    }
+    // V9 changes only timestamp encoding and keeps the V1 reward rules.
+    const bool penalizeFee = cryptonoteCoinVersion() == 1 ||
+      (blockMajorVersion >= BLOCK_MAJOR_VERSION_2 && blockMajorVersion != BLOCK_MAJOR_VERSION_9);
+    const uint64_t penalizedFee = penalizeFee ? getPenalizedAmount(fee, medianSize, currentBlockSize) : fee;
 
     emissionChange = penalizedBaseReward - (fee - penalizedFee);
     reward = penalizedBaseReward + penalizedFee;
@@ -520,6 +520,14 @@ namespace CryptoNote {
     // emits that network's genesis transaction rather than mainnet's.
     return buildGenesisTreasuryReserveCoinbase(m_currency.m_testnet);
   }
+  CurrencyBuilder& CurrencyBuilder::monotonicTimestampHeight(uint32_t val) {
+    if (val < 2) {
+      throw std::invalid_argument("monotonic timestamp activation requires two ancestors");
+    }
+    m_currency.m_monotonicTimestampHeight = val;
+    return *this;
+  }
+
   CurrencyBuilder& CurrencyBuilder::emissionSpeedFactor(unsigned int val) {
     if (val <= 0 || val > 8 * sizeof(uint64_t)) {
       throw std::invalid_argument("val at emissionSpeedFactor()");

@@ -63,6 +63,7 @@ uint64_t get_tx_fee(const Transaction& tx);
 std::string short_hash_str(const Crypto::Hash& h);
 
 bool get_block_hashing_blob(const Block& b, BinaryArray& blob);
+bool getBlockRawTimestamp(const BlockHeader& header, uint64_t& rawTimestamp);
 
 // DiscretePower consensus domains (https://docs.discrete.cash/#/consensus/pow, revision D).
 // ASCII, hashed with SHAKE-256 without a trailing NUL. No tag is reused by any

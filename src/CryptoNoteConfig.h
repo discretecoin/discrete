@@ -457,6 +457,7 @@ const uint8_t  BLOCK_MAJOR_VERSION_5                         =  5;  // reserved
 const uint8_t  BLOCK_MAJOR_VERSION_6                         =  6;  // reserved
 const uint8_t  BLOCK_MAJOR_VERSION_7                         =  7;  // reserved
 const uint8_t  BLOCK_MAJOR_VERSION_8                         =  8;  // reserved
+const uint8_t  BLOCK_MAJOR_VERSION_9                         =  9;  // ordered timestamp and mining-time offset
 
 // COINBASE extra cap: applied to Block::baseTransaction only. Ordinary
 // transactions are bounded by their own type's rules.

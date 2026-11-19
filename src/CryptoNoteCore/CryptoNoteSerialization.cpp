@@ -426,12 +426,23 @@ void serialize(ParentBlockSerializer& pbs, ISerializer& serializer) {
 
 void serializeBlockHeader(BlockHeader& header, ISerializer& serializer) {
   serializer(header.majorVersion, "major_version");
-  if (header.majorVersion < BLOCK_MAJOR_VERSION_1 || header.majorVersion > BLOCK_MAJOR_VERSION_8) {
+  if (header.majorVersion < BLOCK_MAJOR_VERSION_1 || header.majorVersion > BLOCK_MAJOR_VERSION_9) {
     throw std::runtime_error("Wrong block major version");
   }
 
   serializer(header.minorVersion, "minor_version");
   serializer(header.timestamp, "timestamp");
+  if (header.majorVersion == BLOCK_MAJOR_VERSION_9) {
+    if (!serializer(header.timestampOffset, "timestamp_offset")) {
+      throw std::runtime_error("Missing block timestamp offset");
+    }
+  } else if (serializer.type() == ISerializer::INPUT) {
+    header.timestampOffset = 0;
+  }
+  uint64_t rawTimestamp;
+  if (!getBlockRawTimestamp(header, rawTimestamp)) {
+    throw std::runtime_error("Invalid block timestamp offset");
+  }
   serializer(header.previousBlockHash, "prev_id");
   serializer.binary(&header.nonce, sizeof(header.nonce), "nonce");
 }

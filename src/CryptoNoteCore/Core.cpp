@@ -502,30 +502,29 @@ bool Core::get_block_template_pq(Block& b, const CryptoPQ::KemPublicKey& /*viewP
     LockedBlockchainStorage blockchainLock(m_blockchain);
     height = m_blockchain.getCurrentBlockchainHeight();
     b = boost::value_initialized<Block>();
-    b.majorVersion = BLOCK_MAJOR_VERSION_1;
+    const auto activationHeight = m_currency.monotonicTimestampHeight();
+    b.majorVersion = activationHeight != UINT32_MAX && height >= activationHeight
+      ? BLOCK_MAJOR_VERSION_9 : BLOCK_MAJOR_VERSION_1;
     b.minorVersion = BLOCK_MINOR_VERSION_0;
     b.previousBlockHash = get_tail_id();
     const uint64_t localTimestamp = static_cast<uint64_t>(time(nullptr));
     const uint64_t parentTimestamp = height > 0
       ? m_blockchain.getBlockTimestamp(height - 1)
       : 0;
-    b.timestamp = std::max(localTimestamp, parentTimestamp);
+    uint64_t rawMedian;
+    if (!m_blockchain.getMiningTimeMedian(height, b.majorVersion, rawMedian)) return false;
+    const uint64_t rawTimestamp = std::max(localTimestamp, rawMedian);
+    b.timestamp = std::max(rawTimestamp, parentTimestamp);
+    if (b.majorVersion == BLOCK_MAJOR_VERSION_9 && height == activationHeight) {
+      b.timestamp = std::max(b.timestamp, m_blockchain.getBlockTimestamp(height - 2));
+    }
+    if (b.majorVersion == BLOCK_MAJOR_VERSION_9) {
+      b.timestampOffset = b.timestamp - rawTimestamp;
+    }
     diffic = m_blockchain.getDifficultyForNextBlock(b.previousBlockHash);
     if (!diffic) {
       logger(ERROR, BRIGHT_RED) << "difficulty overhead.";
       return false;
-    }
-
-    if (height >= m_currency.timestampCheckWindow(b.majorVersion)) {
-      std::vector<uint64_t> timestamps;
-      for (uint32_t offset = height - static_cast<uint32_t>(m_currency.timestampCheckWindow(b.majorVersion));
-           offset < height; ++offset) {
-        timestamps.push_back(m_blockchain.getBlockTimestamp(offset));
-      }
-      uint64_t median_ts = Common::medianValue(timestamps);
-      if (b.timestamp < median_ts) {
-        b.timestamp = median_ts;
-      }
     }
 
     median_size = m_blockchain.getCurrentCumulativeBlocksizeLimit() / 2;
@@ -1047,7 +1046,9 @@ bool Core::queryBlocksLite(const std::vector<Crypto::Hash>& knownBlockIds, uint6
       std::list<Crypto::Hash> missedTxs;
       lbs->getTransactions(b.transactionHashes, txs, missedTxs);
 
-      b.majorVersion = BLOCK_MAJOR_VERSION_4; // Workaround backward compatible with old wallets, i.e. serialize without signature
+      if (b.majorVersion != BLOCK_MAJOR_VERSION_9) {
+        b.majorVersion = BLOCK_MAJOR_VERSION_4; // Legacy wallet compatibility.
+      }
 
       item.block = asString(toBinaryArray(b));
 

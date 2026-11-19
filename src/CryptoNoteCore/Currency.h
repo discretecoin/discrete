@@ -58,6 +58,7 @@ public:
     return blockFutureTimeLimit_v1();
   }
   uint64_t blockFutureTimeLimit_v1() const { return m_blockFutureTimeLimit_v1; }
+  uint32_t monotonicTimestampHeight() const { return m_monotonicTimestampHeight; }
 
   uint64_t moneySupply() const { return m_moneySupply; }
   unsigned int emissionSpeedFactor() const { return m_emissionSpeedFactor; }
@@ -233,6 +234,8 @@ private:
 
   bool m_testnet;
   uint32_t m_pqDeliveryV2Height;
+  // Disabled until a network activation height is selected.
+  uint32_t m_monotonicTimestampHeight = UINT32_MAX;
 
   Block m_genesisBlock;
   Crypto::Hash m_genesisBlockHash;
@@ -266,6 +269,7 @@ public:
   CurrencyBuilder& timestampCheckWindow_v1(size_t val) { m_currency.m_timestampCheckWindow_v1 = val; return *this; }
   CurrencyBuilder& blockFutureTimeLimit(uint64_t val) { m_currency.m_blockFutureTimeLimit = val; return *this; }
   CurrencyBuilder& blockFutureTimeLimit_v1(uint64_t val) { m_currency.m_blockFutureTimeLimit_v1 = val; return *this; }
+  CurrencyBuilder& monotonicTimestampHeight(uint32_t val);
 
   CurrencyBuilder& moneySupply(uint64_t val) { m_currency.m_moneySupply = val; return *this; }
   CurrencyBuilder& emissionSpeedFactor(unsigned int val);

@@ -16,6 +16,10 @@
 // along with Karbo.  If not, see <http://www.gnu.org/licenses/>.
 
 #include "LMDBBlockchainDB.h"
+#include "CryptoNoteConfig.h"
+#include "CryptoNoteSerialization.h"
+#include "Common/MemoryInputStream.h"
+#include "Serialization/BinaryInputStreamSerializer.h"
 
 #include <cassert>
 #include <cstring>
@@ -382,6 +386,14 @@ uint32_t LMDBBlockchainDB::getChainHeight() const {
 
 // ─── block_meta ───────────────────────────────────────────────────────────
 
+static bool decodeBlockMeta(const MDB_val& value, DbBlockMeta& meta) {
+  if (value.mv_size != DbBlockMetaLegacySize && value.mv_size != sizeof(meta)) return false;
+  meta = {};
+  std::memcpy(&meta, value.mv_data, value.mv_size);
+  return (meta.majorVersion == BLOCK_MAJOR_VERSION_9) == (value.mv_size == sizeof(meta)) &&
+    meta.timestampOffset <= meta.timestamp;
+}
+
 bool LMDBBlockchainDB::getWalletSyncRange(
     uint32_t startHeight, uint32_t endHeight, uint32_t& chainHeight,
     std::vector<DbWalletSyncBlock>& blocks) const {
@@ -417,12 +429,11 @@ bool LMDBBlockchainDB::getWalletSyncRange(
     key = MDB_val{sizeof(heightKey), heightKey};
     value = MDB_val{};
     rc = mdb_cursor_get(metaCursor, &key, &value, MDB_SET);
-    if (rc != 0 || value.mv_size < sizeof(DbBlockMeta)) {
+    if (rc != 0 || !decodeBlockMeta(value, record.meta)) {
       mdb_cursor_close(metaCursor);
       if (rc != 0) checkRc(rc, "getWalletSyncRange:block_meta");
       throw std::runtime_error("LMDB getWalletSyncRange:block_meta corrupt value");
     }
-    std::memcpy(&record.meta, value.mv_data, sizeof(DbBlockMeta));
 
     key = MDB_val{sizeof(heightKey), heightKey};
     value = MDB_val{};
@@ -462,7 +473,8 @@ bool LMDBBlockchainDB::putBlockMeta(uint32_t height, const DbBlockMeta& meta) {
   assert(m_writeTxn);
   uint8_t keyBuf[4]; encBE32(keyBuf, height);
   MDB_val k = {4, keyBuf};
-  MDB_val v = {sizeof(DbBlockMeta), const_cast<DbBlockMeta*>(&meta)};
+  MDB_val v = {meta.majorVersion == BLOCK_MAJOR_VERSION_9 ? sizeof(meta) : DbBlockMetaLegacySize,
+               const_cast<DbBlockMeta*>(&meta)};
   int rc = mdb_put(m_writeTxn, m_dbiBlockMeta, &k, &v, 0);
   checkRc(rc, "putBlockMeta");
   return true;
@@ -475,12 +487,12 @@ bool LMDBBlockchainDB::getBlockMeta(uint32_t height, DbBlockMeta& meta) const {
   int rc = mdb_get(guard.txn, m_dbiBlockMeta, &k, &v);
   if (rc == MDB_NOTFOUND) return false;
   checkRc(rc, "getBlockMeta");
-  std::memcpy(&meta, v.mv_data, sizeof(DbBlockMeta));
+  if (!decodeBlockMeta(v, meta)) throw std::runtime_error("LMDB getBlockMeta: invalid metadata encoding");
   return true;
 }
 
 bool LMDBBlockchainDB::getBlockMetaRange(uint32_t fromHeight, uint32_t toHeight,
-                                          std::vector<DbBlockMeta>& out) const {
+                                          std::vector<DbBlockMeta>& out, bool verifyV9Headers) const {
   if (fromHeight > toHeight) return true;
   auto guard = readTxn();
   MDB_cursor* cur = nullptr;
@@ -495,11 +507,33 @@ bool LMDBBlockchainDB::getBlockMetaRange(uint32_t fromHeight, uint32_t toHeight,
   while (rc == 0) {
     uint32_t h = decBE32(static_cast<const uint8_t*>(k.mv_data));
     if (h > toHeight) break;
-    if (v.mv_size >= sizeof(DbBlockMeta)) {
-      DbBlockMeta m{};
-      std::memcpy(&m, v.mv_data, sizeof(DbBlockMeta));
-      out.push_back(m);
+    DbBlockMeta m{};
+    if (!decodeBlockMeta(v, m)) {
+      mdb_cursor_close(cur);
+      return false;
     }
+    if (verifyV9Headers && m.majorVersion == BLOCK_MAJOR_VERSION_9) {
+      MDB_val blob{};
+      if (mdb_get(guard.txn, m_dbiBlockData, &k, &blob) != 0) {
+        mdb_cursor_close(cur);
+        return false;
+      }
+      BlockHeader header{};
+      try {
+        Common::MemoryInputStream stream(blob.mv_data, blob.mv_size);
+        BinaryInputStreamSerializer input(stream);
+        serialize(header, input);
+      } catch (const std::exception&) {
+        mdb_cursor_close(cur);
+        return false;
+      }
+      if (header.majorVersion != m.majorVersion || header.timestamp != m.timestamp ||
+          header.timestampOffset != m.timestampOffset || std::memcmp(header.previousBlockHash.data, m.prevHash, 32) != 0) {
+        mdb_cursor_close(cur);
+        return false;
+      }
+    }
+    out.push_back(m);
     rc = mdb_cursor_get(cur, &k, &v, MDB_NEXT);
   }
   mdb_cursor_close(cur);
@@ -522,13 +556,12 @@ bool LMDBBlockchainDB::getBlockMetaForHeights(const std::vector<uint32_t>& heigh
     encBE32(kbuf, height);
     MDB_val k = {4, kbuf}, v{};
     rc = mdb_cursor_get(cur, &k, &v, MDB_SET);
-    if (rc == MDB_NOTFOUND || rc || v.mv_size < sizeof(DbBlockMeta)) {
+    DbBlockMeta meta{};
+    if (rc != 0 || !decodeBlockMeta(v, meta)) {
       mdb_cursor_close(cur);
       return false;
     }
 
-    DbBlockMeta meta{};
-    std::memcpy(&meta, v.mv_data, sizeof(DbBlockMeta));
     out.push_back(meta);
   }
 

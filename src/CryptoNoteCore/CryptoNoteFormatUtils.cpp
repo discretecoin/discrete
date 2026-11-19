@@ -207,6 +207,16 @@ std::string short_hash_str(const Hash& h) {
   return res;
 }
 
+bool getBlockRawTimestamp(const BlockHeader& header, uint64_t& rawTimestamp) {
+  if (header.majorVersion < BLOCK_MAJOR_VERSION_1 || header.majorVersion > BLOCK_MAJOR_VERSION_9 ||
+      (header.majorVersion != BLOCK_MAJOR_VERSION_9 && header.timestampOffset != 0) ||
+      header.timestampOffset > header.timestamp) {
+    return false;
+  }
+  rawTimestamp = header.timestamp - header.timestampOffset;
+  return true;
+}
+
 bool get_block_hashing_blob(const Block& b, BinaryArray& ba) {
   if (!toBinaryArray(static_cast<const BlockHeader&>(b), ba)) {
     return false;

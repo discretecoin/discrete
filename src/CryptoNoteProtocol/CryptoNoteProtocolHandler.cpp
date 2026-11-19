@@ -376,7 +376,7 @@ int CryptoNoteProtocolHandler::handle_notify_new_block(int command, NOTIFY_NEW_B
   }
   if (bvc.m_verification_failed) {
     logger(Logging::DEBUGGING) << context << "Block verification failed, dropping connection";
-    m_p2p->drop_connection(context, true);
+    m_p2p->drop_connection(context, !bvc.m_timestamp_too_far_in_future);
     return 1;
   }
   if (bvc.m_added_to_main_chain) {
@@ -792,7 +792,7 @@ int CryptoNoteProtocolHandler::processObjects(CryptoNoteConnectionContext& conte
     }
     if (bvc.m_verification_failed) {
       logger(Logging::DEBUGGING) << context << "Block verification failed, dropping connection";
-      m_p2p->drop_connection(context, true);
+      m_p2p->drop_connection(context, !bvc.m_timestamp_too_far_in_future);
       return 1;
     } else if (bvc.m_marked_as_orphaned) {
       logger(Logging::INFO) << context << "Block received at sync phase was marked as orphaned, dropping connection";
@@ -973,7 +973,7 @@ int CryptoNoteProtocolHandler::doPushLiteBlock(NOTIFY_NEW_LITE_BLOCK::request ar
     }
     if (bvc.m_verification_failed) {
       logger(Logging::DEBUGGING) << context << "Lite block verification failed, dropping connection";
-      m_p2p->drop_connection(context, true);
+      m_p2p->drop_connection(context, !bvc.m_timestamp_too_far_in_future);
       return 1;
     }
     if (bvc.m_added_to_main_chain) {

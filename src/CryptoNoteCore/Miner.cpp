@@ -19,6 +19,7 @@
 #include "Miner.h"
 
 #include <algorithm>
+#include <ctime>
 #include <future>
 #include <numeric>
 #include <sstream>
@@ -90,6 +91,8 @@ namespace CryptoNote
   }
   //-----------------------------------------------------------------------------------------------------
   bool miner::set_block_template(const Block& bl, const Difficulty& di) {
+    uint64_t rawTimestamp;
+    if (!getBlockRawTimestamp(bl, rawTimestamp)) return false;
     std::lock_guard<decltype(m_template_lock)> lk(m_template_lock);
 
     m_template = bl;
@@ -144,8 +147,7 @@ namespace CryptoNote
       return false;
     }
 
-    set_block_template(bl, di);
-    return true;
+    return set_block_template(bl, di);
   }
   //-----------------------------------------------------------------------------------------------------
   bool miner::on_idle()
@@ -154,6 +156,11 @@ namespace CryptoNote
       if(is_mining()) 
         request_block_template();
       return true;
+    }, [&] {
+      const auto activation = m_currency.monotonicTimestampHeight();
+      if (activation == UINT32_MAX || !is_mining()) return false;
+      std::lock_guard<std::mutex> lk(m_template_lock);
+      return get_block_height(m_template) >= activation;
     });
 
     m_update_merge_hr_interval.call([&](){
@@ -419,6 +426,10 @@ namespace CryptoNote
     Difficulty local_diff = 0;
     uint32_t local_template_ver = 0;
     Block b;
+    uint64_t earliestLocalTime = 0;
+    const auto waitingForClock = [&] {
+      return earliestLocalTime != 0 && static_cast<uint64_t>(std::time(nullptr)) < earliestLocalTime;
+    };
 
     while(!m_stop)
     {
@@ -429,19 +440,30 @@ namespace CryptoNote
       }
 
       if(local_template_ver != m_template_no) {
-        std::unique_lock<std::mutex> lk(m_template_lock);
+        std::lock_guard<std::mutex> lk(m_template_lock);
         b = m_template;
         local_diff = m_diffic;
-        lk.unlock();
-
         local_template_ver = m_template_no;
         nonce = m_starter_nonce + th_local_index;
+        earliestLocalTime = 0;
+        if (b.majorVersion == BLOCK_MAJOR_VERSION_9) {
+          // set_block_template validated the offset before publishing this job.
+          const auto rawTimestamp = b.timestamp - b.timestampOffset;
+          const auto allowance = m_currency.blockFutureTimeLimit(b.majorVersion);
+          if (rawTimestamp > allowance) earliestLocalTime = rawTimestamp - allowance;
+        }
       }
 
       if(!local_template_ver)//no any set_block_template call
       {
         logger(TRACE) << "Block template not set yet";
         std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+        continue;
+      }
+
+      // A stale job can carry mining time ahead of the corrected local clock.
+      if (waitingForClock()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
         continue;
       }
 
@@ -474,7 +496,7 @@ namespace CryptoNote
         }
       }
 
-      if (!m_stop && check_hash(pow, local_diff)) {
+      if (!m_stop && check_hash(pow, local_diff) && !waitingForClock()) {
         // we lucky!
         ++m_config.current_extra_message_index;
 

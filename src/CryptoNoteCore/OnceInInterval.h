@@ -30,9 +30,15 @@ public:
 
   template<class F>
   bool call(F func) {
+    return call(func, [] { return false; });
+  }
+
+  template<class F, class OnClockRollback>
+  bool call(F func, OnClockRollback refreshOnRollback) {
     time_t currentTime = time(nullptr);
 
-    if (currentTime - m_lastCalled > m_interval) {
+    if (currentTime - m_lastCalled > m_interval ||
+        (currentTime < m_lastCalled && refreshOnRollback())) {
       bool res = func();
       time(&m_lastCalled);
       return res;

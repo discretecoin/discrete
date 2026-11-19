@@ -16,6 +16,7 @@
 #include "CryptoNoteCore/CryptoNoteTools.h"
 #include "CryptoNoteCore/PqValidation.h"
 #include "Common/StringTools.h"
+#include "crypto_pq/PqSeed.h"
 
 #include <cstdint>
 #include <vector>
@@ -272,6 +273,81 @@ TEST(PqWire, BlockIdDeterministicAndHeaderSensitive) {
     Crypto::Hash idSig{};
     ASSERT_TRUE(get_block_hash(sig, idSig));
     EXPECT_NE(id1, idSig);  // signature change flows into the ID via the witness
+}
+
+TEST(PqWire, V9TimestampOffsetIsCanonicalAndLegacyHeadersAreStable) {
+    BlockHeader header{};
+    header.majorVersion = BLOCK_MAJOR_VERSION_1;
+    header.timestamp = 120;
+    const auto legacy = toBinaryArray(header);
+    ASSERT_EQ(39u, legacy.size()); // version, minor version, time, 32-byte parent, 4-byte nonce
+    ASSERT_EQ(120, legacy[2]);
+    header.majorVersion = BLOCK_MAJOR_VERSION_9;
+    auto expected = legacy;
+    expected.front() = BLOCK_MAJOR_VERSION_9;
+    expected.insert(expected.begin() + 3, 0);
+    EXPECT_EQ(expected, toBinaryArray(header)); // a zero offset still occupies one byte
+    header.timestampOffset = 120;
+    expected[3] = 120;
+    EXPECT_EQ(expected, toBinaryArray(header));
+    BlockHeader parsed{};
+    uint64_t raw = 1;
+    ASSERT_TRUE(fromBinaryArray(parsed, expected));
+    ASSERT_TRUE(getBlockRawTimestamp(parsed, raw));
+    EXPECT_EQ(0u, raw);
+    ASSERT_TRUE(fromBinaryArray(parsed, legacy)); // reusing a previously V9 object
+    EXPECT_EQ(0u, parsed.timestampOffset);
+    EXPECT_EQ(legacy, toBinaryArray(parsed));
+
+    auto invalid = expected;
+    invalid[3] = 121;
+    EXPECT_FALSE(fromBinaryArray(parsed, invalid)); // raw time would underflow
+    invalid = expected;
+    invalid[3] = 0x80;
+    invalid.insert(invalid.begin() + 4, 0);
+    EXPECT_FALSE(fromBinaryArray(parsed, invalid)); // overlong varint for zero
+    invalid = expected;
+    invalid.erase(invalid.begin() + 3);
+    EXPECT_FALSE(fromBinaryArray(parsed, invalid)); // offset omitted
+
+    header.timestamp = UINT64_MAX;
+    header.timestampOffset = UINT64_MAX;
+    const auto maximum = toBinaryArray(header);
+    ASSERT_TRUE(fromBinaryArray(parsed, maximum));
+    EXPECT_EQ(UINT64_MAX, parsed.timestampOffset);
+    ASSERT_TRUE(getBlockRawTimestamp(parsed, raw));
+    EXPECT_EQ(0u, raw);
+    invalid = maximum;
+    // Two version bytes, ten timestamp bytes, then the ten-byte offset.
+    ASSERT_EQ(1, invalid[21]);
+    invalid[21] = 2;
+    EXPECT_FALSE(fromBinaryArray(parsed, invalid)); // larger than uint64_t
+}
+
+TEST(PqWire, V9ProofAndIdentityCommitToBothTimes) {
+    auto block = makePqBlock();
+    block.majorVersion = BLOCK_MAJOR_VERSION_9;
+    block.timestampOffset = 10;
+    BinaryArray original;
+    ASSERT_TRUE(get_block_hashing_blob(block, original));
+    const auto keys = CryptoPQ::deriveSpendKeys(CryptoPQ::SeedMaster{});
+    Crypto::Hash signedWork{}, verifiedWork{};
+    ASSERT_TRUE(discrete_power_prove(original, keys.second, block.signature, signedWork));
+    ASSERT_TRUE(discrete_power_verify(original, keys.first, block.signature, verifiedWork));
+    ASSERT_EQ(signedWork, verifiedWork);
+    const auto id = get_block_hash(block);
+    for (const bool preserveRawTime : {false, true}) {
+        auto changed = block;
+        ++changed.timestampOffset;
+        if (preserveRawTime) ++changed.timestamp;
+        BinaryArray different;
+        ASSERT_TRUE(get_block_hashing_blob(changed, different));
+        EXPECT_NE(original, different);
+        EXPECT_NE(id, get_block_hash(changed));
+        DiscretePowerReject reason{};
+        EXPECT_FALSE(discrete_power_verify(different, keys.first, changed.signature, verifiedWork, &reason));
+        EXPECT_EQ(DiscretePowerReject::BadSignature, reason);
+    }
 }
 
 int main(int argc, char** argv) {
