@@ -104,6 +104,9 @@ jobs:
           ctest --test-dir build/security -C Release --output-on-failure \
             -R '^(PqChainTests|PqDaemonTrustTests|PqPaymentProofTests|SynchronizationActivityTests|UnitTests|PqWalletSyncE2E)$'
 
+      - name: Verify returned PQ transaction fees across reorg and restart
+        run: ctest --test-dir build/security -C Release --output-on-failure -R '^ReturnedPqFeeTests$'
+
   build-windows:
     name: Windows
     runs-on: windows-2022
