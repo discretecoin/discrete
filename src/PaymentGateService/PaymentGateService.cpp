@@ -226,7 +226,9 @@ void PaymentGateService::runInProcess(Logging::LoggerRef& log) {
 
   log(Logging::INFO) << "initializing core";
   CryptoNote::MinerConfig emptyMiner;
-  core.init(config.coreConfig, emptyMiner, true);
+  if (!core.init(config.coreConfig, emptyMiner, true)) {
+    throw std::runtime_error("Failed to initialize blockchain core");
+  }
 
   std::promise<std::error_code> initPromise;
   auto initFuture = initPromise.get_future();

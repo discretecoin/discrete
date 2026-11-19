@@ -510,6 +510,11 @@ jobs:
           echo "release_name=${release_name}" >> $GITHUB_OUTPUT
           echo "artifact_path=$build_folder/$release_name" >> $GITHUB_OUTPUT
 
+      - name: Check embedded wallet startup and retry
+        run: |
+          sudo unshare --net sh -ec 'ip link set lo up; exec sudo -u "$SUDO_USER" -- "$@"' sh \
+            python3 tests/test_walletd_local_startup.py build/release/src/walletd
+
       - name: Upload To GH Artifacts
         uses: actions/upload-artifact@v4
         with:
