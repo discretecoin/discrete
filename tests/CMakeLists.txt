@@ -253,6 +253,7 @@ add_test(HashTests hash_tests)
 add_test(HashTargetTests hash_target_tests)
 add_test(SystemTests system_tests)
 add_test(UnitTests unit_tests)
+add_test(NAME ReturnedPqFeeTests COMMAND $<TARGET_FILE:UnitTests> --gtest_filter=ReturnedPqFee.*:ReturnedPqFeeChain.*)
 add_test(
   NAME SynchronizationActivityTests
   COMMAND $<TARGET_FILE:UnitTests>
