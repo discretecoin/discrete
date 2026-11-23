@@ -193,6 +193,45 @@ TEST(PqDerive, TxSigningDigest) {
               "02de2e91449a463ae7dc71adde97eeab211a7a1ecbd22e1b0c3232348d5ebbd3");
 }
 
+// Version-2 transcript over the same transaction as TxSigningDigest, plus a second
+// input that carries its own key, so the keyRef list and the trailing index both
+// have more than one entry. chainId = pat<32>(11, 4). Mirrored in kat_vectors.json
+// as tx_signing_digest_v2.
+TEST(PqDerive, TxSigningDigestV2) {
+    DsaPublicKey pk = pat<1952>(5, 1);
+    Rho rho = pat<32>(3, 9);
+
+    UnsignedTx tx;
+    tx.version = 1;  // TRANSACTION_VERSION_1
+    tx.fee = 12345;
+
+    DigestInput di;
+    di.prevTxid = pat<32>(1, 0);
+    di.prevOutIndex = 7;
+    di.authPub = pk;
+    di.rhoReveal = rho;
+    tx.inputs.push_back(di);
+
+    DigestInput di2;
+    di2.prevTxid = pat<32>(255, 5);
+    di2.prevOutIndex = 0x01020304;
+    di2.authPub = pk;
+    di2.rhoReveal = pat<32>(13, 2);
+    tx.inputs.push_back(di2);
+
+    DigestOutput out;
+    out.type = 0x10;
+    out.amount = 1000000;
+    out.kemCt = pat<1088>(7, 3);
+    out.encPayload = pat<56>(2, 1);
+    out.spendCommit = spendCommit(pk, rho);
+    tx.outputs.push_back(out);
+
+    const Hash256 chainId = pat<32>(11, 4);
+    EXPECT_EQ(to_hex(txSigningDigestV2(tx, chainId, 0)), "c3204097708b1956b4124a8f1d9c7a470d9c688980d4bef4c305bb9e344956fc");
+    EXPECT_EQ(to_hex(txSigningDigestV2(tx, chainId, 1)), "17c9127a03ef0417970942143a4b2486ec6053ab31099b1fdc3c1776dd375486");
+}
+
 TEST(PqDerive, TxSigningDigestIsTamperSensitive) {
     DsaPublicKey pk = pat<1952>(5, 1);
     Rho rho = pat<32>(3, 9);

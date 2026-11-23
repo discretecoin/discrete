@@ -23,6 +23,7 @@
     "spend_commit": "discrete-pq-spend-commit-v1",
     "nullifier":    "discrete-pq-nullifier-v1",
     "tx_sign":      "discrete-pq-tx-sign-v1",
+    "tx_sign_v2":   "discrete-pq-tx-sign-v2",
     "_reserved_phase2": "discrete-pq-ct-mask-v1"
   },
   "vectors": {
@@ -136,6 +137,43 @@
       ],
       "fee": 12345,
       "output": "02de2e91449a463ae7dc71adde97eeab211a7a1ecbd22e1b0c3232348d5ebbd3"
+    },
+    "tx_signing_digest_v2": {
+      "_note": "Version-2 transcript (activates at PQ_TRANSCRIPT_V2_HEIGHT): SHA3-256(domain tx_sign_v2 || chainId || <v1 body> || LE32(keyRef_0) || ... || LE32(keyRef_{n-1}) || LE32(inputIndex)). keyRef 0xFFFFFFFF = input carries its own key. Same transaction as tx_signing_digest plus a second key-carrying input; one output per input index.",
+      "chain_id": "pat(32,11,4)",
+      "version": 1,
+      "txType": 1,
+      "unlockHeight": 0,
+      "extra": "",
+      "inputs": [
+        {
+          "prev_txid": "pat(32,1,0)",
+          "prev_out_index": 7,
+          "auth_pub": "pat(1952,5,1)",
+          "rho_reveal": "pat(32,3,9)",
+          "key_ref": 4294967295
+        },
+        {
+          "prev_txid": "pat(32,255,5)",
+          "prev_out_index": 16909060,
+          "auth_pub": "pat(1952,5,1)",
+          "rho_reveal": "pat(32,13,2)",
+          "key_ref": 4294967295
+        }
+      ],
+      "outputs": [
+        {
+          "type": 16,
+          "amount": 1000000,
+          "unlockHeight": 0,
+          "kem_ct": "pat(1088,7,3)",
+          "enc_payload": "pat(56,2,1)",
+          "spend_commit": "<spend_commit above>"
+        }
+      ],
+      "fee": 12345,
+      "output_input_0": "c3204097708b1956b4124a8f1d9c7a470d9c688980d4bef4c305bb9e344956fc",
+      "output_input_1": "17c9127a03ef0417970942143a4b2486ec6053ab31099b1fdc3c1776dd375486"
     }
   }
 }
