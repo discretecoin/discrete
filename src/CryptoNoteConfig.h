@@ -230,6 +230,16 @@ const uint32_t PQ_GROUPED_AUTH_HEIGHT                       = PQ_TRANSCRIPT_V2_H
 static_assert(PQ_GROUPED_AUTH_HEIGHT >= PQ_TRANSCRIPT_V2_HEIGHT,
               "grouped authorization requires the version-2 signing transcript");
 
+// Testnet's schedule for the same upgrade, so it can be rehearsed on a public
+// network before a mainnet height is chosen (as PQ_DELIVERY_V2_HEIGHT_TESTNET does
+// for the delivery declaration). Consensus and wallets never read these constants
+// directly: they take the heights from Currency::pqUpgradeHeights(), which picks
+// the testnet pair for a testnet Currency. UINT32_MAX = not scheduled.
+const uint32_t PQ_TRANSCRIPT_V2_HEIGHT_TESTNET              = UINT32_MAX;
+const uint32_t PQ_GROUPED_AUTH_HEIGHT_TESTNET               = PQ_TRANSCRIPT_V2_HEIGHT_TESTNET;
+static_assert(PQ_GROUPED_AUTH_HEIGHT_TESTNET >= PQ_TRANSCRIPT_V2_HEIGHT_TESTNET,
+              "grouped authorization requires the version-2 signing transcript");
+
 // Node-local anti-DoS, not consensus. Verifying a registration proof costs a
 // memory-hard yespower evaluation, so a proof that has already failed is
 // remembered and replays of it are rejected without re-running the work. The

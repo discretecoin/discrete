@@ -25,6 +25,7 @@
 #include "CryptoNote.h"
 #include "PqWallet.h"               // PqWalletKeys
 #include "PqTransactionBuilder.h"   // PqSpendInput, PqSendOutput
+#include "CryptoNoteCore/PqUpgradeHeights.h"
 #include "crypto_pq/PqPaymentProof.h"
 
 // The single, engine-agnostic PQ spend path shared by BOTH wallet engines
@@ -88,7 +89,7 @@ struct PqSendRequest {
   // transcript via pqSigningContextForHeight — the same helper consensus uses.
   //
   // Left at 0 the transaction signs under transcript v1, which is what consensus
-  // requires until parameters::PQ_TRANSCRIPT_V2_HEIGHT activates. Every wallet
+  // requires until upgradeHeights.transcriptV2 activates. Every wallet
   // front-end sets it; the default keeps direct callers (tests, tools) on the
   // pre-activation transcript rather than silently signing for height 0 of a
   // chain they did not mean.
@@ -97,6 +98,9 @@ struct PqSendRequest {
   // from the Currency. signingHeight is compared against it to pick the declared
   // transfer subtype, so a wallet never has to know the schedule itself.
   uint32_t deliveryV2Height = 0xFFFFFFFFu;
+  // Activation heights of transcript v2 and grouped authorization, taken from the
+  // Currency (Currency::pqUpgradeHeights). Default: never, i.e. today's rules.
+  PqUpgradeHeights upgradeHeights;
 
   // Deposit scheme: decides each input's signing key. Under SingleKeyIndex the one
   // ML-DSA key authorizes every input; under AggregatedMultikey a deposit input is
@@ -155,6 +159,8 @@ struct PqConsolidationRequest {
   // ordinary transfer and must declare the subtype consensus expects at
   // signingHeight, or it is rejected once TX_PQ_V2 activates.
   uint32_t deliveryV2Height = 0xFFFFFFFFu;
+  // Same meaning as PqSendRequest::upgradeHeights.
+  PqUpgradeHeights upgradeHeights;
   PqDepositScheme scheme = PqDepositScheme::AggregatedMultikey;
   // Only merge inputs from these buckets (empty = any bucket), and send the merged
   // output to `destination` (default: the wallet's primary identity). A service

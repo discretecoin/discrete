@@ -94,6 +94,20 @@ namespace CryptoNote {
       if (m_pqDeliveryV2Height == parameters::PQ_DELIVERY_V2_HEIGHT) {
         m_pqDeliveryV2Height = parameters::PQ_DELIVERY_V2_HEIGHT_TESTNET;
       }
+      // Same for the transcript-v2 / grouped-authorization upgrade.
+      if (m_pqUpgradeHeights.transcriptV2 == parameters::PQ_TRANSCRIPT_V2_HEIGHT &&
+          m_pqUpgradeHeights.groupedAuth == parameters::PQ_GROUPED_AUTH_HEIGHT) {
+        m_pqUpgradeHeights.transcriptV2 = parameters::PQ_TRANSCRIPT_V2_HEIGHT_TESTNET;
+        m_pqUpgradeHeights.groupedAuth = parameters::PQ_GROUPED_AUTH_HEIGHT_TESTNET;
+      }
+    }
+
+    // Key references are only defined under the version-2 digest (it is what
+    // binds them), so grouping can never activate before the transcript.
+    if (m_pqUpgradeHeights.groupedAuth < m_pqUpgradeHeights.transcriptV2) {
+      logger(ERROR, BRIGHT_RED) << "Grouped authorization height " << m_pqUpgradeHeights.groupedAuth
+                                << " is below the transcript v2 height " << m_pqUpgradeHeights.transcriptV2;
+      return false;
     }
 
     return true;
@@ -508,6 +522,8 @@ namespace CryptoNote {
     freeRegPoolLimit(parameters::FREE_REG_POOL_LIMIT);
 
     pqDeliveryV2Height(parameters::PQ_DELIVERY_V2_HEIGHT);
+    pqTranscriptV2Height(parameters::PQ_TRANSCRIPT_V2_HEIGHT);
+    pqGroupedAuthHeight(parameters::PQ_GROUPED_AUTH_HEIGHT);
     testnet(false);
   }
 

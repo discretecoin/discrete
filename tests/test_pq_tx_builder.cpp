@@ -526,11 +526,14 @@ TEST(PqTranscriptV2, ActivationIsNotScheduled) {
     // height reaches activation and every node keeps applying the v1 rules.
     EXPECT_EQ(std::numeric_limits<uint32_t>::max(), parameters::PQ_TRANSCRIPT_V2_HEIGHT);
 
+    EXPECT_EQ(std::numeric_limits<uint32_t>::max(), parameters::PQ_TRANSCRIPT_V2_HEIGHT_TESTNET);
+
     Crypto::Hash genesis{};
-    EXPECT_FALSE(pqSigningContextForHeight(0, genesis).useV2);
-    EXPECT_FALSE(pqSigningContextForHeight(1000000, genesis).useV2);
+    const PqUpgradeHeights mainnet{parameters::PQ_TRANSCRIPT_V2_HEIGHT, parameters::PQ_GROUPED_AUTH_HEIGHT};
+    EXPECT_FALSE(pqSigningContextForHeight(0, mainnet, genesis).useV2);
+    EXPECT_FALSE(pqSigningContextForHeight(1000000, mainnet, genesis).useV2);
     EXPECT_FALSE(pqSigningContextForHeight(
-        std::numeric_limits<uint32_t>::max() - 1, genesis).useV2);
+        std::numeric_limits<uint32_t>::max() - 1, mainnet, genesis).useV2);
 }
 
 int main(int argc, char** argv) {

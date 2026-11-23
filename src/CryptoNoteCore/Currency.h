@@ -28,6 +28,7 @@
 #include "CryptoNoteBasic.h"
 #include "PqTxType.h"
 #include "Difficulty.h"
+#include "PqUpgradeHeights.h"
 #include "crypto_pq/PqKem.h"
 #include "crypto_pq/PqDsa.h"
 
@@ -123,6 +124,10 @@ public:
 
   // Activation height of the mandatory outContext-v2 delivery declaration.
   uint32_t pqDeliveryV2Height() const { return m_pqDeliveryV2Height; }
+  // Activation heights of signing transcript v2 and grouped input authorization
+  // on this network. Every consensus and wallet decision about them goes through
+  // pqSigningContextForHeight with these values.
+  PqUpgradeHeights pqUpgradeHeights() const { return m_pqUpgradeHeights; }
   // Which transfer subtype a transaction in a block at `height` must declare.
   bool isPqTransferTypeAllowedAt(uint8_t txType, uint32_t height) const {
     if (txType == TX_PQ)    return height <  m_pqDeliveryV2Height;
@@ -233,6 +238,7 @@ private:
 
   bool m_testnet;
   uint32_t m_pqDeliveryV2Height;
+  PqUpgradeHeights m_pqUpgradeHeights;
 
   Block m_genesisBlock;
   Crypto::Hash m_genesisBlockHash;
@@ -319,6 +325,14 @@ public:
   CurrencyBuilder& freeRegPoolLimit(size_t val) { m_currency.m_freeRegPoolLimit = val; return *this; }
 
   CurrencyBuilder& pqDeliveryV2Height(uint32_t val) { m_currency.m_pqDeliveryV2Height = val; return *this; }
+  // Schedules the whole upgrade (transcript v2 and grouped authorization) at one
+  // height, which is how it ships. pqGroupedAuthHeight can then move grouping later.
+  CurrencyBuilder& pqTranscriptV2Height(uint32_t val) {
+    m_currency.m_pqUpgradeHeights.transcriptV2 = val;
+    m_currency.m_pqUpgradeHeights.groupedAuth = val;
+    return *this;
+  }
+  CurrencyBuilder& pqGroupedAuthHeight(uint32_t val) { m_currency.m_pqUpgradeHeights.groupedAuth = val; return *this; }
 
   CurrencyBuilder& testnet(bool val) { m_currency.m_testnet = val; return *this; }
 

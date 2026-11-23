@@ -1664,13 +1664,22 @@ bool runDeliveryV2HistoricalSpend() {
 // Grouped input authorization is implemented but not scheduled. A node must
 // refuse a key-reference input today, on the real admission path (parse, pool,
 // Blockchain::checkPqInputs), while the same spend in today's form is accepted.
-bool runGroupedAuthNotActive() {
+// `scheduled` = false: the shipped schedule (never), so a key-reference spend is
+// refused and today's form admitted. true: a test chain whose Currency activates
+// the upgrade at height 14 (the height the spend is judged at), so the grouped v2
+// form is admitted and today's v1 form refused. Consensus reads the schedule only
+// from the Currency, which is what lets testnet run its own.
+bool runGroupedAuthGate(bool scheduled) {
   using namespace CryptoNote;
   Logging::ConsoleLogger logger(Logging::ERROR);
-  const Currency currency = CurrencyBuilder(logger).testnet(true)
+  CurrencyBuilder builder(logger);
+  builder.testnet(true)
       .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
-      .upgradeHeightV5(11).upgradeHeightV6(12).currency();
-  const std::filesystem::path dataDir("pq_grouped_auth_test_data");
+      .upgradeHeightV5(11).upgradeHeightV6(12);
+  if (scheduled) builder.pqTranscriptV2Height(14);
+  const Currency currency = builder.currency();
+  const std::filesystem::path dataDir(scheduled ? "pq_grouped_auth_active_test_data"
+                                                : "pq_grouped_auth_test_data");
   std::error_code ec;
   std::filesystem::remove_all(dataDir, ec);
   std::filesystem::create_directories(dataDir, ec);
@@ -1729,10 +1738,20 @@ bool runGroupedAuthNotActive() {
     if (!expect(groupedTx.pqSignatures.size() == 1 &&
                 boost::get<PqInput>(groupedTx.inputs[1]).keyRef == 0,
                 "grouped: second input is a key reference")) return false;
+    const Transaction todayTx = buildPqTransaction(inputs, pay, miner.pqSpendPk(), miner.pqSpendSk());
+    if (scheduled) {
+      if (!expect(core.getCurrentBlockchainHeight() == 14, "grouped: spend judged at the activation height")) return false;
+      // Today's form first: it spends the same outputs, so it must be refused on
+      // its own merits (v1 signatures past activation), not as a double spend.
+      const tx_verification_context v1 = submit(todayTx);
+      if (!expect(!v1.m_added_to_pool, "grouped: v1 spend refused after activation")) return false;
+      const tx_verification_context admitted = submit(groupedTx);
+      return expect(admitted.m_added_to_pool && !admitted.m_verification_failed,
+                    "grouped: key-reference v2 spend admitted after activation");
+    }
     const tx_verification_context refused = submit(groupedTx);
     if (!expect(!refused.m_added_to_pool, "grouped: key-reference spend refused before activation")) return false;
 
-    const Transaction todayTx = buildPqTransaction(inputs, pay, miner.pqSpendPk(), miner.pqSpendSk());
     const tx_verification_context admitted = submit(todayTx);
     return expect(admitted.m_added_to_pool && !admitted.m_verification_failed,
                   "grouped: the same spend in today's form is admitted");
@@ -1746,8 +1765,12 @@ bool runGroupedAuthNotActive() {
 
 int main() {
   if (!runDeliveryV2HistoricalSpend()) return 1;
-  if (!runGroupedAuthNotActive()) {
+  if (!runGroupedAuthGate(false)) {
     std::cerr << "[FAIL] PQ grouped-authorization activation gate test" << std::endl;
+    return 1;
+  }
+  if (!runGroupedAuthGate(true)) {
+    std::cerr << "[FAIL] PQ grouped-authorization scheduled-activation test" << std::endl;
     return 1;
   }
   if (!runCoroutineStack()) {

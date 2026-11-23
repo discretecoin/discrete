@@ -347,21 +347,23 @@ uint8_t pqTransferTypeForHeight(uint32_t height, uint32_t deliveryV2Height) {
   return height >= deliveryV2Height ? TX_PQ_V2 : TX_PQ;
 }
 
-PqSigningContext pqSigningContextForHeight(uint32_t height, const CryptoPQ::Hash256& genesisId) {
+PqSigningContext pqSigningContextForHeight(uint32_t height, const PqUpgradeHeights& heights,
+                                           const CryptoPQ::Hash256& genesisId) {
   PqSigningContext ctx;
   // The one activation comparison. Every caller — consensus and wallet alike —
   // reaches the transcript choice through here, so there is no second copy of
   // this test to fall out of step.
-  ctx.useV2 = height >= parameters::PQ_TRANSCRIPT_V2_HEIGHT;
-  ctx.groupedAuth = height >= parameters::PQ_GROUPED_AUTH_HEIGHT;
+  ctx.useV2 = height >= heights.transcriptV2;
+  ctx.groupedAuth = height >= heights.groupedAuth;
   ctx.chainId = genesisId;
   return ctx;
 }
 
-PqSigningContext pqSigningContextForHeight(uint32_t height, const Crypto::Hash& genesisId) {
+PqSigningContext pqSigningContextForHeight(uint32_t height, const PqUpgradeHeights& heights,
+                                           const Crypto::Hash& genesisId) {
   CryptoPQ::Hash256 chainId{};
   std::memcpy(chainId.data(), genesisId.data, chainId.size());
-  return pqSigningContextForHeight(height, chainId);
+  return pqSigningContextForHeight(height, heights, chainId);
 }
 
 bool checkPqTransactionInputs(const Transaction& tx,

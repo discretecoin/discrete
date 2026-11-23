@@ -744,7 +744,7 @@ PqSpendInput fundOwned(const PqWalletKeys& owner, uint64_t amount, uint8_t seed,
 }
 
 PqSigningContext contextAt(uint32_t height, const CryptoPQ::Hash256& genesis) {
-    return pqSigningContextForHeight(height, genesis);
+    return pqSigningContextForHeight(height, PqUpgradeHeights{kActivation, P::PQ_GROUPED_AUTH_HEIGHT}, genesis);
 }
 
 // buildPqSend sorts inputs largest-first, so give the caller the resolved views
