@@ -136,7 +136,7 @@ ConsolidationSelection selectConsolidationInputs(
   if (sorted.size() < 2) return selection;
   std::sort(sorted.begin(), sorted.end(), smallestFirst);
 
-  const PqSigningContext signing = pqSigningContextForHeight(req.signingHeight, req.genesisId);
+  const PqSigningContext signing = pqSigningContextForHeight(req.signingHeight, req.upgradeHeights, req.genesisId);
   Selection picked{{}, {}, 0, req.scheme, capsFor(signing)};
   for (const auto& in : sorted) {
     if (picked.inputs.size() >= picked.caps.totalInputs) break;
@@ -196,7 +196,7 @@ PqSendResult buildPqSend(const std::vector<PqSpendInput>& available,
   // consensus helper, so every input of this transaction signs under the same
   // transcript and under the same rule the verifier will apply.
   const PqSigningContext signing = [&] {
-    PqSigningContext ctx = pqSigningContextForHeight(req.signingHeight, req.genesisId);
+    PqSigningContext ctx = pqSigningContextForHeight(req.signingHeight, req.upgradeHeights, req.genesisId);
     ctx.txType = pqTransferTypeForHeight(req.signingHeight, req.deliveryV2Height);
     return ctx;
   }();
@@ -412,6 +412,7 @@ PqConsolidationResult buildPqConsolidation(
   send.genesisId = req.genesisId;
   send.signingHeight = req.signingHeight;
   send.deliveryV2Height = req.deliveryV2Height;
+  send.upgradeHeights = req.upgradeHeights;
   send.scheme = req.scheme;
   send.sweepSmallInputs = false;  // the plan IS the input set
 

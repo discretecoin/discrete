@@ -527,7 +527,7 @@ TEST(PqGroupedAuthSender, OneTransactionMergesTwoHundredFiftySixOutputs) {
   ASSERT_EQ(resolved.size(), tx.inputs.size());
   std::string why;
   EXPECT_TRUE(accepted(tx, resolved,
-                       pqSigningContextForHeight(P::PQ_GROUPED_AUTH_HEIGHT, chainId()), &why)) << why;
+                       pqSigningContextForHeight(P::PQ_GROUPED_AUTH_HEIGHT, PqUpgradeHeights{}, chainId()), &why)) << why;
 }
 
 TEST(PqGroupedAuthSender, ConsolidationPreviewMatchesExecutionAcrossActivation) {
@@ -590,10 +590,12 @@ TEST(PqGroupedAuthSender, LargePaymentsStopNeedingConsolidation) {
 TEST(PqGroupedAuthSchedule, ActivationIsNotScheduledAndRidesOnTranscriptV2) {
   EXPECT_EQ(P::PQ_GROUPED_AUTH_HEIGHT, P::PQ_TRANSCRIPT_V2_HEIGHT);
   EXPECT_EQ(P::PQ_GROUPED_AUTH_HEIGHT, std::numeric_limits<uint32_t>::max());
+  EXPECT_EQ(P::PQ_GROUPED_AUTH_HEIGHT_TESTNET, P::PQ_TRANSCRIPT_V2_HEIGHT_TESTNET);
   const Crypto::Hash genesis{};
-  EXPECT_FALSE(pqSigningContextForHeight(0, genesis).groupedAuth);
-  EXPECT_FALSE(pqSigningContextForHeight(std::numeric_limits<uint32_t>::max() - 1, genesis).groupedAuth);
-  const PqSigningContext at = pqSigningContextForHeight(P::PQ_GROUPED_AUTH_HEIGHT, genesis);
+  const PqUpgradeHeights mainnet{P::PQ_TRANSCRIPT_V2_HEIGHT, P::PQ_GROUPED_AUTH_HEIGHT};
+  EXPECT_FALSE(pqSigningContextForHeight(0, mainnet, genesis).groupedAuth);
+  EXPECT_FALSE(pqSigningContextForHeight(std::numeric_limits<uint32_t>::max() - 1, mainnet, genesis).groupedAuth);
+  const PqSigningContext at = pqSigningContextForHeight(P::PQ_GROUPED_AUTH_HEIGHT, mainnet, genesis);
   EXPECT_TRUE(at.groupedAuth && at.useV2);
 }
 

@@ -531,6 +531,44 @@ TEST(PqDeliveryVersion, UnscheduledForkKeepsEveryHeightOnTheCurrentRules) {
     }
 }
 
+TEST(PqUpgradeSchedule, EachNetworkReadsItsOwnHeights) {
+    Logging::ConsoleLogger logger(Logging::ERROR);
+    const Currency mainnet = CurrencyBuilder(logger).currency();
+    EXPECT_EQ(mainnet.pqUpgradeHeights().transcriptV2, parameters::PQ_TRANSCRIPT_V2_HEIGHT);
+    EXPECT_EQ(mainnet.pqUpgradeHeights().groupedAuth, parameters::PQ_GROUPED_AUTH_HEIGHT);
+
+    const Currency testnet = CurrencyBuilder(logger).testnet(true).currency();
+    EXPECT_EQ(testnet.pqUpgradeHeights().transcriptV2, parameters::PQ_TRANSCRIPT_V2_HEIGHT_TESTNET);
+    EXPECT_EQ(testnet.pqUpgradeHeights().groupedAuth, parameters::PQ_GROUPED_AUTH_HEIGHT_TESTNET);
+
+    // An explicitly configured schedule (tests, private nets) is left alone on testnet.
+    const Currency privateNet = CurrencyBuilder(logger).testnet(true).pqTranscriptV2Height(40).currency();
+    EXPECT_EQ(privateNet.pqUpgradeHeights().transcriptV2, 40u);
+    EXPECT_EQ(privateNet.pqUpgradeHeights().groupedAuth, 40u);
+}
+
+TEST(PqUpgradeSchedule, SigningContextFollowsTheCurrencySchedule) {
+    Logging::ConsoleLogger logger(Logging::ERROR);
+    const Currency currency = CurrencyBuilder(logger).pqTranscriptV2Height(40).pqGroupedAuthHeight(50).currency();
+    const PqUpgradeHeights heights = currency.pqUpgradeHeights();
+    const Crypto::Hash& genesis = currency.genesisBlockHash();
+    const PqSigningContext before = pqSigningContextForHeight(39, heights, genesis);
+    EXPECT_FALSE(before.useV2);
+    EXPECT_FALSE(before.groupedAuth);
+    const PqSigningContext transcript = pqSigningContextForHeight(40, heights, genesis);
+    EXPECT_TRUE(transcript.useV2);
+    EXPECT_FALSE(transcript.groupedAuth);
+    EXPECT_EQ(0, std::memcmp(transcript.chainId.data(), genesis.data, transcript.chainId.size()));
+    const PqSigningContext grouped = pqSigningContextForHeight(50, heights, genesis);
+    EXPECT_TRUE(grouped.useV2 && grouped.groupedAuth);
+}
+
+TEST(PqUpgradeSchedule, GroupingCannotPrecedeTheTranscript) {
+    Logging::ConsoleLogger logger(Logging::ERROR);
+    EXPECT_THROW(CurrencyBuilder(logger).pqTranscriptV2Height(40).pqGroupedAuthHeight(39).currency(),
+                 std::runtime_error);
+}
+
 // The shape rules are identical across the fork: only the declaration changes.
 // A post-fork transaction is still an ordinary transfer, and in particular it may
 // still SPEND pre-fork outputs — the rule constrains how outputs are created,

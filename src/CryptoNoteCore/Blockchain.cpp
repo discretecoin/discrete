@@ -1979,7 +1979,8 @@ bool Blockchain::checkPqInputs(const Transaction& tx, uint32_t* pmax_used_block_
   // transaction is being judged at, so a reorg across the activation boundary
   // re-evaluates against the rules of the height the block actually lands on.
   const PqSigningContext signing =
-      pqSigningContextForHeight(getCurrentBlockchainHeight(), m_currency.genesisBlockHash());
+      pqSigningContextForHeight(getCurrentBlockchainHeight(), m_currency.pqUpgradeHeights(),
+                                m_currency.genesisBlockHash());
 
   // Everything below reads the database once per input, so first refuse what
   // the transaction alone already rules out. Until grouped authorization is
@@ -2125,7 +2126,7 @@ bool Blockchain::freeRegChainStateOk(const Transaction& tx, Crypto::Hash& identi
   // unlimited transactions with different ids. Before activation this is relay
   // policy only (Core::check_tx_semantic): applying it to blocks early would make
   // upgraded and old nodes disagree about a block.
-  if (getCurrentBlockchainHeight() >= parameters::PQ_TRANSCRIPT_V2_HEIGHT &&
+  if (getCurrentBlockchainHeight() >= m_currency.pqUpgradeHeights().transcriptV2 &&
       !isCanonicalFreeRegExtra(tx.extra)) {
     logger(INFO, BRIGHT_WHITE) << "free-reg tx_extra is not canonical, rejected";
     return false;

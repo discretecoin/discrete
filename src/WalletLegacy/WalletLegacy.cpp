@@ -1047,6 +1047,7 @@ PqConsolidationRequest WalletLegacy::pqConsolidationRequest(uint64_t fee) const 
               request.genesisId.size());
   request.signingHeight = pqSigningHeight();
   request.deliveryV2Height = m_currency.pqDeliveryV2Height();
+  request.upgradeHeights = m_currency.pqUpgradeHeights();
   request.scheme = PqDepositScheme::SingleKeyIndex;
   return request;
 }
@@ -1278,6 +1279,7 @@ PqSendResult WalletLegacy::sendPqTransferWithSeed(
               req.genesisId.size());
   req.signingHeight = pqSigningHeight();
   req.deliveryV2Height = m_currency.pqDeliveryV2Height();
+  req.upgradeHeights = m_currency.pqUpgradeHeights();
   // Single key pair: outputs attributed to a subaddress index T (see initSync)
   // are still authorized by the primary spend key.
   req.scheme = PqDepositScheme::SingleKeyIndex;
@@ -1489,6 +1491,7 @@ PqSendResult WalletLegacy::preparePqTransferWithSeed(
               req.genesisId.size());
   req.signingHeight = pqSigningHeight();
   req.deliveryV2Height = m_currency.pqDeliveryV2Height();
+  req.upgradeHeights = m_currency.pqUpgradeHeights();
   req.scheme = PqDepositScheme::SingleKeyIndex;
 
   std::vector<PqSpendInput> spendable = pqSpendableInputs();

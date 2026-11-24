@@ -25,6 +25,7 @@
 #include "CryptoNote.h"
 #include "CryptoTypes.h"
 #include "PqTxType.h"
+#include "PqUpgradeHeights.h"
 #include "../CryptoNoteConfig.h"
 #include "crypto_pq/PqDerive.h"
 #include "crypto_pq/PqHash.h"
@@ -153,8 +154,13 @@ struct PqSigningContext {
 // of the schedule to fall out of step.
 uint8_t pqTransferTypeForHeight(uint32_t height, uint32_t deliveryV2Height);
 
-PqSigningContext pqSigningContextForHeight(uint32_t height, const Crypto::Hash& genesisId);
-PqSigningContext pqSigningContextForHeight(uint32_t height, const CryptoPQ::Hash256& genesisId);
+//
+// `heights` is the network's schedule, Currency::pqUpgradeHeights(); there is no
+// overload without it, so nothing can fall back to the mainnet constants.
+PqSigningContext pqSigningContextForHeight(uint32_t height, const PqUpgradeHeights& heights,
+                                           const Crypto::Hash& genesisId);
+PqSigningContext pqSigningContextForHeight(uint32_t height, const PqUpgradeHeights& heights,
+                                           const CryptoPQ::Hash256& genesisId);
 
 // Context-free input/balance/signature checks given resolved referenced outputs
 // (resolved[i] corresponds to tx.inputs[i]). On success, *outNullifiers (if not
